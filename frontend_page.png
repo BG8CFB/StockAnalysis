@@ -1,0 +1,82 @@
+uid=2_0 RootWebArea "TradingAgents-CN" url="http://localhost:5173/"
+  uid=2_1 ignored
+    uid=2_2 ignored
+      uid=2_3 generic
+      uid=2_4 generic
+        uid=2_5 generic
+          uid=2_6 generic
+            uid=2_7 generic
+              uid=2_8 StaticText "[plugin:vite:esbuild] "
+                uid=2_9 InlineTextBox "[plugin:vite:esbuild] "
+              uid=2_10 StaticText "failed to resolve "extends":"@tsconfig/node20/tsconfig.json" in E:/Code/StockAnalysis/frontend/tsconfig.node.json"
+                uid=2_11 InlineTextBox "failed to resolve "extends":"@tsconfig/node20/tsconfig.json""
+                uid=2_12 InlineTextBox " "
+                uid=2_13 InlineTextBox "in E:/Code/StockAnalysis/frontend/tsconfig.node.json"
+            uid=2_14 generic
+              uid=2_15 StaticText "E:/Code/StockAnalysis/frontend/src/main.ts"
+                uid=2_16 InlineTextBox "E:/Code/StockAnalysis/frontend/src/main.ts"
+            uid=2_17 ignored
+            uid=2_18 generic
+              uid=2_19 StaticText "    at resolveExtends (file:"
+                uid=2_20 InlineTextBox "    at resolveExtends (file:"
+              uid=2_21 link "///E:/Code/StockAnalysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:18845:8"
+                uid=2_22 StaticText "///E:/Code/StockAnalysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:18845:8"
+                  uid=2_23 InlineTextBox "///E:/Code/StockAnalysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:18845:8"
+              uid=2_24 StaticText ")
+    at parseExtends (file:"
+                uid=2_25 InlineTextBox ")"
+                uid=2_26 InlineTextBox "
+"
+                uid=2_27 InlineTextBox "    at parseExtends (file:"
+              uid=2_28 link "///E:/Code/StockAnalysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:18780:24"
+                uid=2_29 StaticText "///E:/Code/StockAnalysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:18780:24"
+                  uid=2_30 InlineTextBox "///E:/Code/StockAnalysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:18780:24"
+              uid=2_31 StaticText ")
+    at file:"
+                uid=2_32 InlineTextBox ")"
+                uid=2_33 InlineTextBox "
+"
+                uid=2_34 InlineTextBox "    at file:"
+              uid=2_35 link "///E:/Code/StockAnalysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:18743:44"
+                uid=2_36 StaticText "///E:/Code/StockAnalysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:18743:44"
+                  uid=2_37 InlineTextBox "///E:/Code/StockAnalysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:18743:44"
+              uid=2_38 StaticText "
+    at Array.map (<anonymous>)
+    at parseReferences (file:"
+                uid=2_39 InlineTextBox "
+"
+                uid=2_40 InlineTextBox "    at Array.map (<anonymous>)"
+                uid=2_41 InlineTextBox "
+"
+                uid=2_42 InlineTextBox "    at parseReferences (file:"
+              uid=2_43 link "///E:/Code/StockAnalysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:18743:31"
+                uid=2_44 StaticText "///E:/Code/StockAnalysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:18743:31"
+                  uid=2_45 InlineTextBox "///E:/Code/StockAnalysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:18743:31"
+            uid=2_46 generic
+              uid=2_47 StaticText "Click outside, press "
+                uid=2_48 InlineTextBox "Click outside, press "
+              uid=2_49 StaticText "Esc"
+                uid=2_50 InlineTextBox "Esc"
+              uid=2_51 StaticText " key, or fix the code to dismiss."
+                uid=2_52 InlineTextBox " key, or fix the code to dismiss."
+              uid=2_53 LineBreak "
+"
+                uid=2_54 InlineTextBox "
+"
+              uid=2_55 StaticText "You can also disable this overlay by setting "
+                uid=2_56 InlineTextBox "You can also disable this overlay by setting "
+              uid=2_57 code
+                uid=2_58 StaticText "server.hmr.overlay"
+                  uid=2_59 InlineTextBox "server.hmr.overlay"
+              uid=2_60 StaticText " to "
+                uid=2_61 InlineTextBox " to "
+              uid=2_62 code
+                uid=2_63 StaticText "false"
+                  uid=2_64 InlineTextBox "false"
+              uid=2_65 StaticText " in "
+                uid=2_66 InlineTextBox " in "
+              uid=2_67 code
+                uid=2_68 StaticText "vite.config.ts"
+                  uid=2_69 InlineTextBox "vite.config.ts"
+              uid=2_70 StaticText "."
+                uid=2_71 InlineTextBox "."

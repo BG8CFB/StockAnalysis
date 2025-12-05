@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  # 开发环境后端服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: tradingagents-backend-dev
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      MONGODB_URL: mongodb://tradingagents_user:tradingagents_password@mongodb:27017/tradingagents
+      REDIS_URL: redis://:redis123@redis:6379
+      SECRET_KEY: dev-secret-key-change-in-production
+      DEBUG: true
+      HOST: 0.0.0.0
+      PORT: 8000
+      ALLOWED_ORIGINS: '["http://localhost:3000", "http://localhost:5173", "http://frontend:3000"]'
+    volumes:
+      - ./backend:/app
+      - /app/__pycache__
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - tradingagents-network
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  # 开发环境前端服务
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: tradingagents-frontend-dev
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+      VITE_APP_TITLE: "TradingAgents-CN (Dev)"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - tradingagents-network
+    command: npm run dev
+
+  # 包含基础服务
+  mongodb:
+    extends:
+      file: docker-compose.yml
+      service: mongodb
+
+  redis:
+    extends:
+      file: docker-compose.yml
+      service: redis
+
+  mongo-express:
+    extends:
+      file: docker-compose.yml
+      service: mongo-express
+
+  redis-commander:
+    extends:
+      file: docker-compose.yml
+      service: redis-commander
+
+# 共享网络
+networks:
+  tradingagents-network:
+    driver: bridge

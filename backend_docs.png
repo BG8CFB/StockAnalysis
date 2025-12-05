@@ -1,0 +1,108 @@
+uid=1_0 RootWebArea "TradingAgents-CN API - Swagger UI" url="http://localhost:8000/docs"
+  uid=1_1 ignored
+    uid=1_2 ignored
+      uid=1_3 generic
+        uid=1_4 ignored
+          uid=1_5 generic
+            uid=1_6 image
+          uid=1_7 ignored
+            uid=1_8 ignored
+              uid=1_9 generic
+                uid=1_10 ignored
+                  uid=1_11 group
+                    uid=1_12 heading "TradingAgents-CN API 1.0.0 OAS 3.1" level="1"
+                      uid=1_13 StaticText "TradingAgents-CN API"
+                        uid=1_14 InlineTextBox "TradingAgents-CN API"
+                      uid=1_15 generic
+                        uid=1_16 generic
+                          uid=1_17 StaticText " "
+                            uid=1_18 InlineTextBox " "
+                          uid=1_19 StaticText "1.0.0"
+                            uid=1_20 InlineTextBox "1.0.0"
+                          uid=1_21 StaticText " "
+                            uid=1_22 InlineTextBox " "
+                      uid=1_23 generic
+                        uid=1_24 generic
+                          uid=1_25 StaticText "OAS "
+                            uid=1_26 InlineTextBox "OAS "
+                          uid=1_27 StaticText "3.1"
+                            uid=1_28 InlineTextBox "3.1"
+                    uid=1_29 link "/openapi.json" url="http://localhost:8000/openapi.json"
+                      uid=1_30 StaticText "/openapi.json"
+                        uid=1_31 InlineTextBox "/openapi.json"
+                  uid=1_32 ignored
+                    uid=1_33 ignored
+                      uid=1_34 paragraph
+                        uid=1_35 StaticText "模块化单体架构的股票分析系统"
+                          uid=1_36 InlineTextBox "模块化单体架构的股票分析系统"
+            uid=1_37 ignored
+            uid=1_38 ignored
+              uid=1_39 generic
+                uid=1_40 generic
+                  uid=1_41 ignored
+                    uid=1_42 heading "default Collapse operation" level="3"
+                      uid=1_43 link "default" url="http://localhost:8000/docs#/default"
+                        uid=1_44 StaticText "default"
+                          uid=1_45 InlineTextBox "default"
+                      uid=1_46 ignored
+                      uid=1_47 button "Collapse operation" expandable expanded
+                    uid=1_48 ignored
+                      uid=1_49 generic
+                        uid=1_50 generic
+                          uid=1_51 ignored
+                            uid=1_52 button "GET / Root" expandable
+                              uid=1_53 ignored
+                                uid=1_54 StaticText "GET"
+                                  uid=1_55 InlineTextBox "GET"
+                              uid=1_56 ignored
+                                uid=1_57 ignored
+                                  uid=1_58 link "/" url="http://localhost:8000/docs#/default/root__get"
+                                    uid=1_59 StaticText "/"
+                                      uid=1_60 InlineTextBox "/"
+                                uid=1_61 generic
+                                  uid=1_62 StaticText "Root"
+                                    uid=1_63 InlineTextBox "Root"
+                            uid=1_64 generic description="Copy to clipboard"
+                            uid=1_65 button "get ​/" expandable
+                        uid=1_66 generic
+                          uid=1_67 ignored
+                            uid=1_68 button "GET /health Health Check" expandable
+                              uid=1_69 ignored
+                                uid=1_70 StaticText "GET"
+                                  uid=1_71 InlineTextBox "GET"
+                              uid=1_72 ignored
+                                uid=1_73 ignored
+                                  uid=1_74 link "/health" url="http://localhost:8000/docs#/default/health_check_health_get"
+                                    uid=1_75 StaticText "/health"
+                                      uid=1_76 InlineTextBox "/health"
+                                uid=1_77 generic
+                                  uid=1_78 StaticText "Health Check"
+                                    uid=1_79 InlineTextBox "Health Check"
+                            uid=1_80 generic description="Copy to clipboard"
+                            uid=1_81 button "get ​/health" expandable
+                        uid=1_82 generic
+                          uid=1_83 ignored
+                            uid=1_84 button "GET /api /dashboard /summary Get Dashboard Summary" expandable
+                              uid=1_85 ignored
+                                uid=1_86 StaticText "GET"
+                                  uid=1_87 InlineTextBox "GET"
+                              uid=1_88 ignored
+                                uid=1_89 ignored
+                                  uid=1_90 link "/api /dashboard /summary" url="http://localhost:8000/docs#/default/get_dashboard_summary_api_dashboard_summary_get"
+                                    uid=1_91 StaticText "/api"
+                                      uid=1_92 InlineTextBox "/api"
+                                    uid=1_93 ignored
+                                    uid=1_94 StaticText "/dashboard"
+                                      uid=1_95 InlineTextBox "/dashboard"
+                                    uid=1_96 ignored
+                                    uid=1_97 StaticText "/summary"
+                                      uid=1_98 InlineTextBox "/summary"
+                                uid=1_99 generic
+                                  uid=1_100 StaticText "Get Dashboard Summary"
+                                    uid=1_101 InlineTextBox "Get Dashboard Summary"
+                            uid=1_102 generic description="Copy to clipboard"
+                            uid=1_103 button "get ​/api​/dashboard​/summary" expandable
+            uid=1_104 ignored
+              uid=1_105 generic
+            uid=1_106 ignored
+              uid=1_107 generic
