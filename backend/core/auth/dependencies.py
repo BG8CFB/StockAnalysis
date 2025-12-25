@@ -1,101 +1,108 @@
+"""
+认证依赖注入
+"""
 from typing import Optional
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import JWTError, jwt
-from datetime import datetime, timedelta
 
-from ..auth.models import TokenData, UserResponse
-from ..db.mongodb import mongodb
-from ..config import settings
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+from core.auth.models import PyObjectId, UserModel
+from core.auth.security import jwt_manager
+from core.db.mongodb import mongodb
 
 # HTTP Bearer 认证方案
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> UserResponse:
-    """获取当前用户"""
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+async def get_current_user_optional(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+) -> Optional[UserModel]:
+    """获取当前用户（可选，未登录返回 None）"""
+    if credentials is None:
+        return None
+
+    token = credentials.credentials
+    payload = jwt_manager.verify_token(token, "access")
+    if payload is None:
+        return None
+
+    user_id = payload.get("sub")
+    if user_id is None:
+        return None
 
     try:
-        # 解码JWT令牌
-        payload = jwt.decode(
-            credentials.credentials,
-            settings.secret_key,
-            algorithms=[settings.algorithm]
+        user = await mongodb.database.users.find_one({"_id": PyObjectId(user_id)})
+        if user is None:
+            return None
+        return UserModel(**user)
+    except Exception:
+        return None
+
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> UserModel:
+    """获取当前用户（必须登录）"""
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="未提供认证令牌",
+            headers={"WWW-Authenticate": "Bearer"},
         )
-        user_id: str = payload.get("sub")
-        email: str = payload.get("email")
 
-        if user_id is None or email is None:
-            raise credentials_exception
+    token = credentials.credentials
+    payload = jwt_manager.verify_token(token, "access")
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="无效的认证令牌",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
-        token_data = TokenData(user_id=user_id, email=email)
-    except JWTError:
-        raise credentials_exception
+    user_id = payload.get("sub")
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="令牌格式错误",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
-    # 从数据库获取用户信息
-    db = mongodb.get_database()
-    user_dict = await db.users.find_one({"_id": ObjectId(user_id)})
+    try:
+        user = await mongodb.database.users.find_one({"_id": PyObjectId(user_id)})
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="用户不存在",
+            )
+        return UserModel(**user)
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="获取用户信息失败",
+        )
 
-    if user_dict is None:
-        raise credentials_exception
 
-    # 转换为UserResponse模型
-    user_dict["id"] = str(user_dict["_id"])
-    del user_dict["_id"]
-    del user_dict["hashed_password"]  # 不返回密码哈希
-
-    return UserResponse(**user_dict)
-
-
-async def get_current_active_user(current_user: UserResponse = Depends(get_current_user)) -> UserResponse:
-    """获取当前活跃用户"""
+async def get_current_active_user(
+    current_user: UserModel = Depends(get_current_user),
+) -> UserModel:
+    """获取当前激活用户"""
     if not current_user.is_active:
-        raise HTTPException(status_code=400, detail="Inactive user")
-    return current_user
-
-
-async def get_current_superuser(current_user: UserResponse = Depends(get_current_user)) -> UserResponse:
-    """获取当前超级用户"""
-    if not current_user.is_superuser:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="用户账号已被禁用",
         )
     return current_user
 
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    """创建访问令牌"""
-    to_encode = data.copy()
-
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=settings.access_token_expire_minutes)
-
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
-    return encoded_jwt
-
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """验证密码"""
-    from passlib.context import CryptContext
-    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-    return pwd_context.verify(plain_password, hashed_password)
-
-
-def get_password_hash(password: str) -> str:
-    """获取密码哈希"""
-    from passlib.context import CryptContext
-    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-    return pwd_context.hash(password)
-
-
-# 导入ObjectId（需要在文件顶部）
-from bson import ObjectId
+async def get_current_verified_user(
+    current_user: UserModel = Depends(get_current_active_user),
+) -> UserModel:
+    """获取当前已验证用户"""
+    if not current_user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="用户邮箱未验证",
+        )
+    return current_user

@@ -1,153 +1,124 @@
-import logging
+"""
+股票分析平台 - 后端主入口
+"""
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 
+from core.admin.api import router as core_admin_router
+from core.admin.tasks import init_scheduler, shutdown_scheduler
 from core.config import settings
-from core.db.mongodb import mongodb
-from core.db.redis import redis_connection
-from core.bootstrap import module_loader
+from core.db.mongodb import close_mongodb, connect_to_mongodb
+from core.db.redis import close_redis, connect_to_redis
 from core.exceptions import setup_exception_handlers
-from core.events.schemas import EventTypes
+from core.logging_config import setup_logging
+from core.settings.api import router as settings_router
+from core.user.api import router as user_router
+from core.system.api import router as system_router
+from modules.analysis.api import router as analysis_router
+from modules.task_center.api import router as task_center_router
+from modules.screener.api import router as screener_router
+from modules.ask_stock.api import router as ask_stock_router
 
-# 配置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+# 初始化日志系统
+setup_logging()
+
+import logging
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
-    # 启动时的初始化
-    logger.info("Starting TradingAgents-CN Backend...")
+    # 启动
+    logger.info(f"正在启动 {settings.APP_NAME} v{settings.APP_VERSION}...")
+    logger.info(f"运行模式: {'开发环境' if settings.DEBUG else '生产环境'}")
 
-    # 连接数据库
-    mongodb_connected = await mongodb.connect_to_mongodb(
-        settings.mongodb_url,
-        "tradingagents"
-    )
-    if not mongodb_connected:
-        logger.error("Failed to connect to MongoDB")
-        raise RuntimeError("Database connection failed")
+    await connect_to_mongodb()
+    logger.info("MongoDB 连接成功")
 
-    # 创建数据库索引
-    await mongodb.create_indexes()
+    await connect_to_redis()
+    logger.info("Redis 连接成功")
 
-    # 连接Redis
-    redis_connected = await redis_connection.connect_to_redis(settings.redis_url)
-    if not redis_connected:
-        logger.warning("Failed to connect to Redis - some features may not work")
+    init_scheduler()  # 启动定时任务调度器
+    logger.info("定时任务调度器已初始化")
 
-    # 加载模块
-    await module_loader.load_modules(app)
-
-    logger.info("Application startup completed")
+    logger.info(f"{settings.APP_NAME} 启动完成")
 
     yield
 
-    # 关闭时的清理
-    logger.info("Shutting down TradingAgents-CN Backend...")
-
-    # 关闭数据库连接
-    await mongodb.close_mongodb_connection()
-    await redis_connection.close_redis_connection()
-
-    logger.info("Application shutdown completed")
+    # 关闭
+    logger.info(f"正在关闭 {settings.APP_NAME}...")
+    shutdown_scheduler()  # 关闭定时任务调度器
+    await close_mongodb()
+    await close_redis()
+    logger.info(f"{settings.APP_NAME} 已关闭")
 
 
-# 创建FastAPI应用
-app = FastAPI(
-    title="TradingAgents-CN API",
-    description="模块化单体架构的股票分析系统",
-    version="1.0.0",
-    docs_url="/docs" if settings.debug else None,
-    redoc_url="/redoc" if settings.debug else None,
-    lifespan=lifespan
-)
+def create_app() -> FastAPI:
+    """创建 FastAPI 应用"""
+    app = FastAPI(
+        title=settings.APP_NAME,
+        version=settings.APP_VERSION,
+        description="股票分析平台 API",
+        lifespan=lifespan,
+        debug=settings.DEBUG,
+    )
 
-# 设置CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.allowed_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    # CORS 中间件
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins_list,
+        allow_credentials=settings.CORS_ALLOW_CREDENTIALS,
+        allow_methods=settings.CORS_ALLOW_METHODS,
+        allow_headers=settings.CORS_ALLOW_HEADERS,
+    )
 
-# 设置异常处理器
-setup_exception_handlers(app)
+    # 异常处理
+    setup_exception_handlers(app)
 
+    # 注册路由（按优先级）
+    # 核心路由（新架构）
+    app.include_router(settings_router, prefix=settings.API_V1_PREFIX)  # 系统设置
+    app.include_router(core_admin_router, prefix=settings.API_V1_PREFIX) # 核心管理员
+    
+    # 基础设施路由
+    app.include_router(system_router, prefix=settings.API_V1_PREFIX)    # 系统管理
+    app.include_router(user_router, prefix=settings.API_V1_PREFIX)      # 用户管理
+    
+    # 业务模块路由
+    app.include_router(analysis_router, prefix=settings.API_V1_PREFIX)
+    app.include_router(task_center_router, prefix=settings.API_V1_PREFIX)
+    app.include_router(screener_router, prefix=settings.API_V1_PREFIX)
+    app.include_router(ask_stock_router, prefix=settings.API_V1_PREFIX)
 
-# 根路径
-@app.get("/")
-async def root():
-    """根路径 - 系统状态"""
-    return {
-        "message": "TradingAgents-CN Backend API",
-        "version": "1.0.0",
-        "modules_loaded": module_loader.get_loaded_modules(),
-        "debug": settings.debug
-    }
+    # 健康检查
+    @app.get("/health")
+    async def health_check():
+        return {"status": "healthy", "version": settings.APP_VERSION}
 
-
-# 健康检查
-@app.get("/health")
-async def health_check():
-    """健康检查端点"""
-    try:
-        # 检查数据库连接
-        db = mongodb.get_database()
-        await db.command('ping')
-
-        # 检查Redis连接
-        redis_client = redis_connection.get_client()
-        await redis_client.ping()
-
+    @app.get("/")
+    async def root():
         return {
-            "status": "healthy",
-            "database": "connected",
-            "redis": "connected",
-            "modules": module_loader.get_loaded_modules()
+            "name": settings.APP_NAME,
+            "version": settings.APP_VERSION,
+            "docs": "/docs",
         }
-    except Exception as e:
-        logger.error(f"Health check failed: {e}")
-        return JSONResponse(
-            status_code=503,
-            content={
-                "status": "unhealthy",
-                "error": str(e)
-            }
-        )
+
+    return app
 
 
-# 模块信息端点
-@app.get("/api/modules")
-async def get_modules():
-    """获取所有已加载模块的信息"""
-    modules_info = {}
-    for module_name in module_loader.get_loaded_modules():
-        module_info = module_loader.get_module_info(module_name)
-        if module_info:
-            modules_info[module_name] = module_info.dict()
-        else:
-            modules_info[module_name] = {"name": module_name, "version": "unknown"}
-
-    return {
-        "modules": modules_info,
-        "total_loaded": len(module_loader.get_loaded_modules())
-    }
+# 创建应用实例
+app = create_app()
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(
         "main:app",
-        host=settings.host,
-        port=settings.port,
-        reload=settings.debug,
-        log_level="info"
+        host=settings.HOST,
+        port=settings.PORT,
+        reload=settings.DEBUG,
     )

@@ -1,0 +1,59 @@
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# 文档
+docs/
+*.md
+!README.md
+!CLAUDE.md
+
+# 依赖
+node_modules/
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# 构建产物
+dist/
+build/
+*.egg-info/
+
+# 测试
+.pytest_cache/
+.coverage
+htmlcov/
+coverage/
+.nyc_output/
+
+# 日志
+*.log
+
+# 环境变量
+.env
+.env.*
+!.env.example
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# 其他
+.cache/
+.temp/
+*.tmp
+

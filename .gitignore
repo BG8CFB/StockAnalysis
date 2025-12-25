@@ -91,7 +91,7 @@ ehthumbs.db
 Thumbs.db
 
 # Docker
-.dockerignore
+# .dockerignore - 已取消忽略，允许提交
 
 # MongoDB
 data/mongodb/
@@ -106,3 +106,12 @@ coverage/
 # Temporary files
 *.tmp
 *.temp
+
+# AI Assistants and Tools
+.claude/
+.kiro/
+
+# Trae IDE (keep documents)
+.trae/*
+
+Cache/*

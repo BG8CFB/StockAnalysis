@@ -1,94 +1,137 @@
-import redis.asyncio as redis
-from typing import Optional, Any, Union
-import json
+"""
+Redis 连接管理
+用于缓存、会话管理和限流
+"""
 import logging
+from typing import Optional
+
+from redis.asyncio import Redis as AsyncRedis
+
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 
 
-class RedisConnection:
-    client: Optional[redis.Redis] = None
+class RedisManager:
+    """Redis 连接管理器"""
 
-    @classmethod
-    async def connect_to_redis(cls, connection_string: str):
-        """连接到Redis"""
+    def __init__(self) -> None:
+        self._client: Optional[AsyncRedis] = None
+
+    def connect(self) -> None:
+        """建立 Redis 连接"""
+        if self._client is None:
+            self._client = AsyncRedis.from_url(
+                settings.REDIS_URL,
+                max_connections=settings.REDIS_MAX_CONNECTIONS,
+                decode_responses=True,
+            )
+
+    def close(self) -> None:
+        """关闭 Redis 连接"""
+        if self._client:
+            # 简单地断开连接
+            self._client = None
+
+    async def ping(self) -> bool:
+        """检查 Redis 连接状态"""
         try:
-            cls.client = redis.from_url(connection_string, decode_responses=True)
-
-            # 测试连接
-            await cls.client.ping()
-            logger.info("Successfully connected to Redis")
-            return True
+            if self._client:
+                await self._client.ping()
+                return True
+            return False
         except Exception as e:
-            logger.error(f"Failed to connect to Redis: {e}")
+            logger.error(f"Redis ping 失败: {e}")
             return False
 
-    @classmethod
-    async def close_redis_connection(cls):
-        """关闭Redis连接"""
-        if cls.client:
-            await cls.client.close()
-            logger.info("Redis connection closed")
-
-    @classmethod
-    def get_client(cls):
-        """获取Redis客户端"""
-        if not cls.client:
-            raise RuntimeError("Redis not initialized. Call connect_to_redis first.")
-        return cls.client
-
-    @classmethod
-    async def set(cls, key: str, value: Any, expire: Optional[int] = None) -> bool:
-        """设置键值对"""
-        try:
-            client = cls.get_client()
-            if isinstance(value, (dict, list)):
-                value = json.dumps(value)
-
-            return await client.set(key, value, ex=expire)
-        except Exception as e:
-            logger.error(f"Redis set error: {e}")
-            return False
-
-    @classmethod
-    async def get(cls, key: str) -> Optional[Any]:
-        """获取值"""
-        try:
-            client = cls.get_client()
-            value = await client.get(key)
-
-            if value is None:
-                return None
-
-            # 尝试解析JSON
-            try:
-                return json.loads(value)
-            except json.JSONDecodeError:
-                return value
-        except Exception as e:
-            logger.error(f"Redis get error: {e}")
-            return None
-
-    @classmethod
-    async def delete(cls, key: str) -> bool:
-        """删除键"""
-        try:
-            client = cls.get_client()
-            return bool(await client.delete(key))
-        except Exception as e:
-            logger.error(f"Redis delete error: {e}")
-            return False
-
-    @classmethod
-    async def exists(cls, key: str) -> bool:
-        """检查键是否存在"""
-        try:
-            client = cls.get_client()
-            return bool(await client.exists(key))
-        except Exception as e:
-            logger.error(f"Redis exists error: {e}")
-            return False
+    def get_client(self) -> AsyncRedis:
+        """获取 Redis 客户端"""
+        if self._client is None:
+            raise RuntimeError("Redis client not initialized. Call connect() first.")
+        return self._client
 
 
-# 全局Redis实例
-redis_connection = RedisConnection()
+# 全局 Redis 管理器实例
+redis_manager = RedisManager()
+
+
+async def get_redis() -> AsyncRedis:
+    """依赖注入：获取 Redis 客户端"""
+    return redis_manager.get_client()
+
+
+class UserRedisKey:
+    """用户相关的 Redis Key 生成器"""
+
+    @staticmethod
+    def session(user_id: str, session_id: str) -> str:
+        """会话 Key"""
+        return f"user:{user_id}:session:{session_id}"
+
+    @staticmethod
+    def preferences(user_id: str) -> str:
+        """用户配置 Key"""
+        return f"user:{user_id}:preferences"
+
+    @staticmethod
+    def cache(user_id: str, key: str) -> str:
+        """用户缓存 Key"""
+        return f"user:{user_id}:cache:{key}"
+
+    @staticmethod
+    def rate_limit(ip: str) -> str:
+        """限流 Key"""
+        return f"rate_limit:ip:{ip}"
+
+    @staticmethod
+    def email_verification(email: str) -> str:
+        """邮箱验证码 Key"""
+        return f"email:verify:{email}"
+
+    # ==================== 安全相关 Key ====================
+
+    @staticmethod
+    def login_failures_ip(ip: str) -> str:
+        """IP 登录失败计数"""
+        return f"auth:login:failures:ip:{ip}"
+
+    @staticmethod
+    def login_failures_email(email: str) -> str:
+        """邮箱登录失败计数"""
+        return f"auth:login:failures:email:{email}"
+
+    @staticmethod
+    def login_blocked_ip(ip: str) -> str:
+        """IP 登录封禁标记"""
+        return f"auth:login:blocked:ip:{ip}"
+
+    @staticmethod
+    def register_attempts_ip(ip: str) -> str:
+        """IP 注册尝试计数"""
+        return f"auth:register:attempts:ip:{ip}"
+
+    @staticmethod
+    def trusted_ips(user_id: str) -> str:
+        """用户信任 IP 集合"""
+        return f"ip_trust:user:{user_id}:trusted_ips"
+
+    @staticmethod
+    def ip_login_count(user_id: str, ip: str) -> str:
+        """IP 登录该用户的次数"""
+        return f"ip_trust:user:{user_id}:ip:{ip}:logins"
+
+
+async def connect_to_redis() -> None:
+    """启动时连接 Redis"""
+    redis_manager.connect()
+    is_connected = await redis_manager.ping()
+    if is_connected:
+        logger.info(f"Connected to Redis: {settings.REDIS_URL}")
+    else:
+        logger.error("Redis connection failed")
+
+
+async def close_redis() -> None:
+    """关闭时断开 Redis 连接"""
+    redis_manager.close()
+    logger.info("Closed Redis connection")

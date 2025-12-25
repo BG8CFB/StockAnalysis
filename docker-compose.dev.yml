@@ -1,76 +1,85 @@
-version: '3.8'
-
+# 开发环境 Docker Compose 配置
 services:
-  # 开发环境后端服务
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.dev
-    container_name: tradingagents-backend-dev
-    restart: unless-stopped
-    ports:
-      - "8000:8000"
-    environment:
-      MONGODB_URL: mongodb://tradingagents_user:tradingagents_password@mongodb:27017/tradingagents
-      REDIS_URL: redis://:redis123@redis:6379
-      SECRET_KEY: dev-secret-key-change-in-production
-      DEBUG: true
-      HOST: 0.0.0.0
-      PORT: 8000
-      ALLOWED_ORIGINS: '["http://localhost:3000", "http://localhost:5173", "http://frontend:3000"]'
-    volumes:
-      - ./backend:/app
-      - /app/__pycache__
-    depends_on:
-      - mongodb
-      - redis
-    networks:
-      - tradingagents-network
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-
-  # 开发环境前端服务
+  # 前端开发服务器
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile.dev
-    container_name: tradingagents-frontend-dev
-    restart: unless-stopped
+    container_name: stock-analysis-frontend-dev
     ports:
       - "5173:5173"
-    environment:
-      VITE_API_BASE_URL: http://localhost:8000
-      VITE_APP_TITLE: "TradingAgents-CN (Dev)"
     volumes:
       - ./frontend:/app
       - /app/node_modules
-    depends_on:
-      - backend
+    environment:
+      - VITE_API_BASE_URL=/api
+      - TZ=Asia/Shanghai
     networks:
-      - tradingagents-network
-    command: npm run dev
+      - stock-analysis-network
+    restart: unless-stopped
 
-  # 包含基础服务
+  # Backend (FastAPI)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: stock-analysis-backend-dev
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    environment:
+      - ENVIRONMENT=development
+      - MONGODB_URL=mongodb://mongodb:27017
+      - MONGODB_DB_NAME=stock_analysis
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=dev-secret-key-for-testing-only
+      - DEBUG=true
+      - CORS_ORIGINS=http://localhost:5173,http://localhost:8000
+      - TZ=Asia/Shanghai
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - stock-analysis-network
+    restart: unless-stopped
+
+  # MongoDB
   mongodb:
-    extends:
-      file: docker-compose.yml
-      service: mongodb
+    image: mongo:7
+    container_name: stock-analysis-mongodb-dev
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - ./docker/mongodb/init:/docker-entrypoint-initdb.d:ro
+    environment:
+      - MONGO_INITDB_DATABASE=stock_analysis
+      - TZ=Asia/Shanghai
+    networks:
+      - stock-analysis-network
+    restart: unless-stopped
 
+  # Redis
   redis:
-    extends:
-      file: docker-compose.yml
-      service: redis
+    image: redis:7-alpine
+    container_name: stock-analysis-redis-dev
+    ports:
+      - "6379:6379"
+    command: redis-server /usr/local/etc/redis/redis.conf
+    volumes:
+      - ./docker/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - redis_data:/data
+    environment:
+      - TZ=Asia/Shanghai
+    networks:
+      - stock-analysis-network
+    restart: unless-stopped
 
-  mongo-express:
-    extends:
-      file: docker-compose.yml
-      service: mongo-express
+volumes:
+  mongodb_data:
+  redis_data:
 
-  redis-commander:
-    extends:
-      file: docker-compose.yml
-      service: redis-commander
-
-# 共享网络
 networks:
-  tradingagents-network:
+  stock-analysis-network:
     driver: bridge
