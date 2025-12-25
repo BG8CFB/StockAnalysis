@@ -37,13 +37,13 @@
   - 添加必要的索引（user_id、status、created_at等）
   - 需求: 7.1, 15.2
 
-- [ ] 1.5 实现结构化日志系统 (core/logging.py)
-  - 定义日志格式：时间戳、级别、模块、user_id、task_id、事件类型、详情
-  - 实现敏感信息自动脱敏（API Key → [REDACTED]）
-  - 实现日志上下文管理器（自动注入 task_id、user_id）
+- [ ] 1.5 复用现有核心模块
+  - 复用 core/logging_config.py
+  - 复用 core/exceptions.py
+  - 复用 core/db/ (MongoDB & Redis)
   - 需求: 6.3.1, 6.3.2, 6.3.3, 6.3.4
 
-- [ ] 1.6 定义异常基类 (core/exceptions.py)
+- [ ] 1.6 定义模块级异常 (core/exceptions.py)
   - 定义 TradingAgentsException 基类
   - 定义 TaskNotFoundException、ConfigurationError 等具体异常
   - 定义 MCPConnectionError、ModelQuotaExhaustedError 等
@@ -76,7 +76,7 @@
   - 实现 create_model、update_model、delete_model 方法
   - 实现 list_models 方法（区分系统级和用户级）
   - 实现 test_model_connection 方法（5秒超时）
-  - API Key 明文存储，日志脱敏
+  - API Key 加密存储，日志脱敏
   - 需求: 1.1, 1.2, 1.5, 1.6, 1.7, 1.8
 
 - [ ] 2.5 编写模型配置属性测试
@@ -232,7 +232,7 @@
 - [ ] 7.3 实现 WebSocket 事件流与控制接口 (websocket/ & api.py)
   - 实现 `push_tool_event`：推送工具调用开始/结束
   - 实现 `push_report_event`：推送单个分析师报告完成
-  - **[核心] 实现 POST /api/tasks/{id}/stop 接口**
+  - **[核心] 实现 POST /api/trading-agents/tasks/{id}/stop 接口**
   - 在 Agent 引擎中增加 `check_interrupt` 检查点
   - 需求: 2.1.4, 2.1.5, 2.1.7
 
@@ -471,7 +471,8 @@
   - 需求: 7.2, 7.3, 7.4, 7.5
 
 - [ ] 14.4 实现报告归档服务 (services/report_archival.py)
-  - 实现定时任务：每天凌晨 3:00 执行
+  - 复用 core/admin/tasks.py 现有调度器
+  - 注册定时任务：每天凌晨 3:00 执行
   - 查询条件：created_at + 30d < now()
   - 归档保留字段：analysis_time, stock_code, final_report, recommendation, buy_price, sell_price
   - 删除 agent_traces 中的相关记录

@@ -236,7 +236,7 @@ class AgentState(TypedDict):
     # --- 基础信息 ---
     task_id: str
     user_id: str
-    stock_symbol: str
+    stock_code: str  # 统一使用 stock_code
     max_debate_rounds: int # 用户配置的最大辩论轮次 (1-3)
 
     # --- 阶段 1：分析师产出 ---
@@ -291,7 +291,7 @@ class AgentState(TypedDict):
 
 #### 2.2 任务手动终止 (Human-in-the-loop)
 
-*   **接口**: `POST /api/tasks/{task_id}/stop`
+*   **接口**: `POST /api/trading-agents/tasks/{task_id}/stop`
 *   **实现机制**:
     *   后端收到请求后，将 Redis 中的 `task_status` 标记为 `STOPPING`。
     *   LangGraph 的每个 Node 在执行前都会检查该状态。
@@ -331,7 +331,7 @@ class AgentState(TypedDict):
 
 采用 `SET key value NX EX seconds` 原子操作实现。
 
-*   **Key 格式**: `lock:model_usage:{user_id}:{model_id}`
+*   **Key 格式**: `lock:model:{user_id}:{model_id}`
 *   **Value**: `task_id` (用于验证锁的所有者)
 *   **TTL (Time-To-Live)**:
     *   默认设置为 300秒 (5分钟)。
@@ -885,7 +885,7 @@ class AIModelConfig(BaseModel):
     name: str                        # 显示名称
     provider: str                    # 提供商（zhipu/deepseek/qwen/openai/ollama/custom）
     api_base_url: str                # API 基础 URL
-    api_key: str                     # API Key（明文存储，日志脱敏）
+    api_key: str                     # API Key（加密存储，日志脱敏）
     model_id: str                    # 模型 ID（如 glm-4、deepseek-chat）
     max_concurrency: int             # 最大并发数
     timeout_seconds: int             # 超时时间（秒）
@@ -1409,6 +1409,7 @@ POST   /api/trading-agents/tasks               # 创建分析任务
 GET    /api/trading-agents/tasks               # 列出任务
 GET    /api/trading-agents/tasks/{id}          # 获取任务详情
 POST   /api/trading-agents/tasks/{id}/cancel   # 取消任务
+POST   /api/trading-agents/tasks/{id}/stop     # 停止任务（保留部分结果）
 POST   /api/trading-agents/tasks/{id}/retry    # 重试任务
 DELETE /api/trading-agents/tasks/{id}          # 删除任务
 

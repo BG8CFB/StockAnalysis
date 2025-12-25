@@ -484,7 +484,7 @@ TradingAgents 是一个基于大语言模型的多智能体协作股票分析系
 
 **验收标准**：
 
-3.8.1 当用户保存 AI 模型配置时，系统应将 API Key 明文存储到数据库。
+3.8.1 当用户保存 AI 模型配置时，系统应将 API Key 加密存储到数据库（使用应用层加密，密钥由环境变量提供）。
 
 3.8.2 当系统记录日志时，系统应将 API Key 替换为 [REDACTED] 不记录明文。
 
@@ -500,7 +500,7 @@ TradingAgents 是一个基于大语言模型的多智能体协作股票分析系
 
 3.9.1 当用户配置智能体提示词时，系统应限制最大长度为 10000 个字符。
 
-3.9.2 当用户输入包含 SQL 注入特征时，系统应拒绝该输入。
+3.9.2 当用户输入包含 NoSQL 注入特征（如 $where, $ne 等）时，系统应拒绝该输入或进行清洗。
 
 3.9.3 当用户输入包含 XSS 特征时，系统应进行 HTML 转义处理。
 
@@ -523,6 +523,8 @@ TradingAgents 是一个基于大语言模型的多智能体协作股票分析系
 4.1.3 当买入价格和卖出价格存储时，系统应使用浮点数类型，可为空。
 
 4.1.4 当配置快照存储时，系统应保存任务创建时的完整配置，以便后续任务恢复。
+
+4.1.5 当任务状态存储时，系统应使用标准枚举：PENDING（待执行）、RUNNING（执行中）、COMPLETED（已完成）、FAILED（失败）、CANCELLED（已取消）、STOPPED（已停止）、EXPIRED（已过期）。
 
 ---
 
@@ -650,7 +652,8 @@ class TaskStatusEnum(str, Enum):
     COMPLETED = "completed"     # 已完成
     FAILED = "failed"           # 失败
     CANCELLED = "cancelled"     # 已取消
-    TIMEOUT = "timeout"         # 超时
+    STOPPED = "stopped"         # 已停止（中途人工干预）
+    EXPIRED = "expired"         # 已过期（24小时未完成）
 ```
 
 ### C. 公共模型并发控制示例

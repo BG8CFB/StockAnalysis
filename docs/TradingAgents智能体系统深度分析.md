@@ -205,7 +205,7 @@ class GenericAnalystTemplate:
         self.name = name                # 显示名称
         self.prompt = prompt            # 系统提示词
         self.tools = tools              # 可用工具
-        self.llm = lln                  # LLM 实例
+        self.llm = llm                  # LLM 实例
 
     async def run(self, state: AgentState) -> str:
         """
