@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     MONGODB_MAX_POOL_SIZE: int = 10
     MONGODB_MIN_POOL_SIZE: int = 1
     MONGODB_MAX_IDLE_TIME_MS: int = 10000
+    MONGODB_SERVER_SELECTION_TIMEOUT_MS: int = 30000  # 增加到 30 秒
+    MONGODB_SOCKET_TIMEOUT_MS: int = 60000  # 增加到 60 秒
 
     # Redis 配置
     REDIS_URL: str = "redis://localhost:6379/0"

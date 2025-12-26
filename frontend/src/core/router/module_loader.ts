@@ -76,6 +76,44 @@ const moduleRoutes: RouteRecordRaw[] = [
     component: () => import('@core/settings/views/SystemSettingsView.vue'),
     meta: { requiresAuth: true, title: '系统设置', adminOnly: true },
   },
+  // TradingAgents 设置模块
+  {
+    path: '/settings/trading-agents/models',
+    name: 'TradingAgentsModels',
+    component: () => import('@modules/trading_agents/views/ModelManagementView.vue'),
+    meta: { requiresAuth: true, title: 'AI 模型管理' },
+  },
+  {
+    path: '/settings/trading-agents/mcp-servers',
+    name: 'TradingAgentsMCPServers',
+    component: () => import('@modules/trading_agents/views/MCPServerManagementView.vue'),
+    meta: { requiresAuth: true, title: 'MCP 服务器管理' },
+  },
+  {
+    path: '/settings/trading-agents/agent-config',
+    name: 'TradingAgentsAgentConfig',
+    component: () => import('@modules/trading_agents/views/AgentConfigView.vue'),
+    meta: { requiresAuth: true, title: '智能体配置' },
+  },
+  {
+    path: '/settings/trading-agents/analysis',
+    name: 'TradingAgentsAnalysis',
+    component: () => import('@modules/trading_agents/views/AnalysisSettingsView.vue'),
+    meta: { requiresAuth: true, title: '分析设置' },
+  },
+  // TradingAgents 管理员页面
+  {
+    path: '/admin/system-models',
+    name: 'AdminSystemModels',
+    component: () => import('@modules/trading_agents/views/admin/SystemModelView.vue'),
+    meta: { requiresAuth: true, title: '系统模型管理', adminOnly: true },
+  },
+  {
+    path: '/admin/all-tasks',
+    name: 'AdminAllTasks',
+    component: () => import('@modules/trading_agents/views/admin/AllTasksView.vue'),
+    meta: { requiresAuth: true, title: '所有任务管理', adminOnly: true },
+  },
   {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',

@@ -32,8 +32,11 @@ class MongoDB:
                 settings.MONGODB_URL,
                 maxPoolSize=settings.MONGODB_MAX_POOL_SIZE,
                 minPoolSize=settings.MONGODB_MIN_POOL_SIZE,
-                serverSelectionTimeoutMS=5000,
-                connectTimeoutMS=10000,
+                serverSelectionTimeoutMS=settings.MONGODB_SERVER_SELECTION_TIMEOUT_MS,
+                connectTimeoutMS=60000,  # 使用 60 秒连接超时
+                socketTimeoutMS=settings.MONGODB_SOCKET_TIMEOUT_MS,  # 使用配置的 Socket 超时
+                retryWrites=True,
+                w="majority"
             )
             self._database = self._client[settings.MONGODB_DATABASE]
 

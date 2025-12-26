@@ -1,7 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(*)",
+      "Bash",
       "Bash(git init:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
@@ -82,7 +82,7 @@
       "Bash(timeout /t 60 /nobreak)",
       "Bash(tasklist:*)",
       "Bash(timeout 60 python:*)",
-      "Bash(dir /b \"E:\\\\Code\\\\StockAnalysis\\\\.kiro\\\\specs\\\\trading-agents\"\" 2>nul || echo \"Directory not found \")"
+      "Bash(dir:*)"
     ],
     "deny": [],
     "ask": []

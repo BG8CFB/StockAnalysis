@@ -43,10 +43,21 @@ async function startApp() {
     const userStore = useUserStore()
     // 只使用静默初始化，避免在启动时显示错误消息
     await userStore.initializeSilent()
-  } catch (error) {
+  } catch (error: unknown) {
     // Token 无效或已过期，静默失败
     // 用户状态保持未登录，路由守卫会处理重定向
-    console.debug('Auto-login failed:', error)
+    // 详细日志记录，帮助调试
+    if (error instanceof Error) {
+      if (error.message === 'Token expired') {
+        console.debug('[App] Auto-login failed: Token expired')
+      } else if (error.message.includes('Network Error')) {
+        console.debug('[App] Auto-login failed: Network error')
+      } else {
+        console.debug('[App] Auto-login failed:', error.message)
+      }
+    } else {
+      console.debug('[App] Auto-login failed: Unknown error')
+    }
   }
 
   // 挂载应用

@@ -9,6 +9,7 @@ from typing import Optional
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from core.config import settings
+from core.auth.rbac import Role
 from core.db.mongodb import mongodb
 from core.db.redis import get_redis, redis_manager
 
@@ -151,7 +152,7 @@ class SettingsService:
             
             # 检查是否有管理员 (初始化状态)
             admin_count = await self.db.users.count_documents({
-                "role": {"$in": ["ADMIN", "SUPER_ADMIN"]}
+                "role": {"$in": [Role.ADMIN.value, Role.SUPER_ADMIN.value]}
             })
             initialized = admin_count > 0
         except Exception:

@@ -5,40 +5,11 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, Literal, Optional
 
-from bson import ObjectId
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
-from pydantic_core import CoreSchema, core_schema
 
 from core.config import settings
 from core.auth.rbac import Role
-
-
-class PyObjectId(ObjectId):
-    """Pydantic 支持 ObjectId"""
-
-    @classmethod
-    def __get_pydantic_core_schema__(
-        cls, source_type: Any, handler: Any
-    ) -> CoreSchema:
-        return core_schema.json_or_python_schema(
-            json_schema=core_schema.str_schema(),
-            python_schema=core_schema.union_schema([
-                core_schema.is_instance_schema(ObjectId),
-                core_schema.no_info_after_validator_function(cls.validate, core_schema.str_schema()),
-            ]),
-            serialization=core_schema.plain_serializer_function_ser_schema(
-                lambda x: str(x)
-            ),
-        )
-
-    @classmethod
-    def validate(cls, v: Any) -> ObjectId:
-        if isinstance(v, ObjectId):
-            return v
-        if isinstance(v, str) and ObjectId.is_valid(v):
-            return ObjectId(v)
-        raise ValueError("Invalid ObjectId")
-
+from core.db.models import PyObjectId
 
 class UserStatus(str, Enum):
     """用户状态枚举"""
