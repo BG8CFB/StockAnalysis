@@ -11,7 +11,7 @@
 # =============================================================================
 phase1:
   enabled: true
-  model_id: "qwen-max"          # 使用的 AI 模型
+  model_id: "glm-4.7"          # 使用的 AI 模型
   max_concurrency: 3            # 智能体最大并发数
   max_rounds: 1                 # 最大执行轮次（固定为 1）
 
@@ -157,7 +157,7 @@ phase1:
 # =============================================================================
 phase2:
   enabled: true
-  model_id: "qwen-max"
+  model_id: "glm-4.7"
   max_rounds: 2                  # 辩论轮次（建议 2-3 轮）
 
   agents:
@@ -263,7 +263,7 @@ phase2:
 # =============================================================================
 phase3:
   enabled: true
-  model_id: "qwen-max"
+  model_id: "glm-4.7"
   max_rounds: 1                  # 讨论轮次（建议 1 轮）
 
   agents:
@@ -359,7 +359,7 @@ phase3:
 # =============================================================================
 phase4:
   enabled: true
-  model_id: "qwen-max"
+  model_id: "glm-4.7"
   max_rounds: 1
 
   agents:

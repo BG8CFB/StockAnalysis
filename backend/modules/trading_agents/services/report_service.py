@@ -261,6 +261,9 @@ class ReportService:
             summary = result[0]
             return {
                 "total_reports": summary.get("total_reports", 0),
+                "buy_count": summary.get("buy_recommendations", 0),
+                "sell_count": summary.get("sell_recommendations", 0),
+                "hold_count": summary.get("hold_recommendations", 0),
                 "recommendation_distribution": {
                     "buy": summary.get("buy_recommendations", 0),
                     "sell": summary.get("sell_recommendations", 0),
@@ -274,6 +277,9 @@ class ReportService:
         else:
             return {
                 "total_reports": 0,
+                "buy_count": 0,
+                "sell_count": 0,
+                "hold_count": 0,
                 "recommendation_distribution": {
                     "buy": 0,
                     "sell": 0,

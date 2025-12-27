@@ -6,6 +6,8 @@ import { httpPost, httpGet, httpPut, type ApiResponse, type RequestConfig } from
 
 // ==================== 类型定义 ====================
 
+export type UserRole = 'GUEST' | 'USER' | 'ADMIN' | 'SUPER_ADMIN'
+
 export interface LoginRequest {
   email: string
   password: string
@@ -38,7 +40,7 @@ export interface UserInfo {
   id: string
   email: string
   username: string
-  role: string
+  role: UserRole
   is_active: boolean
   is_verified: boolean
   created_at: string

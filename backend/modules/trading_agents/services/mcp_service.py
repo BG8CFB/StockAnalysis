@@ -87,7 +87,7 @@ class MCPService:
             "enabled": request.enabled,
             "is_system": request.is_system,
             "owner_id": None if request.is_system else user_id,
-            # 状态
+            # 状态 - 创建后立即进行连接检测
             "status": MCPServerStatusEnum.UNKNOWN.value,
             "last_check_at": None,
             "created_at": datetime.utcnow(),
@@ -103,6 +103,11 @@ class MCPService:
                 f"transport={request.transport}, user={user_id}, "
                 f"is_system={request.is_system}"
         )
+
+        # 创建后立即进行状态检测（异步后台任务）
+        import asyncio
+        server_id = str(result.inserted_id)
+        asyncio.create_task(self._check_server_status_after_create(server_id, user_id, is_admin=False))
 
         return MCPServerConfigResponse.from_db(doc)
 
@@ -161,8 +166,8 @@ class MCPService:
         """
         collection = await self._get_collection()
 
-        # 查询所有启用的服务器
-        query = {"enabled": True}
+        # 查询所有服务器（包括禁用的），由前端来决定如何显示
+        query = {}  # 移除 enabled 过滤，显示所有服务器
 
         if is_admin:
             # 管理员查看所有服务器
@@ -347,6 +352,7 @@ class MCPService:
             测试结果
         """
         import time
+        from ..tools.mcp_adapter import MCPAdapterFactory
         start_time = time.time()
 
         # 获取服务器配置
@@ -357,68 +363,76 @@ class MCPService:
                 message="服务器配置不存在",
             )
 
+        # 创建 MCP 适配器配置
+        config = {
+            "command": server.command,
+            "args": server.args,
+            "env": server.env,
+            "url": server.url,
+            "auth_type": server.auth_type.value,
+            "auth_token": server.auth_token,
+        }
+
+        adapter = None
         try:
-            # TODO: 实现实际的 MCP 连接测试
-            # 根据 transport 类型选择不同的测试方式
-            if server.transport == TransportModeEnum.STDIO:
-                # 测试 stdio 模式
-                pass
-            elif server.transport == TransportModeEnum.HTTP:
-                # 测试 HTTP 模式
-                import aiohttp
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(
-                        server.url,
-                        headers=self._get_auth_headers(server),
-                        timeout=aiohttp.ClientTimeout(total=10)
-                    ) as resp:
-                        if resp.status == 200:
-                            latency_ms = int((time.time() - start_time) * 1000)
+            # 创建适配器
+            adapter = MCPAdapterFactory.create_adapter(
+                name=server.name,
+                transport=server.transport.value,
+                config=config,
+            )
 
-                            # 更新状态
-                            await self._update_server_status(
-                                server_id, MCPServerStatusEnum.AVAILABLE
-                            )
-
-                            return ConnectionTestResponse(
-                                success=True,
-                                message="连接测试成功",
-                                latency_ms=latency_ms,
-                            )
-            elif server.transport == TransportModeEnum.SSE:
-                # 测试 SSE 模式
-                pass
+            # 连接并测试
+            connected = await adapter.connect()
 
             latency_ms = int((time.time() - start_time) * 1000)
 
-            # 更新状态
-            await self._update_server_status(
-                server_id, MCPServerStatusEnum.AVAILABLE
-            )
+            if connected:
+                # 尝试获取工具列表以验证MCP协议
+                try:
+                    tools = await adapter.list_tools()
+                    tool_count = len(tools) if isinstance(tools, list) else 0
 
-            logger.info(f"MCP 服务器连接测试成功: server_id={server_id}")
+                    # 更新状态为可用
+                    await self._update_server_status(
+                        server_id, MCPServerStatusEnum.AVAILABLE
+                    )
 
-            return ConnectionTestResponse(
-                success=True,
-                message="连接测试成功",
-                latency_ms=latency_ms,
-            )
+                    logger.info(
+                        f"MCP 服务器连接测试成功: server_id={server_id}, "
+                        f"tools={tool_count}"
+                    )
 
-        except asyncio.TimeoutError:
-            latency_ms = int((time.time() - start_time) * 1000)
+                    return ConnectionTestResponse(
+                        success=True,
+                        message=f"连接成功，检测到 {tool_count} 个工具",
+                        latency_ms=latency_ms,
+                    )
+                except Exception as e:
+                    # 连接成功但无法获取工具列表
+                    logger.warning(
+                        f"MCP 服务器连接成功但工具列表获取失败: "
+                        f"server_id={server_id}, error={e}"
+                    )
+                    await self._update_server_status(
+                        server_id, MCPServerStatusEnum.AVAILABLE
+                    )
+                    return ConnectionTestResponse(
+                        success=True,
+                        message="连接成功，但无法获取工具列表",
+                        latency_ms=latency_ms,
+                    )
+            else:
+                # 连接失败
+                await self._update_server_status(
+                    server_id, MCPServerStatusEnum.UNAVAILABLE
+                )
+                return ConnectionTestResponse(
+                    success=False,
+                    message="连接失败：无法建立MCP连接",
+                    latency_ms=latency_ms,
+                )
 
-            # 更新状态
-            await self._update_server_status(
-                server_id, MCPServerStatusEnum.UNAVAILABLE
-            )
-
-            logger.error(f"MCP 服务器连接测试超时: server_id={server_id}")
-
-            return ConnectionTestResponse(
-                success=False,
-                message=f"连接测试超时（超过 10 秒）",
-                latency_ms=latency_ms,
-            )
         except Exception as e:
             latency_ms = int((time.time() - start_time) * 1000)
 
@@ -434,6 +448,13 @@ class MCPService:
                 message=f"连接测试失败: {str(e)}",
                 latency_ms=latency_ms,
             )
+        finally:
+            # 清理连接
+            if adapter:
+                try:
+                    await adapter.disconnect()
+                except Exception:
+                    pass
 
     async def get_server_tools(
         self,
@@ -452,25 +473,89 @@ class MCPService:
         Returns:
             工具列表
         """
+        from ..tools.mcp_adapter import MCPAdapterFactory
+
         # 获取服务器配置
         server = await self.get_server(server_id, user_id, is_admin)
         if not server:
             return []
 
-        # TODO: 实现实际的工具列表获取
-        # 这需要连接到 MCP 服务器并调用 tools/list 方法
+        # 创建 MCP 适配器配置
+        config = {
+            "command": server.command,
+            "args": server.args,
+            "env": server.env,
+            "url": server.url,
+            "auth_type": server.auth_type.value,
+            "auth_token": server.auth_token,
+        }
 
-        return [
-            {
-                "name": "example_tool",
-                "description": "示例工具",
-                "inputSchema": {},
-            }
-        ]
+        adapter = None
+        try:
+            # 创建适配器
+            adapter = MCPAdapterFactory.create_adapter(
+                name=server.name,
+                transport=server.transport.value,
+                config=config,
+            )
+
+            # 连接并获取工具列表
+            if await adapter.connect():
+                tools = await adapter.list_tools()
+
+                # 适配器现在直接返回工具列表
+                if not isinstance(tools, list):
+                    logger.warning(
+                        f"MCP 适配器返回非列表类型: server={server.name}, "
+                        f"type={type(tools).__name__}"
+                    )
+                    tools = []
+
+                logger.info(
+                    f"获取 MCP 工具列表成功: server={server.name}, "
+                    f"count={len(tools)}"
+                )
+
+                return tools
+            else:
+                logger.warning(f"无法连接到 MCP 服务器: {server.name}")
+                return []
+
+        except Exception as e:
+            logger.error(
+                f"获取 MCP 工具列表失败: server={server.name}, error={e}",
+                exc_info=True
+            )
+            return []
+        finally:
+            # 清理连接
+            if adapter:
+                try:
+                    await adapter.disconnect()
+                except Exception:
+                    pass
 
     # ========================================================================
     # 辅助方法
     # ========================================================================
+
+    async def _check_server_status_after_create(
+        self,
+        server_id: str,
+        user_id: str,
+        is_admin: bool = False
+    ) -> None:
+        """
+        创建后自动检测服务器状态（后台任务）
+
+        这个方法会在创建服务器后异步调用，自动检测服务器是否可用。
+        """
+        try:
+            result = await self.test_server_connection(server_id, user_id, is_admin)
+            logger.info(f"自动状态检测完成: server_id={server_id}, success={result.success}")
+        except Exception as e:
+            logger.error(f"自动状态检测失败: server_id={server_id}, error={e}")
+            # 检测失败时，状态保持为UNKNOWN
 
     async def _update_server_status(
         self,

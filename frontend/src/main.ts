@@ -12,6 +12,8 @@ import router from './core/router'
 import { useUserStore } from './core/auth/store'
 import './assets/styles/main.css'
 
+// 注意：CodeMirror 6 通过 JavaScript 自动注入样式，无需手动导入 CSS
+
 /**
  * 异步启动函数
  * 在应用挂载前尝试验证/刷新 token

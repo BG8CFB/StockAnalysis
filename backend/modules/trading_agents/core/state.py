@@ -61,6 +61,7 @@ class AgentState(TypedDict):
     # --- 阶段 1 完成检测 ---
     expected_analysts: int  # 预期的分析师数量
     completed_analysts: int  # 已完成的分析师数量
+    selected_agents: List[str]  # 用户选择的第一阶段智能体标识符列表
 
     # --- 阶段 2：辩论过程 ---
     initial_bull_view: Optional[str]  # 第0轮：初始看涨观点
@@ -159,7 +160,8 @@ def create_initial_state(
     stock_code: str,
     trade_date: str,
     max_debate_rounds: int = 2,
-    expected_analysts: int = 3
+    expected_analysts: int = 3,
+    selected_agents: list[str] | None = None
 ) -> AgentState:
     """
     创建初始工作流状态
@@ -171,6 +173,7 @@ def create_initial_state(
         trade_date: 交易日期
         max_debate_rounds: 最大辩论轮次
         expected_analysts: 预期的分析师数量
+        selected_agents: 用户选择的第一阶段智能体标识符列表
 
     Returns:
         初始化的 AgentState
@@ -184,6 +187,7 @@ def create_initial_state(
         "analyst_reports": [],
         "expected_analysts": expected_analysts,
         "completed_analysts": 0,
+        "selected_agents": selected_agents or [],
         "initial_bull_view": None,
         "initial_bear_view": None,
         "debate_turns": [],

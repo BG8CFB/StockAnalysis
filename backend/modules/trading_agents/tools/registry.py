@@ -283,21 +283,26 @@ class ToolRegistry:
     async def call_tool(
         self,
         name: str,
-        arguments: Dict[str, Any]
+        arguments: Dict[str, Any],
+        timeout: float = 30.0
     ) -> Any:
         """
-        调用工具
+        调用工具（带超时处理）
 
         Args:
             name: 工具名称
             arguments: 工具参数
+            timeout: 超时时间（秒），默认 30 秒
 
         Returns:
             工具执行结果
 
         Raises:
             ValueError: 工具不存在或不可用
+            TimeoutError: 工具调用超时
         """
+        import asyncio
+
         tool = self.get_tool(name)
         if not tool:
             raise ValueError(f"工具不存在: {name}")
@@ -306,14 +311,19 @@ class ToolRegistry:
             raise ValueError(f"工具不可用: {name}, 状态={tool.status}")
 
         if tool.tool_type == "local" and tool.handler:
-            # 调用本地工具
+            # 调用本地工具（带超时）
             try:
-                result = tool.handler(**arguments)
-                # 如果是协程，await
-                if asyncio.iscoroutine(result):
-                    result = await result
+                # 使用 asyncio.wait_for 实现超时
+                result = await asyncio.wait_for(
+                    self._execute_local_tool(tool.handler, arguments),
+                    timeout=timeout
+                )
                 self.record_tool_call(name, success=True)
                 return result
+            except asyncio.TimeoutError:
+                self.record_tool_call(name, success=False)
+                logger.error(f"本地工具调用超时: {name}, 超时={timeout}秒")
+                raise TimeoutError(f"工具调用超时: {name}")
             except Exception as e:
                 self.record_tool_call(name, success=False)
                 logger.error(f"本地工具调用失败: {name}, error={e}")
@@ -321,6 +331,23 @@ class ToolRegistry:
         else:
             # MCP 工具由 MCP 适配器处理
             raise ValueError(f"MCP 工具需要通过 MCP 适配器调用: {name}")
+
+    async def _execute_local_tool(self, handler, arguments: Dict[str, Any]) -> Any:
+        """
+        执行本地工具
+
+        Args:
+            handler: 工具处理函数
+            arguments: 工具参数
+
+        Returns:
+            工具执行结果
+        """
+        result = handler(**arguments)
+        # 如果是协程，await
+        if asyncio.iscoroutine(result):
+            result = await result
+        return result
 
 
 # =============================================================================

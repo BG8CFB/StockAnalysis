@@ -46,6 +46,7 @@ export const useTradingAgentsStore = defineStore('tradingAgents', () => {
 
   // 智能体配置
   const agentConfig = ref<UserAgentConfig | null>(null)
+  const publicConfig = ref<UserAgentConfig | null>(null)
   const configLoading = ref(false)
 
   // 任务
@@ -235,7 +236,7 @@ export const useTradingAgentsStore = defineStore('tradingAgents', () => {
   async function fetchAgentConfig() {
     configLoading.value = true
     try {
-      agentConfig.value = await agentConfigApi.getConfig()
+      agentConfig.value = await agentConfigApi.getAgentConfig()
     } catch (error: any) {
       ElMessage.error('获取智能体配置失败')
       throw error
@@ -260,10 +261,34 @@ export const useTradingAgentsStore = defineStore('tradingAgents', () => {
     try {
       const result = await agentConfigApi.resetConfig()
       agentConfig.value = result
-      ElMessage.success('已重置为默认配置')
+      ElMessage.success('已重置为公共配置')
       return result
     } catch (error: any) {
       ElMessage.error(error.response?.data?.detail || '重置配置失败')
+      throw error
+    }
+  }
+
+  async function fetchPublicConfig() {
+    configLoading.value = true
+    try {
+      publicConfig.value = await agentConfigApi.getPublicConfig()
+    } catch (error: any) {
+      ElMessage.error('获取公共配置失败')
+      throw error
+    } finally {
+      configLoading.value = false
+    }
+  }
+
+  async function updatePublicConfig(data: UserAgentConfigUpdate) {
+    try {
+      const result = await agentConfigApi.updatePublicConfig(data)
+      publicConfig.value = result
+      ElMessage.success('公共配置已更新')
+      return result
+    } catch (error: any) {
+      ElMessage.error(error.response?.data?.detail || '更新公共配置失败')
       throw error
     }
   }
@@ -297,6 +322,8 @@ export const useTradingAgentsStore = defineStore('tradingAgents', () => {
   async function fetchTasks(params?: {
     status?: string
     stock_code?: string
+    recommendation?: string
+    risk_level?: string
     limit?: number
     offset?: number
   }) {
@@ -357,6 +384,18 @@ export const useTradingAgentsStore = defineStore('tradingAgents', () => {
     }
   }
 
+  async function retryTask(taskId: string) {
+    try {
+      const result = await taskApi.retryTask(taskId)
+      await fetchTasks()
+      ElMessage.success('任务已重新提交')
+      return result
+    } catch (error: any) {
+      ElMessage.error(error.response?.data?.detail || '重试任务失败')
+      throw error
+    }
+  }
+
   // =========================================================================
   // 报告操作
   // =========================================================================
@@ -409,6 +448,7 @@ export const useTradingAgentsStore = defineStore('tradingAgents', () => {
     userServers,
     serversLoading,
     agentConfig,
+    publicConfig,
     configLoading,
     tasks,
     tasksTotal,
@@ -443,6 +483,8 @@ export const useTradingAgentsStore = defineStore('tradingAgents', () => {
     fetchAgentConfig,
     updateAgentConfig,
     resetAgentConfig,
+    fetchPublicConfig,
+    updatePublicConfig,
     exportAgentConfig,
     importAgentConfig,
 
@@ -452,6 +494,7 @@ export const useTradingAgentsStore = defineStore('tradingAgents', () => {
     createBatchTask,
     cancelTask,
     deleteTask,
+    retryTask,
 
     // 报告操作
     fetchReports,

@@ -22,7 +22,7 @@ import type {
   ReportSummary,
 } from './types'
 
-const BASE_URL = '/api/trading-agents'
+const BASE_URL = '/trading-agents'
 
 // =============================================================================
 // AI 模型管理 API
@@ -127,21 +127,38 @@ export const mcpApi = {
 export const agentConfigApi = {
   /**
    * 获取用户智能体配置
+   * 返回生效配置（个人配置或公共配置）
    */
-  getConfig: () =>
+  getAgentConfig: () =>
     httpGet<UserAgentConfig>(`${BASE_URL}/agent-config`),
 
   /**
    * 更新用户智能体配置
+   * 更新后会标记为已自定义
    */
   updateConfig: (data: UserAgentConfigUpdate) =>
     httpPut<UserAgentConfig>(`${BASE_URL}/agent-config`, data),
 
   /**
    * 重置为默认配置
+   * 重置为公共配置（模板）
    */
   resetConfig: () =>
     httpPost<UserAgentConfig>(`${BASE_URL}/agent-config/reset`, {}),
+
+  /**
+   * 获取公共智能体配置（模板）
+   * 仅管理员可访问
+   */
+  getPublicConfig: () =>
+    httpGet<UserAgentConfig>(`${BASE_URL}/agent-config/public`),
+
+  /**
+   * 更新公共智能体配置（模板）
+   * 仅管理员可访问
+   */
+  updatePublicConfig: (data: UserAgentConfigUpdate) =>
+    httpPut<UserAgentConfig>(`${BASE_URL}/agent-config/public`, data),
 
   /**
    * 导出配置
@@ -179,6 +196,8 @@ export const taskApi = {
   listTasks: (params?: {
     status?: string
     stock_code?: string
+    recommendation?: string
+    risk_level?: string
     limit?: number
     offset?: number
   }) =>
@@ -207,6 +226,12 @@ export const taskApi = {
    */
   deleteTask: (taskId: string) =>
     httpDelete<{ success: boolean; message: string }>(`${BASE_URL}/tasks/${taskId}`),
+
+  /**
+   * 获取任务队列位置
+   */
+  getQueuePosition: (taskId: string) =>
+    httpGet<{ position: number; waiting_count: number }>(`${BASE_URL}/tasks/${taskId}/queue-position`),
 }
 
 // =============================================================================
@@ -229,8 +254,8 @@ export const reportApi = {
   /**
    * 获取报告统计摘要
    */
-  getSummary: (days: number = 30) =>
-    httpGet<ReportSummary>(`${BASE_URL}/reports/summary?days=${days}`),
+  getReportSummary: (days?: number) =>
+    httpGet<ReportSummary>(`${BASE_URL}/reports/summary`, { days }),
 
   /**
    * 获取报告详情

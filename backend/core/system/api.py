@@ -156,6 +156,15 @@ async def initialize_system(data: SystemInitRequest):
         created_user = await db.users.find_one({"_id": result.inserted_id})
         user_model = UserModel.model_validate(created_user)
 
+        # 自动登录：生成 access_token 和 refresh_token
+        from core.auth.security import jwt_manager
+        access_token = jwt_manager.create_access_token(
+            data={"sub": str(user_model.id), "role": user_model.role}
+        )
+        refresh_token = jwt_manager.create_refresh_token(
+            data={"sub": str(user_model.id)}
+        )
+
         return {
             "success": True,
             "message": "系统初始化成功",
@@ -164,7 +173,11 @@ async def initialize_system(data: SystemInitRequest):
                 "email": user_model.email,
                 "username": user_model.username,
                 "role": user_model.role,
-            }
+            },
+            # 返回 token，让前端自动登录
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer"
         }
 
     except HTTPException:

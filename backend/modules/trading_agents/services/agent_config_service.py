@@ -2,6 +2,7 @@
 智能体配置管理服务
 
 提供用户智能体配置的 CRUD、初始化和重置功能。
+支持公共配置和个人配置的管理。
 """
 
 import logging
@@ -24,12 +25,15 @@ from modules.trading_agents.schemas import (
 
 logger = logging.getLogger(__name__)
 
+PUBLIC_USER_ID = "system_public"
+
 
 class AgentConfigService:
     """
     智能体配置管理服务
 
     提供配置的创建、更新、查询和重置功能。
+    支持公共配置（模板）和个人配置的管理。
     """
 
     COLLECTION_NAME = "agent_configs"
@@ -44,58 +48,50 @@ class AgentConfigService:
         return mongodb.get_collection(self.COLLECTION_NAME)
 
     # ========================================================================
-    # CRUD 操作
+    # 公共配置管理（管理员）
     # ========================================================================
 
-    async def get_user_config(
-        self,
-        user_id: str,
-        create_if_missing: bool = True
-    ) -> Optional[UserAgentConfigResponse]:
+    async def get_public_config(self) -> Optional[UserAgentConfigResponse]:
         """
-        获取用户智能体配置
-
-        Args:
-            user_id: 用户 ID
-            create_if_missing: 配置不存在时是否创建默认配置
+        获取公共配置（模板）
 
         Returns:
-            用户配置或 None
+            公共配置或 None
         """
         collection = self._get_collection()
 
-        doc = await collection.find_one({"user_id": user_id})
+        doc = await collection.find_one({
+            "user_id": PUBLIC_USER_ID,
+            "is_public": True
+        })
 
         if not doc:
-            if create_if_missing:
-                # 创建默认配置
-                return await self._init_user_config(user_id)
             return None
 
         return UserAgentConfigResponse.from_db(doc)
 
-    async def update_user_config(
+    async def update_public_config(
         self,
-        user_id: str,
-        request: UserAgentConfigUpdate
+        request: UserAgentConfigUpdate,
+        admin_id: str
     ) -> Optional[UserAgentConfigResponse]:
         """
-        更新用户智能体配置
+        更新公共配置（仅管理员）
 
         Args:
-            user_id: 用户 ID
             request: 更新请求
+            admin_id: 管理员 ID
 
         Returns:
-            更新后的配置或 None
+            更新后的公共配置
         """
         collection = self._get_collection()
 
-        # 获取原配置
-        doc = await collection.find_one({"user_id": user_id})
-        if not doc:
-            # 创建新配置
-            return await self._init_user_config(user_id, request)
+        # 检查公共配置是否存在
+        doc = await collection.find_one({
+            "user_id": PUBLIC_USER_ID,
+            "is_public": True
+        })
 
         # 构建更新数据
         update_data = {}
@@ -110,6 +106,205 @@ class AgentConfigService:
 
         update_data["updated_at"] = datetime.utcnow()
 
+        if doc:
+            # 更新现有公共配置
+            await collection.update_one(
+                {"user_id": PUBLIC_USER_ID, "is_public": True},
+                {"$set": update_data}
+            )
+            updated_doc = await collection.find_one({
+                "user_id": PUBLIC_USER_ID,
+                "is_public": True
+            })
+            logger.info(f"更新公共智能体配置: admin_id={admin_id}")
+            return UserAgentConfigResponse.from_db(updated_doc)
+        else:
+            # 创建公共配置
+            return await self._init_public_config(request)
+
+    async def _init_public_config(
+        self,
+        request: Optional[UserAgentConfigUpdate] = None
+    ) -> Optional[UserAgentConfigResponse]:
+        """
+        初始化公共配置
+
+        Args:
+            request: 可选的初始配置
+
+        Returns:
+            创建的公共配置
+        """
+        # 加载默认配置模板
+        default_config = self._config_loader.load_default_config()
+
+        if request and request.phase1:
+            phase1 = request.phase1
+        else:
+            phase1 = Phase1Config(**default_config.get("phase1", {}))
+
+        if request and request.phase2:
+            phase2 = request.phase2
+        elif default_config.get("phase2"):
+            phase2 = Phase2Config(**default_config["phase2"])
+        else:
+            phase2 = None
+
+        if request and request.phase3:
+            phase3 = request.phase3
+        elif default_config.get("phase3"):
+            phase3 = Phase3Config(**default_config["phase3"])
+        else:
+            phase3 = None
+
+        if request and request.phase4:
+            phase4 = request.phase4
+        elif default_config.get("phase4"):
+            phase4 = Phase4Config(**default_config["phase4"])
+        else:
+            phase4 = None
+
+        # 创建文档
+        collection = self._get_collection()
+        doc = {
+            "user_id": PUBLIC_USER_ID,
+            "is_public": True,
+            "is_customized": False,
+            "phase1": phase1.model_dump(),
+            "phase2": phase2.model_dump() if phase2 else None,
+            "phase3": phase3.model_dump() if phase3 else None,
+            "phase4": phase4.model_dump() if phase4 else None,
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+        }
+
+        result = await collection.insert_one(doc)
+        doc["_id"] = result.inserted_id
+
+        logger.info(f"初始化公共智能体配置")
+
+        return UserAgentConfigResponse.from_db(doc)
+
+    # ========================================================================
+    # 用户配置管理
+    # ========================================================================
+
+    async def get_effective_config(
+        self,
+        user_id: str
+    ) -> Optional[UserAgentConfigResponse]:
+        """
+        获取用户的生效配置
+
+        逻辑：
+        1. 如果用户未自定义过配置 → 返回公共配置
+        2. 如果用户已自定义 → 返回个人配置
+        3. 如果都没有 → 创建用户配置并返回
+
+        Args:
+            user_id: 用户 ID
+
+        Returns:
+            生效配置
+        """
+        collection = self._get_collection()
+
+        # 查询用户个人配置
+        user_doc = await collection.find_one({"user_id": user_id})
+
+        # 如果用户有个人配置且已自定义，返回个人配置
+        if user_doc and user_doc.get("is_customized", False):
+            logger.debug(f"用户使用个人配置: user_id={user_id}")
+            return UserAgentConfigResponse.from_db(user_doc)
+
+        # 否则返回公共配置
+        public_doc = await collection.find_one({
+            "user_id": PUBLIC_USER_ID,
+            "is_public": True
+        })
+
+        if public_doc:
+            logger.debug(f"用户使用公共配置: user_id={user_id}")
+            return UserAgentConfigResponse.from_db(public_doc)
+
+        # 公共配置不存在，创建它
+        await self._init_public_config()
+        public_doc = await collection.find_one({
+            "user_id": PUBLIC_USER_ID,
+            "is_public": True
+        })
+
+        if public_doc:
+            return UserAgentConfigResponse.from_db(public_doc)
+
+        return None
+
+    async def get_user_config(
+        self,
+        user_id: str,
+        create_if_missing: bool = True
+    ) -> Optional[UserAgentConfigResponse]:
+        """
+        获取用户个人配置（不考虑公共配置）
+
+        Args:
+            user_id: 用户 ID
+            create_if_missing: 配置不存在时是否创建默认配置
+
+        Returns:
+            用户个人配置或 None
+        """
+        collection = self._get_collection()
+
+        doc = await collection.find_one({"user_id": user_id})
+
+        if not doc:
+            if create_if_missing:
+                return await self._init_user_config(user_id)
+            return None
+
+        return UserAgentConfigResponse.from_db(doc)
+
+    async def update_user_config(
+        self,
+        user_id: str,
+        request: UserAgentConfigUpdate
+    ) -> Optional[UserAgentConfigResponse]:
+        """
+        更新用户智能体配置
+
+        更新时会标记为已自定义。
+
+        Args:
+            user_id: 用户 ID
+            request: 更新请求
+
+        Returns:
+            更新后的配置或 None
+        """
+        collection = self._get_collection()
+
+        # 获取原配置
+        doc = await collection.find_one({"user_id": user_id})
+        if not doc:
+            # 创建新配置，直接标记为已自定义
+            return await self._init_user_config(user_id, request, is_customized=True)
+
+        # 构建更新数据
+        update_data = {}
+        if request.phase1 is not None:
+            update_data["phase1"] = request.phase1.model_dump()
+        if request.phase2 is not None:
+            update_data["phase2"] = request.phase2.model_dump()
+        if request.phase3 is not None:
+            update_data["phase3"] = request.phase3.model_dump()
+        if request.phase4 is not None:
+            update_data["phase4"] = request.phase4.model_dump()
+
+        # 标记为已自定义
+        update_data["is_customized"] = True
+        update_data["updated_at"] = datetime.utcnow()
+
         # 执行更新
         await collection.update_one(
             {"user_id": user_id},
@@ -119,16 +314,41 @@ class AgentConfigService:
         # 获取更新后的配置
         updated_doc = await collection.find_one({"user_id": user_id})
 
-        logger.info(f"更新用户智能体配置: user_id={user_id}")
+        logger.info(f"更新用户智能体配置: user_id={user_id}, is_customized=True")
 
         return UserAgentConfigResponse.from_db(updated_doc)
+
+    async def reset_to_public_config(
+        self,
+        user_id: str
+    ) -> Optional[UserAgentConfigResponse]:
+        """
+        重置用户配置为公共配置
+
+        删除个人配置，下次访问时使用公共配置。
+
+        Args:
+            user_id: 用户 ID
+
+        Returns:
+            重置后的配置（即公共配置）
+        """
+        collection = self._get_collection()
+
+        # 删除用户的个人配置
+        await collection.delete_many({"user_id": user_id})
+
+        logger.info(f"重置用户配置为公共配置: user_id={user_id}")
+
+        # 返回公共配置
+        return await self.get_public_config()
 
     async def reset_to_default(
         self,
         user_id: str
     ) -> Optional[UserAgentConfigResponse]:
         """
-        重置为默认配置
+        重置为默认配置（兼容旧接口）
 
         Args:
             user_id: 用户 ID
@@ -136,13 +356,7 @@ class AgentConfigService:
         Returns:
             重置后的配置
         """
-        collection = self._get_collection()
-
-        # 删除旧配置
-        await collection.delete_many({"user_id": user_id})
-
-        # 创建新配置
-        return await self._init_user_config(user_id)
+        return await self.reset_to_public_config(user_id)
 
     async def export_config(
         self,
@@ -157,7 +371,7 @@ class AgentConfigService:
         Returns:
             配置数据
         """
-        config = await self.get_user_config(user_id, create_if_missing=False)
+        config = await self.get_effective_config(user_id)
         if not config:
             return None
 
@@ -198,6 +412,8 @@ class AgentConfigService:
         # 创建或更新配置
         doc = {
             "user_id": user_id,
+            "is_public": False,
+            "is_customized": True,
             "phase1": phase1.model_dump(),
             "phase2": phase2.model_dump() if phase2 else None,
             "phase3": phase3.model_dump() if phase3 else None,
@@ -226,7 +442,8 @@ class AgentConfigService:
     async def _init_user_config(
         self,
         user_id: str,
-        request: Optional[UserAgentConfigUpdate] = None
+        request: Optional[UserAgentConfigUpdate] = None,
+        is_customized: bool = False
     ) -> Optional[UserAgentConfigResponse]:
         """
         初始化用户配置
@@ -234,6 +451,7 @@ class AgentConfigService:
         Args:
             user_id: 用户 ID
             request: 可选的初始配置
+            is_customized: 是否标记为已自定义
 
         Returns:
             创建的配置
@@ -271,6 +489,8 @@ class AgentConfigService:
         collection = self._get_collection()
         doc = {
             "user_id": user_id,
+            "is_public": False,
+            "is_customized": is_customized,
             "phase1": phase1.model_dump(),
             "phase2": phase2.model_dump() if phase2 else None,
             "phase3": phase3.model_dump() if phase3 else None,
@@ -282,9 +502,25 @@ class AgentConfigService:
         result = await collection.insert_one(doc)
         doc["_id"] = result.inserted_id
 
-        logger.info(f"初始化用户智能体配置: user_id={user_id}")
+        logger.info(f"初始化用户智能体配置: user_id={user_id}, is_customized={is_customized}")
 
         return UserAgentConfigResponse.from_db(doc)
+
+    async def ensure_public_config_exists(self):
+        """
+        确保公共配置存在
+        如果不存在，则从默认配置创建
+        """
+        collection = self._get_collection()
+
+        public_config = await collection.find_one({
+            "user_id": PUBLIC_USER_ID,
+            "is_public": True
+        })
+
+        if not public_config:
+            await self._init_public_config()
+            logger.info("公共配置已初始化")
 
 
 # =============================================================================

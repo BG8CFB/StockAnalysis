@@ -14,6 +14,9 @@ from typing import Dict, Any, Optional, List
 from bson import ObjectId
 
 from core.db.mongodb import mongodb
+from modules.trading_agents.core.task_manager_restore import (
+    restore_running_tasks_with_checkpoint,
+)
 from modules.trading_agents.core.state import AgentState, create_initial_state
 from modules.trading_agents.schemas import (
     TaskStatusEnum,
@@ -79,6 +82,7 @@ class TaskManager:
             "_id": task_id,
             "user_id": user_id,
             "stock_code": request.stock_code,
+            "market": request.market,
             "trade_date": request.trade_date,
             "status": TaskStatusEnum.PENDING.value,
             "current_phase": 0,
@@ -100,10 +104,7 @@ class TaskManager:
             "completed_at": None,
             "expired_at": None,
             "config_snapshot": config,
-            "phase2_enabled": request.phase2_enabled,
-            "phase3_enabled": request.phase3_enabled,
-            "phase4_enabled": request.phase4_enabled,
-            "max_debate_rounds": request.max_debate_rounds,
+            "stages": request.stages.model_dump(),
             "batch_id": None,
             "interrupt_signal": False,
         }
@@ -111,7 +112,7 @@ class TaskManager:
         # 插入数据库
         await mongodb.database.analysis_tasks.insert_one(task_doc)
 
-        logger.info(f"创建分析任务: task_id={task_id}, user_id={user_id}, stock={request.stock_code}")
+        logger.info(f"创建分析任务: task_id={task_id}, user_id={user_id}, stock={request.stock_code}, market={request.market}")
 
         # 发送任务创建事件
         await websocket_manager.broadcast_event(
@@ -152,11 +153,9 @@ class TaskManager:
                 user_id=user_id,
                 request=AnalysisTaskCreate(
                     stock_code=stock_code,
+                    market=request.market,
                     trade_date=request.trade_date,
-                    phase2_enabled=request.phase2_enabled,
-                    phase3_enabled=request.phase3_enabled,
-                    phase4_enabled=request.phase4_enabled,
-                    max_debate_rounds=request.max_debate_rounds,
+                    stages=request.stages,
                 ),
                 config=config,
             )
@@ -167,7 +166,7 @@ class TaskManager:
                 {"$set": {"batch_id": str(batch_id)}}
             )
 
-        logger.info(f"创建批量任务: batch_id={batch_id}, count={len(request.stock_codes)}")
+        logger.info(f"创建批量任务: batch_id={batch_id}, count={len(request.stock_codes)}, market={request.market}")
 
         return str(batch_id)
 
@@ -210,6 +209,7 @@ class TaskManager:
             "started_at": task_doc.get("started_at"),
             "completed_at": task_doc.get("completed_at"),
             "expired_at": task_doc.get("expired_at"),
+            "batch_id": task_doc.get("batch_id"),
         }
 
     async def list_tasks(
@@ -217,6 +217,8 @@ class TaskManager:
         user_id: str,
         status: Optional[TaskStatusEnum] = None,
         stock_code: Optional[str] = None,
+        recommendation: Optional[str] = None,
+        risk_level: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
     ) -> List[Dict[str, Any]]:
@@ -227,6 +229,8 @@ class TaskManager:
             user_id: 用户 ID
             status: 状态过滤
             stock_code: 股票代码过滤
+            recommendation: 推荐结果过滤
+            risk_level: 风险等级过滤
             limit: 返回数量限制
             offset: 偏移量
 
@@ -242,6 +246,12 @@ class TaskManager:
         if stock_code:
             query["stock_code"] = stock_code
 
+        if recommendation:
+            query["final_recommendation"] = recommendation
+
+        if risk_level:
+            query["risk_level"] = risk_level
+
         # 查询数据库
         cursor = mongodb.database.analysis_tasks.find(query).sort("created_at", -1).skip(offset).limit(limit)
 
@@ -253,11 +263,55 @@ class TaskManager:
                 "trade_date": task_doc["trade_date"],
                 "status": task_doc["status"],
                 "progress": task_doc.get("progress", 0.0),
+                "final_recommendation": task_doc.get("final_recommendation"),
+                "risk_level": task_doc.get("risk_level"),
+                "buy_price": task_doc.get("buy_price"),
+                "sell_price": task_doc.get("sell_price"),
                 "created_at": task_doc["created_at"],
                 "completed_at": task_doc.get("completed_at"),
             })
 
         return tasks
+
+    async def count_tasks(
+        self,
+        user_id: str,
+        status: Optional[TaskStatusEnum] = None,
+        stock_code: Optional[str] = None,
+        recommendation: Optional[str] = None,
+        risk_level: Optional[str] = None,
+    ) -> int:
+        """
+        统计用户任务数量
+
+        Args:
+            user_id: 用户 ID
+            status: 状态过滤
+            stock_code: 股票代码过滤
+            recommendation: 推荐结果过滤
+            risk_level: 风险等级过滤
+
+        Returns:
+            任务数量
+        """
+        # 构建查询条件
+        query = {"user_id": user_id}
+
+        if status:
+            query["status"] = status.value
+
+        if stock_code:
+            query["stock_code"] = stock_code
+
+        if recommendation:
+            query["final_recommendation"] = recommendation
+
+        if risk_level:
+            query["risk_level"] = risk_level
+
+        # 统计数量
+        count = await mongodb.database.analysis_tasks.count_documents(query)
+        return count
 
     async def cancel_task(self, task_id: str) -> None:
         """
@@ -557,64 +611,23 @@ class TaskManager:
 
     async def restore_running_tasks(self) -> int:
         """
-        恢复运行中的任务
+        恢复运行中的任务（增强版）
 
-        系统重启后，将所有 RUNNING 状态的任务重置为 PENDING 状态，
-        以便可以重新执行。
+        系统重启后，检查每个运行中的任务：
+        1. 验证配置中的智能体是否存在
+        2. 如果智能体被删除，标记任务为失败
+        3. 否则，重置为 PENDING 状态，保留已完成报告
 
         Returns:
-            恢复的任务数量
+            恢复的任务数量（失败的任务不计入）
         """
-        # 查找所有运行中的任务
-        running_tasks = await mongodb.database.analysis_tasks.find({
-            "status": TaskStatusEnum.RUNNING.value
-        }).to_list(None)
+        # 调用增强恢复函数
+        restored_count, failed_count = await restore_running_tasks_with_checkpoint(
+            mongodb
+        )
 
-        if not running_tasks:
-            logger.info("没有需要恢复的运行中任务")
-            return 0
-
-        logger.info(f"发现 {len(running_tasks)} 个需要恢复的运行中任务")
-
-        restored_count = 0
-
-        for task_doc in running_tasks:
-            task_id = str(task_doc["_id"])
-            user_id = task_doc["user_id"]
-            stock_code = task_doc.get("stock_code", "未知")
-
-            try:
-                # 将任务状态重置为 PENDING
-                await mongodb.database.analysis_tasks.update_one(
-                    {"_id": task_doc["_id"]},
-                    {
-                        "$set": {
-                            "status": TaskStatusEnum.PENDING.value,
-                            "interrupt_signal": False,
-                        }
-                    }
-                )
-
-                # 清除开始时间
-                await mongodb.database.analysis_tasks.update_one(
-                    {"_id": task_doc["_id"]},
-                    {"$unset": ["started_at"]}
-                )
-
-                restored_count += 1
-
-                logger.info(
-                    f"任务已恢复为待执行状态: task_id={task_id}, "
-                    f"user_id={user_id}, stock={stock_code}"
-                )
-
-            except Exception as e:
-                logger.error(
-                    f"恢复任务失败: task_id={task_id}, error={e}",
-                    exc_info=True
-                )
-
-        logger.info(f"任务恢复完成，共恢复 {restored_count} 个任务")
+        if failed_count > 0:
+            logger.warning(f"有 {failed_count} 个任务恢复失败并已标记为失败状态")
 
         return restored_count
 

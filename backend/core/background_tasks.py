@@ -71,7 +71,7 @@ async def execute_analysis_workflow(
         request: 分析任务请求
     """
     task_manager = get_task_manager()
-    ws_manager = get_ws_manager()
+    ws_manager = await get_ws_manager()
     report_service = get_report_service()
 
     try:

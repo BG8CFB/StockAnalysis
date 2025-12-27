@@ -105,6 +105,8 @@ class AgentWorkflowEngine:
             phase4_agents = create_phase4_agents(self.llm)
             for agent in phase4_agents:
                 self.register_agent(agent)
+
+    def register_agent(self, agent: BaseAgent) -> None:
         """
         注册智能体
 
@@ -138,62 +140,74 @@ class AgentWorkflowEngine:
         Args:
             task_id: 任务 ID
             user_id: 用户 ID
-            request: 分析任务请求
+            request: 分析任务请求（包含 stages 配置）
 
         Returns:
             最终报告和元数据
         """
+        # 从 request.stages 中读取阶段配置
+        stages = request.stages
+        stage1_enabled = stages.stage1.enabled
+        stage2_enabled = stages.stage2.enabled
+        stage3_enabled = stages.stage3.enabled
+        stage4_enabled = stages.stage4.enabled
+
+        # 获取辩论轮次配置
+        phase2_debate_rounds = stages.stage2.debate.rounds if stage2_enabled and stages.stage2.debate.enabled else 0
+        phase3_debate_rounds = stages.stage3.debate.rounds if stage3_enabled and stages.stage3.debate.enabled else 0
+
         # 1. 创建初始状态
-        max_debate_rounds = self.config.phase2.max_rounds if self.config.phase2 else 2
         state = create_initial_state(
             task_id=task_id,
             user_id=user_id,
             stock_code=request.stock_code,
             trade_date=request.trade_date,
-            max_debate_rounds=max_debate_rounds,
-            expected_analysts=len(self._get_phase1_agents()),
+            max_debate_rounds=phase2_debate_rounds if phase2_debate_rounds > 0 else 2,
+            expected_analysts=len(self._get_phase1_agents(stages)),
+            selected_agents=stages.stage1.selected_agents,
         )
 
         logger.info(f"开始工作流执行: task_id={task_id}, stock={request.stock_code}")
+        logger.info(f"阶段配置: stage1={stage1_enabled}, stage2={stage2_enabled}, stage3={stage3_enabled}, stage4={stage4_enabled}")
 
         # 发送开始事件
         await self._send_event(task_id, "workflow_started", {
             "stock_code": request.stock_code,
-            "phase1_enabled": self.phase1_enabled,
-            "phase2_enabled": self.phase2_enabled,
-            "phase3_enabled": self.phase3_enabled,
-            "phase4_enabled": self.phase4_enabled,
+            "phase1_enabled": stage1_enabled,
+            "phase2_enabled": stage2_enabled,
+            "phase3_enabled": stage3_enabled,
+            "phase4_enabled": stage4_enabled,
         })
 
         try:
             # ====================================================================
             # 阶段 1：分析师团队（并行执行）
             # ====================================================================
-            if self.phase1_enabled:
-                await self._execute_phase1(state)
+            if stage1_enabled:
+                await self._execute_phase1(state, stages)
             else:
                 logger.info(f"阶段1已禁用，跳过: task_id={task_id}")
 
             # ====================================================================
             # 阶段 2：研究员辩论
             # ====================================================================
-            if self.phase2_enabled and self._should_continue(state):
-                await self._execute_phase2(state)
+            if stage2_enabled and self._should_continue(state):
+                await self._execute_phase2(state, stages)
             else:
                 logger.info(f"阶段2已禁用或跳过: task_id={task_id}")
 
             # ====================================================================
             # 阶段 3：风险评估
             # ====================================================================
-            if self.phase3_enabled and self._should_continue(state):
-                await self._execute_phase3(state)
+            if stage3_enabled and self._should_continue(state):
+                await self._execute_phase3(state, stages)
             else:
                 logger.info(f"阶段3已禁用或跳过: task_id={task_id}")
 
             # ====================================================================
             # 阶段 4：总结输出
             # ====================================================================
-            if self.phase4_enabled and self._should_continue(state):
+            if stage4_enabled and self._should_continue(state):
                 await self._execute_phase4(state)
             else:
                 logger.info(f"阶段4已禁用或跳过: task_id={task_id}")
@@ -230,13 +244,17 @@ class AgentWorkflowEngine:
     # 阶段执行方法
     # ========================================================================
 
-    async def _execute_phase1(self, state: AgentState) -> None:
+    async def _execute_phase1(self, state: AgentState, stages) -> None:
         """
         执行阶段1：分析师团队
 
-        并行调用所有启用的分析师智能体。
+        Args:
+            state: 工作流状态
+            stages: 阶段配置对象
+
+        并行调用所有用户选择的已启用分析师智能体。
         """
-        phase1_agents = self._get_phase1_agents()
+        phase1_agents = self._get_phase1_agents(stages)
 
         if not phase1_agents:
             logger.warning("没有启用的分析师智能体")
@@ -274,18 +292,26 @@ class AgentWorkflowEngine:
 
         logger.info(f"阶段1完成: {state['completed_analysts']}/{state['expected_analysts']}个分析师完成")
 
-    async def _execute_phase2(self, state: AgentState) -> None:
+    async def _execute_phase2(self, state: AgentState, stages) -> None:
         """
         执行阶段2：研究员辩论
+
+        Args:
+            state: 工作流状态
+            stages: 阶段配置对象
 
         实现看涨/看跌研究员之间的多轮辩论。
         使用 DebateManager 管理辩论流程。
         """
-        max_rounds = state["max_debate_rounds"]
-        logger.info(f"开始阶段2: 最多{max_rounds}轮辩论")
+        # 从 stages 配置中获取辩论轮次
+        debate_enabled = stages.stage2.debate.enabled if stages else True
+        max_rounds = stages.stage2.debate.rounds if stages and debate_enabled else state.get("max_debate_rounds", 2)
+
+        logger.info(f"开始阶段2: 最多{max_rounds}轮辩论, 辩论启用={debate_enabled}")
 
         await self._send_event(state["task_id"], "phase2_started", {
             "max_rounds": max_rounds,
+            "debate_enabled": debate_enabled,
         })
 
         # 提取初始观点（从分析师报告中）
@@ -303,40 +329,41 @@ class AgentWorkflowEngine:
             logger.warning("缺少辩论智能体，跳过阶段2")
             return
 
-        # 使用 DebateManager 运行辩论
-        from ..agents.phase2.debate_manager import DebateManager
+        # 如果启用辩论，运行辩论
+        if debate_enabled and max_rounds > 0:
+            from ..agents.phase2.debate_manager import DebateManager
 
-        debate_manager = DebateManager(
-            bull_agent=bull_agent,
-            bear_agent=bear_agent,
-            max_rounds=max_rounds,
-        )
+            debate_manager = DebateManager(
+                bull_agent=bull_agent,
+                bear_agent=bear_agent,
+                max_rounds=max_rounds,
+            )
 
-        # 运行辩论
-        await debate_manager.run_debate(state)
+            # 运行辩论
+            await debate_manager.run_debate(state)
 
-        # 每轮辩论后发送进度事件
-        for turn in state.get("debate_turns", []):
-            await self._send_event(state["task_id"], "debate_round_completed", {
-                "round": turn["round_index"],
-                "max_rounds": max_rounds,
-            })
-            
+            # 每轮辩论后发送进度事件
+            for turn in state.get("debate_turns", []):
+                await self._send_event(state["task_id"], "debate_round_completed", {
+                    "round": turn["round_index"],
+                    "max_rounds": max_rounds,
+                })
+
         # 研究经理裁决
         research_manager = self.get_agent("phase2_manager")
         if research_manager:
             logger.info("研究经理开始裁决")
             decision = await research_manager.execute(state)
             state["manager_decision"] = decision
-            
+
             # 累加 token
             token_usage = research_manager.get_token_usage()
             state["total_token_usage"]["prompt_tokens"] += token_usage.get("prompt_tokens", 0)
             state["total_token_usage"]["completion_tokens"] += token_usage.get("completion_tokens", 0)
             state["total_token_usage"]["total_tokens"] += token_usage.get("total_tokens", 0)
-            
+
             await self._send_event(state["task_id"], "research_manager_decision", {
-                "decision": decision[:200] + "..." 
+                "decision": decision[:200] + "..."
             })
 
         # 生成交易计划
@@ -348,27 +375,36 @@ class AgentWorkflowEngine:
             state["total_token_usage"]["completion_tokens"] += token_usage.get("completion_tokens", 0)
             state["total_token_usage"]["total_tokens"] += token_usage.get("total_tokens", 0)
 
-        # 累加辩论智能体的 token 使用量
-        if bull_agent:
-            token_usage = bull_agent.get_token_usage()
-            state["total_token_usage"]["prompt_tokens"] += token_usage.get("prompt_tokens", 0)
-            state["total_token_usage"]["completion_tokens"] += token_usage.get("completion_tokens", 0)
-            state["total_token_usage"]["total_tokens"] += token_usage.get("total_tokens", 0)
-        if bear_agent:
-            token_usage = bear_agent.get_token_usage()
-            state["total_token_usage"]["prompt_tokens"] += token_usage.get("prompt_tokens", 0)
-            state["total_token_usage"]["completion_tokens"] += token_usage.get("completion_tokens", 0)
-            state["total_token_usage"]["total_tokens"] += token_usage.get("total_tokens", 0)
+        # 累加辩论智能体的 token 使用量（如果运行了辩论）
+        if debate_enabled:
+            if bull_agent:
+                token_usage = bull_agent.get_token_usage()
+                state["total_token_usage"]["prompt_tokens"] += token_usage.get("prompt_tokens", 0)
+                state["total_token_usage"]["completion_tokens"] += token_usage.get("completion_tokens", 0)
+                state["total_token_usage"]["total_tokens"] += token_usage.get("total_tokens", 0)
+            if bear_agent:
+                token_usage = bear_agent.get_token_usage()
+                state["total_token_usage"]["prompt_tokens"] += token_usage.get("prompt_tokens", 0)
+                state["total_token_usage"]["completion_tokens"] += token_usage.get("completion_tokens", 0)
+                state["total_token_usage"]["total_tokens"] += token_usage.get("total_tokens", 0)
 
         logger.info("阶段2完成")
 
-    async def _execute_phase3(self, state: AgentState) -> None:
+    async def _execute_phase3(self, state: AgentState, stages) -> None:
         """
         执行阶段3：风险评估
 
+        Args:
+            state: 工作流状态
+            stages: 阶段配置对象
+
         多派别风险讨论 + CRO 总结
         """
-        logger.info("开始阶段3: 风险评估")
+        # 从 stages 配置中获取辩论轮次
+        debate_enabled = stages.stage3.debate.enabled if stages else False
+        max_rounds = stages.stage3.debate.rounds if stages and debate_enabled else 1
+
+        logger.info(f"开始阶段3: 风险评估, 辩论启用={debate_enabled}, 轮次={max_rounds}")
 
         await self._send_event(state["task_id"], "phase3_started", {})
 
@@ -441,14 +477,36 @@ class AgentWorkflowEngine:
     # 辅助方法
     # ========================================================================
 
-    def _get_phase1_agents(self) -> List[AnalystAgent]:
-        """获取阶段1启用的分析师智能体"""
+    def _get_phase1_agents(self, stages) -> List[AnalystAgent]:
+        """
+        获取阶段1启用的分析师智能体
+
+        Args:
+            stages: 阶段配置对象，包含用户选择的智能体列表
+
+        Returns:
+            用户选择且已启用的分析师智能体列表
+        """
         agents = []
-        for slug, agent in self._agents.items():
-            if slug.startswith("phase1_") and isinstance(agent, AnalystAgent):
-                # 检查是否启用（从配置中读取）
+        selected_slugs = stages.stage1.selected_agents if stages else []
+
+        # 如果用户没有选择任何智能体，返回所有启用的
+        if not selected_slugs:
+            for slug, agent in self._agents.items():
+                if slug.startswith("phase1_") and isinstance(agent, AnalystAgent):
+                    if self._is_agent_enabled(slug):
+                        agents.append(agent)
+            return agents
+
+        # 返回用户选择的已启用智能体
+        for slug in selected_slugs:
+            agent = self._agents.get(slug)
+            if agent and isinstance(agent, AnalystAgent):
                 if self._is_agent_enabled(slug):
                     agents.append(agent)
+                else:
+                    logger.warning(f"智能体 {slug} 已被禁用，跳过")
+
         return agents
 
     def _is_agent_enabled(self, slug: str) -> bool:

@@ -204,6 +204,30 @@ class WebSocketManager:
                 logger.warning(f"WebSocket 发送失败: {e}")
                 await self.disconnect(websocket)
 
+    async def send_event(
+        self,
+        task_id: str,
+        event_data: Dict[str, Any]
+    ) -> None:
+        """
+        发送事件到指定任务的所有连接
+
+        Args:
+            task_id: 任务 ID
+            event_data: 事件数据字典
+        """
+        if task_id not in self._connections:
+            # 没有连接，丢弃事件
+            return
+
+        for user_id, connections in self._connections[task_id].items():
+            for ws in list(connections):
+                try:
+                    await self._send_to_websocket(ws, event_data)
+                except Exception as e:
+                    logger.warning(f"WebSocket 发送失败: {e}")
+                    await self.disconnect(ws)
+
     async def _send_to_websocket(
         self,
         websocket: WebSocket,

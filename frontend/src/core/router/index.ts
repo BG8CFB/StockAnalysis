@@ -76,26 +76,35 @@ router.beforeEach(async (to, from, next) => {
   const adminOnly = to.meta.adminOnly === true
 
   // ==================== 系统初始化检查 ====================
-  // 仅对非公开路由进行系统初始化检查
-  if (routeName && !PUBLIC_ROUTE_NAMES.includes(routeName)) {
-    const isInitialized = await checkSystemInitialized()
-    if (!isInitialized) {
-      // 系统未初始化，跳转到初始化页面
-      if (routeName !== 'Init') {
-        next({ name: 'Init' })
-        return
+  // 检查所有路由（包括公开路由），确保系统初始化逻辑正确
+  const isInitialized = await checkSystemInitialized()
+
+  if (!isInitialized) {
+    // 系统未初始化，只允许访问初始化页面
+    if (routeName !== 'Init') {
+      next({ name: 'Init' })
+      return
+    }
+  } else {
+    // 系统已初始化，不允许访问初始化页面
+    if (routeName === 'Init') {
+      // 如果已登录，跳转到仪表板；否则跳转到登录页
+      if (userStore.userInfo) {
+        next({ name: 'Dashboard' })
+      } else {
+        next({ name: 'Login' })
       }
-    } else if (routeName === 'Init') {
-      // 系统已初始化但访问初始化页面，跳转到仪表板
-      next({ name: 'Dashboard' })
       return
     }
   }
 
   // ==================== 认证检查（最佳实践：只检查状态，不调用 API）====================
-  // 需要登录但未登录（userStore.userInfo 为 null 表示未登录）
+  // 登录状态判断：有 token 或有 userInfo 都视为已登录
   // 注意：token 验证已在 main.ts 启动时完成，这里只检查状态
-  if (requiresAuth && !userStore.userInfo) {
+  // 使用 isLoggedIn 计算属性，它同时检查 token 和 userInfo
+  const isLoggedIn = userStore.isLoggedIn || !!userStore.userInfo
+
+  if (requiresAuth && !isLoggedIn) {
     next({
       name: 'Login',
       query: { redirect: to.fullPath }
@@ -105,7 +114,8 @@ router.beforeEach(async (to, from, next) => {
 
   // ==================== 管理员权限检查 ====================
   if (adminOnly) {
-    if (!userStore.userInfo) {
+    // 检查登录状态
+    if (!isLoggedIn) {
       next({
         name: 'Login',
         query: { redirect: to.fullPath }
@@ -113,6 +123,7 @@ router.beforeEach(async (to, from, next) => {
       return
     }
 
+    // 检查管理员权限
     const role = userStore.userInfo?.role
     const hasAdminPermission = role === 'ADMIN' || role === 'SUPER_ADMIN'
     if (!hasAdminPermission) {
@@ -122,7 +133,7 @@ router.beforeEach(async (to, from, next) => {
   }
 
   // ==================== 已登录用户访问公开页面 ====================
-  if (userStore.userInfo && !requiresAuth) {
+  if (isLoggedIn && !requiresAuth) {
     // 已登录用户访问登录/注册页，跳转到仪表板
     if (routeName === 'Login' || routeName === 'Register') {
       next({ name: 'Dashboard' })

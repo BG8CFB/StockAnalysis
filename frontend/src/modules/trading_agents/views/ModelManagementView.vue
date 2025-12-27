@@ -192,6 +192,7 @@
           <el-select
             v-model="formData.provider"
             placeholder="选择提供商"
+            style="width: 200px"
             @change="handleProviderChange"
           >
             <el-option
@@ -236,14 +237,39 @@
         </el-form-item>
 
         <el-form-item
-          label="最大并发数"
+          label="模型最大并发数"
           prop="max_concurrency"
         >
           <el-input-number
             v-model="formData.max_concurrency"
             :min="1"
-            :max="100"
+            :max="200"
           />
+          <span class="form-tip">该模型在平台上的总并发能力</span>
+        </el-form-item>
+
+        <el-form-item
+          label="单任务并发数"
+          prop="task_concurrency"
+        >
+          <el-input-number
+            v-model="formData.task_concurrency"
+            :min="1"
+            :max="10"
+          />
+          <span class="form-tip">单个任务可同时运行的智能体数</span>
+        </el-form-item>
+
+        <el-form-item
+          label="批量任务并发数"
+          prop="batch_concurrency"
+        >
+          <el-input-number
+            v-model="formData.batch_concurrency"
+            :min="1"
+            :max="50"
+          />
+          <span class="form-tip">用户可同时运行的批量任务数（公共模型由管理员控制）</span>
         </el-form-item>
 
         <el-form-item
@@ -261,11 +287,14 @@
           label="温度参数"
           prop="temperature"
         >
-          <el-slider
+          <el-input-number
             v-model="formData.temperature"
             :min="0"
             :max="1"
             :step="0.1"
+            :precision="1"
+            :controls="true"
+            placeholder="0.0 - 1.0"
           />
         </el-form-item>
 
@@ -354,7 +383,9 @@ const formData = reactive<AIModelConfigCreate>({
   api_base_url: '',
   api_key: '',
   model_id: '',
-  max_concurrency: 1,
+  max_concurrency: 40,
+  task_concurrency: 2,
+  batch_concurrency: 1,
   timeout_seconds: 60,
   temperature: 0.5,
   enabled: true,
@@ -398,9 +429,32 @@ function handleProviderChange(provider: ModelProviderEnum) {
   }
 }
 
+// 验证并发参数
+function validateConcurrency(): boolean {
+  if (formData.task_concurrency > formData.max_concurrency) {
+    ElMessage.error(`单任务并发数(${formData.task_concurrency})不能大于模型最大并发数(${formData.max_concurrency})`)
+    return false
+  }
+
+  if (formData.batch_concurrency * formData.task_concurrency > formData.max_concurrency) {
+    ElMessage.error(
+      `批量任务并发数(${formData.batch_concurrency}) × 单任务并发数(${formData.task_concurrency}) ` +
+      `不能超过模型最大并发数(${formData.max_concurrency})`
+    )
+    return false
+  }
+
+  return true
+}
+
 // 提交表单
 async function handleSubmit() {
   await formRef.value?.validate()
+
+  if (!validateConcurrency()) {
+    return
+  }
+
   submitting.value = true
 
   try {
@@ -426,6 +480,8 @@ function handleEdit(model: AIModelConfig) {
     api_key: model.api_key,
     model_id: model.model_id,
     max_concurrency: model.max_concurrency,
+    task_concurrency: model.task_concurrency,
+    batch_concurrency: model.batch_concurrency,
     timeout_seconds: model.timeout_seconds,
     temperature: model.temperature,
     enabled: model.enabled,

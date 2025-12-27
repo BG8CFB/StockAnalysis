@@ -7,7 +7,7 @@ TradingAgents 核心数据模型
 from datetime import datetime
 from enum import Enum
 from typing import Optional, List, Dict, Any, Union
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 # =============================================================================
@@ -81,10 +81,28 @@ class AIModelConfigBase(BaseModel):
     api_base_url: str = Field(..., min_length=1, description="API 基础 URL")
     api_key: str = Field(..., min_length=1, description="API Key")
     model_id: str = Field(..., min_length=1, max_length=100, description="模型 ID")
-    max_concurrency: int = Field(default=1, ge=1, le=100, description="最大并发数")
+    max_concurrency: int = Field(default=40, ge=1, le=200, description="模型最大并发数")
+    task_concurrency: int = Field(default=2, ge=1, le=10, description="单任务并发数（单个任务可同时运行的智能体数）")
+    batch_concurrency: int = Field(default=1, ge=1, le=50, description="批量任务并发数（用户可同时运行的批量任务数，公共模型由管理员控制）")
     timeout_seconds: int = Field(default=60, ge=10, le=600, description="超时时间（秒）")
     temperature: float = Field(default=0.5, ge=0.0, le=1.0, description="温度参数")
     enabled: bool = Field(default=True, description="是否启用")
+
+    @model_validator(mode='after')
+    def validate_concurrency(self):
+        """验证并发参数的合理性"""
+        if self.task_concurrency > self.max_concurrency:
+            raise ValueError(
+                f"单任务并发数({self.task_concurrency})不能大于模型最大并发数({self.max_concurrency})"
+            )
+
+        if self.batch_concurrency * self.task_concurrency > self.max_concurrency:
+            raise ValueError(
+                f"批量任务并发数({self.batch_concurrency}) × 单任务并发数({self.task_concurrency}) "
+                f"不能超过模型最大并发数({self.max_concurrency})"
+            )
+
+        return self
 
 
 class AIModelConfigCreate(AIModelConfigBase):
@@ -99,10 +117,37 @@ class AIModelConfigUpdate(BaseModel):
     api_base_url: Optional[str] = Field(None, min_length=1)
     api_key: Optional[str] = Field(None, min_length=1)
     model_id: Optional[str] = Field(None, min_length=1, max_length=100)
-    max_concurrency: Optional[int] = Field(None, ge=1, le=100)
+    max_concurrency: Optional[int] = Field(None, ge=1, le=200)
+    task_concurrency: Optional[int] = Field(None, ge=1, le=10)
+    batch_concurrency: Optional[int] = Field(None, ge=1, le=50)
     timeout_seconds: Optional[int] = Field(None, ge=10, le=600)
     temperature: Optional[float] = Field(None, ge=0.0, le=1.0)
     enabled: Optional[bool] = None
+
+    @model_validator(mode='after')
+    def validate_concurrency(self):
+        """验证并发参数的合理性（仅当所有相关参数都提供时才验证）"""
+        if all([
+            self.max_concurrency is not None,
+            self.task_concurrency is not None,
+        ]):
+            if self.task_concurrency > self.max_concurrency:
+                raise ValueError(
+                    f"单任务并发数({self.task_concurrency})不能大于模型最大并发数({self.max_concurrency})"
+                )
+
+        if all([
+            self.max_concurrency is not None,
+            self.task_concurrency is not None,
+            self.batch_concurrency is not None,
+        ]):
+            if self.batch_concurrency * self.task_concurrency > self.max_concurrency:
+                raise ValueError(
+                    f"批量任务并发数({self.batch_concurrency}) × 单任务并发数({self.task_concurrency}) "
+                    f"不能超过模型最大并发数({self.max_concurrency})"
+                )
+
+        return self
 
 
 class AIModelConfigResponse(AIModelConfigBase):
@@ -127,7 +172,9 @@ class AIModelConfigResponse(AIModelConfigBase):
             api_base_url=data["api_base_url"],
             api_key=api_key,
             model_id=data["model_id"],
-            max_concurrency=data["max_concurrency"],
+            max_concurrency=data.get("max_concurrency", 40),
+            task_concurrency=data.get("task_concurrency", 2),
+            batch_concurrency=data.get("batch_concurrency", 1),
             timeout_seconds=data["timeout_seconds"],
             temperature=data["temperature"],
             enabled=data["enabled"],
@@ -310,6 +357,8 @@ class UserAgentConfigResponse(BaseModel):
     """用户智能体配置响应"""
     id: str
     user_id: str
+    is_public: bool = False
+    is_customized: bool = False
     phase1: Phase1Config
     phase2: Optional[Phase2Config]
     phase3: Optional[Phase3Config]
@@ -351,6 +400,8 @@ class UserAgentConfigResponse(BaseModel):
         return cls(
             id=str(data["_id"]),
             user_id=data["user_id"],
+            is_public=data.get("is_public", False),
+            is_customized=data.get("is_customized", False),
             phase1=phase1,
             phase2=phase2,
             phase3=phase3,
@@ -364,24 +415,57 @@ class UserAgentConfigResponse(BaseModel):
 # 分析任务模型
 # =============================================================================
 
+class Stage1Config(BaseModel):
+    """第一阶段配置"""
+    enabled: bool = Field(default=True, description="是否启用第一阶段")
+    selected_agents: List[str] = Field(default_factory=list, description="选中的智能体标识符列表")
+
+
+class DebateConfig(BaseModel):
+    """辩论配置"""
+    enabled: bool = Field(default=True, description="是否启用辩论")
+    rounds: int = Field(default=3, ge=0, le=10, description="辩论轮次")
+
+
+class Stage2Config(BaseModel):
+    """第二阶段配置"""
+    enabled: bool = Field(default=True, description="是否启用第二阶段")
+    debate: DebateConfig = Field(default_factory=DebateConfig, description="辩论配置")
+
+
+class Stage3Config(BaseModel):
+    """第三阶段配置"""
+    enabled: bool = Field(default=True, description="是否启用第三阶段")
+    debate: DebateConfig = Field(default_factory=DebateConfig, description="辩论配置")
+
+
+class Stage4Config(BaseModel):
+    """第四阶段配置"""
+    enabled: bool = Field(default=True, description="是否启用第四阶段（强制启用）")
+
+
+class AnalysisStagesConfig(BaseModel):
+    """分析任务阶段配置"""
+    stage1: Stage1Config = Field(default_factory=Stage1Config, description="第一阶段配置")
+    stage2: Stage2Config = Field(default_factory=Stage2Config, description="第二阶段配置")
+    stage3: Stage3Config = Field(default_factory=Stage3Config, description="第三阶段配置")
+    stage4: Stage4Config = Field(default_factory=Stage4Config, description="第四阶段配置")
+
+
 class AnalysisTaskCreate(BaseModel):
     """创建分析任务请求"""
     stock_code: str = Field(..., min_length=1, max_length=20, description="股票代码")
+    market: str = Field(default="a_share", description="股票市场：a_share, hong_kong, us")
     trade_date: str = Field(..., min_length=1, max_length=20, description="交易日期")
-    phase2_enabled: bool = Field(default=True, description="是否启用第二阶段")
-    phase3_enabled: bool = Field(default=True, description="是否启用第三阶段")
-    phase4_enabled: bool = Field(default=True, description="是否启用第四阶段")
-    max_debate_rounds: Optional[int] = Field(None, ge=0, le=10, description="最大辩论轮次")
+    stages: AnalysisStagesConfig = Field(default_factory=AnalysisStagesConfig, description="阶段配置")
 
 
 class BatchTaskCreate(BaseModel):
     """创建批量任务请求"""
     stock_codes: List[str] = Field(..., min_length=1, max_length=50, description="股票代码列表")
+    market: str = Field(default="a_share", description="股票市场：a_share, hong_kong, us")
     trade_date: str = Field(..., min_length=1, max_length=20, description="交易日期")
-    phase2_enabled: bool = Field(default=True, description="是否启用第二阶段")
-    phase3_enabled: bool = Field(default=True, description="是否启用第三阶段")
-    phase4_enabled: bool = Field(default=True, description="是否启用第四阶段")
-    max_debate_rounds: Optional[int] = Field(None, ge=0, le=10, description="最大辩论轮次")
+    stages: AnalysisStagesConfig = Field(default_factory=AnalysisStagesConfig, description="阶段配置")
 
 
 class AnalysisTaskResponse(BaseModel):

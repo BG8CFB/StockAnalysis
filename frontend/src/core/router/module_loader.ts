@@ -35,24 +35,6 @@ const moduleRoutes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, title: '仪表板' },
   },
   {
-    path: '/analysis/single',
-    name: 'SingleAnalysis',
-    component: () => import('@modules/analysis/views/SingleAnalysisView.vue'),
-    meta: { requiresAuth: true, title: '单个分析' },
-  },
-  {
-    path: '/analysis/batch',
-    name: 'BatchAnalysis',
-    component: () => import('@modules/analysis/views/BatchAnalysisView.vue'),
-    meta: { requiresAuth: true, title: '批量分析' },
-  },
-  {
-    path: '/task-center',
-    name: 'TaskCenter',
-    component: () => import('@modules/task_center/views/TaskCenterView.vue'),
-    meta: { requiresAuth: true, title: '任务中心' },
-  },
-  {
     path: '/screener',
     name: 'Screener',
     component: () => import('@modules/screener/views/ScreenerView.vue'),
@@ -63,6 +45,32 @@ const moduleRoutes: RouteRecordRaw[] = [
     name: 'AskStock',
     component: () => import('@modules/ask_stock/views/AskStockView.vue'),
     meta: { requiresAuth: true, title: 'AI 问股' },
+  },
+  // TradingAgents 分析模块
+  {
+    path: '/trading-agents/analysis/single',
+    name: 'SingleAnalysis',
+    component: () => import('@modules/trading_agents/views/analysis/SingleAnalysisView.vue'),
+    meta: { requiresAuth: true, title: '单股分析' },
+  },
+  {
+    path: '/trading-agents/analysis/batch',
+    name: 'BatchAnalysis',
+    component: () => import('@modules/trading_agents/views/analysis/BatchAnalysisView.vue'),
+    meta: { requiresAuth: true, title: '批量分析' },
+  },
+  {
+    path: '/trading-agents/analysis/:taskId',
+    name: 'AnalysisDetail',
+    component: () => import('@modules/trading_agents/views/analysis/AnalysisDetailView.vue'),
+    meta: { requiresAuth: true, title: '分析详情' },
+  },
+  // TradingAgents 任务中心（融合版）
+  {
+    path: '/trading-agents/tasks',
+    name: 'TaskCenter',
+    component: () => import('@modules/trading_agents/views/task/TaskCenterView.vue'),
+    meta: { requiresAuth: true, title: '任务中心' },
   },
   {
     path: '/settings/users',

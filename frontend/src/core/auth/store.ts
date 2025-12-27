@@ -19,6 +19,7 @@ export const useUserStore = defineStore('user', () => {
   const isLoggedIn = computed(() => !!token.value)
   const email = computed(() => userInfo.value?.email ?? '')
   const userId = computed(() => userInfo.value?.id ?? '')
+  const isAdmin = computed(() => userInfo.value?.role === 'ADMIN' || userInfo.value?.role === 'SUPER_ADMIN')
   const theme = computed(() => preferences.value?.theme ?? 'light')
 
   // ==================== 方法 ====================
@@ -238,6 +239,7 @@ export const useUserStore = defineStore('user', () => {
     isLoggedIn,
     email,
     userId,
+    isAdmin,
     theme,
 
     // 方法

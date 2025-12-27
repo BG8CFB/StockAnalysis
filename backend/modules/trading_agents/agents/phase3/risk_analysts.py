@@ -15,7 +15,12 @@ logger = logging.getLogger(__name__)
 
 class BaseRiskAgent(BaseAgent):
     """风险分析师基类"""
-    
+
+    async def execute(self, state: Dict[str, Any]) -> str:
+        """执行风险分析师逻辑"""
+        messages = self.build_messages(state)
+        return await self.call_llm(messages)
+
     def build_user_message(self, state: Dict[str, Any]) -> str:
         """构建基础上下文消息"""
         message = f"""请分析以下股票的风险：

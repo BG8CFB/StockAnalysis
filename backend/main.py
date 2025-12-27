@@ -87,6 +87,32 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"TradingAgents 任务恢复失败: {e}")
 
+    # 初始化智能体公共配置
+    from modules.trading_agents.services.agent_config_service import get_agent_config_service
+    try:
+        service = get_agent_config_service()
+        await service.ensure_public_config_exists()
+        logger.info("TradingAgents 公共配置已初始化")
+    except Exception as e:
+        logger.warning(f"TradingAgents 公共配置初始化失败: {e}")
+
+    # 启动 MCP 健康检查器和会话管理器
+    from modules.trading_agents.services.mcp_health_checker import get_mcp_health_checker
+    from modules.trading_agents.services.mcp_session_manager import get_mcp_session_manager
+    try:
+        health_checker = get_mcp_health_checker()
+        await health_checker.start()
+        logger.info("MCP 健康检查器已启动")
+    except Exception as e:
+        logger.warning(f"MCP 健康检查器启动失败: {e}")
+
+    try:
+        session_manager = get_mcp_session_manager()
+        await session_manager.start()
+        logger.info("MCP 会话管理器已启动")
+    except Exception as e:
+        logger.warning(f"MCP 会话管理器启动失败: {e}")
+
     logger.info(f"{settings.APP_NAME} 启动完成")
 
     yield
@@ -114,6 +140,23 @@ async def lifespan(app: FastAPI):
         await stop_task_queue()
     except Exception as e:
         logger.warning(f"TradingAgents 任务队列停止失败: {e}")
+
+    # 停止 MCP 健康检查器和会话管理器
+    from modules.trading_agents.services.mcp_health_checker import get_mcp_health_checker
+    from modules.trading_agents.services.mcp_session_manager import get_mcp_session_manager
+    try:
+        health_checker = get_mcp_health_checker()
+        await health_checker.stop()
+        logger.info("MCP 健康检查器已停止")
+    except Exception as e:
+        logger.warning(f"MCP 健康检查器停止失败: {e}")
+
+    try:
+        session_manager = get_mcp_session_manager()
+        await session_manager.stop()
+        logger.info("MCP 会话管理器已停止")
+    except Exception as e:
+        logger.warning(f"MCP 会话管理器停止失败: {e}")
 
     await close_mongodb()
     await close_redis()

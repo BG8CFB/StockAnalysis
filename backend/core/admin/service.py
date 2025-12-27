@@ -11,7 +11,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from core.config import settings
 from core.db.mongodb import mongodb
-from core.user.models import Role, UserModel, UserStatus
+from core.user.models import Role, UserModel, UserStatus, UserListResponse
 
 logger = logging.getLogger(__name__)
 
@@ -78,9 +78,23 @@ class AdminService:
 
         users = []
         async for user_doc in cursor:
-            # 使用 UserModel 正确序列化所有 ObjectId 字段
+            # 使用 UserModel 验证，然后用 UserListResponse 序列化（带有正确的字段别名）
             user_model = UserModel.model_validate(user_doc)
-            users.append(user_model.model_dump())
+            # 转换为 UserListResponse 以应用 serialization_alias
+            user_response = UserListResponse(
+                id=str(user_model.id),
+                email=user_model.email,
+                username=user_model.username,
+                role=user_model.role.value,
+                status=user_model.status,
+                is_active=user_model.is_active,
+                is_verified=user_model.is_verified,
+                created_at=user_model.created_at,
+                last_login_at=user_model.last_login_at,
+                reviewed_by=str(user_model.reviewed_by) if user_model.reviewed_by else None,
+                reviewed_at=user_model.reviewed_at,
+            )
+            users.append(user_response.model_dump(by_alias=True))
 
         return users, total
 
@@ -103,9 +117,23 @@ class AdminService:
 
         users = []
         async for user_doc in cursor:
-            # 使用 UserModel 正确序列化所有 ObjectId 字段
+            # 使用 UserModel 验证，然后用 UserListResponse 序列化（带有正确的字段别名）
             user_model = UserModel.model_validate(user_doc)
-            users.append(user_model.model_dump())
+            # 转换为 UserListResponse 以应用 serialization_alias
+            user_response = UserListResponse(
+                id=str(user_model.id),
+                email=user_model.email,
+                username=user_model.username,
+                role=user_model.role.value,
+                status=user_model.status,
+                is_active=user_model.is_active,
+                is_verified=user_model.is_verified,
+                created_at=user_model.created_at,
+                last_login_at=user_model.last_login_at,
+                reviewed_by=str(user_model.reviewed_by) if user_model.reviewed_by else None,
+                reviewed_at=user_model.reviewed_at,
+            )
+            users.append(user_response.model_dump(by_alias=True))
 
         return users, total
 

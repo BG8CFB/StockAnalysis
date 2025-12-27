@@ -233,15 +233,26 @@ export async function request<T = unknown>(
 ): Promise<T> {
   const response = await http.request<ApiResponse<T>>(config)
 
-  // 兼容两种响应格式：
+  // 兼容三种响应格式：
   // 1. 标准格式: { success: true, data: {...} }
-  // 2. 直接格式: { ... } (后端直接返回数据)
-  if (response.data?.success !== undefined) {
-    // 标准格式
+  // 2. 错误格式: { success: false, error: {...} }
+  // 3. 直接格式: { ... } (后端直接返回数据，如 ConnectionTestResponse)
+  const hasSuccessField = response.data?.success !== undefined
+  const hasErrorField = response.data?.error !== undefined
+
+  if (hasSuccessField && hasErrorField) {
+    // 标准格式或错误格式
     if (response.data.success) {
       return response.data.data as T
     }
-    throw new Error(response.data?.error?.message || '请求失败')
+    throw new Error(response.data.error?.message || '请求失败')
+  } else if (hasSuccessField && !hasErrorField) {
+    // 直接格式，包含 success 字段但不包含 error 字段（如 ConnectionTestResponse）
+    // 如果 success 为 false，需要根据 message 或其他字段处理错误
+    if (!response.data.success) {
+      throw new Error(response.data.message || '请求失败')
+    }
+    return response.data as T
   } else {
     // 直接格式 - 返回整个响应体作为数据
     return response.data as T

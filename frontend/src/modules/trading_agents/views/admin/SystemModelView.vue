@@ -13,47 +13,100 @@
     </div>
 
     <!-- 统计信息 -->
-    <el-row :gutter="16" class="stats-row">
+    <el-row
+      :gutter="16"
+      class="stats-row"
+    >
       <el-col :span="6">
         <el-card shadow="hover">
-          <el-statistic title="总模型数" :value="stats.total" />
+          <el-statistic
+            title="总模型数"
+            :value="stats.total"
+          />
         </el-card>
       </el-col>
       <el-col :span="6">
         <el-card shadow="hover">
-          <el-statistic title="系统模型" :value="stats.system" />
+          <el-statistic
+            title="系统模型"
+            :value="stats.system"
+          />
         </el-card>
       </el-col>
       <el-col :span="6">
         <el-card shadow="hover">
-          <el-statistic title="用户模型" :value="stats.user" />
+          <el-statistic
+            title="用户模型"
+            :value="stats.user"
+          />
         </el-card>
       </el-col>
       <el-col :span="6">
         <el-card shadow="hover">
-          <el-statistic title="已启用" :value="stats.enabled" />
+          <el-statistic
+            title="已启用"
+            :value="stats.enabled"
+          />
         </el-card>
       </el-col>
     </el-row>
 
     <!-- 筛选 -->
-    <el-card shadow="never" class="filter-card">
+    <el-card
+      shadow="never"
+      class="filter-card"
+    >
       <el-form :inline="true">
         <el-form-item label="状态">
-          <el-select v-model="filters.status" placeholder="全部" clearable @change="fetchData">
-            <el-option label="全部" value="" />
-            <el-option label="已启用" value="enabled" />
-            <el-option label="已禁用" value="disabled" />
+          <el-select
+            v-model="filters.status"
+            placeholder="全部"
+            clearable
+            style="width: 140px"
+            @change="fetchData"
+          >
+            <el-option
+              label="全部"
+              value=""
+            />
+            <el-option
+              label="已启用"
+              value="enabled"
+            />
+            <el-option
+              label="已禁用"
+              value="disabled"
+            />
           </el-select>
         </el-form-item>
         <el-form-item label="提供商">
-          <el-select v-model="filters.provider" placeholder="全部" clearable @change="fetchData">
-            <el-option label="全部" value="" />
-            <el-option v-for="p in providerOptions" :key="p.value" :label="p.name" :value="p.value" />
+          <el-select
+            v-model="filters.provider"
+            placeholder="全部"
+            clearable
+            style="width: 150px"
+            @change="fetchData"
+          >
+            <el-option
+              label="全部"
+              value=""
+            />
+            <el-option
+              v-for="p in providerOptions"
+              :key="p.value"
+              :label="p.name"
+              :value="p.value"
+            />
           </el-select>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" :icon="Refresh" @click="fetchData">刷新</el-button>
+          <el-button
+            type="primary"
+            :icon="Refresh"
+            @click="fetchData"
+          >
+            刷新
+          </el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -65,34 +118,84 @@
         :data="models"
         stripe
       >
-        <el-table-column prop="name" label="名称" width="180" />
-        <el-table-column prop="provider" label="提供商" width="120">
+        <el-table-column
+          prop="name"
+          label="名称"
+          width="180"
+        />
+        <el-table-column
+          prop="provider"
+          label="提供商"
+          width="120"
+        >
           <template #default="{ row }">
-            <el-tag :type="row.is_system ? 'info' : ''" size="small">
+            <el-tag
+              :type="row.is_system ? 'info' : ''"
+              size="small"
+            >
               {{ getProviderLabel(row.provider) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="model_id" label="模型 ID" width="150" show-overflow-tooltip />
-        <el-table-column prop="api_base_url" label="API 地址" show-overflow-tooltip />
-        <el-table-column prop="max_concurrency" label="并发数" width="80" />
-        <el-table-column prop="timeout_seconds" label="超时(秒)" width="80" />
-        <el-table-column prop="temperature" label="温度" width="80" />
-        <el-table-column prop="enabled" label="状态" width="80">
+        <el-table-column
+          prop="model_id"
+          label="模型 ID"
+          width="150"
+          show-overflow-tooltip
+        />
+        <el-table-column
+          prop="api_base_url"
+          label="API 地址"
+          show-overflow-tooltip
+        />
+        <el-table-column
+          prop="max_concurrency"
+          label="并发数"
+          width="80"
+        />
+        <el-table-column
+          prop="timeout_seconds"
+          label="超时(秒)"
+          width="80"
+        />
+        <el-table-column
+          prop="temperature"
+          label="温度"
+          width="80"
+        />
+        <el-table-column
+          prop="enabled"
+          label="状态"
+          width="80"
+        >
           <template #default="{ row }">
-            <el-tag :type="row.enabled ? 'success' : 'danger'" size="small">
+            <el-tag
+              :type="row.enabled ? 'success' : 'danger'"
+              size="small"
+            >
               {{ row.enabled ? '启用' : '禁用' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="is_system" label="类型" width="80">
+        <el-table-column
+          prop="is_system"
+          label="类型"
+          width="80"
+        >
           <template #default="{ row }">
-            <el-tag :type="row.is_system ? 'warning' : ''" size="small">
+            <el-tag
+              :type="row.is_system ? 'warning' : ''"
+              size="small"
+            >
               {{ row.is_system ? '系统' : '用户' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column
+          label="操作"
+          width="200"
+          fixed="right"
+        >
           <template #default="{ row }">
             <el-button
               link
@@ -142,51 +245,162 @@
         :rules="formRules"
         label-width="120px"
       >
-        <el-form-item label="模型名称" prop="name">
-          <el-input v-model="formData.name" placeholder="请输入模型名称" />
+        <el-form-item
+          label="模型名称"
+          prop="name"
+        >
+          <el-input
+            v-model="formData.name"
+            placeholder="请输入模型名称"
+          />
         </el-form-item>
-        <el-form-item label="提供商" prop="provider">
-          <el-select v-model="formData.provider" placeholder="选择提供商" @change="handleProviderChange">
-            <el-option v-for="p in providerOptions" :key="p.value" :label="p.name" :value="p.value" />
+        <el-form-item
+          label="提供商"
+          prop="provider"
+        >
+          <el-select
+            v-model="formData.provider"
+            placeholder="选择提供商"
+            @change="handleProviderChange"
+          >
+            <el-option
+              v-for="p in providerOptions"
+              :key="p.value"
+              :label="p.name"
+              :value="p.value"
+            />
           </el-select>
         </el-form-item>
-        <el-form-item label="API 地址" prop="api_base_url">
-          <el-input v-model="formData.api_base_url" placeholder="https://api.example.com/v1" />
+        <el-form-item
+          label="API 地址"
+          prop="api_base_url"
+        >
+          <el-input
+            v-model="formData.api_base_url"
+            placeholder="https://api.example.com/v1"
+          />
         </el-form-item>
-        <el-form-item label="模型 ID" prop="model_id">
-          <el-input v-model="formData.model_id" placeholder="例如: gpt-4" />
+        <el-form-item
+          label="模型 ID"
+          prop="model_id"
+        >
+          <el-input
+            v-model="formData.model_id"
+            placeholder="例如: gpt-4"
+          />
         </el-form-item>
-        <el-form-item label="API Key" prop="api_key">
-          <el-input v-model="formData.api_key" type="password" placeholder="请输入 API Key" show-password />
+        <el-form-item
+          label="API Key"
+          prop="api_key"
+        >
+          <el-input
+            v-model="formData.api_key"
+            type="password"
+            placeholder="请输入 API Key"
+            show-password
+          />
         </el-form-item>
-        <el-form-item label="最大并发数" prop="max_concurrency">
-          <el-input-number v-model="formData.max_concurrency" :min="1" :max="100" />
+        <el-form-item
+          label="模型最大并发数"
+          prop="max_concurrency"
+        >
+          <el-input-number
+            v-model="formData.max_concurrency"
+            :min="1"
+            :max="200"
+          />
+          <span class="form-tip">该模型在平台上的总并发能力</span>
         </el-form-item>
-        <el-form-item label="超时时间(秒)" prop="timeout_seconds">
-          <el-input-number v-model="formData.timeout_seconds" :min="10" :max="600" />
+
+        <el-form-item
+          label="单任务并发数"
+          prop="task_concurrency"
+        >
+          <el-input-number
+            v-model="formData.task_concurrency"
+            :min="1"
+            :max="10"
+          />
+          <span class="form-tip">单个任务可同时运行的智能体数</span>
         </el-form-item>
-        <el-form-item label="温度参数" prop="temperature">
-          <el-slider v-model="formData.temperature" :min="0" :max="1" :step="0.1" />
+
+        <el-form-item
+          label="批量任务并发数"
+          prop="batch_concurrency"
+        >
+          <el-input-number
+            v-model="formData.batch_concurrency"
+            :min="1"
+            :max="50"
+          />
+          <span class="form-tip">用户可同时运行的批量任务数</span>
+        </el-form-item>
+        <el-form-item
+          label="超时时间(秒)"
+          prop="timeout_seconds"
+        >
+          <el-input-number
+            v-model="formData.timeout_seconds"
+            :min="10"
+            :max="600"
+          />
+        </el-form-item>
+        <el-form-item
+          label="温度参数"
+          prop="temperature"
+        >
+          <el-input-number
+            v-model="formData.temperature"
+            :min="0"
+            :max="1"
+            :step="0.1"
+            :precision="1"
+            :controls="true"
+            placeholder="0.0 - 1.0"
+          />
         </el-form-item>
       </el-form>
 
       <template #footer>
-        <el-button @click="showCreateDialog = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="handleSubmit">创建</el-button>
+        <el-button @click="showCreateDialog = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="submitting"
+          @click="handleSubmit"
+        >
+          创建
+        </el-button>
       </template>
     </el-dialog>
 
     <!-- 测试对话框 -->
-    <el-dialog v-model="showTestDialog" title="测试连接" width="500px">
-      <div v-if="testResult" class="test-result">
-        <el-result :icon="testResult.success ? 'success' : 'error'" :title="testResult.success ? '连接成功' : '连接失败'">
+    <el-dialog
+      v-model="showTestDialog"
+      title="测试连接"
+      width="500px"
+    >
+      <div
+        v-if="testResult"
+        class="test-result"
+      >
+        <el-result
+          :icon="testResult.success ? 'success' : 'error'"
+          :title="testResult.success ? '连接成功' : '连接失败'"
+        >
           <template #sub-title>
             <p>{{ testResult.message }}</p>
-            <p v-if="testResult.latency_ms">延迟: {{ testResult.latency_ms }}ms</p>
+            <p v-if="testResult.latency_ms">
+              延迟: {{ testResult.latency_ms }}ms
+            </p>
           </template>
         </el-result>
       </div>
-      <div v-else class="test-loading">
+      <div
+        v-else
+        class="test-loading"
+      >
         <p>正在测试连接...</p>
       </div>
     </el-dialog>
@@ -198,7 +412,7 @@ import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, Connection, Delete } from '@element-plus/icons-vue'
 import { httpGet, httpPost, httpDelete } from '@/core/api/http'
-import { PROVIDER_PRESETS, type AIModelConfig } from '../types'
+import { PROVIDER_PRESETS, type AIModelConfig } from '../../types'
 
 // 状态
 const loading = ref(false)
@@ -239,7 +453,9 @@ const formData = reactive({
   api_base_url: '',
   api_key: '',
   model_id: '',
-  max_concurrency: 5,
+  max_concurrency: 40,
+  task_concurrency: 2,
+  batch_concurrency: 1,
   timeout_seconds: 60,
   temperature: 0.5,
 })
@@ -267,6 +483,24 @@ function handleProviderChange(provider: string) {
     formData.api_base_url = preset.defaultBaseUrl
     formData.model_id = preset.exampleModelId
   }
+}
+
+// 验证并发参数
+function validateConcurrency(): boolean {
+  if (formData.task_concurrency > formData.max_concurrency) {
+    ElMessage.error(`单任务并发数(${formData.task_concurrency})不能大于模型最大并发数(${formData.max_concurrency})`)
+    return false
+  }
+
+  if (formData.batch_concurrency * formData.task_concurrency > formData.max_concurrency) {
+    ElMessage.error(
+      `批量任务并发数(${formData.batch_concurrency}) × 单任务并发数(${formData.task_concurrency}) ` +
+      `不能超过模型最大并发数(${formData.max_concurrency})`
+    )
+    return false
+  }
+
+  return true
 }
 
 // 获取数据
@@ -298,6 +532,11 @@ async function fetchData() {
 // 提交表单
 async function handleSubmit() {
   await formRef.value?.validate()
+
+  if (!validateConcurrency()) {
+    return
+  }
+
   submitting.value = true
 
   try {
@@ -309,6 +548,8 @@ async function handleSubmit() {
         api_key: formData.api_key,
         model_id: formData.model_id,
         max_concurrency: formData.max_concurrency,
+        task_concurrency: formData.task_concurrency,
+        batch_concurrency: formData.batch_concurrency,
         timeout_seconds: formData.timeout_seconds,
         temperature: formData.temperature,
       }

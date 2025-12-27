@@ -55,6 +55,12 @@ export enum ModelProviderEnum {
   CUSTOM = 'custom',
 }
 
+export enum StockMarketEnum {
+  A_SHARE = 'a_share',      // A股
+  HONG_KONG = 'hong_kong',  // 港股
+  US = 'us',                // 美股
+}
+
 // =============================================================================
 // AI 模型配置
 // =============================================================================
@@ -67,6 +73,8 @@ export interface AIModelConfig {
   api_key: string
   model_id: string
   max_concurrency: number
+  task_concurrency: number
+  batch_concurrency: number
   timeout_seconds: number
   temperature: number
   enabled: boolean
@@ -84,6 +92,8 @@ export interface AIModelConfigCreate {
   api_key: string
   model_id: string
   max_concurrency?: number
+  task_concurrency?: number
+  batch_concurrency?: number
   timeout_seconds?: number
   temperature?: number
   enabled?: boolean
@@ -97,6 +107,8 @@ export interface AIModelConfigUpdate {
   api_key?: string
   model_id?: string
   max_concurrency?: number
+  task_concurrency?: number
+  batch_concurrency?: number
   timeout_seconds?: number
   temperature?: number
   enabled?: boolean
@@ -219,6 +231,8 @@ export interface Phase4Config {
 export interface UserAgentConfig {
   id: string
   user_id: string
+  is_public: boolean
+  is_customized: boolean
   phase1: Phase1Config
   phase2?: Phase2Config | null
   phase3?: Phase3Config | null
@@ -235,31 +249,64 @@ export interface UserAgentConfigUpdate {
 }
 
 // =============================================================================
-// 分析任务
+// 分析任务 - 新的阶段配置
 // =============================================================================
+
+// 第一阶段智能体定义
+export interface Stage1Agent {
+  id: string
+  name: string
+}
+
+// 第一阶段配置（用户选择具体智能体）
+export interface Stage1Config {
+  enabled: boolean
+  selected_agents: string[]  // 选中的智能体ID列表
+}
+
+// 第二/三阶段辩论配置
+export interface DebateConfig {
+  enabled: boolean
+  rounds: number  // 辩论轮数 1-10
+}
+
+// 第二阶段配置
+export interface Stage2Config {
+  enabled: boolean
+  debate: DebateConfig
+}
+
+// 第三阶段配置
+export interface Stage3Config {
+  enabled: boolean
+  debate: DebateConfig
+}
+
+// 第四阶段配置（强制启用）
+export interface Stage4Config {
+  enabled: true  // 固定为 true
+}
+
+// 创建分析任务的阶段配置
+export interface AnalysisStagesConfig {
+  stage1: Stage1Config
+  stage2: Stage2Config
+  stage3: Stage3Config
+  stage4: Stage4Config
+}
 
 export interface AnalysisTaskCreate {
   stock_code: string
+  market: StockMarketEnum
   trade_date: string
-  phase2_enabled?: boolean
-  phase3_enabled?: boolean
-  phase4_enabled?: boolean
-  max_debate_rounds?: number | null
-}
-
-export interface BatchTaskCreate {
-  stock_codes: string[]
-  trade_date: string
-  phase2_enabled?: boolean
-  phase3_enabled?: boolean
-  phase4_enabled?: boolean
-  max_debate_rounds?: number | null
+  stages: AnalysisStagesConfig
 }
 
 export interface AnalysisTask {
   id: string
   user_id: string
   stock_code: string
+  market: StockMarketEnum
   trade_date: string
   status: TaskStatusEnum
   current_phase: number
@@ -269,7 +316,7 @@ export interface AnalysisTask {
   final_recommendation: RecommendationEnum | null
   buy_price: number | null
   sell_price: number | null
-  token_usage: Record<string, number>
+  token_usage?: TokenUsage
   error_message: string | null
   error_details: Record<string, unknown> | null
   created_at: string
@@ -279,16 +326,34 @@ export interface AnalysisTask {
   batch_id: string | null
 }
 
+export interface BatchTaskCreate {
+  stock_codes: string[]
+  market: StockMarketEnum
+  trade_date: string
+  stages: AnalysisStagesConfig
+}
+
 export interface BatchTask {
   id: string
   user_id: string
   stock_codes: string[]
+  market: StockMarketEnum
   total_count: number
   completed_count: number
   failed_count: number
   status: TaskStatusEnum
   created_at: string
   completed_at: string | null
+}
+
+// =============================================================================
+// Token 使用统计
+// =============================================================================
+
+export interface TokenUsage {
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
 }
 
 // =============================================================================
@@ -317,7 +382,7 @@ export interface AnalysisReport {
   buy_price: number | null
   sell_price: number | null
   risk_level: RiskLevelEnum | null
-  token_usage: Record<string, number>
+  token_usage?: TokenUsage
   created_at: string
 }
 

@@ -368,6 +368,23 @@ class ToolCallException(TradingAgentsException):
         )
 
 
+class ToolTimeoutException(TradingAgentsException):
+    """工具调用超时异常"""
+
+    def __init__(
+        self,
+        tool_name: str,
+        timeout: float,
+        details: Optional[Dict[str, Any]] = None
+    ):
+        super().__init__(
+            message=f"工具调用超时: {tool_name} - 超时{timeout}秒",
+            code="TOOL_TIMEOUT",
+            http_status=status.HTTP_408_REQUEST_TIMEOUT,
+            details={"tool_name": tool_name, "timeout": timeout, **(details or {})}
+        )
+
+
 class ToolCallTimeoutException(TradingAgentsException):
     """工具调用超时异常"""
 

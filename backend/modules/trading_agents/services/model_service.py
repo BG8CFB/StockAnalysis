@@ -105,7 +105,7 @@ class AIModelService:
         获取单个模型配置
 
         Args:
-            model_id: 模型 ID
+            model_id: 模型 ID（可以是 MongoDB _id 或 model_id 字段）
             user_id: 用户 ID
             is_admin: 是否为管理员
 
@@ -114,12 +114,16 @@ class AIModelService:
         """
         collection = await self._get_collection()
 
-        try:
-            object_id = ObjectId(model_id)
-        except Exception:
-            return None
+        # 先尝试按 model_id 字段查找（模型的标识符，如 "glm-4.7"）
+        doc = await collection.find_one({"model_id": model_id, "enabled": True})
 
-        doc = await collection.find_one({"_id": object_id})
+        # 如果没找到，尝试按 MongoDB _id 查找
+        if not doc:
+            try:
+                object_id = ObjectId(model_id)
+                doc = await collection.find_one({"_id": object_id})
+            except Exception:
+                return None
 
         if not doc:
             return None

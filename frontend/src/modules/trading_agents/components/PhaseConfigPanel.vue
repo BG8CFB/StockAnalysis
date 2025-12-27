@@ -15,54 +15,6 @@
     <el-divider />
 
     <template v-if="localConfig.enabled">
-      <!-- 基础配置 -->
-      <el-form
-        :model="localConfig"
-        label-width="140px"
-      >
-        <el-form-item label="使用模型">
-          <el-select
-            v-model="localConfig.model_id"
-            placeholder="选择 AI 模型"
-          >
-            <el-option
-              v-for="model in modelOptions"
-              :key="model.id"
-              :label="`${model.name} (${model.provider})`"
-              :value="model.model_id"
-            />
-          </el-select>
-        </el-form-item>
-
-        <el-form-item
-          v-if="phase === 1"
-          label="最大并发数"
-        >
-          <el-input-number
-            v-model="localConfig.max_concurrency"
-            :min="1"
-            :max="10"
-          />
-          <span class="form-tip">智能体最大并行执行数量</span>
-        </el-form-item>
-
-        <el-form-item
-          v-if="phase >= 2"
-          label="最大轮次"
-        >
-          <el-input-number
-            v-model="localConfig.max_rounds"
-            :min="0"
-            :max="10"
-          />
-          <span class="form-tip">
-            <template v-if="phase === 2">辩论/讨论轮次</template>
-            <template v-else-if="phase === 3">风险评估轮次</template>
-            <template v-else>总结轮次</template>
-          </span>
-        </el-form-item>
-      </el-form>
-
       <!-- 智能体列表 -->
       <div class="agents-section">
         <div class="section-header">
@@ -209,6 +161,7 @@
             v-model="agentForm.enabled_mcp_servers"
             multiple
             placeholder="选择 MCP 服务器"
+            style="width: 100%"
           >
             <el-option
               v-for="server in serverOptions"
@@ -280,18 +233,12 @@ watch(() => props.config, (newConfig) => {
 
 // 默认配置
 function getDefaultConfig(): Phase1Config | Phase2Config | Phase3Config | Phase4Config {
-  const base = {
-    enabled: false,
+  return {
+    enabled: true,
     model_id: '',
     max_rounds: 1,
     agents: [],
   }
-
-  if (props.phase === 1) {
-    return { ...base, max_concurrency: 3 }
-  }
-
-  return base
 }
 
 // 智能体对话框
@@ -387,11 +334,6 @@ function handleAgentDialogClose() {
 
 // 保存配置
 async function handleSave() {
-  if (!localConfig.model_id) {
-    ElMessage.warning('请选择使用模型')
-    return
-  }
-
   if (localConfig.agents.length === 0) {
     ElMessage.warning('请至少添加一个智能体')
     return

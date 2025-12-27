@@ -50,57 +50,10 @@
         </div>
 
         <div class="header-right">
-          <!-- 角色标签 -->
-          <el-tag
-            v-if="userStore.userInfo"
-            :type="roleType"
-            size="small"
-            class="role-tag"
-          >
-            {{ roleLabel }}
-          </el-tag>
-
-          <el-dropdown @command="handleCommand">
-            <span class="user-info">
-              <el-avatar
-                :size="32"
-                :icon="UserFilled"
-              />
-              <span class="username">{{ displayName }}</span>
-              <el-icon class="arrow"><ArrowDown /></el-icon>
-            </span>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item disabled>
-                  <div class="user-detail">
-                    <div class="user-email">
-                      {{ userStore.userInfo?.email }}
-                    </div>
-                    <el-tag
-                      :type="roleType"
-                      size="small"
-                    >
-                      {{ roleLabel }}
-                    </el-tag>
-                  </div>
-                </el-dropdown-item>
-                <el-dropdown-item
-                  divided
-                  command="settings"
-                >
-                  <el-icon><Setting /></el-icon>
-                  设置
-                </el-dropdown-item>
-                <el-dropdown-item
-                  command="logout"
-                  style="color: #f56c6c"
-                >
-                  <el-icon><SwitchButton /></el-icon>
-                  退出登录
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+          <!-- 
+            User profile moved to Sidebar as per new layout requirements.
+            Keeping this container for potential future use (e.g. notifications).
+          -->
         </div>
       </el-header>
 

@@ -110,12 +110,16 @@ StockAnalysis/
 │   │   ├── settings/            # 设置核心（系统配置、用户偏好）
 │   │   ├── db/                  # 数据库连接
 │   │   ├── config.py            # Pydantic Settings
+│   │   ├── logging_config.py    # 日志配置
 │   │   └── exceptions.py        # Custom exceptions
 │   ├── modules/                 # 业务功能模块（可独立扩展）
-│   │   ├── stock_analysis/      # 股票分析模块
-│   │   ├── news/                # 新闻模块
-│   │   ├── trading/             # 交易模块
-│   │   └── dashboard/           # 仪表板模块
+│   │   ├── trading_agents/      # TradingAgents 智能体分析模块
+│   │   ├── analysis/            # 分析模块
+│   │   ├── task_center/         # 任务中心模块
+│   │   ├── screener/            # 智能选股模块
+│   │   ├── ask_stock/           # AI 问股模块
+│   │   ├── dashboard/           # 仪表板模块
+│   │   └── ...
 │   └── main.py                  # App factory
 ├── frontend/
 │   ├── src/
@@ -128,9 +132,18 @@ StockAnalysis/
 │   │   │   ├── router/          # Vue Router config
 │   │   │   └── layout/          # MainLayout, Sidebar
 │   │   └── modules/             # 业务功能模块
-│   │       ├── stock_analysis/  # 股票分析
-│   │       ├── news/            # 新闻
-│   │       └── dashboard/       # 仪表板
+│   │       ├── trading_agents/  # TradingAgents 模块
+│   │       │   ├── views/       # 页面组件
+│   │       │   │   ├── analysis/    # 分析页面
+│   │       │   │   ├── task/        # 任务中心
+│   │       │   │   └── admin/       # 管理员页面
+│   │       │   ├── components/  # 共享组件
+│   │       │   ├── api.ts       # API 调用
+│   │       │   ├── store.ts     # Pinia store
+│   │       │   └── types.ts     # TypeScript 类型
+│   │       ├── dashboard/       # 仪表板
+│   │       ├── screener/        # 智能选股
+│   │       └── ask_stock/       # AI 问股
 │   └── vite.config.ts           # Path aliases: @/, @core, @modules
 ├── FinanceMCP/                  # Finance MCP Server (Tushare)
 └── docs/                        # Documentation
@@ -145,14 +158,20 @@ StockAnalysis/
 │   ├── 股票行情
 │   └── 基金行情
 ├── 分析工具 (analysis)
-│   ├── AI 分析
-│   └── 智能选股
+│   ├── 单股分析                 # TradingAgents 单股分析
+│   ├── 批量分析                 # TradingAgents 批量分析
+│   ├── AI 问股                  # AI 问股模块
+│   └── 智能选股                 # 智能选股模块
+├── 任务中心 (task-center)       # TradingAgents 任务中心
 ├── 新闻资讯 (news)              # modules/news
 ├── 交易终端 (trading)           # modules/trading
 └── 设置 (settings)              # core/settings
-    ├── 个人资料                 # 普通用户可访问
     ├── 用户管理                 # adminOnly: true
-    └── 系统设置                 # adminOnly: true
+    ├── 系统设置                 # adminOnly: true
+    ├── AI 模型管理              # TradingAgents 模型管理
+    ├── MCP 服务器管理           # TradingAgents MCP 管理
+    ├── 智能体配置               # TradingAgents 智能体配置
+    └── 分析设置                 # TradingAgents 分析设置
 ```
 
 ### Key Architectural Patterns
@@ -192,20 +211,32 @@ if has_permission(Role.ADMIN, Permission.USER_DELETE):
 **4. Backend Module Registration**
 ```python
 # In main.py - router registration order matters!
-app.include_router(system_router)   # First (system init check)
-app.include_router(user_router)     # Core user routes
-app.include_router(admin_router)    # Core admin routes
-app.include_router(settings_router) # Core settings routes
-app.include_router(stock_router)    # Business modules
-app.include_router(news_router)     # Business modules
+app.include_router(settings_router)   # System settings (first)
+app.include_router(core_admin_router) # Core admin
+app.include_router(system_router)     # System init check
+app.include_router(user_router)       # Core user routes
+app.include_router(trading_agents_router)     # TradingAgents
+app.include_router(trading_agents_admin_router)  # TradingAgents Admin
+# ... other business modules
 ```
 
-**5. Frontend Module Loading**
+**5. Background Tasks System**
+The project uses APScheduler for scheduled tasks:
+- Task expiry handler: Auto-fails tasks older than 24 hours
+- Report archival service: Archives reports older than 30 days
+- Scheduler configured in [`backend/core/admin/tasks.py`](backend/core/admin/tasks.py)
+
+**6. Logging Configuration**
+- Colored console formatter: [`backend/core/colored_formatter.py`](backend/core/colored_formatter.py)
+- Logging setup: [`backend/core/logging_config.py`](backend/core/logging_config.py)
+- All modules use `logging.getLogger(__name__)`
+
+**7. Frontend Module Loading**
 - Add routes to [`frontend/src/core/router/module_loader.ts`](frontend/src/core/router/module_loader.ts)
 - Use lazy loading: `component: () => import('@modules/...')`
 - Meta flags: `requiresAuth`, `adminOnly`, `title`
 
-**6. Configuration Management**
+**8. Configuration Management**
 - Backend: Pydantic Settings in [`backend/core/config.py`](backend/core/config.py)
 - All config accessed via `settings` singleton
 - Environment-specific: `settings.is_development`, `settings.is_production`
@@ -216,16 +247,25 @@ app.include_router(news_router)     # Business modules
 |---------|------|
 | App entrypoint | [`backend/main.py`](backend/main.py) |
 | Config | [`backend/core/config.py`](backend/core/config.py) |
-| RBAC | [`backend/core/rbac/rbac.py`](backend/core/rbac/rbac.py) |
+| RBAC | [`backend/core/auth/rbac.py`](backend/core/auth/rbac.py) |
 | JWT/Security | [`backend/core/auth/security.py`](backend/core/auth/security.py) |
 | User model | [`backend/core/user/models.py`](backend/core/user/models.py) |
 | User service | [`backend/core/user/service.py`](backend/core/user/service.py) |
 | Admin API | [`backend/core/admin/api.py`](backend/core/admin/api.py) |
 | MongoDB | [`backend/core/db/mongodb.py`](backend/core/db/mongodb.py) |
 | Redis | [`backend/core/db/redis.py`](backend/core/db/redis.py) |
+| Logging setup | [`backend/core/logging_config.py`](backend/core/logging_config.py) |
+| Background tasks | [`backend/core/admin/tasks.py`](backend/core/admin/tasks.py) |
 | Frontend router | [`frontend/src/core/router/index.ts`](frontend/src/core/router/index.ts) |
+| Frontend module loader | [`frontend/src/core/router/module_loader.ts`](frontend/src/core/router/module_loader.ts) |
 | HTTP client | [`frontend/src/core/api/http.ts`](frontend/src/core/api/http.ts) |
+| TradingAgents API | [`backend/modules/trading_agents/api.py`](backend/modules/trading_agents/api.py) |
+| TradingAgents Engine | [`backend/modules/trading_agents/core/agent_engine.py`](backend/modules/trading_agents/core/agent_engine.py) |
+| TradingAgents Task Manager | [`backend/modules/trading_agents/core/task_manager.py`](backend/modules/trading_agents/core/task_manager.py) |
+| TradingAgents Concurrency | [`backend/modules/trading_agents/core/concurrency_controller.py`](backend/modules/trading_agents/core/concurrency_controller.py) |
+| TradingAgents WebSocket | [`backend/modules/trading_agents/websocket/manager.py`](backend/modules/trading_agents/websocket/manager.py) |
 | System design | [`docs/SYSTEM_DESIGN.md`](docs/SYSTEM_DESIGN.md) |
+| Fix report | [`docs/FixReport.md`](docs/FixReport.md) |
 
 ## User Management Rules
 
@@ -357,6 +397,210 @@ The project includes FinanceMCP - a professional finance data MCP server based o
 - `money_flow` - Capital flow analysis
 - And more...
 
+## TradingAgents Module (AI-Powered Stock Analysis)
+
+The **TradingAgents** module is the core business feature - a multi-phase AI agent system for stock analysis using LangGraph.
+
+### Architecture Overview
+
+```
+modules/trading_agents/
+├── agents/                    # AI Agents (4 phases)
+│   ├── base.py               # BaseAgent class
+│   ├── phase1/               # Phase 1: Individual Analysts
+│   │   ├── analysts.py       # Fundamental, Technical, Market analysts
+│   ├── phase2/               # Phase 2: Research & Debate
+│   │   ├── research_manager.py
+│   │   ├── debaters.py       # Bull/Bear debaters
+│   │   └── debate_manager.py
+│   ├── phase3/               # Phase 3: Risk Assessment
+│   │   ├── risk_analysts.py  # Market, Liquidity, Concentration risk
+│   │   └── risk_manager.py
+│   ├── phase4/               # Phase 4: Summary & Recommendation
+│   │   └── summary.py        # Final report generator
+├── core/
+│   ├── agent_engine.py       # LangGraph workflow engine
+│   ├── task_manager.py       # Task lifecycle management
+│   ├── concurrency_controller.py  # Public model resource pool
+│   ├── task_queue.py         # Background task queue
+│   ├── state.py              # Workflow state management
+│   ├── exceptions.py         # Custom exceptions
+│   ├── alerts.py             # Alert system
+│   ├── database.py           # MongoDB collections
+│   └── task_expiry.py        # Task expiration handler
+├── services/
+│   ├── model_service.py      # AI model configuration
+│   ├── mcp_service.py        # MCP server management
+│   ├── agent_config_service.py  # Agent configuration
+│   ├── report_service.py     # Report storage & query
+│   ├── mcp_health_checker.py # MCP health monitoring
+│   └── mcp_session_manager.py # MCP session management
+├── tools/
+│   ├── registry.py           # Tool registry with timeout
+│   ├── loop_detector.py      # Tool loop detection
+│   ├── mcp_adapter.py        # MCP tool adapter
+│   └── local_tools.py        # Local tool implementations
+├── llm/
+│   ├── provider.py           # LLM provider interface
+│   └── openai_compat.py      # OpenAI-compatible adapter
+├── websocket/
+│   ├── manager.py            # WebSocket connection manager
+│   └── events.py             # Event definitions
+├── api.py                    # Main API routes
+├── admin_api.py              # Admin-only routes
+└── schemas.py                # Pydantic models
+```
+
+### Four-Phase Workflow
+
+| Phase | Name | Description | Output |
+|-------|------|-------------|--------|
+| 1 | Individual Analysis | 3 analysts (Fundamental, Technical, Market) analyze in parallel | 3 independent reports |
+| 2 | Research & Debate | Research manager + Bull/Bear debaters debate (configurable rounds) | Debate summary |
+| 3 | Risk Assessment | Risk analysts assess market/liquidity/concentration risk | Risk report |
+| 4 | Summary | Synthesizes all reports into final recommendation | Final report with BUY/SELL/HOLD |
+
+### Key Features
+
+**1. Concurrency Control**
+- Public model resource pool (default: 5 concurrent slots)
+- Per-user limit: 1 slot per model
+- Batch task limit: 5 concurrent tasks
+- FIFO and priority queues supported
+- TTL locks with Watchdog auto-renewal
+- Force Release mechanism for deadlocks
+
+**2. Tool Loop Detection**
+- Detects consecutive identical tool calls (threshold: 3)
+- Automatically disables problematic tools
+- Prevents infinite loops in agent workflows
+
+**3. Task Recovery**
+- Automatic recovery on system restart
+- Validates configuration snapshot integrity
+- Validates agent existence (fails task if agent deleted)
+- Preserves completed reports
+- Tasks reset to PENDING for re-execution
+
+**4. Token Tracking**
+- Records prompt/completion tokens per LLM call
+- Aggregates to task level
+- Stores in MongoDB
+- Frontend displays with estimated cost (¥)
+
+**5. Real-time Communication**
+- WebSocket for task progress updates
+- SSE for streaming final report
+- Heartbeat mechanism (30s interval)
+- Max 5 WebSocket connections per user
+
+**6. Alert System**
+8 alert types: `tool_loop`, `quota_exhausted`, `mcp_unavailable`, `task_timeout`, `batch_failure`, `token_anomaly`, `model_error`, `task_failed`
+4 severity levels: INFO, WARNING, ERROR, CRITICAL
+Admin alert panel with timeline and list views
+
+**7. MCP Server Management**
+Supports 3 transport modes: stdio (process pool), SSE (server-sent events), HTTP (REST API)
+Auto health checking on startup
+Session management with connection pooling
+Tool discovery and invocation
+
+**8. Tool Timeout Protection**
+30-second timeout for tool calls
+Automatic continuation after timeout
+`ToolTimeoutException` for error handling
+
+### API Endpoints (TradingAgents)
+
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| POST | `/api/trading-agents/tasks` | Create single analysis task | Authenticated |
+| POST | `/api/trading-agents/tasks/batch` | Create batch analysis | Authenticated |
+| GET | `/api/trading-agents/tasks` | List user tasks | Authenticated |
+| GET | `/api/trading-agents/tasks/{id}` | Get task details | Authenticated |
+| DELETE | `/api/trading-agents/tasks/{id}` | Delete task | Authenticated |
+| POST | `/api/trading-agents/tasks/{id}/cancel` | Cancel task | Authenticated |
+| POST | `/api/trading-agents/tasks/{id}/retry` | Retry failed task | Authenticated |
+| GET | `/api/trading-agents/tasks/{id}/stream` | SSE report stream | Authenticated |
+| WS | `/api/trading-agents/ws/{task_id}` | WebSocket connection | Authenticated (token) |
+| GET | `/api/trading-agents/models` | List AI models | Authenticated |
+| POST | `/api/trading-agents/models` | Create AI model config | Authenticated |
+| GET | `/api/trading-agents/mcp-servers` | List MCP servers | Authenticated |
+| POST | `/api/trading-agents/mcp-servers` | Create MCP server config | Authenticated |
+| GET | `/api/trading-agents/reports` | List reports | Authenticated |
+| GET | `/api/trading-agents/agent-config` | Get agent config | Authenticated |
+
+### Frontend Views (TradingAgents)
+
+| Path | Component | Description | Access |
+|------|-----------|-------------|--------|
+| `/trading-agents/analysis/single` | SingleAnalysisView | Single stock analysis | Authenticated |
+| `/trading-agents/analysis/batch` | BatchAnalysisView | Batch stock analysis | Authenticated |
+| `/trading-agents/analysis/:taskId` | AnalysisDetailView | Task detail with live updates | Authenticated |
+| `/trading-agents/tasks` | TaskListView | Task center with filters | Authenticated |
+| `/trading-agents/reports` | ReportListView | Report library | Authenticated |
+| `/settings/trading-agents/models` | ModelManagementView | AI model management | Authenticated |
+| `/settings/trading-agents/mcp-servers` | MCPServerManagementView | MCP server management | Authenticated |
+| `/settings/trading-agents/agent-config` | AgentConfigView | Agent configuration | Authenticated |
+| `/admin/all-tasks` | AllTasksView | All users' tasks | Admin only |
+| `/admin/system-models` | SystemModelView | System AI models | Admin only |
+
+### Environment Variables (TradingAgents)
+
+```bash
+# TradingAgents基础配置
+TRADING_AGENTS_ENABLED=true
+TRADING_AGENTS_DEFAULT_MODEL_PROVIDER=zhipu
+TRADING_AGENTS_MAX_TASK_QUEUE_SIZE=100
+TRADING_AGENTS_TASK_TIMEOUT_SECONDS=3600
+
+# 公共模型配置
+TRADING_AGENTS_PUBLIC_MODEL_CONCURRENCY=5
+TRADING_AGENTS_PUBLIC_MODEL_QUEUE_TIMEOUT=300
+TRADING_AGENTS_BATCH_TASK_LIMIT=5
+
+# 工具循环检测
+TRADING_AGENTS_TOOL_LOOP_THRESHOLD=3
+TRADING_AGENTS_TOOL_CALL_TIMEOUT=30
+
+# MCP配置
+TRADING_AGENTS_MCP_CONNECTION_TIMEOUT=10
+TRADING_AGENTS_MCP_AUTO_CHECK_ON_STARTUP=true
+TRADING_AGENTS_MCP_STDIO_POOL_SIZE=3
+
+# 任务过期配置
+TRADING_AGENTS_TASK_EXPIRY_HOURS=24
+
+# 报告归档配置
+TRADING_AGENTS_REPORT_ARCHIVE_DAYS=30
+```
+
+### Important Notes
+
+**SSE String Escaping** (CRITICAL):
+When using SSE streaming in Python f-strings, escape `\n\n` as `\\n\\n`:
+```python
+# ✅ Correct
+yield f"data: {json.dumps(...)}\\n\\n"
+
+# ❌ Wrong - literal "\n\n" will be output
+yield f"data: {json.dumps(...)}\n\n"
+```
+
+**Task Status Support**:
+When handling SSE streams, support all task statuses:
+```python
+["failed", "cancelled", "stopped", "expired", "completed"]
+```
+
+**MongoDB Collections**:
+- `analysis_tasks` - Task metadata and status
+- `analysis_reports` - Final analysis reports
+- `ai_models` - AI model configurations
+- `mcp_servers` - MCP server configurations
+- `agent_configs` - Agent configurations
+- `alerts` - System alerts
+
 ## Environment Variables
 
 **Backend (.env):**
@@ -400,15 +644,30 @@ VITE_API_BASE_URL=/api
 
 - ✅ Phase 1: Auth, RBAC, System Init, User Management
 - ✅ Phase 1.5: User Approval Workflow, Admin Dashboard
-- 🔄 Phase 2: Stock Data Integration (FinanceMCP)
-- ⏳ Phase 3: AI Analysis, Smart Stock Picker
-- ⏳ Phase 4: WebSocket, Performance Optimization
+- ✅ Phase 2: Stock Data Integration (FinanceMCP)
+- ✅ Phase 3: TradingAgents - AI Analysis System (95% complete)
+- ⏳ Phase 4: WebSocket enhancements, Performance Optimization
 
 ---
 
 ## Known Issues & Solutions
 
-### Issue 1: Frontend Component Import Errors
+### Issue 1: SSE String Escaping in Python
+
+**Problem**: SSE streaming outputs literal `\n\n` instead of newlines.
+
+**Root Cause**: In Python f-strings, `\n\n` is interpreted as a literal string, not escape sequences.
+
+**Solution**: Double-escape the newline characters in SSE:
+```python
+# ✅ Correct
+yield f"data: {json.dumps(...)}\\n\\n"
+
+# ❌ Wrong - outputs literal "\n\n"
+yield f"data: {json.dumps(...)}\n\n"
+```
+
+### Issue 2: Frontend Component Import Errors
 
 **Problem**: `Vue warn: Failed to resolve component: Sidebar`
 
@@ -426,7 +685,7 @@ import Sidebar from './components/Sidebar.vue'  // Required!
 </template>
 ```
 
-### Issue 2: API Parameter Format Mismatch
+### Issue 3: API Parameter Format Mismatch
 
 **Problem**: `422 Unprocessable Content` when calling `PUT /api/admin/users/{id}/role`
 
@@ -445,7 +704,7 @@ changeUserRole: (id: string, role: string) =>
 
 **Rule**: When backend uses `Query(...)`, frontend must use URL parameters. When backend uses `Body(...)`, frontend must send request body.
 
-### Issue 3: Missing API Endpoints
+### Issue 4: Missing API Endpoints
 
 **Problem**: `404 Not Found` for `/api/users/me/preferences`
 
@@ -505,3 +764,62 @@ async def update_user_preferences(
 2. **Error handling**
    - Use proper HTTP status codes (400, 401, 403, 404, 422, 500)
    - Return meaningful error messages in `detail` field
+
+---
+
+## TradingAgents Development Notes
+
+### Task Lifecycle
+
+```
+CREATED → PENDING → QUEUED → RUNNING → COMPLETED
+                    ↓         ↓
+                  CANCELLED  FAILED
+                              ↓
+                            EXPIRED (24h)
+```
+
+### Modifying Agent Behavior
+
+When modifying agents in `modules/trading_agents/agents/`:
+1. Keep the `BaseAgent` interface unchanged
+2. Use `config_snapshot` for runtime configuration
+3. Return structured reports (dict with `content`, `confidence`, `reasoning`)
+4. Handle `ToolTimeoutException` gracefully
+
+### Adding New Tools
+
+1. Add tool handler to `tools/local_tools.py`
+2. Register in `tools/registry.py`
+3. Add to MCP adapter if needed
+4. Update agent prompts to mention new tools
+
+### Testing TradingAgents
+
+```bash
+# Run unit tests
+cd backend
+poetry run pytest modules/trading_agents/tests/
+
+# Run specific test
+poetry run pytest modules/trading_agents/tests/test_task_manager.py
+
+# Run property tests
+poetry run pytest modules/trading_agents/tests/property_tests.py -v
+```
+
+### Common Pitfalls
+
+1. **Forgetting user_id filtering**: All database queries MUST filter by `user_id`
+2. **Missing configuration snapshot**: Tasks must save `config_snapshot` for recovery
+3. **Not handling expired tasks**: SSE streams must handle `expired` status
+4. **Hardcoding model IDs**: Use `get_model_service()` to get user's configured model
+5. **Blocking async operations**: Always use `await` for I/O operations
+
+### Performance Considerations
+
+- **Concurrent tasks**: Public models limited to 5 concurrent slots
+- **Tool timeout**: 30-second timeout prevents hanging
+- **WebSocket limits**: Max 5 connections per user
+- **Task expiry**: Auto-fail tasks after 24 hours
+- **Report archival**: Auto-archive reports older than 30 days

@@ -115,184 +115,6 @@
           </el-form>
         </el-card>
       </el-col>
-
-      <!-- TradingAgents 功能入口 -->
-      <el-col :span="24">
-        <el-card
-          shadow="never"
-          style="margin-top: 20px"
-        >
-          <template #header>
-            <h2>AI 分析配置</h2>
-          </template>
-          <el-row :gutter="16">
-            <el-col :span="6">
-              <el-card
-                shadow="hover"
-                class="feature-card"
-                @click="router.push('/settings/trading-agents/models')"
-              >
-                <div class="feature-icon">
-                  <el-icon><Connection /></el-icon>
-                </div>
-                <div class="feature-title">AI 模型管理</div>
-                <div class="feature-desc">配置和管理 AI 模型</div>
-              </el-card>
-            </el-col>
-            <el-col :span="6">
-              <el-card
-                shadow="hover"
-                class="feature-card"
-                @click="router.push('/settings/trading-agents/mcp-servers')"
-              >
-                <div class="feature-icon">
-                  <el-icon><Server /></el-icon>
-                </div>
-                <div class="feature-title">MCP 服务器</div>
-                <div class="feature-desc">管理 MCP 服务器连接</div>
-              </el-card>
-            </el-col>
-            <el-col :span="6">
-              <el-card
-                shadow="hover"
-                class="feature-card"
-                @click="router.push('/settings/trading-agents/agent-config')"
-              >
-                <div class="feature-icon">
-                  <el-icon><Setting /></el-icon>
-                </div>
-                <div class="feature-title">智能体配置</div>
-                <div class="feature-desc">配置分析智能体参数</div>
-              </el-card>
-            </el-col>
-            <el-col :span="6">
-              <el-card
-                shadow="hover"
-                class="feature-card"
-                @click="router.push('/settings/trading-agents/analysis')"
-              >
-                <div class="feature-icon">
-                  <el-icon><DataAnalysis /></el-icon>
-                </div>
-                <div class="feature-title">分析设置</div>
-                <div class="feature-desc">配置分析任务参数</div>
-              </el-card>
-            </el-col>
-          </el-row>
-        </el-card>
-      </el-col>
-
-      <!-- 管理员功能入口 -->
-      <el-col
-        v-if="isAdmin"
-        :span="24"
-      >
-        <el-card
-          shadow="never"
-          style="margin-top: 20px"
-        >
-          <template #header>
-            <h2>管理员功能</h2>
-          </template>
-          <el-row :gutter="16">
-            <el-col :span="8">
-              <el-card
-                shadow="hover"
-                class="feature-card"
-                @click="router.push('/admin/system-models')"
-              >
-                <div class="feature-icon admin">
-                  <el-icon><Lock /></el-icon>
-                </div>
-                <div class="feature-title">系统模型管理</div>
-                <div class="feature-desc">管理系统级 AI 模型</div>
-              </el-card>
-            </el-col>
-            <el-col :span="8">
-              <el-card
-                shadow="hover"
-                class="feature-card"
-                @click="router.push('/admin/all-tasks')"
-              >
-                <div class="feature-icon admin">
-                  <el-icon><List /></el-icon>
-                </div>
-                <div class="feature-title">所有任务管理</div>
-                <div class="feature-desc">查看和管理所有用户任务</div>
-              </el-card>
-            </el-col>
-          </el-row>
-        </el-card>
-      </el-col>
-
-      <!-- 审计日志卡片 -->
-      <el-col :span="24">
-        <el-card
-          shadow="never"
-          style="margin-top: 20px"
-        >
-          <template #header>
-            <div class="card-header">
-              <h2>审计日志</h2>
-              <el-button
-                type="primary"
-                :icon="Refresh"
-                :loading="auditLoading"
-                @click="fetchAuditLogs"
-              >
-                刷新
-              </el-button>
-            </div>
-          </template>
-          <el-table
-            v-loading="auditLoading"
-            :data="auditLogs"
-            stripe
-            style="width: 100%"
-            max-height="400"
-          >
-            <el-table-column
-              prop="action"
-              label="操作"
-              width="120"
-            >
-              <template #default="{ row }">
-                <el-tag size="small">
-                  {{ getActionLabel(row.action) }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column
-              prop="user_id"
-              label="操作人 ID"
-              width="200"
-            />
-            <el-table-column
-              prop="target_user_id"
-              label="目标用户 ID"
-              width="200"
-            >
-              <template #default="{ row }">
-                {{ row.target_user_id || '-' }}
-              </template>
-            </el-table-column>
-            <el-table-column
-              prop="reason"
-              label="原因"
-              show-overflow-tooltip
-            />
-            <el-table-column
-              prop="created_at"
-              label="时间"
-              width="180"
-            >
-              <template #default="{ row }">
-                {{ formatDateTime(row.created_at) }}
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-card>
-      </el-col>
     </el-row>
   </div>
 </template>
@@ -300,32 +122,24 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Refresh, Connection, Server, Setting, DataAnalysis, Lock, List } from '@element-plus/icons-vue'
-import { useRouter } from 'vue-router'
+import { Refresh } from '@element-plus/icons-vue'
 import { useSettingsStore } from '@core/settings'
-import { useAdminStore } from '@core/admin'
 import { useUserStore } from '@core/auth/store'
 import type { SystemConfig, SystemStatus } from '@core/settings'
 
-const router = useRouter()
 const settingsStore = useSettingsStore()
-const adminStore = useAdminStore()
 const userStore = useUserStore()
 
 // 是否为超级管理员
 const isSuperAdmin = computed(() => userStore.userInfo?.role === 'SUPER_ADMIN')
-// 是否为管理员（包括超级管理员和普通管理员）
-const isAdmin = computed(() => userStore.userInfo?.role === 'ADMIN' || userStore.userInfo?.role === 'SUPER_ADMIN')
 
 // 加载状态
 const loading = ref(false)
 const saving = ref(false)
-const auditLoading = ref(false)
 
 // 系统状态
 const systemStatus = computed(() => settingsStore.systemStatus)
 const systemConfig = computed(() => settingsStore.systemConfig)
-const auditLogs = computed(() => adminStore.auditLogs)
 
 // 配置表单
 const configForm = ref<Partial<SystemConfig>>({
@@ -383,45 +197,8 @@ async function handleSaveConfig() {
   }
 }
 
-// 获取审计日志
-async function fetchAuditLogs() {
-  auditLoading.value = true
-  try {
-    await adminStore.fetchAuditLogs({ skip: 0, limit: 50 })
-  } catch (error: any) {
-    ElMessage.error('获取审计日志失败')
-  } finally {
-    auditLoading.value = false
-  }
-}
-
-// 格式化日期时间
-function formatDateTime(dateStr: string) {
-  if (!dateStr) return '-'
-  const date = new Date(dateStr)
-  return date.toLocaleString('zh-CN')
-}
-
-// 获取操作标签
-function getActionLabel(action: string) {
-  const labels: Record<string, string> = {
-    approve: '通过审核',
-    reject: '拒绝',
-    disable: '禁用',
-    enable: '启用',
-    delete: '删除',
-    role_change: '修改角色',
-    password_reset: '重置密码',
-    login: '登录',
-    logout: '登出',
-    register: '注册',
-  }
-  return labels[action] || action
-}
-
 onMounted(() => {
   fetchSystemInfo()
-  fetchAuditLogs()
 })
 </script>
 
@@ -446,39 +223,5 @@ onMounted(() => {
   margin-left: 12px;
   color: #909399;
   font-size: 12px;
-}
-
-.feature-card {
-  cursor: pointer;
-  text-align: center;
-  padding: 20px;
-  transition: all 0.3s;
-}
-
-.feature-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-.feature-icon {
-  font-size: 40px;
-  color: #409eff;
-  margin-bottom: 12px;
-}
-
-.feature-icon.admin {
-  color: #f56c6c;
-}
-
-.feature-title {
-  font-size: 16px;
-  font-weight: 600;
-  margin-bottom: 8px;
-  color: #303133;
-}
-
-.feature-desc {
-  font-size: 13px;
-  color: #909399;
 }
 </style>

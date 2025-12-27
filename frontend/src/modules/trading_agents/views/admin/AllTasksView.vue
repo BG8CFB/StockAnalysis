@@ -13,45 +13,96 @@
     </div>
 
     <!-- 统计信息 -->
-    <el-row :gutter="16" class="stats-row">
+    <el-row
+      :gutter="16"
+      class="stats-row"
+    >
       <el-col :span="6">
         <el-card shadow="hover">
-          <el-statistic title="总任务数" :value="stats.total" />
+          <el-statistic
+            title="总任务数"
+            :value="stats.total"
+          />
         </el-card>
       </el-col>
       <el-col :span="6">
         <el-card shadow="hover">
-          <el-statistic title="今日任务" :value="stats.today" />
+          <el-statistic
+            title="今日任务"
+            :value="stats.today"
+          />
         </el-card>
       </el-col>
       <el-col :span="6">
         <el-card shadow="hover">
-          <el-statistic title="运行中" :value="stats.running" />
+          <el-statistic
+            title="运行中"
+            :value="stats.running"
+          />
         </el-card>
       </el-col>
       <el-col :span="6">
         <el-card shadow="hover">
-          <el-statistic title="公共模型运行中" :value="stats.public_model_running" />
+          <el-statistic
+            title="公共模型运行中"
+            :value="stats.public_model_running"
+          />
         </el-card>
       </el-col>
     </el-row>
 
     <!-- 筛选 -->
-    <el-card shadow="never" class="filter-card">
+    <el-card
+      shadow="never"
+      class="filter-card"
+    >
       <el-form :inline="true">
         <el-form-item label="状态">
-          <el-select v-model="filters.status" placeholder="全部" clearable @change="fetchData">
-            <el-option label="全部" value="" />
-            <el-option label="待执行" value="pending" />
-            <el-option label="运行中" value="running" />
-            <el-option label="已完成" value="completed" />
-            <el-option label="失败" value="failed" />
-            <el-option label="已取消" value="cancelled" />
-            <el-option label="已过期" value="expired" />
+          <el-select
+            v-model="filters.status"
+            placeholder="全部"
+            clearable
+            style="width: 140px"
+            @change="fetchData"
+          >
+            <el-option
+              label="全部"
+              value=""
+            />
+            <el-option
+              label="待执行"
+              value="pending"
+            />
+            <el-option
+              label="运行中"
+              value="running"
+            />
+            <el-option
+              label="已完成"
+              value="completed"
+            />
+            <el-option
+              label="失败"
+              value="failed"
+            />
+            <el-option
+              label="已取消"
+              value="cancelled"
+            />
+            <el-option
+              label="已过期"
+              value="expired"
+            />
           </el-select>
         </el-form-item>
         <el-form-item label="用户ID">
-          <el-input v-model="filters.user_id" placeholder="用户ID" clearable @change="fetchData" />
+          <el-input
+            v-model="filters.user_id"
+            placeholder="用户ID"
+            clearable
+            style="width: 200px"
+            @change="fetchData"
+          />
         </el-form-item>
       </el-form>
     </el-card>
@@ -63,43 +114,91 @@
         :data="tasks"
         stripe
       >
-        <el-table-column prop="id" label="任务ID" width="240" show-overflow-tooltip />
-        <el-table-column prop="user_id" label="用户ID" width="240" />
-        <el-table-column prop="stock_code" label="股票代码" width="120" />
-        <el-table-column prop="trade_date" label="交易日期" width="120" />
-        <el-table-column prop="status" label="状态" width="100">
+        <el-table-column
+          prop="id"
+          label="任务ID"
+          width="240"
+          show-overflow-tooltip
+        />
+        <el-table-column
+          prop="user_id"
+          label="用户ID"
+          width="240"
+        />
+        <el-table-column
+          prop="stock_code"
+          label="股票代码"
+          width="120"
+        />
+        <el-table-column
+          prop="trade_date"
+          label="交易日期"
+          width="120"
+        />
+        <el-table-column
+          prop="status"
+          label="状态"
+          width="100"
+        >
           <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)" size="small">
+            <el-tag
+              :type="getStatusType(row.status)"
+              size="small"
+            >
               {{ getStatusLabel(row.status) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="final_recommendation" label="推荐" width="80">
+        <el-table-column
+          prop="final_recommendation"
+          label="推荐"
+          width="80"
+        >
           <template #default="{ row }">
             <span v-if="row.final_recommendation">{{ getRecommendationLabel(row.final_recommendation) }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="created_at" label="创建时间" width="180">
+        <el-table-column
+          prop="created_at"
+          label="创建时间"
+          width="180"
+        >
           <template #default="{ row }">
             {{ formatDateTime(row.created_at) }}
           </template>
         </el-table-column>
-        <el-table-column prop="started_at" label="开始时间" width="180">
+        <el-table-column
+          prop="started_at"
+          label="开始时间"
+          width="180"
+        >
           <template #default="{ row }">
             {{ row.started_at ? formatDateTime(row.started_at) : '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="completed_at" label="完成时间" width="180">
+        <el-table-column
+          prop="completed_at"
+          label="完成时间"
+          width="180"
+        >
           <template #default="{ row }">
             {{ row.completed_at ? formatDateTime(row.completed_at) : '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="token_usage" label="Token" width="100">
+        <el-table-column
+          prop="token_usage"
+          label="Token"
+          width="100"
+        >
           <template #default="{ row }">
             <span v-if="row.token_usage">{{ row.token_usage.total_tokens || 0 }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="100" fixed="right">
+        <el-table-column
+          label="操作"
+          width="100"
+          fixed="right"
+        >
           <template #default="{ row }">
             <el-button
               link

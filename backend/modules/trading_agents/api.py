@@ -13,9 +13,11 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from core.auth.dependencies import get_current_user, get_current_active_user
+from core.user.dependencies import get_current_admin_user
 from core.user.models import UserModel
 from core.db.mongodb import mongodb
 from modules.trading_agents.core.task_manager import get_task_manager, TaskManager
+from modules.trading_agents.core.concurrency_controller import get_concurrency_controller
 from modules.trading_agents.websocket import get_ws_manager, WebSocketManager
 from modules.trading_agents.schemas import (
     AnalysisTaskCreate,
@@ -190,6 +192,8 @@ async def create_batch_analysis_task(
 async def list_tasks(
     status: Optional[TaskStatusEnum] = None,
     stock_code: Optional[str] = None,
+    recommendation: Optional[str] = None,
+    risk_level: Optional[str] = None,
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
     current_user: UserModel = Depends(get_current_active_user),
@@ -200,6 +204,8 @@ async def list_tasks(
     Args:
         status: 状态过滤
         stock_code: 股票代码过滤
+        recommendation: 推荐结果过滤
+        risk_level: 风险等级过滤
         limit: 返回数量限制
         offset: 偏移量
         current_user: 当前用户
@@ -213,11 +219,22 @@ async def list_tasks(
         user_id=str(current_user.id),
         status=status,
         stock_code=stock_code,
+        recommendation=recommendation,
+        risk_level=risk_level,
         limit=limit,
         offset=offset,
     )
 
-    return {"tasks": tasks}
+    return {
+        "tasks": tasks,
+        "total": await task_manager.count_tasks(
+            user_id=str(current_user.id),
+            status=status,
+            stock_code=stock_code,
+            recommendation=recommendation,
+            risk_level=risk_level,
+        ),
+    }
 
 
 @router.get("/tasks/{task_id}", response_model=AnalysisTaskResponse)
@@ -367,22 +384,22 @@ async def stream_task(
                             chunk_size = 100
                             for i in range(0, len(final_report), chunk_size):
                                 chunk = final_report[i:i + chunk_size]
-                                yield f"data: {json.dumps({'type': 'report_chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
-                            yield f"data: {json.dumps({'type': 'report_complete'}, ensure_ascii=False)}\n\n"
+                                yield f"data: {json.dumps({'type': 'report_chunk', 'content': chunk}, ensure_ascii=False)}\\n\\n"
+                            yield f"data: {json.dumps({'type': 'report_complete'}, ensure_ascii=False)}\\n\\n"
                             break
                         else:
                             # 没有报告，结束流
-                            yield f"data: {json.dumps({'type': 'no_report'}, ensure_ascii=False)}\n\n"
+                            yield f"data: {json.dumps({'type': 'no_report'}, ensure_ascii=False)}\\n\\n"
                             break
 
                     # 如果任务失败或取消
-                    elif current_state.get("status") in ["failed", "cancelled", "stopped"]:
-                        yield f"data: {json.dumps({'type': 'task_ended', 'status': current_state.get('status')}, ensure_ascii=False)}\n\n"
+                    elif current_state.get("status") in ["failed", "cancelled", "stopped", "expired"]:
+                        yield f"data: {json.dumps({'type': 'task_ended', 'status': current_state.get('status')}, ensure_ascii=False)}\\n\\n"
                         break
 
                     # 如果任务仍在进行，发送心跳
                     else:
-                        yield f"data: {json.dumps({'type': 'heartbeat', 'status': current_state.get('status', 'pending')}, ensure_ascii=False)}\n\n"
+                        yield f"data: {json.dumps({'type': 'heartbeat', 'status': current_state.get('status')}, ensure_ascii=False)}\\n\\n"
                         # 根据任务状态动态调整轮询间隔
                         if current_state.get("status") == "running":
                             await asyncio.sleep(0.5)  # 进行中时轮询更快
@@ -391,7 +408,7 @@ async def stream_task(
 
                 except Exception as e:
                     logger.error(f"SSE 流式输出错误: task_id={task_id}, error={e}")
-                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\\n\\n"
                     break
 
         return StreamingResponse(
@@ -528,6 +545,57 @@ async def retry_task(
     except Exception as e:
         if "not found" in str(e):
             raise HTTPException(status_code=404, detail="任务不存在")
+        raise
+
+
+@router.get("/tasks/{task_id}/queue-position")
+async def get_task_queue_position(
+    task_id: str,
+    current_user: UserModel = Depends(get_current_active_user),
+):
+    """
+    获取任务在队列中的位置
+
+    Args:
+        task_id: 任务 ID
+        current_user: 当前用户
+
+    Returns:
+        {
+            "position": int,  # 队列位置（0 表示可以执行，>0 表示前面有任务）
+            "waiting_count": int,  # 总等待任务数
+        }
+    """
+    try:
+        # 获取任务信息
+        from bson import ObjectId
+        task = await mongodb.database.analysis_tasks.find_one({"_id": ObjectId(task_id)})
+
+        if not task:
+            raise HTTPException(status_code=404, detail="任务不存在")
+
+        # 检查权限
+        if task["user_id"] != str(current_user.id):
+            raise HTTPException(status_code=403, detail="无权访问此任务")
+
+        # 获取模型 ID
+        model_id = task.get("model_id")
+        if not model_id:
+            return {
+                "position": 0,
+                "waiting_count": 0,
+            }
+
+        # 获取队列位置
+        controller = get_concurrency_controller()
+        queue_info = await controller.get_queue_position(model_id, task_id)
+
+        return queue_info
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取任务队列位置失败: task_id={task_id}, error={e}")
         raise
 
 
@@ -876,6 +944,8 @@ async def get_agent_config(
     """
     获取用户智能体配置
 
+    返回生效配置（个人配置或公共配置）
+
     Args:
         current_user: 当前用户
 
@@ -883,7 +953,7 @@ async def get_agent_config(
         用户智能体配置
     """
     service = get_agent_config_service()
-    config = await service.get_user_config(str(current_user.id), create_if_missing=True)
+    config = await service.get_effective_config(str(current_user.id))
 
     if not config:
         raise HTTPException(status_code=404, detail="智能体配置不存在")
@@ -922,6 +992,8 @@ async def reset_agent_config(
     """
     重置为默认智能体配置
 
+    重置为公共配置（模板）
+
     Args:
         current_user: 当前用户
 
@@ -929,7 +1001,57 @@ async def reset_agent_config(
         重置后的配置
     """
     service = get_agent_config_service()
-    return await service.reset_to_default(str(current_user.id))
+    return await service.reset_to_public_config(str(current_user.id))
+
+
+@router.get("/agent-config/public", response_model=UserAgentConfigResponse)
+async def get_public_config(
+    current_admin: UserModel = Depends(get_current_admin_user),
+):
+    """
+    获取公共智能体配置（模板）
+
+    仅管理员可访问
+
+    Args:
+        current_admin: 当前管理员
+
+    Returns:
+        公共智能体配置
+    """
+    service = get_agent_config_service()
+    config = await service.get_public_config()
+
+    if not config:
+        raise HTTPException(status_code=404, detail="公共配置不存在")
+
+    return config
+
+
+@router.put("/agent-config/public", response_model=UserAgentConfigResponse)
+async def update_public_config(
+    request: UserAgentConfigUpdate,
+    current_admin: UserModel = Depends(get_current_admin_user),
+):
+    """
+    更新公共智能体配置（模板）
+
+    仅管理员可访问。更新公共配置后，未自定义的用户会使用新配置。
+
+    Args:
+        request: 更新请求
+        current_admin: 当前管理员
+
+    Returns:
+        更新后的公共配置
+    """
+    service = get_agent_config_service()
+    config = await service.update_public_config(request, str(current_admin.id))
+
+    if not config:
+        raise HTTPException(status_code=404, detail="公共配置更新失败")
+
+    return config
 
 
 @router.post("/agent-config/export")

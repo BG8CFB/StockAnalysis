@@ -34,6 +34,7 @@
             v-model="query.status"
             placeholder="全部"
             clearable
+            style="width: 120px"
             @change="handleSearch"
           >
             <el-option
@@ -59,6 +60,7 @@
             v-model="query.role"
             placeholder="全部"
             clearable
+            style="width: 140px"
             @change="handleSearch"
           >
             <el-option
@@ -80,6 +82,7 @@
             v-model="query.is_active"
             placeholder="全部"
             clearable
+            style="width: 120px"
             @change="handleSearch"
           >
             <el-option
@@ -390,6 +393,7 @@
           <el-select
             v-model="roleForm.newRole"
             placeholder="选择角色"
+            style="width: 140px"
           >
             <el-option
               label="用户"

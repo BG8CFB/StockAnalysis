@@ -135,9 +135,6 @@
             <el-button disabled>
               智能选股
             </el-button>
-            <el-button disabled>
-              交易终端
-            </el-button>
           </div>
         </el-card>
       </el-col>
