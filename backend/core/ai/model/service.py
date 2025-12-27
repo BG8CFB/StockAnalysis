@@ -12,15 +12,14 @@ from typing import List, Optional, Dict, Any
 from bson import ObjectId
 
 from core.db.mongodb import mongodb
-from modules.trading_agents.llm.openai_compat import OpenAICompatProvider
-from modules.trading_agents.llm.provider import LLMProvider
-from modules.trading_agents.schemas import (
+from core.ai.llm.openai_compat import OpenAICompatProvider
+from core.ai.llm.provider import LLMProvider
+from core.ai.model.schemas import (
     AIModelConfigCreate,
     AIModelConfigUpdate,
     AIModelConfigResponse,
     AIModelTestRequest,
     ConnectionTestResponse,
-    ModelProviderEnum,
 )
 
 logger = logging.getLogger(__name__)
@@ -74,6 +73,8 @@ class AIModelService:
             "api_key": request.api_key,  # 明文存储，日志脱敏
             "model_id": request.model_id,
             "max_concurrency": request.max_concurrency,
+            "task_concurrency": request.task_concurrency,
+            "batch_concurrency": request.batch_concurrency,
             "timeout_seconds": request.timeout_seconds,
             "temperature": request.temperature,
             "enabled": request.enabled,
@@ -279,6 +280,10 @@ class AIModelService:
             update_data["model_id"] = request.model_id
         if request.max_concurrency is not None:
             update_data["max_concurrency"] = request.max_concurrency
+        if request.task_concurrency is not None:
+            update_data["task_concurrency"] = request.task_concurrency
+        if request.batch_concurrency is not None:
+            update_data["batch_concurrency"] = request.batch_concurrency
         if request.timeout_seconds is not None:
             update_data["timeout_seconds"] = request.timeout_seconds
         if request.temperature is not None:
@@ -380,7 +385,7 @@ class AIModelService:
             )
 
             # 发送测试请求
-            from modules.trading_agents.llm.provider import Message
+            from core.ai.llm.provider import Message
             test_messages = [
                 Message(role="user", content="Hi")
             ]

@@ -1,52 +1,33 @@
 /**
  * 系统管理模块 API
+ * 处理系统初始化、状态检查等
  */
-import { httpPost, httpGet, type ApiResponse } from '@core/api/http'
-
-// ==================== 类型定义 ====================
-
-export interface SystemInitializeRequest {
-  email: string
-  username: string
-  password: string
-  confirm_password: string
-}
-
-export interface SystemInitializeResponse {
-  success: boolean
-  message: string
-  user: {
-    id: string
-    email: string
-    username: string
-    role: string
-  }
-  access_token: string
-  refresh_token: string
-  token_type: string
-}
-
-export interface SystemStatusResponse {
-  initialized: boolean
-  has_admin: boolean
-  version: string
-  status: string
-  debug?: boolean
-  captcha_enabled?: boolean
-}
-
-// ==================== API 方法 ====================
+import { httpPost, httpGet } from '@core/api/http'
+import type {
+  SystemInitializeRequest,
+  SystemInitializeResponse,
+  SystemStatus,
+} from '@core/shared/types'
 
 export const systemApi = {
   /**
    * 系统初始化
+   * 后端: POST /system/initialize
    */
   initialize: (data: SystemInitializeRequest) =>
     httpPost<SystemInitializeResponse>('/system/initialize', data),
 
   /**
    * 获取系统状态
+   * 后端: GET /system/status
    */
   getStatus: () =>
-    httpGet<SystemStatusResponse>('/system/status'),
+    httpGet<SystemStatus>('/system/status'),
+}
+
+// 导出类型
+export type {
+  SystemInitializeRequest,
+  SystemInitializeResponse,
+  SystemStatus,
 }

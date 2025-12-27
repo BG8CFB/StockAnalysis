@@ -1,20 +1,16 @@
 /**
  * 管理员核心类型定义
+ * 从共享类型导入，避免重复定义
  */
-import type { User, UserStatus, UserRole } from '@core/user'
-
-// 用户列表查询参数
-export interface UserListQuery {
-  skip?: number
-  limit?: number
-  role?: UserRole
-  status?: UserStatus
-  is_active?: boolean
-  search?: string
-}
-
-// 用户列表响应
-export interface UserListResponse {
-  users: User[]
-  total: number
-}
+export type {
+  // 用户相关
+  User,
+  UserListQuery,
+  UserListResponse,
+  // 审核相关
+  ApproveUserRequest,
+  RejectUserRequest,
+  DisableUserRequest,
+  // 审计日志
+  AuditLog,
+} from '@core/shared/types'

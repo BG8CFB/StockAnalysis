@@ -1,24 +1,20 @@
 """
-LLM 管理模块
-
-包含 LLM Provider 抽象层和 OpenAI 兼容适配器。
+LLM Provider 抽象层
 """
 
-from .provider import (
+from core.ai.llm.provider import (
     LLMProvider,
     Message,
     Tool,
     ToolCall,
-    ChatResponse,
     ToolResponse,
+    ChatResponse,
     create_message,
     create_tool,
     format_messages_for_logging,
+    retry_on_failure,
 )
-from .openai_compat import (
-    OpenAICompatProvider,
-    LLMProviderFactory,
-)
+from core.ai.llm.openai_compat import OpenAICompatProvider, LLMProviderFactory
 
 __all__ = [
     # Provider
@@ -29,10 +25,11 @@ __all__ = [
     "Message",
     "Tool",
     "ToolCall",
-    "ChatResponse",
     "ToolResponse",
+    "ChatResponse",
     # Helpers
     "create_message",
     "create_tool",
     "format_messages_for_logging",
+    "retry_on_failure",
 ]

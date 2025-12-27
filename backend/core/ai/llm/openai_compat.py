@@ -21,7 +21,7 @@ from .provider import (
     format_messages_for_logging,
     retry_on_failure,
 )
-from modules.trading_agents.core.exceptions import ModelConnectionException
+from core.ai.exceptions import ModelConnectionException
 
 logger = logging.getLogger(__name__)
 

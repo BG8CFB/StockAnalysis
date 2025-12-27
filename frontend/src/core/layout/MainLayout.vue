@@ -15,6 +15,7 @@
 
     <!-- 主内容区 -->
     <el-container class="main-container">
+      <!-- 头部 -->
       <el-header class="header">
         <div class="header-left">
           <!-- 移动端菜单按钮 -->
@@ -39,8 +40,10 @@
             </el-icon>
           </el-button>
 
-          <el-breadcrumb separator="/">
+          <!-- 面包屑 -->
+          <el-breadcrumb separator="/" class="breadcrumb">
             <el-breadcrumb-item :to="{ path: '/dashboard' }">
+              <el-icon><HomeFilled /></el-icon>
               首页
             </el-breadcrumb-item>
             <el-breadcrumb-item v-if="currentRouteName">
@@ -49,21 +52,26 @@
           </el-breadcrumb>
         </div>
 
+        <!-- 头部右侧 -->
         <div class="header-right">
-          <!-- 
-            User profile moved to Sidebar as per new layout requirements.
-            Keeping this container for potential future use (e.g. notifications).
-          -->
+          <!-- 系统状态指示器 -->
+          <div class="system-status">
+            <div class="status-dot status-online" />
+            <span class="status-text">系统正常</span>
+          </div>
         </div>
       </el-header>
 
+      <!-- 主内容 -->
       <el-main class="main-content">
-        <router-view v-slot="{ Component }">
+        <router-view v-slot="{ Component, route }">
           <transition
-            name="fade"
+            :name="getTransitionName(route)"
             mode="out-in"
+            @before-enter="handleBeforeEnter"
+            @after-enter="handleAfterEnter"
           >
-            <component :is="Component" />
+            <component :is="Component" :key="route.path" />
           </transition>
         </router-view>
       </el-main>
@@ -77,25 +85,14 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   HomeFilled,
-  TrendCharts,
-  DataAnalysis,
-  Search,
-  Monitor,
-  User,
-  UserFilled,
-  Setting,
-  SwitchButton,
-  ArrowDown,
   Menu,
   Fold,
   Expand,
 } from '@element-plus/icons-vue'
 import { eventBus, Events } from '@core/events/bus'
 import { useUserStore } from '@core/auth/store'
-// 使用相对路径导入 Sidebar 组件
 import Sidebar from './components/Sidebar.vue'
 
-// 给组件一个显式的名称，方便调试
 Sidebar.name = 'Sidebar'
 
 const router = useRouter()
@@ -112,41 +109,9 @@ const isMobile = ref(false)
 const currentRoute = computed(() => route.path)
 const currentRouteName = computed(() => route.meta.title as string)
 
-// 用户信息
-const displayName = computed(() => {
-  return userStore.userInfo?.username || userStore.email || '用户'
-})
-
-const isAdmin = computed(() => {
-  const role = userStore.userInfo?.role
-  return role === 'ADMIN' || role === 'SUPER_ADMIN'
-})
-
-const roleLabel = computed(() => {
-  const role = userStore.userInfo?.role
-  const labels: Record<string, string> = {
-    'SUPER_ADMIN': '超级管理员',
-    'ADMIN': '管理员',
-    'USER': '用户',
-  }
-  return labels[role || ''] || '访客'
-})
-
-const roleType = computed(() => {
-  const role = userStore.userInfo?.role
-  const types: Record<string, any> = {
-    'SUPER_ADMIN': 'danger',
-    'ADMIN': 'warning',
-    'USER': 'info',
-  }
-  return types[role || ''] || 'info'
-})
-
 // 检查屏幕尺寸
 const checkScreenSize = () => {
-  // 使用 matchMedia 确保与 CSS 媒体查询完全一致
   isMobile.value = window.matchMedia('(max-width: 768px)').matches
-  // 移动端默认收起侧边栏
   if (isMobile.value) {
     collapsed.value = true
   }
@@ -166,30 +131,26 @@ function closeSidebar() {
   sidebarOpen.value = false
 }
 
-async function handleCommand(command: string) {
-  switch (command) {
-    case 'settings':
-      router.push('/settings')
-      break
-    case 'logout':
-      try {
-        await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
-          confirmButtonText: '确定',
-          cancelButtonText: '取消',
-          type: 'warning',
-        })
-        await userStore.logout()
-        ElMessage.success('已退出登录')
-        router.push('/login')
-      } catch {
-        // 用户取消
-      }
-      break
+// 获取页面过渡动画名称
+function getTransitionName(route: any) {
+  // 可以根据路由层级或meta配置返回不同的过渡动画
+  if (route.meta?.transition) {
+    return route.meta.transition
   }
+  return 'fade-slide'
+}
+
+// 页面进入前钩子
+function handleBeforeEnter() {
+  // 可以添加页面加载前的逻辑
+}
+
+// 页面进入后钩子
+function handleAfterEnter() {
+  // 可以添加页面加载后的逻辑
 }
 
 onMounted(() => {
-  // 检查屏幕尺寸
   checkScreenSize()
   window.addEventListener('resize', checkScreenSize)
 })
@@ -200,122 +161,178 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* ===========================================
+   主布局容器 Main Layout Container
+   =========================================== */
+
 .main-layout {
   height: 100vh;
   overflow: hidden;
+  background: var(--color-bg-page);
 }
 
-.sidebar {
-  background-color: #1a1a2e;
-  transition: width 0.3s ease;
-  overflow: hidden;
-  z-index: 1000;
-}
-
-.sidebar.collapsed {
-  width: 64px;
-}
+/* ===========================================
+   主内容容器 Main Container
+   =========================================== */
 
 .main-container {
   flex: 1;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  position: relative;
 }
+
+/* ===========================================
+   头部 Header
+   =========================================== */
 
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background-color: #fff;
-  border-bottom: 1px solid #e4e7ed;
-  padding: 0 24px;
-  height: 60px;
+  background: var(--color-bg-container);
+  border-bottom: 1px solid var(--color-border-secondary);
+  padding: 0 var(--space-6);
+  height: var(--header-height);
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  z-index: 50;
 }
 
 .header-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+/* 菜单按钮 */
 .mobile-menu-btn {
   display: none;
 }
 
 .collapse-btn {
   display: inline-flex;
+  color: var(--color-text-secondary);
 }
 
-.header-right {
+.collapse-btn:hover {
+  color: var(--color-primary);
+  background-color: var(--color-primary-bg);
+}
+
+/* 面包屑 */
+.breadcrumb {
+  margin-left: var(--space-2);
+}
+
+.breadcrumb :deep(.el-breadcrumb__item) {
+  font-size: var(--font-size-sm);
+}
+
+.breadcrumb :deep(.el-breadcrumb__inner) {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: var(--space-1);
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-normal);
 }
 
-.role-tag {
-  display: inline-flex;
+.breadcrumb :deep(.el-breadcrumb__inner:hover) {
+  color: var(--color-primary);
 }
 
-.user-info {
+.breadcrumb :deep(.el-breadcrumb__item:last-child .el-breadcrumb__inner) {
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+/* 系统状态指示器 */
+.system-status {
   display: flex;
   align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 6px;
-  transition: background-color 0.2s;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-bg-spotlight);
+  border-radius: var(--radius-round);
 }
 
-.user-info:hover {
-  background-color: #f5f7fa;
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  animation: pulse 2s ease-in-out infinite;
 }
 
-.username {
-  font-size: 14px;
-  color: #606266;
+.status-online {
+  background: var(--color-success);
+  box-shadow: 0 0 8px rgba(82, 196, 26, 0.4);
 }
 
-.arrow {
-  font-size: 12px;
-  color: #909399;
+.status-text {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+  font-weight: var(--font-weight-medium);
 }
 
-.user-detail {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 200px;
-}
-
-.user-email {
-  font-size: 14px;
-  color: #303133;
-}
+/* ===========================================
+   主内容区 Main Content
+   =========================================== */
 
 .main-content {
   flex: 1;
   overflow-y: auto;
-  background-color: #f5f7fa;
-  padding: 20px;
+  overflow-x: hidden;
+  padding: var(--space-6);
+  position: relative;
 }
 
-/* 侧边栏遮罩（移动端） */
+/* ===========================================
+   侧边栏遮罩（移动端）Sidebar Overlay
+   =========================================== */
+
 .sidebar-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
   z-index: 999;
+  animation: fade-in var(--duration-base) var(--ease-out-cubic);
 }
 
-/* 过渡动画 */
+/* ===========================================
+   页面过渡动画 Page Transitions
+   =========================================== */
+
+/* 淡入滑动 Fade Slide */
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+  transition: all var(--duration-slow) var(--ease-out-cubic);
+}
+
+.fade-slide-enter-from {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.fade-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+/* 淡入 Fade */
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity 0.2s ease;
+  transition: opacity var(--duration-base) var(--ease-out-cubic);
 }
 
 .fade-enter-from,
@@ -323,70 +340,85 @@ onUnmounted(() => {
   opacity: 0;
 }
 
-/* 响应式适配 */
+/* 滑动 Slide */
+.slide-enter-active,
+.slide-leave-active {
+  transition: all var(--duration-slow) var(--ease-out-cubic);
+}
+
+.slide-enter-from {
+  opacity: 0;
+  transform: translateX(-20px);
+}
+
+.slide-leave-to {
+  opacity: 0;
+  transform: translateX(20px);
+}
+
+/* 缩放 Scale */
+.scale-enter-active,
+.scale-leave-active {
+  transition: all var(--duration-slow) var(--ease-out-cubic);
+}
+
+.scale-enter-from,
+.scale-leave-to {
+  opacity: 0;
+  transform: scale(0.95);
+}
+
+/* ===========================================
+   响应式适配 Responsive
+   =========================================== */
+
 @media (max-width: 1024px) {
   .main-content {
-    padding: 16px;
+    padding: var(--space-4);
   }
 }
 
 /* 移动端适配 */
 @media (max-width: 768px) {
-  .sidebar {
-    position: fixed;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 240px !important;
-    transform: translateX(-100%);
-    transition: transform 0.3s ease;
-  }
-
-  .sidebar.mobile-open {
-    transform: translateX(0);
-  }
-
-  .sidebar.collapsed {
-    width: 240px !important;
-  }
-
   .header {
-    padding: 0 16px;
+    padding: 0 var(--space-4);
   }
 
   .mobile-menu-btn {
     display: inline-flex;
+    color: var(--color-text-secondary);
+  }
+
+  .mobile-menu-btn:hover {
+    color: var(--color-primary);
+    background-color: var(--color-primary-bg);
   }
 
   .collapse-btn {
     display: none;
   }
 
-  .username {
+  .breadcrumb {
     display: none;
   }
 
-  .role-tag {
+  .system-status {
     display: none;
-  }
-
-  .user-detail {
-    min-width: 180px;
   }
 
   .main-content {
-    padding: 12px;
+    padding: var(--space-3);
   }
 }
 
 /* 小屏幕适配 */
 @media (max-width: 480px) {
   .header {
-    padding: 0 12px;
+    padding: 0 var(--space-3);
   }
 
-  .header-left :deep(.el-breadcrumb) {
-    font-size: 13px;
+  .header-left {
+    gap: var(--space-2);
   }
 }
 </style>

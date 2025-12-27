@@ -12,7 +12,7 @@ from bson import ObjectId
 from core.auth.dependencies import get_current_user
 from core.user.models import UserModel
 from core.auth.rbac import Role, Permission, require_role, require_permission
-from modules.trading_agents.services.model_service import get_model_service
+from core.ai.model import get_model_service
 from modules.trading_agents.services.mcp_service import get_mcp_service
 from modules.trading_agents.core.task_manager import get_task_manager
 from modules.trading_agents.services.report_service import get_report_service
@@ -89,7 +89,7 @@ async def create_system_model(
 
     创建对所有用户可用的系统级模型。
     """
-    from modules.trading_agents.schemas import AIModelConfigCreate, ModelProviderEnum
+    from core.ai.model.schemas import AIModelConfigCreate, ModelProviderEnum
 
     model_service = get_model_service()
 

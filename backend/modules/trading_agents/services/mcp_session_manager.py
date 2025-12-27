@@ -1,12 +1,12 @@
 """
 MCP 会话管理器
 
-提供MCP服务器的会话隔离和连接池管理。
-解决多用户并发使用公共MCP服务器的问题。
+基于官方 langchain-mcp-adapters 框架的会话管理。
+提供 MCP 服务器的会话隔离和连接池管理。
 
 核心功能：
-1. 会话隔离 - 每个用户/任务拥有独立的MCP会话
-2. 连接池管理 - 复用连接，避免频繁创建/销毁
+1. 会话隔离 - 每个用户/任务拥有独立的 MCP 会话
+2. 连接复用 - 使用官方框架的自动会话管理
 3. 并发控制 - 限制单个服务器的最大并发数
 4. 自动清理 - 清理过期和空闲的会话
 """
@@ -14,10 +14,13 @@ MCP 会话管理器
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from contextlib import asynccontextmanager
 
-from modules.trading_agents.schemas import MCPServerConfigResponse, MCPServerStatusEnum
+from langchain_core.tools import BaseTool
+
+from modules.trading_agents.schemas import MCPServerConfigResponse
+from ..tools.mcp_adapter import MCPAdapterFactory
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +29,8 @@ class MCPSession:
     """
     MCP 会话实例
 
-    每个会话对应一个MCP服务器的连接实例，
-    包含会话ID、用户ID、创建时间等元数据。
+    封装官方 MultiServerMCPClient，提供会话级别的隔离。
+    每个会话对应一个 MCP 服务器的连接实例。
     """
 
     def __init__(
@@ -45,20 +48,63 @@ class MCPSession:
         self.last_used_at = datetime.utcnow()
         self.is_active = True
 
-        # TODO: 初始化真正的MCP客户端连接
-        # self._client = await self._create_mcp_client(server)
+        # 使用官方 MCP 适配器
+        self._adapter = MCPAdapterFactory.create_adapter(
+            name=server.name,
+            transport=server.transport.value,
+            config={
+                "command": server.command,
+                "args": server.args,
+                "env": server.env,
+                "url": server.url,
+                "auth_type": server.auth_type.value,
+                "auth_token": server.auth_token,
+            }
+        )
+
+        # 连接状态
+        self._connected = False
+        # 缓存的 LangChain 工具
+        self._langchain_tools: List[BaseTool] = []
+
+    async def _ensure_connected(self):
+        """确保适配器已连接"""
+        if not self._connected:
+            success = await self._adapter.connect()
+            if success:
+                self._connected = True
+                logger.debug(f"MCP 会话已连接: session_id={self.session_id}")
+            else:
+                raise RuntimeError(f"MCP 会话连接失败: session_id={self.session_id}")
 
     async def cleanup(self):
         """清理会话资源"""
         self.is_active = False
-        # TODO: 关闭MCP客户端连接
-        # if hasattr(self, '_client') and self._client:
-        #     await self._client.close()
-        logger.debug(f"MCP会话已清理: session_id={self.session_id}")
+        if self._adapter:
+            try:
+                await self._adapter.disconnect()
+                logger.debug(f"MCP 会话已清理: session_id={self.session_id}")
+            except Exception as e:
+                logger.error(f"MCP 会话清理失败: session_id={self.session_id}, error={e}")
 
     async def refresh(self):
         """刷新会话的最后使用时间"""
         self.last_used_at = datetime.utcnow()
+
+    async def get_langchain_tools(self) -> List[BaseTool]:
+        """
+        获取 LangChain 工具列表
+
+        Returns:
+            LangChain BaseTool 列表，可直接用于 LangGraph 智能体
+        """
+        await self.refresh()
+        await self._ensure_connected()
+
+        if not self._langchain_tools:
+            self._langchain_tools = await self._adapter.get_langchain_tools()
+
+        return self._langchain_tools
 
     async def call_tool(
         self,
@@ -66,7 +112,7 @@ class MCPSession:
         arguments: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        调用MCP工具
+        调用 MCP 工具
 
         Args:
             tool_name: 工具名称
@@ -76,16 +122,37 @@ class MCPSession:
             工具执行结果
         """
         await self.refresh()
+        await self._ensure_connected()
 
-        # TODO: 通过真正的MCP客户端调用工具
-        # result = await self._client.call_tool(tool_name, arguments)
+        try:
+            result = await self._adapter.call_tool(tool_name, arguments)
+            return {
+                "success": not result.get("isError", False),
+                "data": result.get("content", []),
+                "session_id": self.session_id,
+            }
+        except Exception as e:
+            logger.error(
+                f"MCP 工具调用失败: session_id={self.session_id}, "
+                f"tool={tool_name}, error={e}",
+                exc_info=True
+            )
+            return {
+                "success": False,
+                "data": [{"type": "text", "text": str(e)}],
+                "session_id": self.session_id,
+            }
 
-        # 临时返回模拟数据
-        return {
-            "success": True,
-            "data": f"模拟调用工具 {tool_name}，参数: {arguments}",
-            "session_id": self.session_id,
-        }
+    async def list_tools(self) -> List[Dict[str, Any]]:
+        """
+        获取工具列表（原始 MCP 格式）
+
+        Returns:
+            工具列表
+        """
+        await self.refresh()
+        await self._ensure_connected()
+        return await self._adapter.list_tools()
 
 
 class MCPSessionManager:
@@ -94,7 +161,6 @@ class MCPSessionManager:
 
     管理：
     - 活跃会话池
-    - 空闲会话池
     - 会话过期清理
     - 并发限制
     """
@@ -102,10 +168,10 @@ class MCPSessionManager:
     # 会话配置
     SESSION_TIMEOUT = timedelta(minutes=30)  # 会话超时时间
     IDLE_TIMEOUT = timedelta(minutes=10)     # 空闲超时时间
-    MAX_SESSIONS_PER_SERVER = 10            # 单个服务器最大会话数
+    MAX_SESSIONS_PER_SERVER = 10             # 单个服务器最大会话数
 
     # 清理配置
-    CLEANUP_INTERVAL = 300                  # 清理间隔（秒）
+    CLEANUP_INTERVAL = 300                   # 清理间隔（秒）
 
     def __init__(self):
         """初始化会话管理器"""
@@ -118,13 +184,13 @@ class MCPSessionManager:
         # 后台清理任务
         self._cleanup_task: Optional[asyncio.Task] = None
 
-        logger.info("MCP会话管理器已初始化")
+        logger.info("MCP 会话管理器已初始化")
 
     async def start(self):
         """启动会话管理器（启动后台清理任务）"""
         if self._cleanup_task is None:
             self._cleanup_task = asyncio.create_task(self._cleanup_loop())
-            logger.info("MCP会话管理器后台清理任务已启动")
+            logger.info("MCP 会话管理器后台清理任务已启动")
 
     async def stop(self):
         """停止会话管理器"""
@@ -140,7 +206,7 @@ class MCPSessionManager:
         for server_id in list(self._active_sessions.keys()):
             await self._cleanup_server_sessions(server_id)
 
-        logger.info("MCP会话管理器已停止")
+        logger.info("MCP 会话管理器已停止")
 
     @asynccontextmanager
     async def get_session(
@@ -150,21 +216,21 @@ class MCPSessionManager:
         task_id: Optional[str] = None
     ):
         """
-        获取MCP会话（上下文管理器）
+        获取 MCP 会话（上下文管理器）
 
         用法：
             async with session_manager.get_session(server, user_id, task_id) as session:
+                tools = await session.get_langchain_tools()
                 result = await session.call_tool("tool_name", {...})
 
         Args:
-            server: MCP服务器配置
-            user_id: 用户ID
-            task_id: 任务ID（可选）
+            server: MCP 服务器配置
+            user_id: 用户 ID
+            task_id: 任务 ID（可选）
 
         Yields:
-            MCPSession实例
+            MCPSession 实例
         """
-        server_id = server.id
         session = await self._acquire_session(server, user_id, task_id)
 
         try:
@@ -173,6 +239,26 @@ class MCPSessionManager:
             # 不立即释放会话，而是标记为可复用
             # 后台清理任务会在会话过期时清理
             pass
+
+    async def get_langchain_tools(
+        self,
+        server: MCPServerConfigResponse,
+        user_id: str,
+        task_id: Optional[str] = None
+    ) -> List[BaseTool]:
+        """
+        获取 LangChain 工具列表（便捷方法）
+
+        Args:
+            server: MCP 服务器配置
+            user_id: 用户 ID
+            task_id: 任务 ID（可选）
+
+        Returns:
+            LangChain BaseTool 列表
+        """
+        async with self.get_session(server, user_id, task_id) as session:
+            return await session.get_langchain_tools()
 
     async def _acquire_session(
         self,
@@ -192,7 +278,6 @@ class MCPSessionManager:
 
         # 查找现有会话（同一用户+任务的会话可复用）
         if task_id:
-            # 优先使用同一任务的会话
             existing_session = await self._find_task_session(server_id, user_id, task_id)
             if existing_session:
                 logger.debug(f"复用现有任务会话: session_id={existing_session.session_id}")
@@ -215,7 +300,7 @@ class MCPSessionManager:
         self._session_index[session_id] = server_id
 
         logger.info(
-            f"创建新MCP会话: session_id={session_id}, "
+            f"创建新 MCP 会话: session_id={session_id}, "
             f"server={server.name}, user={user_id}, task={task_id}"
         )
 
@@ -270,10 +355,9 @@ class MCPSessionManager:
             active_count = sum(1 for s in sessions.values() if s.is_active)
             if active_count >= self.MAX_SESSIONS_PER_SERVER:
                 logger.warning(
-                    f"MCP服务器会话数已达上限: server_id={server_id}, "
+                    f"MCP 服务器会话数已达上限: server_id={server_id}, "
                     f"max={self.MAX_SESSIONS_PER_SERVER}"
                 )
-                # TODO: 可以考虑排队或拒绝请求
                 await asyncio.sleep(0.1)  # 简单的退避策略
 
     async def _cleanup_idle_sessions(self, server_id: str):
@@ -403,7 +487,7 @@ _mcp_session_manager: Optional[MCPSessionManager] = None
 
 
 def get_mcp_session_manager() -> MCPSessionManager:
-    """获取全局MCP会话管理器实例"""
+    """获取全局 MCP 会话管理器实例"""
     global _mcp_session_manager
     if _mcp_session_manager is None:
         _mcp_session_manager = MCPSessionManager()

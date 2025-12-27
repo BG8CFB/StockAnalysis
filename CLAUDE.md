@@ -499,11 +499,15 @@ modules/trading_agents/
 4 severity levels: INFO, WARNING, ERROR, CRITICAL
 Admin alert panel with timeline and list views
 
-**7. MCP Server Management**
-Supports 3 transport modes: stdio (process pool), SSE (server-sent events), HTTP (REST API)
-Auto health checking on startup
-Session management with connection pooling
-Tool discovery and invocation
+**7. MCP Server Management (基于官方 langchain-mcp-adapters)**
+使用官方 LangChain MCP 适配器框架 (langchain-mcp-adapters >= 0.1.10)
+支持 4 种传输模式：
+- stdio: 标准输入输出（本地进程）
+- sse: Server-Sent Events
+- streamable_http: Streamable HTTP（推荐）
+- websocket: WebSocket
+自动健康检查、会话管理、工具发现与调用
+支持 Bearer Token 和 Basic Auth 认证
 
 **8. Tool Timeout Protection**
 30-second timeout for tool calls

@@ -6,10 +6,10 @@ LLM Provider 抽象层
 
 import logging
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional, AsyncGenerator, Union
+from typing import List, Dict, Any, Optional, AsyncGenerator
 from dataclasses import dataclass, field
 
-from modules.trading_agents.core.exceptions import ModelConnectionException, ToolCallException
+from core.ai.exceptions import ModelConnectionException, ToolCallException
 
 logger = logging.getLogger(__name__)
 

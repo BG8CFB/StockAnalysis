@@ -1,0 +1,258 @@
+/**
+ * ===========================================
+ * 股票分析平台 - 设计系统 Design Tokens
+ * ===========================================
+ * 设计主题: 金融数据终端 (Financial Data Terminal)
+ * 风格方向: 专业、精密、高效、现代
+ * ===========================================
+ */
+
+:root {
+  /* =========================================
+     色彩系统 Color System
+     ========================================= */
+
+  /* 主色 Primary - 专业蓝 */
+  --color-primary: #1890ff;
+  --color-primary-light: #40a9ff;
+  --color-primary-lighter: #69c0ff;
+  --color-primary-dark: #096dd9;
+  --color-primary-darker: #0050b3;
+  --color-primary-bg: #e6f7ff;
+  --color-primary-border: #91d5ff;
+
+  /* 成功/上涨 Success - 金融绿 */
+  --color-success: #52c41a;
+  --color-success-light: #73d13d;
+  --color-success-lighter: #95de64;
+  --color-success-dark: #389e0d;
+  --color-success-darker: #237804;
+  --color-success-bg: #f6ffed;
+  --color-success-border: #b7eb8f;
+
+  /* 警告/调整 Warning - 金融橙 */
+  --color-warning: #faad14;
+  --color-warning-light: #ffc53d;
+  --color-warning-lighter: #ffd666;
+  --color-warning-dark: #d48806;
+  --color-warning-darker: #ad8200;
+  --color-warning-bg: #fffbe6;
+  --color-warning-border: #ffe58f;
+
+  /* 危险/下跌 Danger - 金融红 */
+  --color-danger: #f5222d;
+  --color-danger-light: #ff4d4f;
+  --color-danger-lighter: #ff7875;
+  --color-danger-dark: #cf1322;
+  --color-danger-darker: #a8071a;
+  --color-danger-bg: #fff1f0;
+  --color-danger-border: #ffa39e;
+
+  /* 中性色 Neutral */
+  --color-text-primary: #262626;
+  --color-text-secondary: #595959;
+  --color-text-tertiary: #8c8c8c;
+  --color-text-quaternary: #bfbfbf;
+  --color-text-placeholder: #d9d9d9;
+
+  --color-border-primary: #d9d9d9;
+  --color-border-secondary: #e8e8e8;
+  --color-border-tertiary: #f0f0f0;
+
+  /* 背景色 Background */
+  --color-bg-page: #f0f2f5;
+  --color-bg-container: #ffffff;
+  --color-bg-elevated: #ffffff;
+  --color-bg-spotlight: #fafafa;
+  --color-bg-mask: rgba(0, 0, 0, 0.45);
+
+  /* 侧边栏 Sidebar */
+  --sidebar-bg: #001529;
+  --sidebar-bg-collapsed: #002140;
+  --sidebar-text: rgba(255, 255, 255, 0.85);
+  --sidebar-text-hover: rgba(255, 255, 255, 1);
+  --sidebar-active-bg: var(--color-primary);
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-hover-bg: rgba(255, 255, 255, 0.08);
+
+  /* 卡片渐变 Gradients */
+  --gradient-primary: linear-gradient(135deg, #1890ff 0%, #096dd9 100%);
+  --gradient-success: linear-gradient(135deg, #52c41a 0%, #389e0d 100%);
+  --gradient-warning: linear-gradient(135deg, #faad14 0%, #d48806 100%);
+  --gradient-danger: linear-gradient(135deg, #f5222d 0%, #cf1322 100%);
+  --gradient-cool: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --gradient-ocean: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+  --gradient-sunset: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+  --gradient-forest: linear-gradient(135deg, #10b981 0%, #059669 100%);
+
+  /* =========================================
+     字体系统 Typography System
+     ========================================= */
+
+  /* 字体家族 Font Families */
+  --font-family-base: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --font-family-code: 'Fira Code', 'JetBrains Mono', 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace;
+  --font-family-number: 'Roboto Mono', 'SF Mono', Consolas, monospace;
+
+  /* 字体大小 Font Sizes */
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-base: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 18px;
+  --font-size-xxl: 20px;
+  --font-size-xxxl: 24px;
+  --font-size-display: 30px;
+
+  /* 行高 Line Heights */
+  --line-height-tight: 1.25;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.75;
+
+  /* 字重 Font Weights */
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* =========================================
+     间距系统 Spacing System (4px base unit)
+     ========================================= */
+
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+
+  /* =========================================
+     圆角系统 Border Radius
+     ========================================= */
+
+  --radius-sm: 4px;
+  --radius-base: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-xxl: 16px;
+  --radius-round: 50%;
+
+  /* =========================================
+     阴影系统 Shadow System
+     ========================================= */
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px 0 rgba(0, 0, 0, 0.02);
+  --shadow-base: 0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02),
+    0 2px 4px 0 rgba(0, 0, 0, 0.02);
+  --shadow-md: 0 6px 16px 0 rgba(0, 0, 0, 0.08), 0 3px 6px -4px rgba(0, 0, 0, 0.12),
+    0 9px 28px 8px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 6px 16px 0 rgba(0, 0, 0, 0.08), 0 9px 28px 8px rgba(0, 0, 0, 0.05),
+    0 12px 48px 16px rgba(0, 0, 0, 0.03);
+  --shadow-xl: 0 12px 24px -4px rgba(0, 0, 0, 0.1);
+
+  /* 彩色阴影 */
+  --shadow-primary: 0 2px 8px rgba(24, 144, 255, 0.15);
+  --shadow-success: 0 2px 8px rgba(82, 196, 26, 0.15);
+  --shadow-warning: 0 2px 8px rgba(250, 173, 20, 0.15);
+  --shadow-danger: 0 2px 8px rgba(245, 34, 45, 0.15);
+
+  /* =========================================
+     动画系统 Animation System
+     ========================================= */
+
+  /* 缓动函数 Easing */
+  --ease-out-cubic: cubic-bezier(0.215, 0.61, 0.355, 1);
+  --ease-in-cubic: cubic-bezier(0.645, 0.045, 0.355, 1);
+  --ease-in-out-cubic: cubic-bezier(0.645, 0.045, 0.355, 1);
+  --ease-out-quart: cubic-bezier(0.165, 0.84, 0.44, 1);
+  --ease-in-quart: cubic-bezier(0.895, 0.03, 0.685, 0.22);
+  --ease-in-out-quart: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-out-expo: cubic-bezier(0.19, 1, 0.22, 1);
+  --ease-in-expo: cubic-bezier(0.95, 0.05, 0.795, 0.035);
+  --ease-in-out-expo: cubic-bezier(1, 0, 0, 1);
+
+  /* 持续时间 Duration */
+  --duration-instant: 100ms;
+  --duration-fast: 150ms;
+  --duration-base: 200ms;
+  --duration-slow: 300ms;
+  --duration-slower: 500ms;
+
+  /* =========================================
+     布局系统 Layout System
+     ========================================= */
+
+  /* 最大宽度 */
+  --max-width-xs: 480px;
+  --max-width-sm: 640px;
+  --max-width-md: 768px;
+  --max-width-lg: 1024px;
+  --max-width-xl: 1280px;
+  --max-width-xxl: 1536px;
+
+  /* 侧边栏 */
+  --sidebar-width: 240px;
+  --sidebar-width-collapsed: 64px;
+  --header-height: 60px;
+
+  /* =========================================
+     Z-index 层级系统
+     ========================================= */
+
+  --z-dropdown: 1000;
+  --z-sticky: 1020;
+  --z-fixed: 1030;
+  --z-modal-backdrop: 1040;
+  --z-modal: 1050;
+  --z-popover: 1060;
+  --z-tooltip: 1070;
+}
+
+/* =========================================
+   Dark Mode Support (预留)
+   ========================================= */
+
+@media (prefers-color-scheme: dark) {
+  /* 可以在这里定义深色模式的变量覆盖 */
+}
+
+/* =========================================
+   工具类 Utilities
+   ========================================= */
+
+/* 文本渐变效果 */
+.text-gradient-primary {
+  background: var(--gradient-primary);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.text-gradient-success {
+  background: var(--gradient-success);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* 玻璃态效果 Glassmorphism */
+.glass {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.glass-dark {
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}

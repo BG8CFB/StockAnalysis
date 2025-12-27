@@ -16,6 +16,7 @@ from core.logging_config import setup_logging
 from core.settings.api import router as settings_router
 from core.user.api import router as user_router
 from core.system.api import router as system_router
+from core.ai.api import router as ai_core_router
 from modules.analysis.api import router as analysis_router
 from modules.task_center.api import router as task_center_router
 from modules.screener.api import router as screener_router
@@ -189,11 +190,12 @@ def create_app() -> FastAPI:
     # 核心路由（新架构）
     app.include_router(settings_router, prefix=settings.API_V1_PREFIX)  # 系统设置
     app.include_router(core_admin_router, prefix=settings.API_V1_PREFIX) # 核心管理员
-    
+    app.include_router(ai_core_router, prefix=settings.API_V1_PREFIX)    # AI 核心模块
+
     # 基础设施路由
     app.include_router(system_router, prefix=settings.API_V1_PREFIX)    # 系统管理
     app.include_router(user_router, prefix=settings.API_V1_PREFIX)      # 用户管理
-    
+
     # 业务模块路由
     app.include_router(analysis_router, prefix=settings.API_V1_PREFIX)
     app.include_router(task_center_router, prefix=settings.API_V1_PREFIX)

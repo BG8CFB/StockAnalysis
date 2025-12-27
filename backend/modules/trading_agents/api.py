@@ -26,11 +26,6 @@ from modules.trading_agents.schemas import (
     BatchTaskResponse,
     TaskStatusEnum,
     MessageResponse,
-    AIModelConfigCreate,
-    AIModelConfigUpdate,
-    AIModelConfigResponse,
-    AIModelTestRequest,
-    ConnectionTestResponse,
     MCPServerConfigCreate,
     MCPServerConfigUpdate,
     MCPServerConfigResponse,
@@ -38,8 +33,10 @@ from modules.trading_agents.schemas import (
     UserAgentConfigUpdate,
     UserAgentConfigResponse,
 )
+from core.ai.model.schemas import ConnectionTestResponse
 from core.background_tasks import create_analysis_task_background
-from modules.trading_agents.services.model_service import get_model_service
+# AI 模型服务已迁移到核心模块，API路由也已迁移
+# from core.ai.model import get_model_service
 from modules.trading_agents.services.mcp_service import get_mcp_service
 from modules.trading_agents.services.agent_config_service import get_agent_config_service
 from modules.trading_agents.services.report_service import get_report_service, ReportService
@@ -597,182 +594,6 @@ async def get_task_queue_position(
     except Exception as e:
         logger.error(f"获取任务队列位置失败: task_id={task_id}, error={e}")
         raise
-
-
-# =============================================================================
-# AI 模型管理端点
-# =============================================================================
-
-@router.post("/models", response_model=AIModelConfigResponse)
-async def create_model(
-    request: AIModelConfigCreate,
-    current_user: UserModel = Depends(get_current_active_user),
-):
-    """
-    创建 AI 模型配置
-
-    Args:
-        request: 模型配置请求
-        current_user: 当前用户
-
-    Returns:
-        创建的模型配置
-    """
-    # 系统级配置需要管理员权限
-    if request.is_system:
-        # TODO: 添加管理员权限检查
-        pass
-
-    service = get_model_service()
-    return await service.create_model(str(current_user.id), request)
-
-
-@router.get("/models")
-async def list_models(
-    current_user: UserModel = Depends(get_current_active_user),
-):
-    """
-    列出 AI 模型配置
-
-    Args:
-        current_user: 当前用户
-
-    Returns:
-        模型配置列表 {"system": [...], "user": [...]}
-    """
-    is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
-    service = get_model_service()
-    return await service.list_models(str(current_user.id), is_admin)
-
-
-@router.get("/models/{model_id}", response_model=AIModelConfigResponse)
-async def get_model(
-    model_id: str,
-    current_user: UserModel = Depends(get_current_active_user),
-):
-    """
-    获取单个 AI 模型配置
-
-    Args:
-        model_id: 模型 ID
-        current_user: 当前用户
-
-    Returns:
-        模型配置
-    """
-    is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
-    service = get_model_service()
-    model = await service.get_model(model_id, str(current_user.id), is_admin)
-
-    if not model:
-        raise HTTPException(status_code=404, detail="模型配置不存在")
-
-    return model
-
-
-@router.put("/models/{model_id}", response_model=AIModelConfigResponse)
-async def update_model(
-    model_id: str,
-    request: AIModelConfigUpdate,
-    current_user: UserModel = Depends(get_current_active_user),
-):
-    """
-    更新 AI 模型配置
-
-    Args:
-        model_id: 模型 ID
-        request: 更新请求
-        current_user: 当前用户
-
-    Returns:
-        更新后的模型配置
-    """
-    is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
-    service = get_model_service()
-    model = await service.update_model(model_id, str(current_user.id), request, is_admin)
-
-    if not model:
-        raise HTTPException(status_code=404, detail="模型配置不存在或无权修改")
-
-    return model
-
-
-@router.delete("/models/{model_id}", response_model=MessageResponse)
-async def delete_model(
-    model_id: str,
-    current_user: UserModel = Depends(get_current_active_user),
-):
-    """
-    删除 AI 模型配置
-
-    Args:
-        model_id: 模型 ID
-        current_user: 当前用户
-
-    Returns:
-        操作结果
-    """
-    is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
-    service = get_model_service()
-    success = await service.delete_model(model_id, str(current_user.id), is_admin)
-
-    if not success:
-        raise HTTPException(status_code=404, detail="模型配置不存在或无权删除")
-
-    return MessageResponse(message="模型配置已删除", success=True)
-
-
-@router.post("/models/{model_id}/test", response_model=ConnectionTestResponse)
-async def test_model(
-    model_id: str,
-    current_user: UserModel = Depends(get_current_active_user),
-):
-    """
-    测试 AI 模型连接
-
-    Args:
-        model_id: 模型 ID
-        current_user: 当前用户
-
-    Returns:
-        测试结果
-    """
-    is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
-    service = get_model_service()
-
-    # 获取模型配置
-    model = await service.get_model(model_id, str(current_user.id), is_admin)
-    if not model:
-        raise HTTPException(status_code=404, detail="模型配置不存在")
-
-    # 构建测试请求
-    test_request = AIModelTestRequest(
-        api_base_url=model.api_base_url,
-        api_key=model.api_key,
-        model_id=model.model_id,
-        timeout_seconds=10,
-    )
-
-    return await service.test_model_connection(test_request)
-
-
-@router.post("/models/test", response_model=ConnectionTestResponse)
-async def test_model_connection(
-    request: AIModelTestRequest,
-    current_user: UserModel = Depends(get_current_active_user),
-):
-    """
-    测试 AI 模型连接（通用接口）
-
-    Args:
-        request: 测试请求
-        current_user: 当前用户
-
-    Returns:
-        测试结果
-    """
-    service = get_model_service()
-    return await service.test_model_connection(request)
 
 
 # =============================================================================

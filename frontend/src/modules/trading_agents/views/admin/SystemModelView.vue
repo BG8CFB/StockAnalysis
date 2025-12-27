@@ -584,8 +584,8 @@ async function handleTest(model: AIModelConfig) {
   testResult.value = null
 
   try {
-    // 使用普通用户的测试接口
-    const result = await httpPost(`/api/trading-agents/models/${model.id}/test`, {})
+    // 使用核心AI模块的测试接口
+    const result = await httpPost(`/api/ai/models/${model.id}/test`, {})
     testResult.value = result
   } catch (error) {
     testResult.value = {

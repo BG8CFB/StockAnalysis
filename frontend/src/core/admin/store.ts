@@ -3,7 +3,7 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { adminApi } from '@core/admin'
+import { adminApi } from './api'
 import type { User, UserListQuery, AuditLog } from '@core/user'
 
 export const useAdminStore = defineStore('admin', () => {

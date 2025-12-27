@@ -1,32 +1,11 @@
 /**
  * 管理员模块 API
+ * 统一管理所有管理员相关的 API
  */
 import { httpGet, httpPost, httpPut, httpDelete } from '@core/api/http'
+import type { User, UserListQuery, UserListResponse } from './types'
 
-// ==================== 类型定义 ====================
-
-export interface UserListResponse {
-  id: string
-  email: string
-  username: string
-  role: string
-  status: string
-  is_active: boolean
-  is_verified: boolean
-  created_at: string
-  last_login: string | null  // 后端使用 serialization_alias="last_login"
-  reviewed_by?: string
-  reviewed_at?: string
-}
-
-export interface GetUsersParams {
-  skip?: number
-  limit?: number
-  search?: string
-  role?: string
-  status?: string
-  is_active?: boolean
-}
+// ==================== 管理员专用类型 ====================
 
 export interface CreateUserRequest {
   email: string
@@ -41,13 +20,29 @@ export interface UpdateUserRequest {
   is_active?: boolean
 }
 
+// 用户列表项（后端返回的格式，带有 last_login 而不是 last_login_at）
+export interface UserListItemResponse {
+  id: string
+  email: string
+  username: string
+  role: string
+  status: string
+  is_active: boolean
+  is_verified: boolean
+  created_at: string
+  last_login: string | null
+  reviewed_by?: string
+  reviewed_at?: string
+}
+
 // ==================== API 方法 ====================
 
 export const adminApi = {
   /**
    * 获取用户列表
+   * 后端: GET /admin/users
    */
-  getUsers: (params: GetUsersParams) => {
+  getUsers: (params: UserListQuery) => {
     const query = new URLSearchParams()
     if (params.skip !== undefined) query.append('skip', params.skip.toString())
     if (params.limit !== undefined) query.append('limit', params.limit.toString())
@@ -56,57 +51,63 @@ export const adminApi = {
     if (params.status) query.append('status', params.status)
     if (params.is_active !== undefined) query.append('is_active', params.is_active.toString())
 
-    return httpGet<{ users: UserListResponse[]; total: number }>(`/admin/users?${query}`)
+    return httpGet<{ users: UserListItemResponse[]; total: number }>(`/admin/users?${query}`)
   },
 
   /**
    * 获取待审核用户列表
+   * 后端: GET /admin/users/pending
    */
   getPendingUsers: (skip: number = 0, limit: number = 20) => {
     const query = new URLSearchParams()
     query.append('skip', skip.toString())
     query.append('limit', limit.toString())
-    return httpGet<{ users: UserListResponse[]; total: number }>(`/admin/users/pending?${query}`)
+    return httpGet<{ users: UserListItemResponse[]; total: number }>(`/admin/users/pending?${query}`)
   },
 
   /**
    * 通过用户审核
+   * 后端: PUT /admin/users/{id}/approve
    */
   approveUser: (userId: string) =>
-    httpPut<{ success: boolean; message: string; user: UserListResponse }>(
+    httpPut<{ success: boolean; message: string; user: UserListItemResponse }>(
       `/admin/users/${userId}/approve`,
       {}
     ),
 
   /**
    * 拒绝用户审核
+   * 后端: PUT /admin/users/{id}/reject
    */
   rejectUser: (userId: string, reason: string) =>
-    httpPut<{ success: boolean; message: string; user: UserListResponse }>(
+    httpPut<{ success: boolean; message: string; user: UserListItemResponse }>(
       `/admin/users/${userId}/reject`,
       { reason }
     ),
 
   /**
    * 禁用用户
+   * 后端: PUT /admin/users/{id}/disable
    */
   disableUser: (userId: string, reason?: string) =>
-    httpPut<{ success: boolean; message: string; user: UserListResponse }>(
+    httpPut<{ success: boolean; message: string; user: UserListItemResponse }>(
       `/admin/users/${userId}/disable`,
       reason ? { reason } : {}
     ),
 
   /**
    * 启用用户
+   * 后端: PUT /admin/users/{id}/enable
    */
   enableUser: (userId: string) =>
-    httpPut<{ success: boolean; message: string; user: UserListResponse }>(
+    httpPut<{ success: boolean; message: string; user: UserListItemResponse }>(
       `/admin/users/${userId}/enable`,
       {}
     ),
 
   /**
    * 管理员触发密码重置
+   * 后端: POST /admin/users/{id}/reset-password
    */
   adminResetPassword: (userId: string) =>
     httpPost<{ success: boolean; message: string; token?: string }>(
@@ -116,6 +117,7 @@ export const adminApi = {
 
   /**
    * 获取审计日志
+   * 后端: GET /admin/audit-logs
    */
   getAuditLogs: (params: { skip?: number; limit?: number; action?: string; user_id?: string }) => {
     const query = new URLSearchParams()
@@ -128,31 +130,49 @@ export const adminApi = {
 
   /**
    * 获取单个用户
+   * 后端: GET /admin/users/{id}
    */
   getUser: (id: string) =>
-    httpGet<UserListResponse>(`/admin/users/${id}`),
+    httpGet<UserListItemResponse>(`/admin/users/${id}`),
 
   /**
    * 创建用户
+   * 后端: POST /admin/users
+   * 注意：后端直接返回 user.model_dump()，不是包装对象
    */
   createUser: (data: CreateUserRequest) =>
-    httpPost<UserListResponse>('/admin/users', data),
+    httpPost<UserListItemResponse>('/admin/users', data),
 
   /**
    * 更新用户
+   * 后端: PUT /admin/users/{id}
+   * 注意：后端返回包装对象 { success, message, user }
    */
   updateUser: (id: string, data: UpdateUserRequest) =>
-    httpPut<UserListResponse>(`/admin/users/${id}`, data),
+    httpPut<{ success: boolean; message: string; user: UserListItemResponse }>(`/admin/users/${id}`, data),
 
   /**
    * 修改用户角色（使用 Query 参数）
+   * 后端: PUT /admin/users/{id}/role?new_role={role}
+   * 注意：后端返回包装对象 { success, message, user }
    */
   changeUserRole: (id: string, role: string) =>
-    httpPut<UserListResponse>(`/admin/users/${id}/role?new_role=${role}`, {}),
+    httpPut<{ success: boolean; message: string; user: UserListItemResponse }>(`/admin/users/${id}/role?new_role=${role}`, {}),
 
   /**
    * 删除用户
+   * 后端: DELETE /admin/users/{id}
    */
   deleteUser: (id: string) =>
     httpDelete(`/admin/users/${id}`),
+}
+
+// 导出类型
+export type {
+  User,
+  UserListQuery,
+  UserListResponse,
+  CreateUserRequest,
+  UpdateUserRequest,
+  UserListItemResponse,
 }

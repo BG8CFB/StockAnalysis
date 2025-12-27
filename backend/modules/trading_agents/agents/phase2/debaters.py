@@ -7,7 +7,7 @@
 import logging
 
 from modules.trading_agents.agents.base import DebateAgent, BaseAgent
-from modules.trading_agents.llm.provider import LLMProvider
+from core.ai.llm.provider import LLMProvider
 
 logger = logging.getLogger(__name__)
 

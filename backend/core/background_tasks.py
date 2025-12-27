@@ -11,7 +11,7 @@ from typing import Dict, Any, Optional
 from modules.trading_agents.core.task_manager import get_task_manager
 from modules.trading_agents.schemas import AnalysisTaskCreate
 from modules.trading_agents.services.agent_config_service import get_agent_config_service
-from modules.trading_agents.services.model_service import get_model_service
+from core.ai.model import get_model_service
 from modules.trading_agents.core.agent_engine import AgentWorkflowEngine
 from modules.trading_agents.tools.registry import get_tool_registry
 from modules.trading_agents.agents import create_phase1_agents, create_phase2_agents, create_phase3_agents, create_phase4_agents

@@ -3,7 +3,7 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { authApi, userApi, type UserInfo, type UserPreferences } from './api'
+import { authApi, userApi, type UserInfo, type UserPreferences, type User } from './api'
 import { eventBus, Events } from '@core/events/bus'
 
 export const useUserStore = defineStore('user', () => {
@@ -75,6 +75,8 @@ export const useUserStore = defineStore('user', () => {
 
   /**
    * 用户注册
+   * 注意：注册后返回 User 信息，不是 Token
+   * 如果用户状态是 active，会自动登录；如果是 pending，需要等待审核
    */
   async function register(
     email: string,
@@ -87,7 +89,7 @@ export const useUserStore = defineStore('user', () => {
   ) {
     loading.value = true
     try {
-      const response = await authApi.register({
+      const user = await authApi.register({
         email,
         username,
         password,
@@ -96,20 +98,25 @@ export const useUserStore = defineStore('user', () => {
         slide_x: slideX,
         slide_y: slideY,
       })
-      token.value = response.access_token
-      localStorage.setItem('access_token', response.access_token)
-      localStorage.setItem('refresh_token', response.refresh_token)
 
-      // 获取用户信息
-      await fetchUserInfo(true)
-
-      // 触发登录事件
-      eventBus.emit(Events.USER_LOGIN, userInfo.value)
+      // 根据用户状态决定下一步操作
+      if (user.status === 'active') {
+        // 用户已激活，自动登录
+        const loginSuccess = await login(email, password)
+        return loginSuccess
+      } else if (user.status === 'pending') {
+        // 用户待审核，返回 false 让前端显示需要审核的消息
+        return { needsApproval: true, user }
+      } else if (user.status === 'disabled') {
+        throw new Error('账号已被禁用')
+      } else if (user.status === 'rejected') {
+        throw new Error('账号已被拒绝')
+      }
 
       return true
     } catch (error) {
       console.error('Register failed:', error)
-      return false
+      throw error
     } finally {
       loading.value = false
     }

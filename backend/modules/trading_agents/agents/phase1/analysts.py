@@ -9,7 +9,7 @@ import logging
 from typing import List, Dict, Any, Optional
 
 from modules.trading_agents.agents.base import AnalystAgent
-from modules.trading_agents.llm.provider import LLMProvider
+from core.ai.llm.provider import LLMProvider
 from modules.trading_agents.tools.registry import ToolRegistry, ToolDefinition
 from modules.trading_agents.schemas import Phase1Config, AgentConfig
 

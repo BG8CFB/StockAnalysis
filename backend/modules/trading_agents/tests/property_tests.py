@@ -12,10 +12,10 @@ from unittest.mock import Mock, AsyncMock
 
 from modules.trading_agents.core.state import AgentState, merge_reports
 from modules.trading_agents.schemas import (
-    AIModelConfigCreate,
     TaskStatusEnum,
     RecommendationEnum,
 )
+from core.ai.model.schemas import AIModelConfigCreate
 
 
 # =============================================================================
@@ -31,7 +31,7 @@ class TestAIModelConfigStorage:
         """
         Property: AI 模型配置存储和读取的 round-trip 应该保持一致
         """
-        from modules.trading_agents.services.model_service import get_model_service
+        from core.ai.model import get_model_service
         
         service = get_model_service()
         
@@ -238,7 +238,7 @@ class TestRetryMechanism:
         - 最大重试次数: 3
         - 重试延迟: 指数退避 (1s, 2s, 4s)
         """
-        from modules.trading_agents.llm.provider import retry_on_failure
+        from core.ai.llm.provider import retry_on_failure
         
         call_count = 0
         max_retries = 3

@@ -8,7 +8,7 @@ import logging
 from typing import Dict, Any
 
 from modules.trading_agents.agents.base import BaseAgent
-from modules.trading_agents.llm.provider import LLMProvider, Message
+from core.ai.llm.provider import LLMProvider, Message
 
 logger = logging.getLogger(__name__)
 
