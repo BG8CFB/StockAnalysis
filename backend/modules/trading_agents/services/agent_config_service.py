@@ -122,6 +122,76 @@ class AgentConfigService:
             # 创建公共配置
             return await self._init_public_config(request)
 
+    async def restore_public_config(self) -> Optional[UserAgentConfigResponse]:
+        """
+        恢复公共配置为默认值（从YAML重新导入）
+
+        管理员在配置被改乱时使用此功能。
+        YAML文件作为系统出厂设置备份，只在系统启动时和恢复时使用。
+
+        Returns:
+            恢复后的公共配置
+        """
+        logger.info("开始恢复公共配置为默认值")
+
+        # 1. 删除现有公共配置
+        collection = self._get_collection()
+        delete_result = await collection.delete_one({
+            "user_id": PUBLIC_USER_ID,
+            "is_public": True
+        })
+
+        if delete_result.deleted_count > 0:
+            logger.info(f"已删除旧的公共配置（删除 {delete_result.deleted_count} 条）")
+        else:
+            logger.warning("未找到现有公共配置，将创建新的")
+
+        # 2. 从YAML重新导入
+        try:
+            default_config = self._config_loader.load_default_config()
+            logger.info("YAML模板加载成功")
+        except Exception as e:
+            logger.error(f"加载YAML模板失败: {e}")
+            raise Exception(f"恢复默认配置失败：{e}")
+
+        # 3. 创建新的公共配置（不含model_id）
+        phase1 = Phase1Config(**default_config.get("phase1", {}))
+
+        if default_config.get("phase2"):
+            phase2 = Phase2Config(**default_config["phase2"])
+        else:
+            phase2 = None
+
+        if default_config.get("phase3"):
+            phase3 = Phase3Config(**default_config["phase3"])
+        else:
+            phase3 = None
+
+        if default_config.get("phase4"):
+            phase4 = Phase4Config(**default_config["phase4"])
+        else:
+            phase4 = None
+
+        # 4. 插入新配置
+        doc = {
+            "user_id": PUBLIC_USER_ID,
+            "is_public": True,
+            "is_customized": False,
+            "phase1": phase1.model_dump(),
+            "phase2": phase2.model_dump() if phase2 else None,
+            "phase3": phase3.model_dump() if phase3 else None,
+            "phase4": phase4.model_dump() if phase4 else None,
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+        }
+
+        result = await collection.insert_one(doc)
+        doc["_id"] = result.inserted_id
+
+        logger.info("公共配置已恢复为默认值")
+
+        return UserAgentConfigResponse.from_db(doc)
+
     async def _init_public_config(
         self,
         request: Optional[UserAgentConfigUpdate] = None
@@ -191,7 +261,8 @@ class AgentConfigService:
 
     async def get_effective_config(
         self,
-        user_id: str
+        user_id: str,
+        include_prompts: bool = False
     ) -> Optional[UserAgentConfigResponse]:
         """
         获取用户的生效配置
@@ -203,6 +274,9 @@ class AgentConfigService:
 
         Args:
             user_id: 用户 ID
+            include_prompts: 是否包含提示词（role_definition）
+                - True: 返回完整配置（包含 role_definition）
+                - False: 返回精简配置（不包含 role_definition）
 
         Returns:
             生效配置
@@ -214,8 +288,8 @@ class AgentConfigService:
 
         # 如果用户有个人配置且已自定义，返回个人配置
         if user_doc and user_doc.get("is_customized", False):
-            logger.debug(f"用户使用个人配置: user_id={user_id}")
-            return UserAgentConfigResponse.from_db(user_doc)
+            logger.debug(f"用户使用个人配置: user_id={user_id}, include_prompts={include_prompts}")
+            return self._build_response(user_doc, include_prompts)
 
         # 否则返回公共配置
         public_doc = await collection.find_one({
@@ -224,8 +298,8 @@ class AgentConfigService:
         })
 
         if public_doc:
-            logger.debug(f"用户使用公共配置: user_id={user_id}")
-            return UserAgentConfigResponse.from_db(public_doc)
+            logger.debug(f"用户使用公共配置: user_id={user_id}, include_prompts={include_prompts}")
+            return self._build_response(public_doc, include_prompts)
 
         # 公共配置不存在，创建它
         await self._init_public_config()
@@ -235,9 +309,39 @@ class AgentConfigService:
         })
 
         if public_doc:
-            return UserAgentConfigResponse.from_db(public_doc)
+            return self._build_response(public_doc, include_prompts)
 
         return None
+
+    def _build_response(
+        self,
+        doc: Dict[str, Any],
+        include_prompts: bool = False
+    ) -> UserAgentConfigResponse:
+        """
+        构建配置响应对象
+
+        Args:
+            doc: 数据库文档
+            include_prompts: 是否包含提示词
+
+        Returns:
+            配置响应对象
+        """
+        # 如果需要包含提示词，使用原始的 from_db 方法
+        if include_prompts:
+            return UserAgentConfigResponse.from_db(doc)
+
+        # 否则，移除 role_definition 字段
+        doc_copy = dict(doc)
+        for phase_key in ["phase1", "phase2", "phase3", "phase4"]:
+            phase_data = doc_copy.get(phase_key)
+            if phase_data and "agents" in phase_data:
+                for agent in phase_data["agents"]:
+                    # 移除 role_definition 字段
+                    agent.pop("role_definition", None)
+
+        return UserAgentConfigResponse.from_db(doc_copy)
 
     async def get_user_config(
         self,

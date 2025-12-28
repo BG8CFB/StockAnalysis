@@ -183,7 +183,7 @@ class MCPServerConfigResponse(MCPServerConfigBase):
 # =============================================================================
 
 class AgentConfig(BaseModel):
-    """单个智能体配置"""
+    """单个智能体配置（完整版，含提示词）"""
     slug: str = Field(..., min_length=1, max_length=50, description="唯一标识符")
     name: str = Field(..., min_length=1, max_length=100, description="显示名称")
     role_definition: str = Field(..., min_length=1, max_length=10000, description="角色定义（系统提示词）")
@@ -193,12 +193,35 @@ class AgentConfig(BaseModel):
     enabled: bool = Field(default=True, description="是否启用")
 
 
+class AgentConfigSlim(BaseModel):
+    """单个智能体配置（精简版，不含提示词）
+
+    用于分析页面，不暴露敏感的 role_definition。
+    普通用户不应看到系统提示词，避免泄露业务逻辑。
+    """
+    slug: str = Field(..., min_length=1, max_length=50, description="唯一标识符")
+    name: str = Field(..., min_length=1, max_length=100, description="显示名称")
+    when_to_use: str = Field(..., max_length=500, description="使用场景说明")
+    enabled_mcp_servers: List[str] = Field(default_factory=list, description="启用的 MCP 服务器")
+    enabled_local_tools: List[str] = Field(default_factory=list, description="启用的本地工具")
+    enabled: bool = Field(default=True, description="是否启用")
+
+
 class PhaseConfigBase(BaseModel):
-    """阶段配置基础模型"""
+    """阶段配置基础模型（不含model_id，模型选择与智能体配置分离）"""
     enabled: bool = Field(default=True, description="是否启用该阶段")
-    model_id: str = Field(..., min_length=1, max_length=100, description="使用的 AI 模型 ID")
     max_rounds: int = Field(default=1, ge=0, le=10, description="最大轮次（辩论/讨论）")
     agents: List[AgentConfig] = Field(default_factory=list, description="智能体列表")
+
+    # 第一阶段专用
+    max_concurrency: Optional[int] = Field(None, ge=1, le=10, description="智能体最大并发数")
+
+
+class PhaseConfigBaseSlim(BaseModel):
+    """阶段配置基础模型（精简版，不含提示词）"""
+    enabled: bool = Field(default=True, description="是否启用该阶段")
+    max_rounds: int = Field(default=1, ge=0, le=10, description="最大轮次（辩论/讨论）")
+    agents: List[AgentConfigSlim] = Field(default_factory=list, description="智能体列表（精简版）")
 
     # 第一阶段专用
     max_concurrency: Optional[int] = Field(None, ge=1, le=10, description="智能体最大并发数")
@@ -209,8 +232,18 @@ class Phase1Config(PhaseConfigBase):
     max_concurrency: int = Field(default=3, ge=1, le=10, description="智能体最大并发数")
 
 
+class Phase1ConfigSlim(PhaseConfigBaseSlim):
+    """第一阶段配置（精简版）"""
+    max_concurrency: int = Field(default=3, ge=1, le=10, description="智能体最大并发数")
+
+
 class Phase2Config(PhaseConfigBase):
     """第二阶段配置（辩论）"""
+    pass
+
+
+class Phase2ConfigSlim(PhaseConfigBaseSlim):
+    """第二阶段配置（精简版）"""
     pass
 
 
@@ -219,8 +252,18 @@ class Phase3Config(PhaseConfigBase):
     pass
 
 
+class Phase3ConfigSlim(PhaseConfigBaseSlim):
+    """第三阶段配置（精简版）"""
+    pass
+
+
 class Phase4Config(PhaseConfigBase):
     """第四阶段配置（总结）"""
+    pass
+
+
+class Phase4ConfigSlim(PhaseConfigBaseSlim):
+    """第四阶段配置（精简版）"""
     pass
 
 
@@ -359,6 +402,30 @@ class BatchTaskCreate(BaseModel):
     stages: AnalysisStagesConfig = Field(default_factory=AnalysisStagesConfig, description="阶段配置")
 
 
+# =============================================================================
+# 统一任务创建模型（重构后使用）
+# =============================================================================
+
+class UnifiedTaskCreate(BaseModel):
+    """统一任务创建请求（支持单股和批量）
+
+    兼容单股和批量分析：
+    - 单股：传入单个股票代码或只有一个元素的列表
+    - 批量：传入多个股票代码的列表
+    """
+    stock_codes: List[str] = Field(
+        ...,
+        min_length=1,
+        max_length=50,
+        description="股票代码列表（1-50个）。单股分析传入单个元素的列表。"
+    )
+    market: str = Field(default="a_share", description="股票市场：a_share, hong_kong, us")
+    trade_date: str = Field(..., min_length=1, max_length=20, description="交易日期")
+    data_collection_model: Optional[str] = Field(None, description="数据收集阶段模型ID（第一阶段）")
+    debate_model: Optional[str] = Field(None, description="辩论和总结阶段模型ID（第二三四阶段）")
+    stages: AnalysisStagesConfig = Field(default_factory=AnalysisStagesConfig, description="阶段配置")
+
+
 class AnalysisTaskResponse(BaseModel):
     """分析任务响应"""
     id: str
@@ -430,6 +497,42 @@ class BatchTaskResponse(BaseModel):
     status: TaskStatusEnum
     created_at: datetime
     completed_at: Optional[datetime]
+
+
+class UnifiedTaskResponse(BaseModel):
+    """统一任务创建响应（支持单股和批量）
+
+    根据创建的任务数量返回：
+    - 单股：返回 task_id，batch_id 为 null
+    - 批量：返回 batch_id，task_id 为 null
+    """
+    task_id: Optional[str] = Field(None, description="单个任务ID（单股分析时返回）")
+    batch_id: Optional[str] = Field(None, description="批量任务ID（批量分析时返回）")
+    stock_codes: List[str] = Field(..., description="涉及的股票代码列表")
+    total_count: int = Field(..., description="任务总数（单股为1，批量为股票数量）")
+    message: str = Field(..., description="操作结果描述")
+
+    @classmethod
+    def for_single_task(cls, task_id: str, stock_code: str) -> "UnifiedTaskResponse":
+        """创建单个任务响应"""
+        return cls(
+            task_id=task_id,
+            batch_id=None,
+            stock_codes=[stock_code],
+            total_count=1,
+            message=f"已创建单股分析任务，任务ID: {task_id}"
+        )
+
+    @classmethod
+    def for_batch_task(cls, batch_id: str, stock_codes: List[str]) -> "UnifiedTaskResponse":
+        """创建批量任务响应"""
+        return cls(
+            task_id=None,
+            batch_id=batch_id,
+            stock_codes=stock_codes,
+            total_count=len(stock_codes),
+            message=f"已创建批量分析任务，批量ID: {batch_id}，共 {len(stock_codes)} 个股票"
+        )
 
 
 # =============================================================================

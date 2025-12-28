@@ -15,13 +15,15 @@ import type {
   UserAgentConfig,
   UserAgentConfigUpdate,
   AnalysisTask,
-  AnalysisTaskCreate,
+  AnalysisTaskResponse,
   BatchTask,
-  BatchTaskCreate,
   AnalysisReport,
   ReportSummary,
   TradingAgentsSettings,
   TradingAgentsSettingsResponse,
+  // 统一任务类型
+  UnifiedTaskCreate,
+  UnifiedTaskResponse,
 } from './types'
 
 // AI 模型管理使用核心模块路径
@@ -137,9 +139,15 @@ export const agentConfigApi = {
   /**
    * 获取用户智能体配置
    * 返回生效配置（个人配置或公共配置）
+   *
+   * @param includePrompts 是否包含提示词（仅管理员可用）
+   *   - false: 返回精简配置（不含提示词），用于分析页面
+   *   - true: 返回完整配置（含提示词），用于配置管理页面
    */
-  getAgentConfig: () =>
-    httpGet<UserAgentConfig>(`${TRADING_AGENTS_BASE_URL}/agent-config`),
+  getAgentConfig: (includePrompts: boolean = false) =>
+    httpGet<UserAgentConfig>(`${TRADING_AGENTS_BASE_URL}/agent-config`, {
+      params: { include_prompts: includePrompts }
+    }),
 
   /**
    * 更新用户智能体配置
@@ -158,9 +166,13 @@ export const agentConfigApi = {
   /**
    * 获取公共智能体配置（模板）
    * 仅管理员可访问
+   *
+   * @param includePrompts 是否包含提示词
    */
-  getPublicConfig: () =>
-    httpGet<UserAgentConfig>(`${TRADING_AGENTS_BASE_URL}/agent-config/public`),
+  getPublicConfig: (includePrompts: boolean = false) =>
+    httpGet<UserAgentConfig>(`${TRADING_AGENTS_BASE_URL}/agent-config/public`, {
+      params: { include_prompts: includePrompts }
+    }),
 
   /**
    * 更新公共智能体配置（模板）
@@ -168,6 +180,13 @@ export const agentConfigApi = {
    */
   updatePublicConfig: (data: UserAgentConfigUpdate) =>
     httpPut<UserAgentConfig>(`${TRADING_AGENTS_BASE_URL}/agent-config/public`, data),
+
+  /**
+   * 恢复公共配置为默认值
+   * 从YAML重新导入，仅管理员可访问
+   */
+  restorePublicConfig: () =>
+    httpPost<{ success: boolean; message: string; config: UserAgentConfig }>(`${TRADING_AGENTS_BASE_URL}/agent-config/public/restore`, {}),
 
   /**
    * 导出配置
@@ -208,16 +227,14 @@ export const settingsApi = {
 
 export const taskApi = {
   /**
-   * 创建分析任务
+   * 统一任务创建接口（支持单股和批量）
+   *
+   * 根据传入的股票代码数量自动判断：
+   * - 1 个股票代码：创建单个任务，返回 task_id
+   * - 多个股票代码：创建批量任务，返回 batch_id
    */
-  createTask: (data: AnalysisTaskCreate) =>
-    httpPost<AnalysisTaskResponse>(`${TRADING_AGENTS_BASE_URL}/tasks`, data),
-
-  /**
-   * 创建批量任务
-   */
-  createBatchTask: (data: BatchTaskCreate) =>
-    httpPost<BatchTaskResponse>(`${TRADING_AGENTS_BASE_URL}/tasks/batch`, data),
+  createTasks: (data: UnifiedTaskCreate) =>
+    httpPost<UnifiedTaskResponse>(`${TRADING_AGENTS_BASE_URL}/tasks`, data),
 
   /**
    * 获取任务列表

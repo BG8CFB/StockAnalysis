@@ -606,7 +606,9 @@
         v-else
         class="test-loading"
       >
-        <el-icon class="is-loading"><Loading /></el-icon>
+        <el-icon class="is-loading">
+          <Loading />
+        </el-icon>
         <p>正在测试连接...</p>
       </div>
     </el-dialog>

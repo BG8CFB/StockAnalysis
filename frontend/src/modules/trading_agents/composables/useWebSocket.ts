@@ -306,10 +306,19 @@ export function useWebSocket(options: WebSocketOptions) {
       ws = null
     }
 
-    // 构建 WebSocket URL
+    // 获取 token
+    const token = localStorage.getItem('access_token')
+    if (!token) {
+      console.error('[WebSocket] 未找到访问令牌')
+      setStatus(WebSocketStatus.ERROR)
+      onError?.(new Error('未找到访问令牌'))
+      return
+    }
+
+    // 构建 WebSocket URL（携带 token 作为查询参数）
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.host
-    const wsUrl = `${protocol}//${host}${WS_CONFIG.ENDPOINT(taskId)}`
+    const wsUrl = `${protocol}//${host}${WS_CONFIG.ENDPOINT(taskId)}?token=${encodeURIComponent(token)}`
 
     console.log('[WebSocket] 正在连接:', wsUrl)
 

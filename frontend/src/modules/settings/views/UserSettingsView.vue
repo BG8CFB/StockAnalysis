@@ -62,32 +62,58 @@ onMounted(() => {
         <!-- 主题 -->
         <el-form-item label="主题">
           <el-radio-group v-model="settings.theme">
-            <el-radio label="light">浅色</el-radio>
-            <el-radio label="dark">深色</el-radio>
-            <el-radio label="auto">自动</el-radio>
+            <el-radio label="light">
+              浅色
+            </el-radio>
+            <el-radio label="dark">
+              深色
+            </el-radio>
+            <el-radio label="auto">
+              自动
+            </el-radio>
           </el-radio-group>
         </el-form-item>
 
         <!-- 语言 -->
         <el-form-item label="语言">
           <el-select v-model="settings.language">
-            <el-option label="简体中文" value="zh-CN" />
-            <el-option label="English" value="en-US" />
+            <el-option
+              label="简体中文"
+              value="zh-CN"
+            />
+            <el-option
+              label="English"
+              value="en-US"
+            />
           </el-select>
         </el-form-item>
 
         <!-- 时区 -->
         <el-form-item label="时区">
           <el-select v-model="settings.timezone">
-            <el-option label="Asia/Shanghai" value="Asia/Shanghai" />
-            <el-option label="America/New_York" value="America/New_York" />
-            <el-option label="Europe/London" value="Europe/London" />
+            <el-option
+              label="Asia/Shanghai"
+              value="Asia/Shanghai"
+            />
+            <el-option
+              label="America/New_York"
+              value="America/New_York"
+            />
+            <el-option
+              label="Europe/London"
+              value="Europe/London"
+            />
           </el-select>
         </el-form-item>
 
         <!-- 保存按钮 -->
         <el-form-item>
-          <el-button type="primary" @click="saveSettings">保存设置</el-button>
+          <el-button
+            type="primary"
+            @click="saveSettings"
+          >
+            保存设置
+          </el-button>
         </el-form-item>
       </el-form>
     </el-card>

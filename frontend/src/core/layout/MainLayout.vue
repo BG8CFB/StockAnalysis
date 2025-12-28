@@ -41,7 +41,10 @@
           </el-button>
 
           <!-- 面包屑 -->
-          <el-breadcrumb separator="/" class="breadcrumb">
+          <el-breadcrumb
+            separator="/"
+            class="breadcrumb"
+          >
             <el-breadcrumb-item :to="{ path: '/dashboard' }">
               <el-icon><HomeFilled /></el-icon>
               首页
@@ -71,7 +74,10 @@
             @before-enter="handleBeforeEnter"
             @after-enter="handleAfterEnter"
           >
-            <component :is="Component" :key="route.path" />
+            <component
+              :is="Component"
+              :key="route.path"
+            />
           </transition>
         </router-view>
       </el-main>

@@ -22,6 +22,11 @@ from modules.trading_agents.schemas import MCPServerConfigCreate
 
 logger = logging.getLogger(__name__)
 
+
+# =============================================================================
+# AI 模型管理
+# =============================================================================
+
 router = APIRouter(prefix="/admin/trading-agents", tags=["TradingAgents-Admin"])
 
 
@@ -531,3 +536,40 @@ async def resolve_alert(
     logger.info(f"管理员解决告警: alert_id={alert_id}, admin={admin_user.username}")
 
     return {"success": True, "message": "告警已解决"}
+
+
+# =============================================================================
+# 智能体配置管理
+# =============================================================================
+
+@router.post("/agent-config/public/restore")
+async def restore_public_config(
+    current_admin: UserModel = Depends(get_admin_user),
+):
+    """
+    恢复公共智能体配置为默认值
+
+    从YAML文件重新导入，用于配置被改乱后的恢复。
+    YAML文件作为系统出厂设置备份，只在系统启动时和恢复时使用。
+
+    Returns:
+        恢复后的公共配置
+    """
+    from modules.trading_agents.services.agent_config_service import get_agent_config_service
+
+    service = get_agent_config_service()
+    config = await service.restore_public_config()
+
+    if not config:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="恢复默认配置失败"
+        )
+
+    logger.info(f"管理员恢复公共配置为默认值: admin={current_admin.username}")
+
+    return {
+        "success": True,
+        "message": "公共配置已恢复为默认值",
+        "config": config
+    }

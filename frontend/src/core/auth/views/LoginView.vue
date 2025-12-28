@@ -11,10 +11,16 @@
     <div class="login-content">
       <div class="brand-section">
         <div class="brand-icon">
-          <el-icon :size="48"><TrendCharts /></el-icon>
+          <el-icon :size="48">
+            <TrendCharts />
+          </el-icon>
         </div>
-        <h1 class="brand-title">股票分析平台</h1>
-        <p class="brand-subtitle">专业 AI 驱动的智能投资决策系统</p>
+        <h1 class="brand-title">
+          股票分析平台
+        </h1>
+        <p class="brand-subtitle">
+          专业 AI 驱动的智能投资决策系统
+        </p>
         <div class="brand-features">
           <div class="feature-item">
             <el-icon><Check /></el-icon>
@@ -48,7 +54,10 @@
           size="large"
           @submit.prevent
         >
-          <el-form-item label="邮箱地址" prop="email">
+          <el-form-item
+            label="邮箱地址"
+            prop="email"
+          >
             <el-input
               v-model="form.email"
               type="email"
@@ -57,7 +66,10 @@
             />
           </el-form-item>
 
-          <el-form-item label="密码" prop="password">
+          <el-form-item
+            label="密码"
+            prop="password"
+          >
             <el-input
               v-model="form.password"
               type="password"
@@ -97,7 +109,9 @@
             >
               <template v-if="!loading">
                 <span>登录账户</span>
-                <el-icon class="button-icon"><ArrowRight /></el-icon>
+                <el-icon class="button-icon">
+                  <ArrowRight />
+                </el-icon>
               </template>
               <template v-else>
                 登录中...
@@ -107,7 +121,10 @@
 
           <div class="form-footer">
             <span class="footer-text">还没有账号？</span>
-            <el-link type="primary" @click="goRegister">
+            <el-link
+              type="primary"
+              @click="goRegister"
+            >
               立即注册
             </el-link>
           </div>

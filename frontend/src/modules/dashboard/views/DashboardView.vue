@@ -1,7 +1,10 @@
 <template>
   <div class="dashboard-view">
     <!-- 欢迎卡片 -->
-    <div class="welcome-card" :style="{ background: gradientStyle }">
+    <div
+      class="welcome-card"
+      :style="{ background: gradientStyle }"
+    >
       <div class="welcome-content">
         <div class="welcome-text">
           <h1 class="welcome-title">
@@ -24,13 +27,21 @@
       <!-- 关注股票 -->
       <div class="stat-card stat-card-primary">
         <div class="stat-icon">
-          <el-icon :size="28"><TrendCharts /></el-icon>
+          <el-icon :size="28">
+            <TrendCharts />
+          </el-icon>
         </div>
         <div class="stat-content">
-          <div class="stat-value">--</div>
-          <div class="stat-label">关注股票</div>
+          <div class="stat-value">
+            --
+          </div>
+          <div class="stat-label">
+            关注股票
+          </div>
           <div class="stat-trend">
-            <el-icon class="trend-icon"><TrendCharts /></el-icon>
+            <el-icon class="trend-icon">
+              <TrendCharts />
+            </el-icon>
             <span>暂无数据</span>
           </div>
         </div>
@@ -39,13 +50,21 @@
       <!-- AI 分析次数 -->
       <div class="stat-card stat-card-success">
         <div class="stat-icon">
-          <el-icon :size="28"><DataLine /></el-icon>
+          <el-icon :size="28">
+            <DataLine />
+          </el-icon>
         </div>
         <div class="stat-content">
-          <div class="stat-value">--</div>
-          <div class="stat-label">AI 分析次数</div>
+          <div class="stat-value">
+            --
+          </div>
+          <div class="stat-label">
+            AI 分析次数
+          </div>
           <div class="stat-trend">
-            <el-icon class="trend-icon"><TrendCharts /></el-icon>
+            <el-icon class="trend-icon">
+              <TrendCharts />
+            </el-icon>
             <span>本月累计</span>
           </div>
         </div>
@@ -54,13 +73,21 @@
       <!-- 预警消息 -->
       <div class="stat-card stat-card-warning">
         <div class="stat-icon">
-          <el-icon :size="28"><Warning /></el-icon>
+          <el-icon :size="28">
+            <Warning />
+          </el-icon>
         </div>
         <div class="stat-content">
-          <div class="stat-value">--</div>
-          <div class="stat-label">预警消息</div>
+          <div class="stat-value">
+            --
+          </div>
+          <div class="stat-label">
+            预警消息
+          </div>
           <div class="stat-trend">
-            <el-icon class="trend-icon"><Bell /></el-icon>
+            <el-icon class="trend-icon">
+              <Bell />
+            </el-icon>
             <span>系统通知</span>
           </div>
         </div>
@@ -69,13 +96,23 @@
       <!-- 当前用户 -->
       <div class="stat-card stat-card-info">
         <div class="stat-icon">
-          <el-icon :size="28"><User /></el-icon>
+          <el-icon :size="28">
+            <User />
+          </el-icon>
         </div>
         <div class="stat-content">
-          <div class="stat-value user-email">{{ userStore.email }}</div>
-          <div class="stat-label">当前用户</div>
+          <div class="stat-value user-email">
+            {{ userStore.email }}
+          </div>
+          <div class="stat-label">
+            当前用户
+          </div>
           <div class="stat-trend">
-            <el-tag size="small" :type="userRoleType" effect="plain">
+            <el-tag
+              size="small"
+              :type="userRoleType"
+              effect="plain"
+            >
               {{ userRoleLabel }}
             </el-tag>
           </div>
@@ -109,10 +146,16 @@
               </el-icon>
             </div>
             <div class="quick-link-content">
-              <div class="quick-link-title">{{ link.title }}</div>
-              <div class="quick-link-desc">{{ link.description }}</div>
+              <div class="quick-link-title">
+                {{ link.title }}
+              </div>
+              <div class="quick-link-desc">
+                {{ link.description }}
+              </div>
             </div>
-            <el-icon class="quick-link-arrow"><ArrowRight /></el-icon>
+            <el-icon class="quick-link-arrow">
+              <ArrowRight />
+            </el-icon>
           </router-link>
         </div>
       </el-card>
@@ -125,7 +168,12 @@
               <el-icon><Bell /></el-icon>
               <span>系统公告</span>
             </div>
-            <el-tag size="small" type="danger">NEW</el-tag>
+            <el-tag
+              size="small"
+              type="danger"
+            >
+              NEW
+            </el-tag>
           </div>
         </template>
         <div class="announcement-list">
@@ -136,8 +184,12 @@
           >
             <div class="announcement-dot" />
             <div class="announcement-content">
-              <div class="announcement-title">{{ item.title }}</div>
-              <div class="announcement-time">{{ item.time }}</div>
+              <div class="announcement-title">
+                {{ item.title }}
+              </div>
+              <div class="announcement-time">
+                {{ item.time }}
+              </div>
             </div>
           </div>
         </div>

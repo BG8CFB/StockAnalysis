@@ -69,11 +69,19 @@ defineExpose({
 </script>
 
 <template>
-  <el-card v-loading="loading" class="quota-display">
+  <el-card
+    v-loading="loading"
+    class="quota-display"
+  >
     <template #header>
       <div class="card-header">
         <span>配额信息</span>
-        <el-button text @click="loadQuota">刷新</el-button>
+        <el-button
+          text
+          @click="loadQuota"
+        >
+          刷新
+        </el-button>
       </div>
     </template>
 
@@ -88,7 +96,9 @@ defineExpose({
           :percentage="quota.tasks_usage_percent"
           :status="getTaskProgressType"
         />
-        <div class="quota-remaining">剩余: {{ quota.tasks_remaining }}</div>
+        <div class="quota-remaining">
+          剩余: {{ quota.tasks_remaining }}
+        </div>
       </div>
 
       <!-- 存储备额 -->
@@ -101,7 +111,9 @@ defineExpose({
           :percentage="quota.storage_usage_percent"
           :status="getStorageProgressType"
         />
-        <div class="quota-remaining">已使用: {{ quota.storage_usage_percent.toFixed(1) }}%</div>
+        <div class="quota-remaining">
+          已使用: {{ quota.storage_usage_percent.toFixed(1) }}%
+        </div>
       </div>
 
       <!-- 并发任务 -->

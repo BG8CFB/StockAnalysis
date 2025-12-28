@@ -21,9 +21,8 @@ import type {
   UserAgentConfig,
   UserAgentConfigUpdate,
   AnalysisTask,
-  AnalysisTaskCreate,
+  UnifiedTaskCreate,
   BatchTask,
-  BatchTaskCreate,
   AnalysisReport,
   ReportSummary,
   ModelProviderEnum,
@@ -293,6 +292,18 @@ export const useTradingAgentsStore = defineStore('tradingAgents', () => {
     }
   }
 
+  async function restorePublicConfig() {
+    try {
+      const result = await agentConfigApi.restorePublicConfig()
+      publicConfig.value = result.config
+      ElMessage.success('公共配置已恢复为默认值')
+      return result
+    } catch (error: any) {
+      ElMessage.error(error.response?.data?.detail || '恢复默认配置失败')
+      throw error
+    }
+  }
+
   async function exportAgentConfig() {
     try {
       const result = await agentConfigApi.exportConfig()
@@ -340,24 +351,17 @@ export const useTradingAgentsStore = defineStore('tradingAgents', () => {
     }
   }
 
-  async function createTask(data: AnalysisTaskCreate) {
+  async function createTasks(data: UnifiedTaskCreate) {
     try {
-      const result = await taskApi.createTask(data)
-      ElMessage.success('分析任务已创建')
-      return result.id  // 从 AnalysisTaskResponse 提取 id
+      const result = await taskApi.createTasks(data)
+      // 单股返回 task_id，批量返回 batch_id
+      const id = result.task_id || result.batch_id
+      if (id) {
+        ElMessage.success(result.message || '任务已创建')
+      }
+      return { id, result }
     } catch (error: any) {
       ElMessage.error(error.response?.data?.detail || '创建任务失败')
-      throw error
-    }
-  }
-
-  async function createBatchTask(data: BatchTaskCreate) {
-    try {
-      const result = await taskApi.createBatchTask(data)
-      ElMessage.success('批量任务已创建')
-      return result.id  // 从 BatchTaskResponse 提取 id
-    } catch (error: any) {
-      ElMessage.error(error.response?.data?.detail || '创建批量任务失败')
       throw error
     }
   }
@@ -490,8 +494,7 @@ export const useTradingAgentsStore = defineStore('tradingAgents', () => {
 
     // 任务操作
     fetchTasks,
-    createTask,
-    createBatchTask,
+    createTasks,
     cancelTask,
     deleteTask,
     retryTask,

@@ -39,6 +39,14 @@
           导入配置
         </el-button>
         <el-button
+          v-if="configMode === 'public' && isAdmin"
+          type="danger"
+          :icon="RefreshRight"
+          @click="handleRestoreDefault"
+        >
+          恢复默认配置
+        </el-button>
+        <el-button
           v-if="configMode === 'personal' || !isAdmin"
           type="warning"
           :icon="RefreshLeft"
@@ -173,7 +181,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Download, Upload, RefreshLeft } from '@element-plus/icons-vue'
+import { Download, Upload, RefreshLeft, RefreshRight } from '@element-plus/icons-vue'
 import { useTradingAgentsStore } from '../store'
 import { useUserStore } from '@core/auth/store'
 import type { UserAgentConfig, UserAgentConfigUpdate } from '../types'
@@ -310,6 +318,27 @@ async function handleReset() {
     await store.resetAgentConfig()
   } catch {
     // 用户取消
+  }
+}
+
+// 恢复默认配置（管理员）
+async function handleRestoreDefault() {
+  try {
+    await ElMessageBox.confirm(
+      '确定要恢复默认配置吗？当前公共配置将被YAML模板覆盖。',
+      '确认恢复',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'error',
+      }
+    )
+    await store.restorePublicConfig()
+    ElMessage.success('公共配置已恢复为默认值')
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      ElMessage.error('恢复默认配置失败：' + (error.message || error))
+    }
   }
 }
 

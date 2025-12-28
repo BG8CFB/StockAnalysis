@@ -80,52 +80,59 @@ async def execute_analysis_workflow(
     debate_model_id = None
 
     try:
-        # 1. 加载用户智能体配置
+        # 1. 加载用户智能体配置（用于提示词、工具等）
         config_service = get_agent_config_service()
-        user_config = await config_service.get_user_config(user_id, create_if_missing=True)
+        agent_config = await config_service.get_user_config(user_id, create_if_missing=True)
 
-        if not user_config:
+        if not agent_config:
             raise Exception("无法加载用户智能体配置")
 
-        # 2. 确定使用的两个 AI 模型
+        # 2. 加载用户模型偏好
+        from core.user.settings_database import get_user_settings
+        user_settings = await get_user_settings(user_id)
+
+        # 3. 确定使用的两个 AI 模型
         model_service = get_model_service()
 
         # 确定数据收集模型（第一阶段）
         if request.data_collection_model:
+            # 优先级1：任务参数指定
             data_collection_model = await model_service.get_model(
                 request.data_collection_model, user_id, is_admin=False
             )
             if not data_collection_model:
                 raise Exception(f"未找到指定的数据收集模型: {request.data_collection_model}")
-        else:
-            # 使用用户配置或系统默认
-            model_id = user_config.phase1.model_id if user_config.phase1 else None
+        elif user_settings and user_settings.trading_agents_settings:
+            # 优先级2：用户模型偏好
+            model_id = user_settings.trading_agents_settings.data_collection_model_id
             if model_id:
                 data_collection_model = await model_service.get_model(model_id, user_id, is_admin=False)
             else:
+                # 优先级3：系统默认
                 data_collection_model = await model_service.get_default_model(user_id=user_id)
+        else:
+            # 优先级3：系统默认
+            data_collection_model = await model_service.get_default_model(user_id=user_id)
 
         # 确定辩论模型（第二三四阶段）
         if request.debate_model:
+            # 优先级1：任务参数指定
             debate_model = await model_service.get_model(
                 request.debate_model, user_id, is_admin=False
             )
             if not debate_model:
                 raise Exception(f"未找到指定的辩论模型: {request.debate_model}")
-        else:
-            # 使用用户配置或系统默认
-            model_id = None
-            # 优先级：phase2 > phase3 > phase4 > phase1 > 系统默认
-            for phase_key in ['phase2', 'phase3', 'phase4', 'phase1']:
-                phase_config = getattr(user_config, phase_key, None)
-                if phase_config and hasattr(phase_config, 'model_id') and phase_config.model_id:
-                    model_id = phase_config.model_id
-                    break
-
+        elif user_settings and user_settings.trading_agents_settings:
+            # 优先级2：用户模型偏好
+            model_id = user_settings.trading_agents_settings.debate_model_id
             if model_id:
                 debate_model = await model_service.get_model(model_id, user_id, is_admin=False)
             else:
+                # 优先级3：系统默认
                 debate_model = await model_service.get_default_model(user_id=user_id)
+        else:
+            # 优先级3：系统默认
+            debate_model = await model_service.get_default_model(user_id=user_id)
 
         if not data_collection_model or not debate_model:
             raise Exception("未找到可用的 AI 模型配置")

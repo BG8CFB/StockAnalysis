@@ -71,8 +71,12 @@ defineExpose({
 
 <template>
   <div class="settings-import-export">
-    <el-button @click="handleExport">导出配置</el-button>
-    <el-button @click="showImportDialog">导入配置</el-button>
+    <el-button @click="handleExport">
+      导出配置
+    </el-button>
+    <el-button @click="showImportDialog">
+      导入配置
+    </el-button>
 
     <!-- 导入对话框 -->
     <el-dialog
@@ -83,8 +87,12 @@ defineExpose({
       <el-form label-width="100px">
         <el-form-item label="导入策略">
           <el-radio-group v-model="importStrategy">
-            <el-radio label="merge">合并（保留未修改的设置）</el-radio>
-            <el-radio label="replace">完全覆盖（替换所有设置）</el-radio>
+            <el-radio label="merge">
+              合并（保留未修改的设置）
+            </el-radio>
+            <el-radio label="replace">
+              完全覆盖（替换所有设置）
+            </el-radio>
           </el-radio-group>
         </el-form-item>
 
@@ -97,15 +105,24 @@ defineExpose({
           >
             <el-button>选择文件</el-button>
           </el-upload>
-          <div v-if="importFile" class="file-name">
+          <div
+            v-if="importFile"
+            class="file-name"
+          >
             {{ importFile.name }}
           </div>
         </el-form-item>
       </el-form>
 
       <template #footer>
-        <el-button @click="importDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="importing" @click="handleImport">
+        <el-button @click="importDialogVisible = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="importing"
+          @click="handleImport"
+        >
           导入
         </el-button>
       </template>

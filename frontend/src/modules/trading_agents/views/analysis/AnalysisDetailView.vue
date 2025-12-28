@@ -61,7 +61,7 @@
 
     <!-- 分析内容 -->
     <div
-      v-else-if="task"
+      v-else-if="task && progress.state"
       class="analysis-content"
     >
       <!-- 进度概览 -->
@@ -273,6 +273,12 @@ const task = ref<AnalysisTask | null>(null)
 const loading = ref(true)
 const error = ref(false)
 
+// 分析进度 - 初始化为空，在任务加载后更新
+const progress = useAnalysisProgress()
+
+// Token 使用 - 初始化为空，在任务加载后更新
+const tokenUsage = useTokenUsage()
+
 // WebSocket 连接
 const ws = useWebSocket({
   taskId: taskId.value,
@@ -280,12 +286,6 @@ const ws = useWebSocket({
   onStatusChange: handleWsStatusChange,
   onError: handleWsError,
 })
-
-// 分析进度
-const progress = useAnalysisProgress(task.value || undefined)
-
-// Token 使用
-const tokenUsage = useTokenUsage(task.value || undefined)
 
 // 计算属性：当前阶段索引
 const currentPhaseIndex = computed(() => {
@@ -423,7 +423,31 @@ async function loadTask() {
     const response = await taskApi.getTask(taskId.value)
     task.value = response
 
-    // 更新进度和 Token 使用
+    // 更新进度状态
+    if (response) {
+      // 重置并初始化进度状态
+      progress.reset()
+      if (response.current_phase) {
+        progress.state.value.currentPhase = response.current_phase
+      }
+      if (response.progress) {
+        progress.state.value.progress = response.progress
+      }
+      if (response.reports) {
+        progress.state.value.reports = new Map(Object.entries(response.reports))
+      }
+      if (response.created_at) {
+        progress.state.value.startTime = new Date(response.created_at).getTime()
+      }
+      if (response.completed_at) {
+        progress.state.value.endTime = new Date(response.completed_at).getTime()
+      }
+      if (response.current_agent) {
+        progress.currentAgent.value = response.current_agent
+      }
+    }
+
+    // 更新 Token 使用
     if (response.token_usage) {
       tokenUsage.updateTokenUsage(response.token_usage)
     }

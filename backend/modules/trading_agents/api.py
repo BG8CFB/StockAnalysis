@@ -35,6 +35,9 @@ from modules.trading_agents.schemas import (
     TradingAgentsSettings,
     TradingAgentsSettingsResponse,
     ReportSummaryResponse,
+    # 统一任务模型（重构）
+    UnifiedTaskCreate,
+    UnifiedTaskResponse,
 )
 from core.ai.model.schemas import ConnectionTestResponse
 from core.background_tasks import create_analysis_task_background
@@ -109,129 +112,94 @@ async def websocket_endpoint(
 # 任务管理端点
 # =============================================================================
 
-@router.post("/tasks", response_model=AnalysisTaskResponse)
-async def create_analysis_task(
-    request: AnalysisTaskCreate,
+@router.post("/tasks", response_model=UnifiedTaskResponse)
+async def create_tasks(
+    request: UnifiedTaskCreate,
     current_user: UserModel = Depends(get_current_active_user),
 ):
     """
-    创建单股分析任务
+    统一任务创建接口（支持单股和批量分析）
 
-    使用后台任务创建任务，避免阻塞 HTTP 响应。
-    数据库操作和 WebSocket 广播都在后台异步执行。
+    根据传入的股票代码数量自动判断：
+    - 1 个股票代码：创建单个任务，返回 task_id
+    - 多个股票代码：创建批量任务，返回 batch_id
 
     Args:
-        request: 分析任务请求
+        request: 统一任务请求（包含 1-50 个股票代码）
         current_user: 当前用户
 
     Returns:
-        创建的任务信息
+        统一任务响应（包含 task_id 或 batch_id）
     """
-    # 🔒 配额检查
     from core.user.settings_service import get_user_settings_service
+    from modules.trading_agents.core.task_manager import get_task_manager
+
     settings_service = get_user_settings_service()
-    allowed, error_msg = await settings_service.check_task_quota(str(current_user.id))
+    task_manager = get_task_manager()
+    stock_codes = request.stock_codes
+    stock_count = len(stock_codes)
 
-    if not allowed:
-        raise HTTPException(
-            status_code=429,
-            detail=error_msg
-        )
-
-    # 增加任务使用计数
-    await settings_service.increment_task_usage(str(current_user.id))
-
-    # 获取用户配置
-    config = {}
-
-    try:
-        # 使用 asyncio.create_task 在后台创建任务
-        task_create_task = asyncio.create_task(
-            create_analysis_task_background(
-                user_id=str(current_user.id),
-                request=request,
-                config=config
-            )
-        )
-
-        # 立即返回任务 ID（任务在后台创建）
-        task_id = await asyncio.wait_for(task_create_task, timeout=5.0)
-
-        # 获取任务信息（在后台任务执行后，数据应该已经插入）
-        task_manager = get_task_manager()
-        task_info = await task_manager.get_task_status(task_id)
-
-        return AnalysisTaskResponse(**task_info)
-
-    except Exception as e:
-        # 任务创建失败，回滚配额计数
-        await settings_service.decrement_concurrent_tasks(str(current_user.id))
-        raise HTTPException(status_code=500, detail=f"任务创建失败: {str(e)}")
-
-
-@router.post("/tasks/batch", response_model=BatchTaskResponse)
-async def create_batch_analysis_task(
-    request: BatchTaskCreate,
-    current_user: UserModel = Depends(get_current_active_user),
-):
-    """
-    创建批量分析任务
-
-    Args:
-        request: 批量任务请求
-        current_user: 当前用户
-
-    Returns:
-        创建的批量任务信息
-    """
-    # 🔒 配额检查（批量任务需要更多配额）
-    from core.user.settings_service import get_user_settings_service
-    settings_service = get_user_settings_service()
-
-    # 批量任务需要检查所有股票数量
-    stock_count = len(request.stock_codes)
-
-    # 检查每个任务的配额
-    for i in range(stock_count):
+    # 🔒 配额检查（所有任务）
+    for _ in range(stock_count):
         allowed, error_msg = await settings_service.check_task_quota(str(current_user.id))
         if not allowed:
             raise HTTPException(
                 status_code=429,
-                detail=f"批量任务配额不足: {error_msg}"
+                detail=f"配额不足: {error_msg}"
             )
-
-    task_manager = get_task_manager()
 
     # 获取用户配置
     config = {}
 
-    try:
-        # 创建批量任务
-        batch_id = await task_manager.create_batch_task(
-            user_id=str(current_user.id),
-            request=request,
-            config=config,
-        )
+    # 根据股票数量判断是单股还是批量
+    is_single = stock_count == 1
 
-        # 增加所有任务的使用计数
-        for _ in range(stock_count):
+    try:
+        if is_single:
+            # 单股分析：创建单个任务
+            task_create_task = asyncio.create_task(
+                create_analysis_task_background(
+                    user_id=str(current_user.id),
+                    request=AnalysisTaskCreate(
+                        stock_code=stock_codes[0],
+                        market=request.market,
+                        trade_date=request.trade_date,
+                        stages=request.stages,
+                    ),
+                    config=config
+                )
+            )
+            task_id = await asyncio.wait_for(task_create_task, timeout=5.0)
             await settings_service.increment_task_usage(str(current_user.id))
 
-        return BatchTaskResponse(
-            id=batch_id,
-        user_id=str(current_user.id),
-        stock_codes=request.stock_codes,
-        total_count=len(request.stock_codes),
-        completed_count=0,
-        failed_count=0,
-        status=TaskStatusEnum.PENDING,
-        created_at=None,  # TODO: 从数据库获取
-    )
+            return UnifiedTaskResponse.for_single_task(task_id, stock_codes[0])
+
+        else:
+            # 批量分析：创建批量任务
+            batch_id = await task_manager.create_batch_task(
+                user_id=str(current_user.id),
+                request=BatchTaskCreate(
+                    stock_codes=stock_codes,
+                    market=request.market,
+                    trade_date=request.trade_date,
+                    stages=request.stages,
+                ),
+                config=config,
+            )
+
+            # 增加所有任务的使用计数
+            for _ in range(stock_count):
+                await settings_service.increment_task_usage(str(current_user.id))
+
+            return UnifiedTaskResponse.for_batch_task(batch_id, stock_codes)
+
     except Exception as e:
         # 任务创建失败，回滚配额计数
         for _ in range(stock_count):
             await settings_service.decrement_task_usage(str(current_user.id))
-        raise HTTPException(status_code=500, detail=f"批量任务创建失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"任务创建失败: {str(e)}")
+
+
 @router.get("/tasks")
 async def list_tasks(
     status: Optional[TaskStatusEnum] = None,
@@ -319,7 +287,11 @@ async def cancel_task(
     current_user: UserModel = Depends(get_current_active_user),
 ):
     """
-    取消任务
+    取消/停止任务（统一接口）
+
+    智能判断任务状态：
+    - 运行中的任务（RUNNING）：使用 stop 停止执行
+    - 其他状态（PENDING/QUEUED）：使用 cancel 取消
 
     Args:
         task_id: 任务 ID
@@ -336,49 +308,16 @@ async def cancel_task(
         if task_info["user_id"] != str(current_user.id):
             raise HTTPException(status_code=403, detail="无权操作此任务")
 
-        await task_manager.cancel_task(task_id)
-
-        return MessageResponse(
-            message="任务已取消",
-            success=True
-        )
-
-    except Exception as e:
-        if "not found" in str(e):
-            raise HTTPException(status_code=404, detail="任务不存在")
-        raise
-
-
-@router.post("/tasks/{task_id}/stop", response_model=MessageResponse)
-async def stop_task(
-    task_id: str,
-    current_user: UserModel = Depends(get_current_active_user),
-):
-    """
-    停止任务（中止执行）
-
-    Args:
-        task_id: 任务 ID
-        current_user: 当前用户
-
-    Returns:
-        操作结果
-    """
-    task_manager = get_task_manager()
-
-    try:
-        # 验证任务所有权
-        task_info = await task_manager.get_task_status(task_id)
-        if task_info["user_id"] != str(current_user.id):
-            raise HTTPException(status_code=403, detail="无权操作此任务")
-
-        # 请求停止任务
-        await task_manager.stop_task(task_id)
-
-        return MessageResponse(
-            message="任务停止请求已发送",
-            success=True
-        )
+        # 根据任务状态智能判断
+        status = task_info.get("status")
+        if status == TaskStatusEnum.RUNNING.value:
+            # 运行中的任务使用 stop
+            await task_manager.stop_task(task_id)
+            return MessageResponse(message="任务已停止", success=True)
+        else:
+            # 其他状态使用 cancel
+            await task_manager.cancel_task(task_id)
+            return MessageResponse(message="任务已取消", success=True)
 
     except Exception as e:
         if "not found" in str(e):
@@ -812,21 +751,33 @@ async def get_mcp_server_tools(
 
 @router.get("/agent-config", response_model=UserAgentConfigResponse)
 async def get_agent_config(
+    include_prompts: bool = Query(
+        False,
+        description="是否包含提示词（仅管理员可用）。普通用户将自动排除提示词以保护业务逻辑。"
+    ),
     current_user: UserModel = Depends(get_current_active_user),
 ):
     """
     获取用户智能体配置
 
-    返回生效配置（个人配置或公共配置）
+    返回生效配置（个人配置或公共配置）。
 
     Args:
+        include_prompts: 是否包含提示词（role_definition）
+            - 普通用户：强制为 False，返回精简配置（不含提示词）
+            - 管理员：可指定 True，返回完整配置（含提示词）
         current_user: 当前用户
 
     Returns:
         用户智能体配置
     """
+    # 检查用户权限：非管理员强制排除提示词
+    is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
+    if not is_admin:
+        include_prompts = False
+
     service = get_agent_config_service()
-    config = await service.get_effective_config(str(current_user.id))
+    config = await service.get_effective_config(str(current_user.id), include_prompts)
 
     if not config:
         raise HTTPException(status_code=404, detail="智能体配置不存在")

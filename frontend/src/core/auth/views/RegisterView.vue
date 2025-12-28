@@ -11,10 +11,16 @@
     <div class="register-content">
       <div class="brand-section">
         <div class="brand-icon">
-          <el-icon :size="48"><UserFilled /></el-icon>
+          <el-icon :size="48">
+            <UserFilled />
+          </el-icon>
         </div>
-        <h1 class="brand-title">加入我们</h1>
-        <p class="brand-subtitle">开启您的智能投资之旅</p>
+        <h1 class="brand-title">
+          加入我们
+        </h1>
+        <p class="brand-subtitle">
+          开启您的智能投资之旅
+        </p>
         <div class="brand-benefits">
           <div class="benefit-card">
             <div class="benefit-icon">
@@ -62,7 +68,10 @@
           label-position="top"
           size="large"
         >
-          <el-form-item label="邮箱地址" prop="email">
+          <el-form-item
+            label="邮箱地址"
+            prop="email"
+          >
             <el-input
               v-model="form.email"
               type="email"
@@ -71,7 +80,10 @@
             />
           </el-form-item>
 
-          <el-form-item label="显示名称" prop="username">
+          <el-form-item
+            label="显示名称"
+            prop="username"
+          >
             <el-input
               v-model="form.username"
               placeholder="请输入显示名称"
@@ -79,7 +91,10 @@
             />
           </el-form-item>
 
-          <el-form-item label="密码" prop="password">
+          <el-form-item
+            label="密码"
+            prop="password"
+          >
             <el-input
               v-model="form.password"
               type="password"
@@ -89,7 +104,10 @@
             />
           </el-form-item>
 
-          <el-form-item label="确认密码" prop="confirm_password">
+          <el-form-item
+            label="确认密码"
+            prop="confirm_password"
+          >
             <el-input
               v-model="form.confirm_password"
               type="password"
@@ -108,7 +126,10 @@
               @success="onCaptchaSuccess"
               @error="onCaptchaError"
             />
-            <div v-if="captchaError" class="error-tip">
+            <div
+              v-if="captchaError"
+              class="error-tip"
+            >
               {{ captchaError }}
             </div>
           </el-form-item>
@@ -123,7 +144,9 @@
             >
               <template v-if="!loading">
                 <span>创建账户</span>
-                <el-icon class="button-icon"><ArrowRight /></el-icon>
+                <el-icon class="button-icon">
+                  <ArrowRight />
+                </el-icon>
               </template>
               <template v-else>
                 注册中...
@@ -133,7 +156,10 @@
 
           <div class="form-footer">
             <span class="footer-text">已有账号？</span>
-            <el-link type="primary" @click="goLogin">
+            <el-link
+              type="primary"
+              @click="goLogin"
+            >
               立即登录
             </el-link>
           </div>

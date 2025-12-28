@@ -5,12 +5,22 @@
     :class="{ collapsed }"
   >
     <!-- Brand / Logo -->
-    <div class="sidebar-header" @click="handleLogoClick">
+    <div
+      class="sidebar-header"
+      @click="handleLogoClick"
+    >
       <div class="logo-wrapper">
         <div class="logo-icon">
-          <el-icon :size="24"><TrendCharts /></el-icon>
+          <el-icon :size="24">
+            <TrendCharts />
+          </el-icon>
         </div>
-        <h1 v-if="!collapsed" class="logo-text">StockMind</h1>
+        <h1
+          v-if="!collapsed"
+          class="logo-text"
+        >
+          StockMind
+        </h1>
       </div>
     </div>
 
@@ -25,50 +35,77 @@
         class="custom-menu"
       >
         <!-- Section: Overview -->
-        <div v-if="!collapsed" class="menu-label">平台概览</div>
+        <div
+          v-if="!collapsed"
+          class="menu-label"
+        >
+          平台概览
+        </div>
         
         <el-menu-item index="/dashboard">
           <el-icon><HomeFilled /></el-icon>
-          <template #title>仪表板</template>
+          <template #title>
+            仪表板
+          </template>
         </el-menu-item>
 
         <el-menu-item index="/screener">
           <el-icon><Search /></el-icon>
-          <template #title>智能选股</template>
+          <template #title>
+            智能选股
+          </template>
         </el-menu-item>
 
         <el-menu-item index="/ask-stock">
           <el-icon><ChatDotRound /></el-icon>
-          <template #title>AI 问股</template>
+          <template #title>
+            AI 问股
+          </template>
         </el-menu-item>
 
         <!-- Section: Analysis Tools -->
-        <div v-if="!collapsed" class="menu-label mt-4">核心分析</div>
+        <div
+          v-if="!collapsed"
+          class="menu-label mt-4"
+        >
+          核心分析
+        </div>
 
-        <el-sub-menu index="analysis" popper-class="custom-popper">
+        <el-sub-menu
+          index="analysis"
+          popper-class="custom-popper"
+        >
           <template #title>
             <el-icon><DataAnalysis /></el-icon>
             <span>AI 深度分析</span>
           </template>
           
           <el-menu-item index="/trading-agents/analysis/single">
-            <span class="sub-dot"></span>
+            <span class="sub-dot" />
             <span>个股分析</span>
           </el-menu-item>
           <el-menu-item index="/trading-agents/analysis/batch">
-             <span class="sub-dot"></span>
+            <span class="sub-dot" />
             <span>批量扫描</span>
           </el-menu-item>
           <el-menu-item index="/trading-agents/tasks">
-             <span class="sub-dot"></span>
+            <span class="sub-dot" />
             <span>任务队列</span>
           </el-menu-item>
         </el-sub-menu>
 
         <!-- Section: Configuration -->
-        <div v-if="!collapsed" class="menu-label mt-4">系统管理</div>
+        <div
+          v-if="!collapsed"
+          class="menu-label mt-4"
+        >
+          系统管理
+        </div>
 
-        <el-sub-menu index="settings" popper-class="custom-popper">
+        <el-sub-menu
+          index="settings"
+          popper-class="custom-popper"
+        >
           <template #title>
             <el-icon><Setting /></el-icon>
             <span>全局设置</span>
@@ -76,36 +113,39 @@
 
           <template v-if="isAdmin">
             <el-menu-item index="/settings/users">
-              <span class="sub-dot"></span>
+              <span class="sub-dot" />
               <span>用户管理</span>
             </el-menu-item>
             <el-menu-item index="/settings/system">
-              <span class="sub-dot"></span>
+              <span class="sub-dot" />
               <span>系统参数</span>
             </el-menu-item>
           </template>
 
           <el-menu-item index="/settings/trading-agents/models">
-            <span class="sub-dot"></span>
+            <span class="sub-dot" />
             <span>AI 模型库</span>
           </el-menu-item>
 
           <!-- Nested Group for Analysis Settings -->
-          <el-sub-menu index="trading-agents-settings" class="nested-submenu">
+          <el-sub-menu
+            index="trading-agents-settings"
+            class="nested-submenu"
+          >
             <template #title>
-              <span class="sub-dot group-dot"></span>
+              <span class="sub-dot group-dot" />
               <span>分析引擎配置</span>
             </template>
             <el-menu-item index="/settings/trading-agents/mcp-servers">
-              <span class="line-guide"></span>
+              <span class="line-guide" />
               <span>MCP 服务</span>
             </el-menu-item>
             <el-menu-item index="/settings/trading-agents/agent-config">
-              <span class="line-guide"></span>
+              <span class="line-guide" />
               <span>智能体参数</span>
             </el-menu-item>
             <el-menu-item index="/settings/trading-agents/analysis">
-              <span class="line-guide"></span>
+              <span class="line-guide" />
               <span>分析规则</span>
             </el-menu-item>
           </el-sub-menu>
@@ -115,13 +155,35 @@
 
     <!-- User Footer -->
     <div class="sidebar-footer">
-      <div v-if="userStore.userInfo" class="user-card" @click="showUserMenu">
-        <el-avatar :size="32" :src="userStore.userInfo.avatar" :icon="UserFilled" class="user-avatar" />
-        <div v-if="!collapsed" class="user-details">
-          <div class="user-name">{{ userStore.userInfo.username || 'User' }}</div>
-          <div class="user-role">{{ roleLabel }}</div>
+      <div
+        v-if="userStore.userInfo"
+        class="user-card"
+        @click="showUserMenu"
+      >
+        <el-avatar
+          :size="32"
+          :src="userStore.userInfo.avatar"
+          :icon="UserFilled"
+          class="user-avatar"
+        />
+        <div
+          v-if="!collapsed"
+          class="user-details"
+        >
+          <div class="user-name">
+            {{ userStore.userInfo.username || 'User' }}
+          </div>
+          <div class="user-role">
+            {{ roleLabel }}
+          </div>
         </div>
-        <el-button v-if="!collapsed" class="logout-icon" link :icon="SwitchButton" @click.stop="handleLogout" />
+        <el-button
+          v-if="!collapsed"
+          class="logout-icon"
+          link
+          :icon="SwitchButton"
+          @click.stop="handleLogout"
+        />
       </div>
     </div>
   </el-aside>

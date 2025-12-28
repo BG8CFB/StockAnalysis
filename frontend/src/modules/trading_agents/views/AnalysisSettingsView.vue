@@ -3,7 +3,10 @@
     <!-- 页面标题 -->
     <div class="page-header">
       <div class="header-content">
-        <el-icon class="header-icon" :size="28">
+        <el-icon
+          class="header-icon"
+          :size="28"
+        >
           <Setting />
         </el-icon>
         <div>
@@ -227,7 +230,10 @@
 
     <!-- 操作按钮 -->
     <div class="form-actions">
-      <el-button size="large" @click="handleReset">
+      <el-button
+        size="large"
+        @click="handleReset"
+      >
         重置
       </el-button>
       <el-button

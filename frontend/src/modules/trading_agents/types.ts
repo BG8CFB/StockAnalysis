@@ -298,15 +298,6 @@ export interface AnalysisStagesConfig {
   stage4: Stage4Config
 }
 
-export interface AnalysisTaskCreate {
-  stock_code: string
-  market: StockMarketEnum
-  trade_date: string
-  data_collection_model?: string  // 数据收集阶段模型ID（第一阶段）
-  debate_model?: string  // 辩论和总结阶段模型ID（第二三四阶段）
-  stages: AnalysisStagesConfig
-}
-
 export interface AnalysisTask {
   id: string
   user_id: string
@@ -331,15 +322,6 @@ export interface AnalysisTask {
   batch_id: string | null
 }
 
-export interface BatchTaskCreate {
-  stock_codes: string[]
-  market: StockMarketEnum
-  trade_date: string
-  data_collection_model?: string  // 数据收集阶段模型ID（第一阶段）
-  debate_model?: string  // 辩论和总结阶段模型ID（第二三四阶段）
-  stages: AnalysisStagesConfig
-}
-
 export interface BatchTask {
   id: string
   user_id: string
@@ -351,6 +333,27 @@ export interface BatchTask {
   status: TaskStatusEnum
   created_at: string
   completed_at: string | null
+}
+
+// =============================================================================
+// 统一任务创建类型
+// =============================================================================
+
+export interface UnifiedTaskCreate {
+  stock_codes: string[]  // 1-50个股票代码
+  market: StockMarketEnum
+  trade_date: string
+  data_collection_model?: string  // 数据收集阶段模型ID（第一阶段）
+  debate_model?: string  // 辩论和总结阶段模型ID（第二三四阶段）
+  stages: AnalysisStagesConfig
+}
+
+export interface UnifiedTaskResponse {
+  task_id: string | null  // 单股分析时返回
+  batch_id: string | null  // 批量分析时返回
+  stock_codes: string[]
+  total_count: number
+  message: string
 }
 
 // =============================================================================

@@ -3,7 +3,10 @@
     <!-- 页面标题 -->
     <div class="page-header">
       <div class="header-content">
-        <el-icon class="header-icon" :size="28">
+        <el-icon
+          class="header-icon"
+          :size="28"
+        >
           <TrendCharts />
         </el-icon>
         <div>
@@ -27,7 +30,12 @@
                 <el-icon><Tickets /></el-icon>
                 股票信息
               </span>
-              <el-tag type="danger" size="small">必填</el-tag>
+              <el-tag
+                type="danger"
+                size="small"
+              >
+                必填
+              </el-tag>
             </div>
           </template>
           <el-form
@@ -38,7 +46,12 @@
             class="stock-form"
           >
             <div class="stock-form-row">
-              <el-form-item label="股票代码" prop="stock_code" required class="form-item-flex">
+              <el-form-item
+                label="股票代码"
+                prop="stock_code"
+                required
+                class="form-item-flex"
+              >
                 <el-input
                   v-model="formData.stock_code"
                   placeholder="如: 000001, AAPL, 700"
@@ -50,7 +63,11 @@
                   </template>
                 </el-input>
               </el-form-item>
-              <el-form-item label="市场类型" prop="market" class="form-item-flex">
+              <el-form-item
+                label="市场类型"
+                prop="market"
+                class="form-item-flex"
+              >
                 <el-select
                   v-model="formData.market"
                   placeholder="选择市场"
@@ -65,7 +82,11 @@
                   />
                 </el-select>
               </el-form-item>
-              <el-form-item label="分析日期" prop="trade_date" class="form-item-flex">
+              <el-form-item
+                label="分析日期"
+                prop="trade_date"
+                class="form-item-flex"
+              >
                 <el-date-picker
                   v-model="formData.trade_date"
                   type="date"
@@ -82,140 +103,210 @@
 
         <!-- 分析师团队 -->
         <el-card class="section-card agents-card">
-      <template #header>
-        <div class="card-header">
-          <span class="header-title">
-            <el-icon><User /></el-icon>
-            分析师团队
-            <span class="subtitle">选择第一阶段参与的分析师（至少1个）</span>
-          </span>
-          <el-tag type="info" size="plain">
-            已选 {{ stagesConfig.stage1.selected_agents.length }}/{{ activeAnalysts.length }}
-          </el-tag>
-        </div>
-      </template>
-      <div
-        v-loading="loadingConfig"
-        class="agents-grid"
-      >
-        <div
-          v-for="agent in activeAnalysts"
-          :key="agent.slug"
-          class="agent-card"
-          :class="{ 'agent-selected': stagesConfig.stage1.selected_agents.includes(agent.slug) }"
-          @click="toggleAgent(agent.slug)"
-        >
-          <div class="agent-icon-wrapper">
-            <el-icon :size="20">
-              <component :is="getAgentIcon(agent.slug)" />
-            </el-icon>
-          </div>
-          <div class="agent-info">
-            <div class="agent-name">
-              {{ agent.name }}
+          <template #header>
+            <div class="card-header">
+              <span class="header-title">
+                <el-icon><User /></el-icon>
+                分析师团队
+                <span class="subtitle">选择第一阶段参与的分析师（至少1个）</span>
+              </span>
+              <el-tag
+                type="info"
+                size="plain"
+              >
+                已选 {{ stagesConfig.stage1.selected_agents.length }}/{{ activeAnalysts.length }}
+              </el-tag>
             </div>
-            <div class="agent-when" :title="agent.when_to_use || ''">
-              {{ agent.when_to_use || '适用场景：—' }}
+          </template>
+          <div
+            v-loading="loadingConfig"
+            class="agents-grid"
+          >
+            <div
+              v-for="agent in activeAnalysts"
+              :key="agent.slug"
+              class="agent-card"
+              :class="{ 'agent-selected': stagesConfig.stage1.selected_agents.includes(agent.slug) }"
+              @click="toggleAgent(agent.slug)"
+            >
+              <div class="agent-icon-wrapper">
+                <el-icon :size="20">
+                  <component :is="getAgentIcon(agent.slug)" />
+                </el-icon>
+              </div>
+              <div class="agent-info">
+                <div class="agent-name">
+                  {{ agent.name }}
+                </div>
+                <div
+                  class="agent-when"
+                  :title="agent.when_to_use || ''"
+                >
+                  {{ agent.when_to_use || '适用场景：—' }}
+                </div>
+              </div>
+              <div class="agent-status">
+                <el-icon
+                  v-if="stagesConfig.stage1.selected_agents.includes(agent.slug)"
+                  color="#409eff"
+                >
+                  <CircleCheckFilled />
+                </el-icon>
+                <el-icon
+                  v-else
+                  color="#dcdfe6"
+                >
+                  <CircleCheck />
+                </el-icon>
+              </div>
             </div>
           </div>
-          <div class="agent-status">
-            <el-icon v-if="stagesConfig.stage1.selected_agents.includes(agent.slug)" color="#409eff">
-              <CircleCheckFilled />
-            </el-icon>
-            <el-icon v-else color="#dcdfe6">
-              <CircleCheck />
-            </el-icon>
-          </div>
-        </div>
-      </div>
-    </el-card>
+        </el-card>
 
         <!-- 深度分析阶段 -->
         <el-card class="section-card stages-card">
-      <template #header>
-        <div class="card-header">
-          <span class="header-title">
-            <el-icon><DataAnalysis /></el-icon>
-            深度分析阶段
-            <span class="subtitle">配置后续分析流程（第四阶段为必需）</span>
-          </span>
-          <el-tag type="success" size="plain">
-            <el-icon><Timer /></el-icon> 预计 {{ estimateTime }} 分钟
-          </el-tag>
-        </div>
-      </template>
-
-      <div class="stages-grid">
-        <!-- 第二阶段 -->
-        <div class="stage-item" :class="{ 'stage-enabled': stagesConfig.stage2.enabled }">
-          <div class="stage-header">
-            <div class="stage-info">
-              <span class="stage-number">02</span>
-              <div>
-                <h4 class="stage-title">双向辩论</h4>
-                <p class="stage-desc">看涨/看跌分析师对抗辩论</p>
-              </div>
-            </div>
-            <el-switch v-model="stagesConfig.stage2.enabled" @change="onStage2Change" />
-          </div>
-          <div v-if="stagesConfig.stage2.enabled" class="stage-detail">
-            <div class="stage-tags">
-              <el-tag v-for="role in ['看涨分析师', '看跌分析师', '研究部主管']" :key="role" size="small">
-                {{ role }}
+          <template #header>
+            <div class="card-header">
+              <span class="header-title">
+                <el-icon><DataAnalysis /></el-icon>
+                深度分析阶段
+                <span class="subtitle">配置后续分析流程（第四阶段为必需）</span>
+              </span>
+              <el-tag
+                type="success"
+                size="plain"
+              >
+                <el-icon><Timer /></el-icon> 预计 {{ estimateTime }} 分钟
               </el-tag>
             </div>
-            <div class="stage-config">
-              <span class="label">辩论轮次:</span>
-              <el-input-number v-model="stagesConfig.stage2.debate.rounds" :min="1" :max="5" size="small" controls-position="right" />
-            </div>
-          </div>
-        </div>
+          </template>
 
-        <!-- 第三阶段 -->
-        <div class="stage-item" :class="{ 'stage-enabled': stagesConfig.stage3.enabled }">
-          <div class="stage-header">
-            <div class="stage-info">
-              <span class="stage-number">03</span>
-              <div>
-                <h4 class="stage-title">风险管理</h4>
-                <p class="stage-desc">三方风险评估与风控方案</p>
+          <div class="stages-grid">
+            <!-- 第二阶段 -->
+            <div
+              class="stage-item"
+              :class="{ 'stage-enabled': stagesConfig.stage2.enabled }"
+            >
+              <div class="stage-header">
+                <div class="stage-info">
+                  <span class="stage-number">02</span>
+                  <div>
+                    <h4 class="stage-title">
+                      双向辩论
+                    </h4>
+                    <p class="stage-desc">
+                      看涨/看跌分析师对抗辩论
+                    </p>
+                  </div>
+                </div>
+                <el-switch
+                  v-model="stagesConfig.stage2.enabled"
+                  @change="onStage2Change"
+                />
+              </div>
+              <div
+                v-if="stagesConfig.stage2.enabled"
+                class="stage-detail"
+              >
+                <div class="stage-tags">
+                  <el-tag
+                    v-for="role in ['看涨分析师', '看跌分析师', '研究部主管']"
+                    :key="role"
+                    size="small"
+                  >
+                    {{ role }}
+                  </el-tag>
+                </div>
+                <div class="stage-config">
+                  <span class="label">辩论轮次:</span>
+                  <el-input-number
+                    v-model="stagesConfig.stage2.debate.rounds"
+                    :min="1"
+                    :max="5"
+                    size="small"
+                    controls-position="right"
+                  />
+                </div>
               </div>
             </div>
-            <el-switch v-model="stagesConfig.stage3.enabled" @change="onStage3Change" />
-          </div>
-          <div v-if="stagesConfig.stage3.enabled" class="stage-detail">
-            <div class="stage-tags">
-              <el-tag v-for="role in ['激进派', '保守派', '中性派']" :key="role" size="small">
-                {{ role }}
-              </el-tag>
-            </div>
-            <div class="stage-config">
-              <span class="label">辩论轮次:</span>
-              <el-input-number v-model="stagesConfig.stage3.debate.rounds" :min="1" :max="5" size="small" controls-position="right" />
-            </div>
-          </div>
-        </div>
 
-        <!-- 第四阶段（必需） -->
-        <div class="stage-item stage-enabled stage-required">
-          <div class="stage-header">
-            <div class="stage-info">
-              <span class="stage-number">04</span>
-              <div>
-                <h4 class="stage-title">最终总结</h4>
-                <p class="stage-desc">综合所有分析结果生成报告</p>
+            <!-- 第三阶段 -->
+            <div
+              class="stage-item"
+              :class="{ 'stage-enabled': stagesConfig.stage3.enabled }"
+            >
+              <div class="stage-header">
+                <div class="stage-info">
+                  <span class="stage-number">03</span>
+                  <div>
+                    <h4 class="stage-title">
+                      风险管理
+                    </h4>
+                    <p class="stage-desc">
+                      三方风险评估与风控方案
+                    </p>
+                  </div>
+                </div>
+                <el-switch
+                  v-model="stagesConfig.stage3.enabled"
+                  @change="onStage3Change"
+                />
+              </div>
+              <div
+                v-if="stagesConfig.stage3.enabled"
+                class="stage-detail"
+              >
+                <div class="stage-tags">
+                  <el-tag
+                    v-for="role in ['激进派', '保守派', '中性派']"
+                    :key="role"
+                    size="small"
+                  >
+                    {{ role }}
+                  </el-tag>
+                </div>
+                <div class="stage-config">
+                  <span class="label">辩论轮次:</span>
+                  <el-input-number
+                    v-model="stagesConfig.stage3.debate.rounds"
+                    :min="1"
+                    :max="5"
+                    size="small"
+                    controls-position="right"
+                  />
+                </div>
               </div>
             </div>
-            <el-switch :model-value="true" disabled />
-          </div>
-          <div class="stage-detail">
-            <div class="stage-tags">
-              <el-tag size="small">总结智能体</el-tag>
+
+            <!-- 第四阶段（必需） -->
+            <div class="stage-item stage-enabled stage-required">
+              <div class="stage-header">
+                <div class="stage-info">
+                  <span class="stage-number">04</span>
+                  <div>
+                    <h4 class="stage-title">
+                      最终总结
+                    </h4>
+                    <p class="stage-desc">
+                      综合所有分析结果生成报告
+                    </p>
+                  </div>
+                </div>
+                <el-switch
+                  :model-value="true"
+                  disabled
+                />
+              </div>
+              <div class="stage-detail">
+                <div class="stage-tags">
+                  <el-tag size="small">
+                    总结智能体
+                  </el-tag>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
-    </el-card>
+        </el-card>
 
         <!-- 分析预览 -->
         <el-card class="section-card preview-card">
@@ -230,20 +321,34 @@
           <div class="preview-content">
             <div class="preview-item">
               <span class="preview-label">已选分析师</span>
-              <el-tag type="primary" size="small">
+              <el-tag
+                type="primary"
+                size="small"
+              >
                 {{ stagesConfig.stage1.selected_agents.length }} 个
               </el-tag>
             </div>
             <div class="preview-item">
               <span class="preview-label">深度分析</span>
               <div class="preview-stages">
-                <el-tag v-if="stagesConfig.stage2.enabled" type="success" size="small">
+                <el-tag
+                  v-if="stagesConfig.stage2.enabled"
+                  type="success"
+                  size="small"
+                >
                   双向辩论
                 </el-tag>
-                <el-tag v-if="stagesConfig.stage3.enabled" type="warning" size="small">
+                <el-tag
+                  v-if="stagesConfig.stage3.enabled"
+                  type="warning"
+                  size="small"
+                >
                   风险管理
                 </el-tag>
-                <el-tag type="info" size="small">
+                <el-tag
+                  type="info"
+                  size="small"
+                >
                   最终总结
                 </el-tag>
               </div>
@@ -267,7 +372,12 @@
                   <el-icon><Cpu /></el-icon>
                   AI 模型配置
                 </span>
-                <el-tag type="info" size="small">可选</el-tag>
+                <el-tag
+                  type="info"
+                  size="small"
+                >
+                  可选
+                </el-tag>
               </div>
             </template>
             <div class="model-config-grid">
@@ -340,7 +450,11 @@
             <el-icon><Clock /></el-icon>
             最近分析
           </span>
-          <el-button text type="primary" @click="goToTaskCenter">
+          <el-button
+            text
+            type="primary"
+            @click="goToTaskCenter"
+          >
             查看全部 →
           </el-button>
         </div>
@@ -353,14 +467,22 @@
           @click="goToDetail(task.id)"
         >
           <div class="task-info">
-            <div class="task-code">{{ task.stock_code }}</div>
-            <el-tag :type="getStatusType(task.status)" size="small">
+            <div class="task-code">
+              {{ task.stock_code }}
+            </div>
+            <el-tag
+              :type="getStatusType(task.status)"
+              size="small"
+            >
               {{ getStatusLabel(task.status) }}
             </el-tag>
           </div>
           <div class="task-meta">
             <span class="task-time">{{ formatTime(task.created_at) }}</span>
-            <span v-if="task.final_recommendation" class="task-recommendation">
+            <span
+              v-if="task.final_recommendation"
+              class="task-recommendation"
+            >
               建议: {{ task.final_recommendation }}
             </span>
           </div>
@@ -666,8 +788,8 @@ async function handleSubmit() {
 
   submitting.value = true
   try {
-    const result = await store.createTask({
-      stock_code: formData.stock_code,
+    const { id } = await store.createTasks({
+      stock_codes: [formData.stock_code],  // 单股作为数组传入
       market: formData.market,
       trade_date: formData.trade_date,
       data_collection_model: formData.data_collection_model || undefined,
@@ -690,10 +812,9 @@ async function handleSubmit() {
         },
       },
     })
-    ElMessage.success('分析任务已创建')
     router.push({
       name: 'AnalysisDetail',
-      params: { taskId: result.id },  // 从 AnalysisTaskResponse 提取 id
+      params: { taskId: id },  // 统一接口返回 task_id 或 batch_id
     })
   } catch (error) {
     console.error('创建任务失败:', error)
