@@ -183,10 +183,13 @@ class MCPServerConfigResponse(MCPServerConfigBase):
 # =============================================================================
 
 class AgentConfig(BaseModel):
-    """单个智能体配置（完整版，含提示词）"""
+    """单个智能体配置（完整版，含提示词）
+
+    role_definition 可选，以支持精简模式（不暴露提示词给普通用户）
+    """
     slug: str = Field(..., min_length=1, max_length=50, description="唯一标识符")
     name: str = Field(..., min_length=1, max_length=100, description="显示名称")
-    role_definition: str = Field(..., min_length=1, max_length=10000, description="角色定义（系统提示词）")
+    role_definition: Optional[str] = Field(None, min_length=1, max_length=10000, description="角色定义（系统提示词）")
     when_to_use: str = Field(..., max_length=500, description="使用场景说明")
     enabled_mcp_servers: List[str] = Field(default_factory=list, description="启用的 MCP 服务器")
     enabled_local_tools: List[str] = Field(default_factory=list, description="启用的本地工具")

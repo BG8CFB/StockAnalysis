@@ -192,19 +192,25 @@ export interface MCPTool {
 // 智能体配置
 // =============================================================================
 
+/**
+ * 单个智能体配置
+ * role_definition 可选，以支持精简模式（不暴露提示词给普通用户）
+ */
 export interface AgentConfig {
   slug: string
   name: string
-  role_definition: string
+  role_definition?: string  // 可选：非管理员用户获取的配置不含此字段
   when_to_use: string
   enabled_mcp_servers: string[]
   enabled_local_tools: string[]
   enabled: boolean
 }
 
+/**
+ * 阶段配置基础模型（不含 model_id，模型选择与智能体配置分离）
+ */
 export interface Phase1Config {
   enabled: boolean
-  model_id: string
   max_rounds: number
   max_concurrency: number
   agents: AgentConfig[]
@@ -212,21 +218,18 @@ export interface Phase1Config {
 
 export interface Phase2Config {
   enabled: boolean
-  model_id: string
   max_rounds: number
   agents: AgentConfig[]
 }
 
 export interface Phase3Config {
   enabled: boolean
-  model_id: string
   max_rounds: number
   agents: AgentConfig[]
 }
 
 export interface Phase4Config {
   enabled: boolean
-  model_id: string
   max_rounds: number
   agents: AgentConfig[]
 }

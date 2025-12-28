@@ -590,22 +590,19 @@ async function loadAgentConfig() {
       stagesConfig.stage1.selected_agents = activeAnalysts.value.map(a => a.slug)
     }
 
-    const prefs = userStore.userPreferences
+    const prefs = userStore.preferences
     const tradingAgentsSettings = (prefs as any)?.trading_agents || {}
     const defaultDebateRounds = tradingAgentsSettings.default_debate_rounds ?? 3
 
     stagesConfig.stage2.debate.rounds = defaultDebateRounds
     stagesConfig.stage3.debate.rounds = defaultDebateRounds
 
-    if (agentConfig.value?.phase1?.model_id) {
-      modelConfig.dataCollectionModel = agentConfig.value.phase1.model_id
+    // 从 TradingAgentsSettings 加载模型配置
+    if (tradingAgentsSettings.data_collection_model_id) {
+      modelConfig.dataCollectionModel = tradingAgentsSettings.data_collection_model_id
     }
-    if (agentConfig.value?.phase2?.model_id) {
-      modelConfig.deepDecisionModel = agentConfig.value.phase2.model_id
-    } else if (agentConfig.value?.phase3?.model_id) {
-      modelConfig.deepDecisionModel = agentConfig.value.phase3.model_id
-    } else if (agentConfig.value?.phase4?.model_id) {
-      modelConfig.deepDecisionModel = agentConfig.value.phase4.model_id
+    if (tradingAgentsSettings.debate_model_id) {
+      modelConfig.deepDecisionModel = tradingAgentsSettings.debate_model_id
     }
 
     syncModelConfig()

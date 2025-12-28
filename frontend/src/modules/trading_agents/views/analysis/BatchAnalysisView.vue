@@ -668,7 +668,7 @@ async function loadAgentConfig() {
     }
 
     // 从用户偏好设置中加载默认辩论轮次
-    const prefs = userStore.userPreferences
+    const prefs = userStore.preferences
     const tradingAgentsSettings = (prefs as any)?.trading_agents || {}
     const defaultDebateRounds = tradingAgentsSettings.default_debate_rounds ?? 3
 
@@ -676,17 +676,12 @@ async function loadAgentConfig() {
     stagesConfig.stage2.debate.rounds = defaultDebateRounds
     stagesConfig.stage3.debate.rounds = defaultDebateRounds
 
-    // 从智能体配置中获取模型 ID 并设置到 formData
-    if (agentConfig.value?.phase1?.model_id) {
-      formData.data_collection_model = agentConfig.value.phase1.model_id
+    // 从 TradingAgentsSettings 加载模型配置
+    if (tradingAgentsSettings.data_collection_model_id) {
+      formData.data_collection_model = tradingAgentsSettings.data_collection_model_id
     }
-    // 第二/三/四阶段共用一个深度决策模型，优先使用 phase2 的配置
-    if (agentConfig.value?.phase2?.model_id) {
-      formData.debate_model = agentConfig.value.phase2.model_id
-    } else if (agentConfig.value?.phase3?.model_id) {
-      formData.debate_model = agentConfig.value.phase3.model_id
-    } else if (agentConfig.value?.phase4?.model_id) {
-      formData.debate_model = agentConfig.value.phase4.model_id
+    if (tradingAgentsSettings.debate_model_id) {
+      formData.debate_model = tradingAgentsSettings.debate_model_id
     }
   } catch (error) {
     console.error('Failed to load agent config:', error)
@@ -754,7 +749,7 @@ const getTradingAgentsSettings = () => {
   }
 
   // 降级从 userStore 读取
-  const prefs = userStore.preferences || userStore.userPreferences
+  const prefs = userStore.preferences
   return (prefs as any)?.trading_agents || {}
 }
 
@@ -995,7 +990,7 @@ function handleReset() {
   stagesConfig.stage2.enabled = true
   stagesConfig.stage2.debate.enabled = true
   // 使用用户设置的默认辩论轮次
-  const prefs = userStore.userPreferences
+  const prefs = userStore.preferences
   const tradingAgentsSettings = (prefs as any)?.trading_agents || {}
   const defaultDebateRounds = tradingAgentsSettings.default_debate_rounds ?? 3
   stagesConfig.stage2.debate.rounds = defaultDebateRounds

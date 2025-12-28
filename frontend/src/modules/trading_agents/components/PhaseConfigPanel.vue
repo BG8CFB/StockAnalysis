@@ -231,11 +231,10 @@ watch(() => props.config, (newConfig) => {
   }
 }, { deep: true })
 
-// 默认配置
+// 默认配置（模型选择已与智能体配置分离）
 function getDefaultConfig(): Phase1Config | Phase2Config | Phase3Config | Phase4Config {
   return {
     enabled: true,
-    model_id: '',
     max_rounds: 1,
     agents: [],
   }
@@ -250,7 +249,7 @@ const agentFormRef = ref()
 const agentForm = reactive<AgentConfig>({
   slug: '',
   name: '',
-  role_definition: '',
+  role_definition: undefined, // 可选字段，非管理员用户不会获取到此数据
   when_to_use: '',
   enabled_mcp_servers: [],
   enabled_local_tools: [],
@@ -263,7 +262,7 @@ const agentRules = {
     { required: true, message: '请输入唯一标识符', trigger: 'blur' },
     { pattern: /^[a-z0-9_]+$/, message: '只能包含小写字母、数字和下划线', trigger: 'blur' },
   ],
-  role_definition: [{ required: true, message: '请输入角色定义', trigger: 'blur' }],
+  // role_definition 不再是必填字段（管理员界面可能需要，但在前端表单中不强制）
 }
 
 // 保存状态
