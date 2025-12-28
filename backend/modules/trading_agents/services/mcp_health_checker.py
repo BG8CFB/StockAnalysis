@@ -202,6 +202,7 @@ class MCPHealthChecker:
                 "args": server.args,
                 "env": server.env,
                 "url": server.url,
+                "headers": server.headers,  # ← 添加 headers 字段
                 "auth_type": server.auth_type.value,
                 "auth_token": server.auth_token,
             }

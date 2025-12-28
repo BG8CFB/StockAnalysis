@@ -108,7 +108,20 @@ class AIModelConfigResponse(AIModelConfigBase):
     @classmethod
     def from_db(cls, data: Dict[str, Any]) -> "AIModelConfigResponse":
         """从数据库数据创建响应对象"""
-        api_key = data.get("api_key", "")
+        api_key_encrypted = data.get("api_key", "")
+
+        # 尝试解密 API Key（兼容未加密的旧数据）
+        try:
+            from core.security.encryption import decrypt_sensitive_data, is_encrypted
+            if is_encrypted(api_key_encrypted):
+                api_key = decrypt_sensitive_data(api_key_encrypted)
+            else:
+                # 未加密的旧数据，直接使用
+                api_key = api_key_encrypted
+        except Exception:
+            # 解密失败，可能是旧数据或密钥错误，返回空字符串
+            api_key = ""
+
         masked = cls._mask_api_key(api_key)
 
         return cls(
@@ -116,7 +129,7 @@ class AIModelConfigResponse(AIModelConfigBase):
             name=data["name"],
             provider=ModelProviderEnum(data["provider"]),
             api_base_url=data["api_base_url"],
-            api_key=api_key,
+            api_key=api_key,  # 解密后的明文（仅在内存中使用）
             model_id=data["model_id"],
             max_concurrency=data.get("max_concurrency", 40),
             task_concurrency=data.get("task_concurrency", 2),

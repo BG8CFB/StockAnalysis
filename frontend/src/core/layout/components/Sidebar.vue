@@ -1,179 +1,129 @@
 <template>
   <el-aside
-    :width="collapsed ? '64px' : '240px'"
-    class="sidebar"
+    :width="collapsed ? '68px' : '260px'"
+    class="sidebar-container"
     :class="{ collapsed }"
   >
-    <div class="sidebar-content">
-      <!-- Logo 区域 -->
-      <div class="logo" @click="handleLogoClick">
-        <template v-if="!collapsed">
-          <div class="logo-icon">
-            <el-icon :size="28">
-              <TrendCharts />
-            </el-icon>
-          </div>
-          <div class="logo-text">
-            <h1>股票分析</h1>
-            <span class="logo-subtitle">Financial AI</span>
-          </div>
-        </template>
-        <template v-else>
-          <div class="logo-icon-collapsed">
-            <el-icon :size="24">
-              <TrendCharts />
-            </el-icon>
-          </div>
-        </template>
+    <!-- Brand / Logo -->
+    <div class="sidebar-header" @click="handleLogoClick">
+      <div class="logo-wrapper">
+        <div class="logo-icon">
+          <el-icon :size="24"><TrendCharts /></el-icon>
+        </div>
+        <h1 v-if="!collapsed" class="logo-text">StockMind</h1>
       </div>
+    </div>
 
-      <!-- 菜单区域 -->
+    <!-- Main Navigation -->
+    <div class="sidebar-scroll-area">
       <el-menu
         :default-active="currentRoute"
         :collapse="collapsed"
+        :collapse-transition="false"
+        unique-opened
         router
-        background-color="transparent"
-        text-color="rgba(255, 255, 255, 0.75)"
-        active-text-color="#ffffff"
-        class="sidebar-menu"
+        class="custom-menu"
       >
-        <!-- 仪表板 -->
+        <!-- Section: Overview -->
+        <div v-if="!collapsed" class="menu-label">平台概览</div>
+        
         <el-menu-item index="/dashboard">
           <el-icon><HomeFilled /></el-icon>
           <template #title>仪表板</template>
         </el-menu-item>
 
-        <!-- AI 分析子菜单 -->
-        <el-sub-menu index="analysis">
-          <template #title>
-            <el-icon><DataAnalysis /></el-icon>
-            <span>AI 分析</span>
-          </template>
-          <el-menu-item index="/trading-agents/analysis/single">
-            <el-icon><TrendCharts /></el-icon>
-            <template #title>单个分析</template>
-          </el-menu-item>
-          <el-menu-item index="/trading-agents/analysis/batch">
-            <el-icon><Files /></el-icon>
-            <template #title>批量分析</template>
-          </el-menu-item>
-          <el-menu-item index="/trading-agents/tasks">
-            <el-icon><List /></el-icon>
-            <template #title>任务中心</template>
-          </el-menu-item>
-        </el-sub-menu>
-
-        <!-- 智能选股 -->
         <el-menu-item index="/screener">
           <el-icon><Search /></el-icon>
           <template #title>智能选股</template>
         </el-menu-item>
 
-        <!-- AI 问股 -->
         <el-menu-item index="/ask-stock">
           <el-icon><ChatDotRound /></el-icon>
           <template #title>AI 问股</template>
         </el-menu-item>
 
-        <!-- 设置菜单 -->
-        <el-sub-menu index="settings">
+        <!-- Section: Analysis Tools -->
+        <div v-if="!collapsed" class="menu-label mt-4">核心分析</div>
+
+        <el-sub-menu index="analysis" popper-class="custom-popper">
+          <template #title>
+            <el-icon><DataAnalysis /></el-icon>
+            <span>AI 深度分析</span>
+          </template>
+          
+          <el-menu-item index="/trading-agents/analysis/single">
+            <span class="sub-dot"></span>
+            <span>个股分析</span>
+          </el-menu-item>
+          <el-menu-item index="/trading-agents/analysis/batch">
+             <span class="sub-dot"></span>
+            <span>批量扫描</span>
+          </el-menu-item>
+          <el-menu-item index="/trading-agents/tasks">
+             <span class="sub-dot"></span>
+            <span>任务队列</span>
+          </el-menu-item>
+        </el-sub-menu>
+
+        <!-- Section: Configuration -->
+        <div v-if="!collapsed" class="menu-label mt-4">系统管理</div>
+
+        <el-sub-menu index="settings" popper-class="custom-popper">
           <template #title>
             <el-icon><Setting /></el-icon>
-            <span>设置</span>
+            <span>全局设置</span>
           </template>
-          <el-menu-item
-            v-if="isAdmin"
-            index="/settings/users"
-          >
-            <el-icon><User /></el-icon>
-            <template #title>用户管理</template>
-          </el-menu-item>
-          <el-menu-item
-            v-if="isAdmin"
-            index="/settings/system"
-          >
-            <el-icon><Tools /></el-icon>
-            <template #title>系统设置</template>
-          </el-menu-item>
-          <el-sub-menu index="trading-agents-settings">
-            <template #title>
-              <el-icon><MagicStick /></el-icon>
-              <span>智能体设置</span>
-            </template>
-            <el-menu-item index="/settings/trading-agents/models">
-              <el-icon><Cpu /></el-icon>
-              <template #title>AI 模型管理</template>
+
+          <template v-if="isAdmin">
+            <el-menu-item index="/settings/users">
+              <span class="sub-dot"></span>
+              <span>用户管理</span>
             </el-menu-item>
+            <el-menu-item index="/settings/system">
+              <span class="sub-dot"></span>
+              <span>系统参数</span>
+            </el-menu-item>
+          </template>
+
+          <el-menu-item index="/settings/trading-agents/models">
+            <span class="sub-dot"></span>
+            <span>AI 模型库</span>
+          </el-menu-item>
+
+          <!-- Nested Group for Analysis Settings -->
+          <el-sub-menu index="trading-agents-settings" class="nested-submenu">
+            <template #title>
+              <span class="sub-dot group-dot"></span>
+              <span>分析引擎配置</span>
+            </template>
             <el-menu-item index="/settings/trading-agents/mcp-servers">
-              <el-icon><Connection /></el-icon>
-              <template #title>MCP 服务器管理</template>
+              <span class="line-guide"></span>
+              <span>MCP 服务</span>
             </el-menu-item>
             <el-menu-item index="/settings/trading-agents/agent-config">
-              <el-icon><Odometer /></el-icon>
-              <template #title>智能体配置</template>
+              <span class="line-guide"></span>
+              <span>智能体参数</span>
             </el-menu-item>
             <el-menu-item index="/settings/trading-agents/analysis">
-              <el-icon><Operation /></el-icon>
-              <template #title>分析设置</template>
+              <span class="line-guide"></span>
+              <span>分析规则</span>
             </el-menu-item>
           </el-sub-menu>
         </el-sub-menu>
       </el-menu>
-
-      <!-- 用户区域 -->
-      <div v-if="userStore.userInfo" class="user-profile">
-        <div class="user-profile-content" @click="showUserMenu">
-          <div class="user-avatar">
-            <el-avatar
-              :size="36"
-              :icon="UserFilled"
-              :src="userStore.userInfo.avatar"
-            />
-            <div v-if="!collapsed" class="user-status-dot" />
-          </div>
-          <div v-if="!collapsed" class="user-info">
-            <span class="username">{{ userStore.userInfo.username || '用户' }}</span>
-            <el-tag
-              size="small"
-              effect="dark"
-              :type="roleTagType"
-              class="role-tag"
-            >
-              {{ roleLabel }}
-            </el-tag>
-          </div>
-          <el-tooltip
-            v-if="!collapsed"
-            content="退出登录"
-            placement="top"
-          >
-            <el-button
-              class="logout-btn"
-              :icon="SwitchButton"
-              circle
-              text
-              @click.stop="handleLogout"
-            />
-          </el-tooltip>
-          <el-tooltip
-            v-else
-            content="退出登录"
-            placement="right"
-          >
-            <el-button
-              class="logout-btn logout-btn-collapsed"
-              :icon="SwitchButton"
-              circle
-              text
-              @click.stop="handleLogout"
-            />
-          </el-tooltip>
-        </div>
-      </div>
     </div>
 
-    <!-- 背景装饰 -->
-    <div class="sidebar-decoration" />
+    <!-- User Footer -->
+    <div class="sidebar-footer">
+      <div v-if="userStore.userInfo" class="user-card" @click="showUserMenu">
+        <el-avatar :size="32" :src="userStore.userInfo.avatar" :icon="UserFilled" class="user-avatar" />
+        <div v-if="!collapsed" class="user-details">
+          <div class="user-name">{{ userStore.userInfo.username || 'User' }}</div>
+          <div class="user-role">{{ roleLabel }}</div>
+        </div>
+        <el-button v-if="!collapsed" class="logout-icon" link :icon="SwitchButton" @click.stop="handleLogout" />
+      </div>
+    </div>
   </el-aside>
 </template>
 
@@ -182,23 +132,8 @@ import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  HomeFilled,
-  TrendCharts,
-  DataAnalysis,
-  Search,
-  User,
-  UserFilled,
-  Setting,
-  Tools,
-  Files,
-  List,
-  ChatDotRound,
-  MagicStick,
-  Cpu,
-  Connection,
-  Odometer,
-  Operation,
-  SwitchButton
+  HomeFilled, TrendCharts, DataAnalysis, Search, UserFilled,
+  Setting, ChatDotRound, SwitchButton
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@core/auth/store'
 
@@ -206,332 +141,255 @@ const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
 
-defineProps<{
-  collapsed: boolean
-}>()
+defineProps<{ collapsed: boolean }>()
 
 const currentRoute = computed(() => route.path)
-const isAdmin = computed(() => userStore.userInfo?.role === 'ADMIN' || userStore.userInfo?.role === 'SUPER_ADMIN')
+const isAdmin = computed(() => ['ADMIN', 'SUPER_ADMIN'].includes(userStore.userInfo?.role || ''))
 
 const roleLabel = computed(() => {
-  const role = userStore.userInfo?.role
-  const labels: Record<string, string> = {
-    'SUPER_ADMIN': '超管',
-    'ADMIN': '管理员',
-    'USER': '用户',
-  }
-  return labels[role || ''] || '访客'
+  const map: Record<string, string> = { 'SUPER_ADMIN': '超级管理员', 'ADMIN': '管理员', 'USER': '普通用户' }
+  return map[userStore.userInfo?.role || ''] || '访客'
 })
 
-const roleTagType = computed(() => {
-  const role = userStore.userInfo?.role
-  const types: Record<string, 'danger' | 'warning' | 'info' | 'success'> = {
-    'SUPER_ADMIN': 'danger',
-    'ADMIN': 'warning',
-    'USER': 'success',
-  }
-  return types[role || ''] || 'info'
-})
-
-function handleLogoClick() {
-  router.push('/dashboard')
-}
-
-function showUserMenu() {
-  // 可以扩展为显示用户菜单
-}
-
+function handleLogoClick() { router.push('/dashboard') }
+function showUserMenu() { /* Future feature */ }
 async function handleLogout() {
   try {
-    await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
+    await ElMessageBox.confirm('确认退出登录?', '提示', { confirmButtonText: '退出', cancelButtonText: '取消', type: 'warning' })
     await userStore.logout()
-    ElMessage.success('已退出登录')
     router.push('/login')
-  } catch {
-    // 用户取消
-  }
+    ElMessage.success('已安全退出')
+  } catch {}
 }
 </script>
 
 <style scoped>
-/* ===========================================
-   侧边栏容器 Sidebar Container
-   =========================================== */
-
-.sidebar {
-  background-color: var(--sidebar-bg);
-  transition: width var(--duration-slow) var(--ease-out-cubic);
-  overflow: hidden;
-  border-right: 1px solid var(--sidebar-border);
-  position: relative;
-  z-index: 100;
-}
-
-.sidebar.collapsed {
-  width: var(--sidebar-width-collapsed);
-}
-
-/* ===========================================
-   侧边栏内容 Sidebar Content
-   =========================================== */
-
-.sidebar-content {
+/* Theme Variables - Dark Modern SaaS */
+.sidebar-container {
+  --sb-bg: #111827; /* Gray 900 */
+  --sb-text: #9ca3af; /* Gray 400 */
+  --sb-text-hover: #f3f4f6; /* Gray 100 */
+  --sb-active-bg: #1f2937; /* Gray 800 */
+  --sb-active-text: #60a5fa; /* Blue 400 */
+  --sb-border: #1f2937;
+  --sb-header-height: 64px;
+  
+  background-color: var(--sb-bg);
+  border-right: 1px solid var(--sb-border);
   display: flex;
   flex-direction: column;
-  height: 100%;
-  width: 100%;
-  position: relative;
-  z-index: 2;
+  height: 100vh;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  user-select: none;
 }
 
-/* ===========================================
-   Logo 区域 Logo Section
-   =========================================== */
-
-.logo {
+/* Header / Logo */
+.sidebar-header {
+  height: var(--sb-header-height);
   display: flex;
   align-items: center;
-  height: var(--header-height);
-  padding: 0 var(--space-5);
+  padding: 0 20px;
+  border-bottom: 1px solid var(--sb-border);
   cursor: pointer;
-  transition: all var(--duration-base) var(--ease-out-cubic);
-  position: relative;
 }
 
-.logo:hover {
-  background-color: var(--sidebar-hover-bg);
-}
-
-.logo > div {
+.logo-wrapper {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: 12px;
+  width: 100%;
 }
 
 .logo-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-lg);
-  background: var(--gradient-primary);
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
-  box-shadow: var(--shadow-primary);
+  color: white;
   flex-shrink: 0;
 }
 
-.logo-icon-collapsed {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-base);
-  background: var(--gradient-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  box-shadow: var(--shadow-primary);
-  margin: 0 auto;
-}
-
-.logo-text h1 {
-  font-size: var(--font-size-xl);
-  font-weight: var(--font-weight-bold);
-  color: #fff;
+.logo-text {
+  font-size: 18px;
+  font-weight: 700;
+  color: #f9fafb;
   margin: 0;
-  line-height: 1.2;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
 }
 
-.logo-subtitle {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.55);
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  font-weight: var(--font-weight-medium);
-}
-
-/* ===========================================
-   菜单区域 Menu Section
-   =========================================== */
-
-.sidebar-menu {
+/* Scroll Area */
+.sidebar-scroll-area {
   flex: 1;
-  border-right: none;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: var(--space-2) 0;
+  padding: 16px 12px;
 }
 
-.sidebar-menu::-webkit-scrollbar {
-  width: 4px;
+.sidebar-scroll-area::-webkit-scrollbar { width: 4px; }
+.sidebar-scroll-area::-webkit-scrollbar-thumb { background: #374151; border-radius: 2px; }
+
+/* Menu Reset & Base Styles */
+.custom-menu {
+  border: none !important;
+  background: transparent !important;
+  --el-menu-bg-color: transparent;
+  --el-menu-text-color: var(--sb-text);
+  --el-menu-hover-bg-color: transparent;
+  --el-menu-active-color: var(--sb-active-text);
 }
 
-.sidebar-menu::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 2px;
+.menu-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: #4b5563; /* Gray 600 */
+  font-weight: 600;
+  margin: 8px 12px 8px;
+  letter-spacing: 0.05em;
 }
 
-/* 菜单项样式 */
-.sidebar-menu :deep(.el-menu-item),
-.sidebar-menu :deep(.el-sub-menu__title) {
-  height: 44px;
-  line-height: 44px;
-  margin: 2px var(--space-3);
-  border-radius: var(--radius-base);
-  transition: all var(--duration-base) var(--ease-out-cubic);
-  color: var(--sidebar-text);
-}
+.mt-4 { margin-top: 24px; }
 
-.sidebar-menu :deep(.el-menu-item:hover),
-.sidebar-menu :deep(.el-sub-menu__title:hover) {
-  background-color: var(--sidebar-hover-bg);
-  color: var(--sidebar-text-hover);
-}
-
-.sidebar-menu :deep(.el-menu-item.is-active) {
-  background: var(--gradient-primary);
-  color: #fff;
-  box-shadow: var(--shadow-primary);
-  font-weight: var(--font-weight-medium);
-}
-
-.sidebar-menu :deep(.el-sub-menu .el-menu-item) {
+/* Menu Items */
+:deep(.el-menu-item), :deep(.el-sub-menu__title) {
   height: 40px;
   line-height: 40px;
-  margin: 2px var(--space-3) 2px var(--space-5);
-  padding-left: var(--space-4) !important;
+  border-radius: 6px;
+  margin-bottom: 4px;
+  color: var(--sb-text);
+  transition: all 0.2s ease;
+}
+
+:deep(.el-menu-item:hover), :deep(.el-sub-menu__title:hover) {
+  background-color: rgba(255,255,255,0.05) !important;
+  color: var(--sb-text-hover);
+}
+
+:deep(.el-menu-item.is-active) {
+  background-color: var(--sb-active-bg) !important;
+  color: var(--sb-active-text) !important;
+  font-weight: 500;
+}
+
+/* Icons */
+:deep(.el-icon) {
+  font-size: 18px;
+  margin-right: 10px;
+  color: inherit;
+  transition: none;
+}
+
+/* Fix: Reduce size of expansion arrow */
+:deep(.el-sub-menu__icon-arrow) {
+  font-size: 12px !important;
+  margin-right: 0 !important;
+  width: auto;
+}
+
+/* Submenu Styles */
+:deep(.el-sub-menu .el-menu) {
   background: transparent !important;
+  padding-left: 0;
 }
 
-.sidebar-menu :deep(.el-sub-menu .el-menu-item.is-active) {
-  background: rgba(24, 144, 255, 0.15) !important;
+/* Level 2 Items */
+:deep(.el-sub-menu .el-menu-item) {
+  height: 36px;
+  line-height: 36px;
+  font-size: 13px;
+  padding-left: 44px !important; /* Align with text of parent */
 }
 
-/* 子菜单图标 */
-.sidebar-menu :deep(.el-sub-menu__icon-arrow) {
-  color: rgba(255, 255, 255, 0.5);
+/* Decoration for Level 2 */
+.sub-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: #4b5563;
+  margin-right: 12px;
+  transition: background 0.2s;
 }
 
-/* 菜单折叠时的样式 */
-.sidebar.collapsed .sidebar-menu :deep(.el-menu-item),
-.sidebar.collapsed .sidebar-menu :deep(.el-sub-menu__title) {
-  margin: 2px var(--space-2);
+:deep(.el-menu-item.is-active) .sub-dot {
+  background-color: var(--sb-active-text);
+  box-shadow: 0 0 8px rgba(96, 165, 250, 0.5);
+}
+
+/* Level 3 (Nested Submenu) */
+.nested-submenu :deep(.el-sub-menu__title) {
+  padding-left: 44px !important;
+  height: 36px;
+  line-height: 36px;
+  font-size: 13px;
+}
+.group-dot { margin-right: 12px; }
+
+/* Level 3 Items */
+.nested-submenu :deep(.el-menu-item) {
+  padding-left: 68px !important;
+  position: relative;
+}
+
+/* Guide Lines for Deep Nesting */
+.line-guide {
+  position: absolute;
+  left: 54px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background-color: #374151;
+  opacity: 0.5;
+}
+
+/* Collapsed State Tweaks */
+.collapsed .logo-text,
+.collapsed .menu-label,
+.collapsed .user-details,
+.collapsed .logout-icon {
+  display: none;
+}
+
+.collapsed :deep(.el-menu-item), 
+.collapsed :deep(.el-sub-menu__title) {
   padding: 0 !important;
   justify-content: center;
 }
+.collapsed :deep(.el-icon) { margin-right: 0; }
+.collapsed :deep(.el-sub-menu__icon-arrow) { display: none; }
 
-/* ===========================================
-   用户区域 User Profile Section
-   =========================================== */
-
-.user-profile {
-  padding: 0;
-  border-top: 1px solid var(--sidebar-border);
-  background: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.2) 100%);
+/* Footer */
+.sidebar-footer {
+  padding: 16px;
+  border-top: 1px solid var(--sb-border);
 }
 
-.user-profile-content {
+.user-card {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-5);
-  width: 100%;
+  gap: 12px;
+  padding: 8px;
+  border-radius: 8px;
   cursor: pointer;
-  transition: all var(--duration-base) var(--ease-out-cubic);
-  position: relative;
+  transition: background 0.2s;
 }
+.user-card:hover { background-color: rgba(255,255,255,0.05); }
 
-.user-profile-content:hover {
-  background-color: var(--sidebar-hover-bg);
-}
-
-.user-avatar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  position: relative;
-}
-
-.user-status-dot {
-  position: absolute;
-  bottom: 2px;
-  right: 2px;
-  width: 10px;
-  height: 10px;
-  background: var(--color-success);
-  border: 2px solid var(--sidebar-bg);
-  border-radius: 50%;
-  box-shadow: 0 0 8px rgba(82, 196, 26, 0.5);
-  animation: pulse 2s ease-in-out infinite;
-}
-
-.user-info {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  overflow: hidden;
-  white-space: nowrap;
+.user-details {
   flex: 1;
-  text-align: left;
+  overflow: hidden;
 }
-
-.username {
-  font-size: var(--font-size-sm);
-  color: #fff;
-  font-weight: var(--font-weight-medium);
-  letter-spacing: 0.3px;
+.user-name {
+  color: #f3f4f6;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
 }
-
-.role-tag {
-  transform: scale(0.85);
-  transform-origin: left center;
-  width: fit-content;
-  font-weight: var(--font-weight-medium);
-}
-
-.logout-btn {
-  color: rgba(255, 255, 255, 0.5);
-  transition: all var(--duration-base) var(--ease-out-cubic);
-  flex-shrink: 0;
-}
-
-.logout-btn:hover {
-  color: var(--color-danger-light);
-  background-color: rgba(245, 34, 45, 0.15) !important;
-}
-
-.logout-btn-collapsed {
-  margin: 0 auto;
-  color: rgba(255, 255, 255, 0.6);
-}
-
-/* ===========================================
-   背景装饰 Background Decoration
-   =========================================== */
-
-.sidebar-decoration {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background:
-    radial-gradient(circle at 20% 30%, rgba(24, 144, 255, 0.08) 0%, transparent 50%),
-    radial-gradient(circle at 80% 70%, rgba(82, 196, 26, 0.05) 0%, transparent 50%);
-  pointer-events: none;
-  z-index: 1;
-}
-
-/* ===========================================
-   菜单图标 Menu Icons
-   =========================================== */
-
-:deep(.el-icon) {
-  font-size: 18px;
+.user-role {
+  color: #6b7280;
+  font-size: 12px;
 }
 </style>

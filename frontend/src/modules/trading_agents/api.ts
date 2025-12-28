@@ -20,6 +20,8 @@ import type {
   BatchTaskCreate,
   AnalysisReport,
   ReportSummary,
+  TradingAgentsSettings,
+  TradingAgentsSettingsResponse,
 } from './types'
 
 // AI 模型管理使用核心模块路径
@@ -105,9 +107,14 @@ export const mcpApi = {
 
   /**
    * 删除服务器配置
+   * 自动判断是否为管理员接口（系统服务需要管理员权限）
    */
-  deleteServer: (serverId: string) =>
-    httpDelete<{ success: boolean; message: string }>(`${TRADING_AGENTS_BASE_URL}/mcp-servers/${serverId}`),
+  deleteServer: (serverId: string, isSystem: boolean = false) =>
+    httpDelete<{ success: boolean; message: string }>(
+      isSystem
+        ? `/admin/trading-agents/mcp-servers/${serverId}`
+        : `${TRADING_AGENTS_BASE_URL}/mcp-servers/${serverId}`
+    ),
 
   /**
    * 测试服务器连接
@@ -173,6 +180,26 @@ export const agentConfigApi = {
    */
   importConfig: (configData: Record<string, unknown>) =>
     httpPost<UserAgentConfig>(`${TRADING_AGENTS_BASE_URL}/agent-config/import`, configData),
+}
+
+// =============================================================================
+// TradingAgents 设置 API
+// =============================================================================
+
+export const settingsApi = {
+  /**
+   * 获取用户的 TradingAgents 设置
+   * 返回用户的分析规则配置
+   */
+  getSettings: () =>
+    httpGet<TradingAgentsSettingsResponse>(`${TRADING_AGENTS_BASE_URL}/settings`),
+
+  /**
+   * 更新用户的 TradingAgents 设置
+   * 更新用户的分析规则配置
+   */
+  updateSettings: (data: TradingAgentsSettings) =>
+    httpPut<TradingAgentsSettingsResponse>(`${TRADING_AGENTS_BASE_URL}/settings`, data),
 }
 
 // =============================================================================

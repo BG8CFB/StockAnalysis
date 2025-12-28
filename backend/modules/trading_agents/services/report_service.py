@@ -230,6 +230,8 @@ class ReportService:
         start_date = datetime.utcnow() - timedelta(days=days)
 
         # 聚合查询
+        # 注意：数据库中 recommendation 字段存储的是枚举的中文值（"买入", "卖出", "持有"）
+        # 对应 RecommendationEnum.BUY.value = "买入", RecommendationEnum.SELL.value = "卖出", RecommendationEnum.HOLD.value = "持有"
         pipeline = [
             {
                 "$match": {
@@ -242,15 +244,23 @@ class ReportService:
                     "_id": None,
                     "total_reports": {"$sum": 1},
                     "buy_recommendations": {
-                        "$sum": {"$cond": [{"$eq": ["$recommendation", "BUY"]}, 1, 0]}
+                        "$sum": {"$cond": [{"$eq": ["$recommendation", "买入"]}, 1, 0]}
                     },
                     "sell_recommendations": {
-                        "$sum": {"$cond": [{"$eq": ["$recommendation", "SELL"]}, 1, 0]}
+                        "$sum": {"$cond": [{"$eq": ["$recommendation", "卖出"]}, 1, 0]}
                     },
                     "hold_recommendations": {
-                        "$sum": {"$cond": [{"$eq": ["$recommendation", "HOLD"]}, 1, 0]}
+                        "$sum": {"$cond": [{"$eq": ["$recommendation", "持有"]}, 1, 0]}
                     },
                     "total_tokens": {"$sum": "$token_usage.total_tokens"},
+                    "total_buy_price": {"$sum": "$buy_price"},
+                    "total_sell_price": {"$sum": "$sell_price"},
+                    "buy_price_count": {
+                        "$sum": {"$cond": [{"$ne": ["$buy_price", None]}, 1, 0]}
+                    },
+                    "sell_price_count": {
+                        "$sum": {"$cond": [{"$ne": ["$sell_price", None]}, 1, 0]}
+                    },
                 }
             }
         ]
@@ -259,6 +269,18 @@ class ReportService:
 
         if result:
             summary = result[0]
+
+            # 计算平均价格
+            avg_buy_price = None
+            buy_price_count = summary.get("buy_price_count", 0)
+            if buy_price_count > 0:
+                avg_buy_price = summary.get("total_buy_price", 0) / buy_price_count
+
+            avg_sell_price = None
+            sell_price_count = summary.get("sell_price_count", 0)
+            if sell_price_count > 0:
+                avg_sell_price = summary.get("total_sell_price", 0) / sell_price_count
+
             return {
                 "total_reports": summary.get("total_reports", 0),
                 "buy_count": summary.get("buy_recommendations", 0),
@@ -270,9 +292,8 @@ class ReportService:
                     "hold": summary.get("hold_recommendations", 0),
                 },
                 "total_token_usage": summary.get("total_tokens", 0),
-                "average_tokens_per_report": (
-                    summary.get("total_tokens", 0) / max(summary.get("total_reports", 1), 1)
-                ),
+                "avg_buy_price": avg_buy_price,
+                "avg_sell_price": avg_sell_price,
             }
         else:
             return {
@@ -286,7 +307,8 @@ class ReportService:
                     "hold": 0,
                 },
                 "total_token_usage": 0,
-                "average_tokens_per_report": 0,
+                "avg_buy_price": None,
+                "avg_sell_price": None,
             }
 
     async def delete_report(

@@ -46,14 +46,14 @@ async def create_model(
 
     Returns:
         创建的模型配置
-    """
-    # 系统级配置需要管理员权限
-    if request.is_system:
-        # TODO: 添加管理员权限检查
-        pass
 
+    Note:
+        - is_system=True: 只有管理员可以创建系统模型
+        - is_system=False: 任何用户都可以创建个人模型
+    """
+    is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
     service = get_model_service()
-    return await service.create_model(str(current_user.id), request)
+    return await service.create_model(str(current_user.id), request, is_admin)
 
 
 @router.get("/models")

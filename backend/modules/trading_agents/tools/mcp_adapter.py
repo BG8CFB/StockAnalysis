@@ -321,25 +321,41 @@ class OfficialMCPAdapter(MCPAdapter):
         """
         构建认证头
 
+        支持两种配置方式：
+        1. 直接配置 headers 字段（优先级更高）
+        2. 使用 auth_type + auth_token 组合
+
         支持的认证类型：
         - bearer: Bearer Token 认证
         - basic: Basic Auth 认证
         - none: 无认证
         """
+        # 方式1：优先使用直接配置的 headers 字段
+        headers = self.config.get("headers")
+        if headers and isinstance(headers, dict):
+            logger.debug(f"使用直接配置的 headers: {list(headers.keys())}")
+            return headers
+
+        # 方式2：使用 auth_type + auth_token 组合
         auth_type = self.config.get("auth_type", "none")
         auth_token = self.config.get("auth_token")
 
         if auth_type == "none" or not auth_token:
+            logger.debug(f"未配置认证 (auth_type={auth_type})")
             return None
 
         if auth_type == "bearer":
-            return {"Authorization": f"Bearer {auth_token}"}
+            headers = {"Authorization": f"Bearer {auth_token}"}
+            logger.debug(f"使用 Bearer 认证")
+            return headers
 
         elif auth_type == "basic":
             # Basic Auth token 格式: "username:password"
             import base64
             encoded = base64.b64encode(auth_token.encode()).decode()
-            return {"Authorization": f"Basic {encoded}"}
+            headers = {"Authorization": f"Basic {encoded}"}
+            logger.debug(f"使用 Basic 认证")
+            return headers
 
         else:
             logger.warning(f"未知的认证类型: {auth_type}，忽略认证配置")

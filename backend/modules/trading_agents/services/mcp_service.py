@@ -49,7 +49,8 @@ class MCPService:
     async def create_server(
         self,
         user_id: str,
-        request: MCPServerConfigCreate
+        request: MCPServerConfigCreate,
+        is_admin: bool = False
     ) -> MCPServerConfigResponse:
         """
         创建 MCP 服务器配置
@@ -57,11 +58,16 @@ class MCPService:
         Args:
             user_id: 用户 ID
             request: 创建请求
+            is_admin: 是否为管理员（用于权限检查）
 
         Returns:
             创建的服务器配置
         """
         collection = await self._get_collection()
+
+        # 权限检查：只有管理员可以创建系统级服务
+        if request.is_system and not is_admin:
+            raise PermissionError("只有管理员可以创建公共服务（系统级MCP）")
 
         # 验证环境变量格式
         if request.env:
@@ -78,8 +84,10 @@ class MCPService:
             "command": request.command,
             "args": request.args or [],
             "env": request.env or {},
-            # http/sse 模式配置
+            # http/sse/websocket 模式配置
             "url": request.url,
+            "headers": request.headers or {},  # ← 添加 headers 字段
+            # 认证配置（兼容旧版本）
             "auth_type": request.auth_type.value if request.auth_type else AuthTypeEnum.NONE.value,
             "auth_token": request.auth_token,
             # 通用配置
@@ -261,6 +269,8 @@ class MCPService:
             update_data["env"] = request.env
         if request.url is not None:
             update_data["url"] = request.url
+        if request.headers is not None:  # ← 添加 headers 更新
+            update_data["headers"] = request.headers
         if request.auth_type is not None:
             update_data["auth_type"] = request.auth_type.value
         if request.auth_token is not None:
@@ -369,6 +379,7 @@ class MCPService:
             "args": server.args,
             "env": server.env,
             "url": server.url,
+            "headers": server.headers,  # ← 添加 headers 字段（优先级高于 auth_type）
             "auth_type": server.auth_type.value,
             "auth_token": server.auth_token,
         }
@@ -486,6 +497,7 @@ class MCPService:
             "args": server.args,
             "env": server.env,
             "url": server.url,
+            "headers": server.headers,  # ← 添加 headers 字段（优先级高于 auth_type）
             "auth_type": server.auth_type.value,
             "auth_token": server.auth_token,
         }

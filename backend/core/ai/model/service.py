@@ -2,6 +2,7 @@
 AI 模型配置管理服务
 
 提供 AI 模型的 CRUD 操作和连接测试功能。
+API Key 使用加密存储保护。
 """
 
 import logging
@@ -21,6 +22,7 @@ from core.ai.model.schemas import (
     AIModelTestRequest,
     ConnectionTestResponse,
 )
+from core.security.encryption import encrypt_sensitive_data, decrypt_sensitive_data, is_encrypted
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +52,8 @@ class AIModelService:
     async def create_model(
         self,
         user_id: str,
-        request: AIModelConfigCreate
+        request: AIModelConfigCreate,
+        is_admin: bool = False
     ) -> AIModelConfigResponse:
         """
         创建 AI 模型配置
@@ -58,19 +61,26 @@ class AIModelService:
         Args:
             user_id: 用户 ID
             request: 创建请求
+            is_admin: 是否为管理员（用于权限检查）
 
         Returns:
             创建的模型配置
         """
         collection = await self._get_collection()
 
-        # 系统级配置需要管理员权限（在前端验证）
+        # 权限检查：只有管理员可以创建系统级模型
+        if request.is_system and not is_admin:
+            raise PermissionError("只有管理员可以创建系统模型（公共AI模型）")
+
+        # 加密 API Key
+        encrypted_api_key = encrypt_sensitive_data(request.api_key)
+
         # 创建文档
         doc = {
             "name": request.name,
             "provider": request.provider.value,
             "api_base_url": request.api_base_url,
-            "api_key": request.api_key,  # 明文存储，日志脱敏
+            "api_key": encrypted_api_key,  # 加密存储
             "model_id": request.model_id,
             "max_concurrency": request.max_concurrency,
             "task_concurrency": request.task_concurrency,
@@ -275,7 +285,8 @@ class AIModelService:
         if request.api_base_url is not None:
             update_data["api_base_url"] = request.api_base_url
         if request.api_key is not None:
-            update_data["api_key"] = request.api_key
+            # 加密 API Key 后存储
+            update_data["api_key"] = encrypt_sensitive_data(request.api_key)
         if request.model_id is not None:
             update_data["model_id"] = request.model_id
         if request.max_concurrency is not None:

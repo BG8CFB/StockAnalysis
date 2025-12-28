@@ -15,6 +15,7 @@ from core.exceptions import setup_exception_handlers
 from core.logging_config import setup_logging
 from core.settings.api import router as settings_router
 from core.user.api import router as user_router
+from core.user import settings_router as user_settings_router
 from core.system.api import router as system_router
 from core.ai.api import router as ai_core_router
 from modules.analysis.api import router as analysis_router
@@ -31,9 +32,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-# 应用 MCP Python SDK Bug 补丁
-# 修复：空 SSE 数据导致 ValidationError（Issue #1672）
-# 参考：https://github.com/modelcontextprotocol/python-sdk/issues/1672
+# 应用 MCP 兼容性补丁（修复自定义错误格式问题）
 try:
     from modules.trading_agents.services.mcp_patch import apply_mcp_patches
     apply_mcp_patches()
@@ -87,6 +86,14 @@ async def lifespan(app: FastAPI):
         logger.info("TradingAgents 数据库索引初始化成功")
     except Exception as e:
         logger.warning(f"TradingAgents 数据库索引初始化失败: {e}")
+
+    # 初始化用户配置模块数据库索引
+    from core.user.settings_database import init_user_settings_indexes
+    try:
+        await init_user_settings_indexes()
+        logger.info("用户配置数据库索引初始化成功")
+    except Exception as e:
+        logger.warning(f"用户配置数据库索引初始化失败: {e}")
 
     # 恢复运行中的任务
     from modules.trading_agents.core.task_manager import get_task_manager
@@ -205,6 +212,7 @@ def create_app() -> FastAPI:
     # 基础设施路由
     app.include_router(system_router, prefix=settings.API_V1_PREFIX)    # 系统管理
     app.include_router(user_router, prefix=settings.API_V1_PREFIX)      # 用户管理
+    app.include_router(user_settings_router, prefix=settings.API_V1_PREFIX)  # 用户配置管理
 
     # 业务模块路由
     app.include_router(analysis_router, prefix=settings.API_V1_PREFIX)

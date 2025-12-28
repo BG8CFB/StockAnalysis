@@ -34,7 +34,7 @@
         >
           <el-form-item label="数据收集模型">
             <el-select
-              v-model="formData.default_data_collection_model"
+              v-model="formData.data_collection_model_id"
               placeholder="使用默认模型"
               clearable
               style="width: 100%"
@@ -60,7 +60,7 @@
 
           <el-form-item label="辩论阶段模型">
             <el-select
-              v-model="formData.default_debate_model"
+              v-model="formData.debate_model_id"
               placeholder="使用默认模型"
               clearable
               style="width: 100%"
@@ -249,7 +249,8 @@ import { ElMessage } from 'element-plus'
 import { Setting, Cpu, ChatLineSquare, Clock, Operation } from '@element-plus/icons-vue'
 import { useUserStore } from '@core/auth/store'
 import { useTradingAgentsStore } from '../store'
-import { PROVIDER_PRESETS } from '../types'
+import { settingsApi } from '../api'
+import { PROVIDER_PRESETS, type TradingAgentsSettings } from '../types'
 
 const userStore = useUserStore()
 const agentsStore = useTradingAgentsStore()
@@ -269,12 +270,13 @@ const formRef = ref()
 
 // 保存状态
 const saving = ref(false)
+const loading = ref(false)
 
 // 表单数据
-const formData = reactive({
+const formData = reactive<TradingAgentsSettings>({
   // 默认 AI 模型配置
-  default_data_collection_model: '',
-  default_debate_model: '',
+  data_collection_model_id: '',
+  debate_model_id: '',
 
   // 辩论配置
   default_debate_rounds: 3, // 与单股分析和批量分析的默认值一致
@@ -292,34 +294,18 @@ const formData = reactive({
   enable_progress_events: true,
 })
 
-// 加载用户偏好设置
-function loadSettings() {
-  // 先尝试从 localStorage 读取 trading_agents 设置（因为后端 UserPreferences 不支持此字段）
-  const localSettingsStr = localStorage.getItem('trading_agents_settings')
-  if (localSettingsStr) {
-    try {
-      const localSettings = JSON.parse(localSettingsStr)
-      Object.assign(formData, localSettings)
-    } catch (error) {
-      console.error('Failed to parse trading_agents_settings from localStorage:', error)
-    }
-  }
-
-  // 如果 localStorage 没有数据，尝试从 userStore 读取（兼容性）
-  const prefs = userStore.preferences
-  if (prefs && !localSettingsStr) {
-    const tradingAgentsSettings = (prefs as any).trading_agents || {}
-    Object.assign(formData, {
-      default_debate_rounds: tradingAgentsSettings.default_debate_rounds ?? 3,
-      max_debate_rounds: tradingAgentsSettings.max_debate_rounds ?? 5,
-      phase_timeout_minutes: tradingAgentsSettings.phase_timeout_minutes ?? 30,
-      agent_timeout_minutes: tradingAgentsSettings.agent_timeout_minutes ?? 10,
-      tool_timeout_seconds: tradingAgentsSettings.tool_timeout_seconds ?? 30,
-      task_expiry_hours: tradingAgentsSettings.task_expiry_hours ?? 24,
-      archive_days: tradingAgentsSettings.archive_days ?? 30,
-      enable_loop_detection: tradingAgentsSettings.enable_loop_detection ?? true,
-      enable_progress_events: tradingAgentsSettings.enable_progress_events ?? true,
-    })
+// 加载用户设置
+async function loadSettings() {
+  loading.value = true
+  try {
+    const data = await settingsApi.getSettings()
+    // 从后端加载的设置映射到表单
+    Object.assign(formData, data.settings)
+  } catch (error) {
+    console.error('Failed to load settings:', error)
+    // 如果加载失败，保持默认值
+  } finally {
+    loading.value = false
   }
 }
 
@@ -328,20 +314,11 @@ async function handleSave() {
   saving.value = true
 
   try {
-    // 由于后端 UserPreferences 模型不支持 trading_agents 字段，
-    // 我们先保存到 localStorage，同时更新 userStore 的本地状态
-    const settingsToSave = { ...formData }
-    localStorage.setItem('trading_agents_settings', JSON.stringify(settingsToSave))
-
-    // 更新 userStore 的 preferences（触发事件）
-    const currentPrefs = userStore.preferences || {}
-    userStore.preferences = {
-      ...currentPrefs,
-      trading_agents: settingsToSave,
-    } as any
-
+    // 保存到后端
+    await settingsApi.updateSettings(formData)
     ElMessage.success('设置已保存')
   } catch (error) {
+    console.error('Save error:', error)
     ElMessage.error('保存设置失败')
   } finally {
     saving.value = false
@@ -349,8 +326,8 @@ async function handleSave() {
 }
 
 // 重置设置
-function handleReset() {
-  loadSettings()
+async function handleReset() {
+  await loadSettings()
   ElMessage.info('设置已重置')
 }
 
@@ -359,7 +336,7 @@ onMounted(async () => {
   // 加载模型列表
   await agentsStore.fetchModels()
   // 加载用户设置
-  loadSettings()
+  await loadSettings()
 })
 </script>
 

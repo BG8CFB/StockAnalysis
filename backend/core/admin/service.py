@@ -78,6 +78,14 @@ class AdminService:
 
         users = []
         async for user_doc in cursor:
+            # 检测缺少密码的异常用户
+            if not user_doc.get("hashed_password"):
+                logger.warning(
+                    f"检测到异常用户（缺少 hashed_password）: "
+                    f"id={user_doc.get('_id')}, email={user_doc.get('email')}, "
+                    f"username={user_doc.get('username')}"
+                )
+
             # 使用 UserModel 验证，然后用 UserListResponse 序列化（带有正确的字段别名）
             user_model = UserModel.model_validate(user_doc)
             # 转换为 UserListResponse 以应用 serialization_alias
@@ -117,6 +125,14 @@ class AdminService:
 
         users = []
         async for user_doc in cursor:
+            # 检测缺少密码的异常用户
+            if not user_doc.get("hashed_password"):
+                logger.warning(
+                    f"检测到异常用户（缺少 hashed_password）: "
+                    f"id={user_doc.get('_id')}, email={user_doc.get('email')}, "
+                    f"username={user_doc.get('username')}"
+                )
+
             # 使用 UserModel 验证，然后用 UserListResponse 序列化（带有正确的字段别名）
             user_model = UserModel.model_validate(user_doc)
             # 转换为 UserListResponse 以应用 serialization_alias

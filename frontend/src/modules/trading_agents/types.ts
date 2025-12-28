@@ -140,6 +140,7 @@ export interface MCPServerConfig {
   args?: string[]
   env?: Record<string, string>
   url?: string
+  headers?: Record<string, string>  // HTTP 请求头（用于认证等）
   auth_type: AuthTypeEnum
   auth_token?: string
   auto_approve: string[]
@@ -159,6 +160,7 @@ export interface MCPServerConfigCreate {
   args?: string[]
   env?: Record<string, string>
   url?: string
+  headers?: Record<string, string>  // HTTP 请求头（用于认证等）
   auth_type?: AuthTypeEnum
   auth_token?: string
   auto_approve?: string[]
@@ -173,6 +175,7 @@ export interface MCPServerConfigUpdate {
   args?: string[]
   env?: Record<string, string>
   url?: string
+  headers?: Record<string, string>  // HTTP 请求头（用于认证等）
   auth_type?: AuthTypeEnum
   auth_token?: string
   auto_approve?: string[]
@@ -299,6 +302,8 @@ export interface AnalysisTaskCreate {
   stock_code: string
   market: StockMarketEnum
   trade_date: string
+  data_collection_model?: string  // 数据收集阶段模型ID（第一阶段）
+  debate_model?: string  // 辩论和总结阶段模型ID（第二三四阶段）
   stages: AnalysisStagesConfig
 }
 
@@ -330,6 +335,8 @@ export interface BatchTaskCreate {
   stock_codes: string[]
   market: StockMarketEnum
   trade_date: string
+  data_collection_model?: string  // 数据收集阶段模型ID（第一阶段）
+  debate_model?: string  // 辩论和总结阶段模型ID（第二三四阶段）
   stages: AnalysisStagesConfig
 }
 
@@ -462,4 +469,37 @@ export const PROVIDER_PRESETS: Record<ModelProviderEnum, ProviderPreset> = {
     defaultBaseUrl: '',
     exampleModelId: '',
   },
+}
+
+// =============================================================================
+// TradingAgents 设置类型
+// =============================================================================
+
+export interface TradingAgentsSettings {
+  // AI 模型配置
+  data_collection_model_id: string
+  debate_model_id: string
+
+  // 辩论配置
+  default_debate_rounds: number
+  max_debate_rounds: number
+
+  // 超时配置
+  phase_timeout_minutes: number
+  agent_timeout_minutes: number
+  tool_timeout_seconds: number
+
+  // 其他配置
+  task_expiry_hours: number
+  archive_days: number
+  enable_loop_detection: boolean
+  enable_progress_events: boolean
+}
+
+export interface TradingAgentsSettingsResponse {
+  id: string
+  user_id: string
+  settings: TradingAgentsSettings
+  created_at: string
+  updated_at: string
 }

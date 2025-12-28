@@ -257,6 +257,12 @@ class UserService:
             await self._record_login_failure(data.email, client_ip)
             raise InvalidCredentialsError("邮箱或密码错误")
 
+        # 检查密码字段是否存在
+        if not user.get("hashed_password"):
+            logger.error(f"用户 {data.email} 缺少 hashed_password 字段，无法登录")
+            await self._record_login_failure(data.email, client_ip)
+            raise InvalidCredentialsError("账号数据异常，请联系管理员")
+
         if not password_manager.verify_password(data.password, user["hashed_password"]):
             await self._record_login_failure(data.email, client_ip)
             raise InvalidCredentialsError("邮箱或密码错误")

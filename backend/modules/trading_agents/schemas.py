@@ -83,8 +83,11 @@ class MCPServerConfigBase(BaseModel):
     args: Optional[List[str]] = Field(default_factory=list, description="命令参数")
     env: Optional[Dict[str, str]] = Field(default_factory=dict, description="环境变量")
 
-    # http/sse 模式配置
+    # http/sse/websocket 模式配置
     url: Optional[str] = Field(None, description="服务器 URL")
+    headers: Optional[Dict[str, str]] = Field(default_factory=dict, description="HTTP 请求头")
+
+    # 认证配置（兼容旧版本，建议使用 headers）
     auth_type: AuthTypeEnum = Field(default=AuthTypeEnum.NONE, description="认证类型")
     auth_token: Optional[str] = Field(None, description="认证令牌")
 
@@ -105,6 +108,20 @@ class MCPServerConfigBase(BaseModel):
             raise ValueError("环境变量必须可序列化为 JSON")
         return v
 
+    @field_validator("headers")
+    @classmethod
+    def validate_headers(cls, v: Optional[Dict[str, str]]) -> Dict[str, str]:
+        """验证 HTTP headers 格式"""
+        if v is None:
+            return {}
+        # 确保是 JSON 可序列化的
+        try:
+            import json
+            json.dumps(v)
+        except TypeError:
+            raise ValueError("Headers 必须可序列化为 JSON")
+        return v
+
 
 class MCPServerConfigCreate(MCPServerConfigBase):
     """创建 MCP 服务器配置请求"""
@@ -119,6 +136,7 @@ class MCPServerConfigUpdate(BaseModel):
     args: Optional[List[str]] = None
     env: Optional[Dict[str, str]] = None
     url: Optional[str] = None
+    headers: Optional[Dict[str, str]] = None
     auth_type: Optional[AuthTypeEnum] = None
     auth_token: Optional[str] = None
     auto_approve: Optional[List[str]] = None
@@ -146,6 +164,7 @@ class MCPServerConfigResponse(MCPServerConfigBase):
             args=data.get("args", []),
             env=data.get("env", {}),
             url=data.get("url"),
+            headers=data.get("headers", {}),  # ← 添加 headers 字段
             auth_type=AuthTypeEnum(data.get("auth_type", "none")),
             auth_token=data.get("auth_token"),
             auto_approve=data.get("auto_approve", []),
@@ -325,6 +344,8 @@ class AnalysisTaskCreate(BaseModel):
     stock_code: str = Field(..., min_length=1, max_length=20, description="股票代码")
     market: str = Field(default="a_share", description="股票市场：a_share, hong_kong, us")
     trade_date: str = Field(..., min_length=1, max_length=20, description="交易日期")
+    data_collection_model: Optional[str] = Field(None, description="数据收集阶段模型ID（第一阶段）")
+    debate_model: Optional[str] = Field(None, description="辩论和总结阶段模型ID（第二三四阶段）")
     stages: AnalysisStagesConfig = Field(default_factory=AnalysisStagesConfig, description="阶段配置")
 
 
@@ -333,6 +354,8 @@ class BatchTaskCreate(BaseModel):
     stock_codes: List[str] = Field(..., min_length=1, max_length=50, description="股票代码列表")
     market: str = Field(default="a_share", description="股票市场：a_share, hong_kong, us")
     trade_date: str = Field(..., min_length=1, max_length=20, description="交易日期")
+    data_collection_model: Optional[str] = Field(None, description="数据收集阶段模型ID（第一阶段）")
+    debate_model: Optional[str] = Field(None, description="辩论和总结阶段模型ID（第二三四阶段）")
     stages: AnalysisStagesConfig = Field(default_factory=AnalysisStagesConfig, description="阶段配置")
 
 
@@ -453,8 +476,10 @@ class ReportSummaryResponse(BaseModel):
     buy_count: int
     sell_count: int
     hold_count: int
-    avg_buy_price: Optional[float]
-    avg_sell_price: Optional[float]
+    avg_buy_price: Optional[float] = None
+    avg_sell_price: Optional[float] = None
+    recommendation_distribution: Dict[str, int] = {}
+    total_token_usage: int = 0
 
 
 # =============================================================================
@@ -484,6 +509,56 @@ class TaskEvent(BaseModel):
     task_id: str
     timestamp: datetime
     data: Dict[str, Any]
+
+
+# =============================================================================
+# TradingAgents 用户设置模型
+# =============================================================================
+
+class TradingAgentsSettings(BaseModel):
+    """TradingAgents 模块的用户设置"""
+
+    # AI 模型配置
+    data_collection_model_id: str = Field(default="", description="数据收集阶段模型ID")
+    debate_model_id: str = Field(default="", description="辩论阶段模型ID")
+
+    # 辩论配置
+    default_debate_rounds: int = Field(default=3, ge=0, le=10, description="默认辩论轮次")
+    max_debate_rounds: int = Field(default=5, ge=0, le=10, description="最大辩论轮次")
+
+    # 超时配置
+    phase_timeout_minutes: int = Field(default=30, ge=5, le=120, description="单阶段超时（分钟）")
+    agent_timeout_minutes: int = Field(default=10, ge=1, le=60, description="单智能体超时（分钟）")
+    tool_timeout_seconds: int = Field(default=30, ge=10, le=300, description="工具调用超时（秒）")
+
+    # 其他配置
+    task_expiry_hours: int = Field(default=24, ge=1, le=168, description="任务过期时间（小时）")
+    archive_days: int = Field(default=30, ge=7, le=365, description="报告归档天数")
+    enable_loop_detection: bool = Field(default=True, description="启用工具循环检测")
+    enable_progress_events: bool = Field(default=True, description="启用实时进度推送")
+
+
+class TradingAgentsSettingsResponse(BaseModel):
+    """TradingAgents 设置响应"""
+    id: str
+    user_id: str
+    settings: TradingAgentsSettings
+    created_at: datetime
+    updated_at: datetime
+
+    @classmethod
+    def from_db(cls, data: Dict[str, Any]) -> "TradingAgentsSettingsResponse":
+        """从数据库数据创建响应对象"""
+        settings_data = data.get("settings", {})
+        settings = TradingAgentsSettings(**settings_data)
+
+        return cls(
+            id=str(data["_id"]),
+            user_id=data["user_id"],
+            settings=settings,
+            created_at=data["created_at"],
+            updated_at=data["updated_at"],
+        )
 
 
 # =============================================================================

@@ -28,7 +28,7 @@ class UserModel(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     email: EmailStr
     username: str
-    hashed_password: str  # 永远不在响应中返回
+    hashed_password: Optional[str] = None  # 永远不在响应中返回；改为可选以兼容历史数据
     role: Role = Role.USER
     status: UserStatus = Field(default=UserStatus.ACTIVE)  # 兼容旧数据默认为 ACTIVE
 

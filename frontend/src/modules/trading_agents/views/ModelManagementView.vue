@@ -2,14 +2,31 @@
   <div class="model-management">
     <!-- 页面标题 -->
     <div class="page-header">
-      <h2>AI 模型管理</h2>
-      <el-button
-        type="primary"
-        :icon="Plus"
-        @click="showCreateDialog = true"
-      >
-        添加模型
-      </el-button>
+      <div>
+        <h2>AI 模型管理</h2>
+        <p class="page-description">
+          配置 AI 模型用于 TradingAgents 智能体分析
+        </p>
+      </div>
+      <div class="header-actions">
+        <!-- 添加个人模型 - 所有用户可用 -->
+        <el-button
+          type="primary"
+          :icon="Plus"
+          @click="openAddModelDialog(false)"
+        >
+          添加个人模型
+        </el-button>
+        <!-- 添加系统模型 - 管理员和超管可见 -->
+        <el-button
+          v-if="canManageSystemModels"
+          type="warning"
+          :icon="Plus"
+          @click="openAddModelDialog(true)"
+        >
+          添加系统模型
+        </el-button>
+      </div>
     </div>
 
     <!-- 模型列表 -->
@@ -144,16 +161,38 @@
             />
             <el-table-column
               label="操作"
-              width="120"
+              width="250"
             >
               <template #default="{ row }">
                 <el-button
                   link
                   type="primary"
                   :icon="Connection"
+                  size="small"
                   @click="handleTest(row)"
                 >
                   测试
+                </el-button>
+                <!-- 编辑和删除按钮 - 仅管理员和超管可见 -->
+                <el-button
+                  v-if="canManageSystemModels"
+                  link
+                  type="primary"
+                  :icon="Edit"
+                  size="small"
+                  @click="handleEdit(row)"
+                >
+                  编辑
+                </el-button>
+                <el-button
+                  v-if="canManageSystemModels"
+                  link
+                  type="danger"
+                  :icon="Delete"
+                  size="small"
+                  @click="handleDelete(row)"
+                >
+                  删除
                 </el-button>
               </template>
             </el-table-column>
@@ -165,15 +204,26 @@
     <!-- 创建/编辑对话框 -->
     <el-dialog
       v-model="showCreateDialog"
-      :title="isEdit ? '编辑模型' : '添加模型'"
+      :title="dialogTitle"
       width="600px"
       @close="handleDialogClose"
     >
+      <el-alert
+        type="info"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 20px"
+      >
+        <template #title>
+          {{ dialogDescription }}
+        </template>
+      </el-alert>
+
       <el-form
         ref="formRef"
         :model="formData"
         :rules="formRules"
-        label-width="120px"
+        label-width="140px"
       >
         <el-form-item
           label="模型名称"
@@ -183,6 +233,23 @@
             v-model="formData.name"
             placeholder="请输入模型名称"
           />
+        </el-form-item>
+
+        <!-- 模型类型 - 仅管理员和超管可见且仅在创建时显示 -->
+        <el-form-item
+          v-if="canManageSystemModels && !isEdit"
+          label="模型类型"
+        >
+          <el-radio-group v-model="formData.is_system">
+            <el-radio :label="false">
+              <strong>个人模型</strong>
+              <span class="radio-desc">（仅自己可用）</span>
+            </el-radio>
+            <el-radio :label="true">
+              <strong>系统模型</strong>
+              <span class="radio-desc">（所有用户可用）</span>
+            </el-radio>
+          </el-radio-group>
         </el-form-item>
 
         <el-form-item
@@ -353,10 +420,17 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit, Delete, Connection } from '@element-plus/icons-vue'
+import { useUserStore } from '@core/auth/store'
 import { useTradingAgentsStore } from '../store'
 import { PROVIDER_PRESETS, ModelProviderEnum, type AIModelConfig, type AIModelConfigCreate } from '../types'
 
+const userStore = useUserStore()
 const store = useTradingAgentsStore()
+
+// 是否为管理员或超管（可以管理系统模型）
+const canManageSystemModels = computed(() =>
+  userStore.userInfo?.role === 'ADMIN' || userStore.userInfo?.role === 'SUPER_ADMIN'
+)
 
 // 当前标签页
 const activeTab = ref('user')
@@ -366,6 +440,24 @@ const showCreateDialog = ref(false)
 const showTestDialog = ref(false)
 const isEdit = ref(false)
 const editingId = ref<string | null>(null)
+const isCreatingSystemModel = ref(false) // 是否正在创建系统模型
+
+// 对话框标题和描述
+const dialogTitle = computed(() => {
+  if (isEdit.value) {
+    return '编辑 AI 模型'
+  }
+  return isCreatingSystemModel.value ? '添加系统模型' : '添加个人模型'
+})
+
+const dialogDescription = computed(() => {
+  if (isEdit.value) {
+    return '修改模型配置后点击保存'
+  }
+  return isCreatingSystemModel.value
+    ? '系统模型将对所有用户可用（包括管理员和普通用户）'
+    : '个人模型仅您自己可用'
+})
 
 // 表单引用
 const formRef = ref()
@@ -469,9 +561,35 @@ async function handleSubmit() {
   }
 }
 
+// 打开添加模型对话框
+function openAddModelDialog(isSystem: boolean) {
+  isEdit.value = false
+  isCreatingSystemModel.value = isSystem
+  editingId.value = null
+
+  // 重置表单数据
+  Object.assign(formData, {
+    name: '',
+    provider: ModelProviderEnum.ZHIPU,
+    api_base_url: '',
+    api_key: '',
+    model_id: '',
+    max_concurrency: 40,
+    task_concurrency: 2,
+    batch_concurrency: 1,
+    timeout_seconds: 60,
+    temperature: 0.5,
+    enabled: true,
+    is_system: isSystem, // 设置is_system
+  })
+
+  showCreateDialog.value = true
+}
+
 // 编辑模型
 function handleEdit(model: AIModelConfig) {
   isEdit.value = true
+  isCreatingSystemModel.value = model.is_system
   editingId.value = model.id
   Object.assign(formData, {
     name: model.name,
@@ -537,6 +655,7 @@ async function handleTest(model: AIModelConfig) {
 // 关闭对话框
 function handleDialogClose() {
   isEdit.value = false
+  isCreatingSystemModel.value = false
   editingId.value = null
   formRef.value?.resetFields()
 }
@@ -555,14 +674,32 @@ onMounted(() => {
 .page-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 20px;
 }
 
 .page-header h2 {
-  margin: 0;
+  margin: 0 0 8px 0;
   font-size: 20px;
   font-weight: 600;
+}
+
+.page-description {
+  margin: 0;
+  font-size: 14px;
+  color: #909399;
+}
+
+.header-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.radio-desc {
+  margin-left: 8px;
+  font-size: 13px;
+  color: #909399;
+  font-weight: normal;
 }
 
 .test-result,

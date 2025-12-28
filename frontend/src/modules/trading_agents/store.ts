@@ -193,9 +193,9 @@ export const useTradingAgentsStore = defineStore('tradingAgents', () => {
     }
   }
 
-  async function deleteServer(serverId: string) {
+  async function deleteServer(serverId: string, isSystem: boolean = false) {
     try {
-      await mcpApi.deleteServer(serverId)
+      await mcpApi.deleteServer(serverId, isSystem)
       await fetchServers()
       ElMessage.success('MCP 服务器配置已删除')
     } catch (error: any) {
@@ -421,7 +421,7 @@ export const useTradingAgentsStore = defineStore('tradingAgents', () => {
 
   async function fetchReportSummary(days: number = 30) {
     try {
-      reportSummary.value = await reportApi.getSummary(days)
+      reportSummary.value = await reportApi.getReportSummary(days)
     } catch (error: any) {
       ElMessage.error('获取报告统计失败')
       throw error

@@ -32,6 +32,9 @@ from modules.trading_agents.schemas import (
     UserAgentConfigCreate,
     UserAgentConfigUpdate,
     UserAgentConfigResponse,
+    TradingAgentsSettings,
+    TradingAgentsSettingsResponse,
+    ReportSummaryResponse,
 )
 from core.ai.model.schemas import ConnectionTestResponse
 from core.background_tasks import create_analysis_task_background
@@ -124,26 +127,46 @@ async def create_analysis_task(
     Returns:
         创建的任务信息
     """
-    # 获取用户配置（TODO: 实现用户配置加载）
+    # 🔒 配额检查
+    from core.user.settings_service import get_user_settings_service
+    settings_service = get_user_settings_service()
+    allowed, error_msg = await settings_service.check_task_quota(str(current_user.id))
+
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=error_msg
+        )
+
+    # 增加任务使用计数
+    await settings_service.increment_task_usage(str(current_user.id))
+
+    # 获取用户配置
     config = {}
 
-    # 使用 asyncio.create_task 在后台创建任务
-    task_create_task = asyncio.create_task(
-        create_analysis_task_background(
-            user_id=str(current_user.id),
-            request=request,
-            config=config
+    try:
+        # 使用 asyncio.create_task 在后台创建任务
+        task_create_task = asyncio.create_task(
+            create_analysis_task_background(
+                user_id=str(current_user.id),
+                request=request,
+                config=config
+            )
         )
-    )
 
-    # 立即返回任务 ID（任务在后台创建）
-    task_id = await asyncio.wait_for(task_create_task, timeout=5.0)
+        # 立即返回任务 ID（任务在后台创建）
+        task_id = await asyncio.wait_for(task_create_task, timeout=5.0)
 
-    # 获取任务信息（在后台任务执行后，数据应该已经插入）
-    task_manager = get_task_manager()
-    task_info = await task_manager.get_task_status(task_id)
+        # 获取任务信息（在后台任务执行后，数据应该已经插入）
+        task_manager = get_task_manager()
+        task_info = await task_manager.get_task_status(task_id)
 
-    return AnalysisTaskResponse(**task_info)
+        return AnalysisTaskResponse(**task_info)
+
+    except Exception as e:
+        # 任务创建失败，回滚配额计数
+        await settings_service.decrement_concurrent_tasks(str(current_user.id))
+        raise HTTPException(status_code=500, detail=f"任务创建失败: {str(e)}")
 
 
 @router.post("/tasks/batch", response_model=BatchTaskResponse)
@@ -161,20 +184,41 @@ async def create_batch_analysis_task(
     Returns:
         创建的批量任务信息
     """
+    # 🔒 配额检查（批量任务需要更多配额）
+    from core.user.settings_service import get_user_settings_service
+    settings_service = get_user_settings_service()
+
+    # 批量任务需要检查所有股票数量
+    stock_count = len(request.stock_codes)
+
+    # 检查每个任务的配额
+    for i in range(stock_count):
+        allowed, error_msg = await settings_service.check_task_quota(str(current_user.id))
+        if not allowed:
+            raise HTTPException(
+                status_code=429,
+                detail=f"批量任务配额不足: {error_msg}"
+            )
+
     task_manager = get_task_manager()
 
-    # TODO: 获取用户配置
+    # 获取用户配置
     config = {}
 
-    # 创建批量任务
-    batch_id = await task_manager.create_batch_task(
-        user_id=str(current_user.id),
-        request=request,
-        config=config,
-    )
+    try:
+        # 创建批量任务
+        batch_id = await task_manager.create_batch_task(
+            user_id=str(current_user.id),
+            request=request,
+            config=config,
+        )
 
-    return BatchTaskResponse(
-        id=batch_id,
+        # 增加所有任务的使用计数
+        for _ in range(stock_count):
+            await settings_service.increment_task_usage(str(current_user.id))
+
+        return BatchTaskResponse(
+            id=batch_id,
         user_id=str(current_user.id),
         stock_codes=request.stock_codes,
         total_count=len(request.stock_codes),
@@ -183,8 +227,11 @@ async def create_batch_analysis_task(
         status=TaskStatusEnum.PENDING,
         created_at=None,  # TODO: 从数据库获取
     )
-
-
+    except Exception as e:
+        # 任务创建失败，回滚配额计数
+        for _ in range(stock_count):
+            await settings_service.decrement_task_usage(str(current_user.id))
+        raise HTTPException(status_code=500, detail=f"批量任务创建失败: {str(e)}")
 @router.get("/tasks")
 async def list_tasks(
     status: Optional[TaskStatusEnum] = None,
@@ -614,9 +661,14 @@ async def create_mcp_server(
 
     Returns:
         创建的服务器配置
+
+    Note:
+        - is_system=True: 只有管理员可以创建公共服务
+        - is_system=False: 任何用户都可以创建个人服务
     """
+    is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
     service = get_mcp_service()
-    return await service.create_server(str(current_user.id), request)
+    return await service.create_server(str(current_user.id), request, is_admin)
 
 
 @router.get("/mcp-servers")
@@ -922,6 +974,72 @@ async def import_agent_config(
 
 
 # =============================================================================
+# TradingAgents 设置端点
+# =============================================================================
+
+@router.get("/settings", response_model=TradingAgentsSettingsResponse)
+async def get_settings(
+    current_user: UserModel = Depends(get_current_active_user),
+):
+    """
+    获取用户的 TradingAgents 设置
+
+    返回用户的分析规则配置，包括 AI 模型、辩论轮次、超时等设置。
+
+    Args:
+        current_user: 当前用户
+
+    Returns:
+        用户设置，如果不存在则返回默认设置
+    """
+    from modules.trading_agents.services.settings_service import get_trading_agents_settings_service
+
+    service = get_trading_agents_settings_service()
+    settings = await service.get_user_settings(str(current_user.id))
+
+    if not settings:
+        # 返回默认设置
+        from modules.trading_agents.schemas import TradingAgentsSettings, TradingAgentsSettingsResponse
+        from datetime import datetime
+
+        default_settings = TradingAgentsSettings()
+        return TradingAgentsSettingsResponse(
+            id="",
+            user_id=str(current_user.id),
+            settings=default_settings,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+
+    return settings
+
+
+@router.put("/settings", response_model=TradingAgentsSettingsResponse)
+async def update_settings(
+    request: TradingAgentsSettings,
+    current_user: UserModel = Depends(get_current_active_user),
+):
+    """
+    更新用户的 TradingAgents 设置
+
+    更新用户的分析规则配置，包括 AI 模型、辩论轮次、超时等设置。
+
+    Args:
+        request: 设置数据
+        current_user: 当前用户
+
+    Returns:
+        更新后的设置
+    """
+    from modules.trading_agents.services.settings_service import get_trading_agents_settings_service
+
+    service = get_trading_agents_settings_service()
+    updated = await service.update_user_settings(str(current_user.id), request)
+
+    return updated
+
+
+# =============================================================================
 # 报告管理端点
 # =============================================================================
 
@@ -968,7 +1086,7 @@ async def list_reports(
     return {"reports": reports}
 
 
-@router.get("/reports/summary")
+@router.get("/reports/summary", response_model=ReportSummaryResponse)
 async def get_reports_summary(
     days: int = Query(30, ge=1, le=365),
     current_user: UserModel = Depends(get_current_active_user),

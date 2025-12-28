@@ -9,16 +9,29 @@
         </p>
       </div>
       <div class="header-actions">
-        <el-button @click="showImportFileDialog = true">
-          <el-icon><Upload /></el-icon>
-          导入MCP配置
+        <!-- 导入配置 - 所有用户可用 -->
+        <el-button
+          :icon="Upload"
+          @click="openImportDialog"
+        >
+          导入配置
         </el-button>
+        <!-- 添加个人服务 - 所有用户可用 -->
         <el-button
           type="primary"
           :icon="Plus"
-          @click="showJsonAddDialog = true"
+          @click="openAddServerDialog(false)"
         >
-          手动添加
+          添加个人服务
+        </el-button>
+        <!-- 添加公共服务 - 管理员和超管可见 -->
+        <el-button
+          v-if="canManageSystemServers"
+          type="warning"
+          :icon="Plus"
+          @click="openAddServerDialog(true)"
+        >
+          添加公共服务
         </el-button>
       </div>
     </div>
@@ -39,12 +52,12 @@
             <el-table-column
               prop="name"
               label="名称"
-              width="180"
+              width="160"
             />
             <el-table-column
               prop="transport"
               label="传输模式"
-              width="100"
+              width="90"
             >
               <template #default="{ row }">
                 <el-tag
@@ -67,7 +80,7 @@
             <el-table-column
               prop="status"
               label="状态"
-              width="100"
+              width="90"
             >
               <template #default="{ row }">
                 <el-tag
@@ -81,7 +94,7 @@
             <el-table-column
               prop="enabled"
               label="启用"
-              width="80"
+              width="70"
             >
               <template #default="{ row }">
                 <el-switch
@@ -92,7 +105,7 @@
             </el-table-column>
             <el-table-column
               label="操作"
-              width="220"
+              width="280"
               fixed="right"
             >
               <template #default="{ row }">
@@ -100,6 +113,7 @@
                   link
                   type="primary"
                   :icon="Connection"
+                  size="small"
                   @click="handleTest(row)"
                 >
                   测试
@@ -108,6 +122,7 @@
                   link
                   type="primary"
                   :icon="Tools"
+                  size="small"
                   @click="handleViewTools(row)"
                 >
                   工具
@@ -116,6 +131,7 @@
                   link
                   type="primary"
                   :icon="Edit"
+                  size="small"
                   @click="handleEdit(row)"
                 >
                   编辑
@@ -124,6 +140,7 @@
                   link
                   type="danger"
                   :icon="Delete"
+                  size="small"
                   @click="handleDelete(row)"
                 >
                   删除
@@ -135,7 +152,7 @@
 
         <!-- 系统服务器 -->
         <el-tab-pane
-          label="系统服务器"
+          label="公共服务"
           name="system"
         >
           <el-table
@@ -146,12 +163,12 @@
             <el-table-column
               prop="name"
               label="名称"
-              width="180"
+              width="160"
             />
             <el-table-column
               prop="transport"
               label="传输模式"
-              width="100"
+              width="90"
             >
               <template #default="{ row }">
                 <el-tag
@@ -174,7 +191,7 @@
             <el-table-column
               prop="status"
               label="状态"
-              width="100"
+              width="90"
             >
               <template #default="{ row }">
                 <el-tag
@@ -186,14 +203,28 @@
               </template>
             </el-table-column>
             <el-table-column
+              prop="enabled"
+              label="启用"
+              width="70"
+            >
+              <template #default="{ row }">
+                <el-switch
+                  v-model="row.enabled"
+                  @change="handleToggleEnabled(row)"
+                />
+              </template>
+            </el-table-column>
+            <el-table-column
               label="操作"
-              width="150"
+              width="280"
+              fixed="right"
             >
               <template #default="{ row }">
                 <el-button
                   link
                   type="primary"
                   :icon="Connection"
+                  size="small"
                   @click="handleTest(row)"
                 >
                   测试
@@ -202,9 +233,32 @@
                   link
                   type="primary"
                   :icon="Tools"
+                  size="small"
                   @click="handleViewTools(row)"
                 >
                   工具
+                </el-button>
+                <!-- 编辑按钮 - 管理员和超管可见 -->
+                <el-button
+                  v-if="canManageSystemServers"
+                  link
+                  type="primary"
+                  :icon="Edit"
+                  size="small"
+                  @click="handleEdit(row)"
+                >
+                  编辑
+                </el-button>
+                <!-- 删除按钮 - 管理员和超管可见 -->
+                <el-button
+                  v-if="canManageSystemServers"
+                  link
+                  type="danger"
+                  :icon="Delete"
+                  size="small"
+                  @click="handleDelete(row)"
+                >
+                  删除
                 </el-button>
               </template>
             </el-table-column>
@@ -213,13 +267,13 @@
       </el-tabs>
     </el-card>
 
-    <!-- 批量导入MCP配置对话框 (文件上传) -->
+    <!-- 导入配置对话框 -->
     <el-dialog
-      v-model="showImportFileDialog"
-      title="导入MCP配置"
-      width="600px"
+      v-model="showImportDialog"
+      title="导入 MCP 配置"
+      width="700px"
     >
-      <div class="import-file-dialog">
+      <div class="import-dialog">
         <el-alert
           type="info"
           :closable="false"
@@ -227,6 +281,39 @@
           style="margin-bottom: 20px"
         >
           上传 JSON 配置文件进行批量导入。支持 Claude Desktop 配置格式。
+        </el-alert>
+
+        <!-- 服务类型选择 - 管理员和超管可见 -->
+        <div
+          v-if="canManageSystemServers"
+          class="import-type-selector"
+        >
+          <div class="selector-label">
+            <el-icon><InfoFilled /></el-icon>
+            <span>导入为：</span>
+          </div>
+          <el-radio-group v-model="importAsSystem">
+            <el-radio :label="false">
+              <strong>个人服务</strong>
+              <span class="radio-desc">（仅自己可用）</span>
+            </el-radio>
+            <el-radio :label="true">
+              <strong>公共服务</strong>
+              <span class="radio-desc">（所有用户可用）</span>
+            </el-radio>
+          </el-radio-group>
+        </div>
+
+        <!-- 普通用户提示 -->
+        <el-alert
+          v-else
+          type="warning"
+          :closable="false"
+          show-icon
+          style="margin-bottom: 20px"
+        >
+          <strong>注意：</strong>您当前导入的配置将添加为个人服务（仅自己可用）。
+          如需导入公共服务，请联系管理员。
         </el-alert>
 
         <!-- 文件上传区域 -->
@@ -261,9 +348,18 @@
           <el-divider content-position="left">
             解析结果
           </el-divider>
-          <el-tag type="success">
-            检测到 {{ Object.keys(parsedImportConfig).length }} 个服务器
-          </el-tag>
+          <div class="import-summary">
+            <el-tag type="success">
+              检测到 {{ Object.keys(parsedImportConfig).length }} 个服务器
+            </el-tag>
+            <el-tag
+              v-if="canManageSystemServers"
+              :type="importAsSystem ? 'warning' : 'primary'"
+              style="margin-left: 8px"
+            >
+              将导入为{{ importAsSystem ? '公共服务' : '个人服务' }}
+            </el-tag>
+          </div>
           <div class="server-list-preview">
             <div
               v-for="(config, name) in parsedImportConfig"
@@ -295,7 +391,7 @@
       </div>
 
       <template #footer>
-        <el-button @click="showImportFileDialog = false">
+        <el-button @click="showImportDialog = false">
           取消
         </el-button>
         <el-button
@@ -309,27 +405,23 @@
       </template>
     </el-dialog>
 
-    <!-- 手动添加MCP服务器对话框 (JSON粘贴) -->
+    <!-- 添加/编辑服务器对话框 (统一JSON编辑器) -->
     <el-dialog
-      v-model="showJsonAddDialog"
-      title="手动添加MCP服务器"
-      width="700px"
-      @close="handleJsonAddClose"
+      v-model="showJsonEditDialog"
+      :title="jsonEditTitle"
+      width="800px"
+      @close="handleJsonEditClose"
     >
-      <div class="json-add-dialog">
+      <div class="json-edit-dialog">
+        <!-- 提示信息 -->
         <el-alert
           type="info"
           :closable="false"
           show-icon
-          style="margin-bottom: 20px"
+          style="margin-bottom: 16px"
         >
           <template #title>
-            粘贴单个 MCP 服务器的 JSON 配置
-          </template>
-          <template #default>
-            <p style="margin: 8px 0 0 0; font-size: 13px; color: #606266;">
-              此操作会累加到现有服务器列表中。同名服务器不会重复添加。
-            </p>
+            {{ jsonEditDescription }}
           </template>
         </el-alert>
 
@@ -337,7 +429,7 @@
         <div class="example-buttons">
           <el-button
             size="small"
-            @click="loadSingleExample"
+            @click="loadExample"
           >
             <el-icon><Document /></el-icon>
             加载示例配置
@@ -351,30 +443,38 @@
             <el-icon><Link /></el-icon>
             查看官方文档
           </el-button>
+          <!-- 格式化按钮 -->
+          <el-button
+            size="small"
+            @click="formatJson"
+          >
+            <el-icon><MagicStick /></el-icon>
+            格式化 JSON
+          </el-button>
         </div>
 
-        <!-- JSON 输入区域 -->
+        <!-- JSON 编辑器 -->
         <div class="editor-container">
           <el-input
-            v-model="singleServerJson"
+            ref="jsonEditorRef"
+            v-model="serverJson"
             type="textarea"
-            :rows="12"
-            placeholder="粘贴单个服务器的 JSON 配置，例如:
+            :rows="18"
+            placeholder="粘贴 MCP 服务器的 JSON 配置，例如:
 {
   &quot;command&quot;: &quot;npx&quot;,
   &quot;args&quot;: [&quot;-y&quot;, &quot;@modelcontextprotocol/server-filesystem&quot;, &quot;/path/to/files&quot;]
 }"
-            :autosize="{ minRows: 12, maxRows: 20 }"
           />
         </div>
 
         <!-- 解析结果 -->
         <div
-          v-if="parsedSingleServer"
+          v-if="parsedServer"
           class="parse-result"
         >
           <el-divider content-position="left">
-            解析结果
+            配置预览
           </el-divider>
           <el-descriptions
             :column="2"
@@ -382,22 +482,38 @@
             size="small"
           >
             <el-descriptions-item label="服务器名称">
-              {{ parsedSingleServer.name || '(自动生成)' }}
+              {{ parsedServer.name || '(自动生成)' }}
             </el-descriptions-item>
             <el-descriptions-item label="传输模式">
-              {{ parsedSingleServer.transport?.toUpperCase() || 'STDIO' }}
+              {{ parsedServer.transport?.toUpperCase() || 'STDIO' }}
             </el-descriptions-item>
             <el-descriptions-item
               label="命令/URL"
               :span="2"
             >
-              {{ parsedSingleServer.command || parsedSingleServer.url || '-' }}
+              {{ parsedServer.command || parsedServer.url || '-' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="服务类型">
+              <el-tag
+                :type="isCreatingPublicServer ? 'warning' : 'primary'"
+                size="small"
+              >
+                {{ isCreatingPublicServer ? '公共服务' : '个人服务' }}
+              </el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="操作">
+              <el-tag
+                :type="isEditMode ? 'success' : 'info'"
+                size="small"
+              >
+                {{ isEditMode ? '更新现有配置' : '创建新服务' }}
+              </el-tag>
             </el-descriptions-item>
           </el-descriptions>
 
           <!-- 重复检测 -->
           <el-alert
-            v-if="isDuplicateServer"
+            v-if="isDuplicateServer && !isEditMode"
             type="warning"
             :closable="false"
             show-icon
@@ -409,164 +525,27 @@
 
         <!-- 错误提示 -->
         <el-alert
-          v-if="singleParseError"
+          v-if="jsonParseError"
           type="error"
           :closable="false"
           show-icon
           style="margin-top: 16px"
         >
-          {{ singleParseError }}
+          {{ jsonParseError }}
         </el-alert>
       </div>
 
       <template #footer>
-        <el-button @click="showJsonAddDialog = false">
-          取消
-        </el-button>
-        <el-button
-          type="primary"
-          :loading="addingSingle"
-          :disabled="!parsedSingleServer || isDuplicateServer"
-          @click="handleSingleAdd"
-        >
-          添加服务器
-        </el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 手动添加/编辑对话框 -->
-    <el-dialog
-      v-model="showCreateDialog"
-      :title="isEdit ? '编辑服务器' : '手动添加服务器'"
-      width="700px"
-      @close="handleDialogClose"
-    >
-      <el-form
-        ref="formRef"
-        :model="formData"
-        :rules="formRules"
-        label-width="120px"
-      >
-        <el-form-item
-          label="服务器名称"
-          prop="name"
-        >
-          <el-input
-            v-model="formData.name"
-            placeholder="请输入服务器名称"
-          />
-        </el-form-item>
-
-        <el-form-item
-          label="传输模式"
-          prop="transport"
-        >
-          <el-radio-group
-            v-model="formData.transport"
-            @change="handleTransportChange"
-          >
-            <el-radio value="stdio">
-              STDIO
-            </el-radio>
-            <el-radio value="sse">
-              SSE
-            </el-radio>
-            <el-radio value="http">
-              HTTP
-            </el-radio>
-          </el-radio-group>
-          <div class="form-tip">
-            STDIO: 标准输入输出 | SSE: Server-Sent Events | HTTP: HTTP 请求
-          </div>
-        </el-form-item>
-
-        <!-- STDIO 模式配置 -->
-        <template v-if="formData.transport === 'stdio'">
-          <el-form-item
-            label="启动命令"
-            prop="command"
-          >
-            <el-input
-              v-model="formData.command"
-              placeholder="例如: npx -y @modelcontextprotocol/server-filesystem"
-            />
-          </el-form-item>
-          <el-form-item label="命令参数">
-            <el-input
-              v-model="argsText"
-              type="textarea"
-              :rows="2"
-              placeholder="每行一个参数"
-            />
-          </el-form-item>
-          <el-form-item label="环境变量">
-            <el-input
-              v-model="envText"
-              type="textarea"
-              :rows="3"
-              placeholder="每行一个环境变量，格式: KEY=value"
-            />
-          </el-form-item>
-        </template>
-
-        <!-- SSE/HTTP 模式配置 -->
-        <template v-if="formData.transport === 'sse' || formData.transport === 'http'">
-          <el-form-item
-            label="服务器 URL"
-            prop="url"
-          >
-            <el-input
-              v-model="formData.url"
-              placeholder="https://example.com/mcp"
-            />
-          </el-form-item>
-          <el-form-item label="认证方式">
-            <el-select
-              v-model="formData.auth_type"
-              style="width: 160px"
-            >
-              <el-option
-                label="无认证"
-                value="none"
-              />
-              <el-option
-                label="Bearer Token"
-                value="bearer"
-              />
-              <el-option
-                label="Basic Auth"
-                value="basic"
-              />
-            </el-select>
-          </el-form-item>
-          <el-form-item
-            v-if="formData.auth_type !== 'none'"
-            label="认证令牌"
-          >
-            <el-input
-              v-model="formData.auth_token"
-              type="password"
-              show-password
-              placeholder="请输入认证令牌"
-            />
-          </el-form-item>
-        </template>
-
-        <el-form-item label="启用状态">
-          <el-switch v-model="formData.enabled" />
-        </el-form-item>
-      </el-form>
-
-      <template #footer>
-        <el-button @click="showCreateDialog = false">
+        <el-button @click="showJsonEditDialog = false">
           取消
         </el-button>
         <el-button
           type="primary"
           :loading="submitting"
-          @click="handleSubmit"
+          :disabled="!parsedServer || (isDuplicateServer && !isEditMode)"
+          @click="handleJsonEditSubmit"
         >
-          {{ isEdit ? '保存' : '创建' }}
+          {{ isEditMode ? '保存修改' : '添加服务器' }}
         </el-button>
       </template>
     </el-dialog>
@@ -627,6 +606,7 @@
         v-else
         class="test-loading"
       >
+        <el-icon class="is-loading"><Loading /></el-icon>
         <p>正在测试连接...</p>
       </div>
     </el-dialog>
@@ -647,58 +627,54 @@ import {
   Document,
   Link,
   Monitor,
+  MagicStick,
+  Loading,
+  InfoFilled,
 } from '@element-plus/icons-vue'
+import { useUserStore } from '@core/auth/store'
 import { useTradingAgentsStore } from '../store'
 import {
   TransportModeEnum,
   MCPServerStatusEnum,
-  AuthTypeEnum,
   type MCPServerConfig,
   type MCPServerConfigCreate,
   type MCPTool,
 } from '../types'
 
+const userStore = useUserStore()
 const store = useTradingAgentsStore()
+
+// 是否为管理员或超管（可以管理系统服务）
+const canManageSystemServers = computed(() =>
+  userStore.userInfo?.role === 'ADMIN' || userStore.userInfo?.role === 'SUPER_ADMIN'
+)
+
+// 是否为超管（保留，用于其他特殊权限）
+const isSuperAdmin = computed(() => userStore.userInfo?.role === 'SUPER_ADMIN')
 
 // 当前标签页
 const activeTab = ref('user')
 
 // 对话框状态
-const showImportFileDialog = ref(false)  // 批量导入文件对话框
-const showJsonAddDialog = ref(false)     // 单个添加JSON对话框
-const showCreateDialog = ref(false)      // 表单创建/编辑对话框
+const showImportDialog = ref(false)      // 导入配置对话框
+const showJsonEditDialog = ref(false)    // JSON编辑对话框(添加/编辑统一)
 const showToolsDialog = ref(false)
 const showTestDialog = ref(false)
-const isEdit = ref(false)
-const editingId = ref<string | null>(null)
 
-// 批量导入相关
+// JSON编辑器状态
+const isEditMode = ref(false)            // 是否为编辑模式
+const isCreatingPublicServer = ref(false) // 是否正在创建公共服务
+const editingId = ref<string | null>(null)
+const serverJson = ref('')
+const parsedServer = ref<any>(null)
+const jsonParseError = ref('')
+
+// 导入相关
 const parsedImportConfig = ref<Record<string, any> | null>(null)
 const importParseError = ref('')
 const importing = ref(false)
 const uploadRef = ref()
-
-// 单个添加相关
-const singleServerJson = ref('')
-const parsedSingleServer = ref<any>(null)
-const singleParseError = ref('')
-const addingSingle = ref(false)
-
-// 重复检测
-const existingServerNames = computed(() => {
-  return new Set([
-    ...store.userServers.map(s => s.name),
-    ...store.systemServers.map(s => s.name),
-  ])
-})
-
-const isDuplicateServer = computed(() => {
-  if (!parsedSingleServer?.value?.name) return false
-  return existingServerNames.value.has(parsedSingleServer.value.name)
-})
-
-// 表单引用
-const formRef = ref()
+const importAsSystem = ref(false) // 导入为公共服务（仅超管可设置）
 
 // 提交状态
 const submitting = ref(false)
@@ -710,44 +686,57 @@ const serverTools = ref<MCPTool[]>([])
 // 测试结果
 const testResult = ref<{ success: boolean; message: string; latency_ms?: number } | null>(null)
 
-// 表单数据
-const formData = reactive<MCPServerConfigCreate>({
-  name: '',
-  transport: TransportModeEnum.STDIO,
-  command: '',
-  args: [],
-  env: {},
-  url: '',
-  auth_type: AuthTypeEnum.NONE,
-  auth_token: '',
-  auto_approve: [],
-  enabled: true,
-  is_system: false,
+// 编辑器引用
+const jsonEditorRef = ref()
+
+// 对话框标题和描述
+const jsonEditTitle = computed(() => {
+  if (isEditMode.value) {
+    return '编辑 MCP 服务器'
+  }
+  return isCreatingPublicServer.value ? '添加公共服务' : '添加个人服务'
 })
 
-// 文本格式字段（用于输入）
-const argsText = ref('')
-const envText = ref('')
+const jsonEditDescription = computed(() => {
+  if (isEditMode.value) {
+    return '修改配置后点击保存，所有字段都会更新'
+  }
+  return '粘贴 MCP 服务器的 JSON 配置，点击添加后将自动导入系统'
+})
 
-// 表单验证规则
-const formRules = {
-  name: [
-    { required: true, message: '请输入服务器名称', trigger: 'blur' },
-  ],
-  transport: [
-    { required: true, message: '请选择传输模式', trigger: 'change' },
-  ],
-  command: [
-    { required: true, message: '请输入启动命令', trigger: 'blur' },
-  ],
-  url: [
-    { required: true, message: '请输入服务器 URL', trigger: 'blur' },
-  ],
+// 重复检测
+const existingServerNames = computed(() => {
+  return new Set([
+    ...store.userServers.map(s => s.name),
+    ...store.systemServers.map(s => s.name),
+  ])
+})
+
+const isDuplicateServer = computed(() => {
+  if (!parsedServer.value?.name) return false
+  // 编辑模式下，如果是同一个服务器不算重复
+  if (isEditMode.value && editingId.value) {
+    const currentServer = [...store.userServers, ...store.systemServers]
+      .find(s => s.id === editingId.value)
+    if (currentServer && currentServer.name === parsedServer.value.name) {
+      return false
+    }
+  }
+  return existingServerNames.value.has(parsedServer.value.name)
+})
+
+// =============================================================================
+// 导入配置相关方法
+// =============================================================================
+
+// 打开导入对话框
+function openImportDialog() {
+  // 重置状态
+  importAsSystem.value = false // 默认导入为个人服务
+  parsedImportConfig.value = null
+  importParseError.value = ''
+  showImportDialog.value = true
 }
-
-// =============================================================================
-// 批量导入（文件上传）相关方法
-// =============================================================================
 
 // 处理文件选择
 async function handleFileChange(file: UploadFile) {
@@ -820,8 +809,9 @@ async function handleBatchImport() {
           args: config.args || [],
           env: config.env || {},
           url: config.url || '',
+          headers: config.headers || {},
           enabled: true,
-          is_system: false,
+          is_system: importAsSystem.value, // 根据用户选择导入为公共服务或个人服务
         }
         await store.createServer(serverConfig)
         successCount++
@@ -832,11 +822,11 @@ async function handleBatchImport() {
     }
 
     if (successCount > 0 || skipCount > 0) {
-      let msg = `成功导入 ${successCount} 个服务器`
+      let msg = `成功导入 ${successCount} 个${importAsSystem.value ? '公共服务' : '个人服务'}`
       if (skipCount > 0) msg += `，跳过 ${skipCount} 个重复服务器`
       if (failCount > 0) msg += `，${failCount} 个失败`
       ElMessage.success(msg)
-      showImportFileDialog.value = false
+      showImportDialog.value = false
       store.fetchServers()
     } else {
       ElMessage.error('导入失败，请检查配置格式')
@@ -847,50 +837,60 @@ async function handleBatchImport() {
 }
 
 // =============================================================================
-// 单个添加（JSON粘贴）相关方法
+// JSON编辑器相关方法（添加/编辑统一）
 // =============================================================================
 
-// 监听单个服务器 JSON 输入
-watch(singleServerJson, (newVal) => {
+// 打开添加服务器对话框
+function openAddServerDialog(isPublic: boolean) {
+  isEditMode.value = false
+  isCreatingPublicServer.value = isPublic
+  editingId.value = null
+  serverJson.value = ''
+  parsedServer.value = null
+  jsonParseError.value = ''
+  showJsonEditDialog.value = true
+}
+
+// 监听JSON输入，实时解析
+watch(serverJson, (newVal) => {
   if (!newVal.trim()) {
-    parsedSingleServer.value = null
-    singleParseError.value = ''
+    parsedServer.value = null
+    jsonParseError.value = ''
     return
   }
 
   try {
     const parsed = JSON.parse(newVal)
-    // 验证是否是有效的服务器配置
     if (typeof parsed === 'object' && parsed !== null) {
       // 如果是嵌套格式（如 mcpServers.servername），提取第一个服务器
       if (parsed.mcpServers) {
         const firstServer = Object.values(parsed.mcpServers)[0] as any
         if (firstServer) {
-          parsedSingleServer.value = {
+          parsedServer.value = {
             name: Object.keys(parsed.mcpServers)[0],
             ...firstServer,
           }
-          singleParseError.value = ''
+          jsonParseError.value = ''
           return
         }
       }
 
       // 直接是服务器配置
-      parsedSingleServer.value = parsed
-      singleParseError.value = ''
+      parsedServer.value = parsed
+      jsonParseError.value = ''
     } else {
-      parsedSingleServer.value = null
-      singleParseError.value = '无效的服务器配置格式'
+      parsedServer.value = null
+      jsonParseError.value = '无效的服务器配置格式'
     }
   } catch (e: any) {
-    parsedSingleServer.value = null
-    singleParseError.value = `JSON 解析错误: ${e.message}`
+    parsedServer.value = null
+    jsonParseError.value = `JSON 解析错误: ${e.message}`
   }
 })
 
-// 加载单个服务器示例
-function loadSingleExample() {
-  singleServerJson.value = JSON.stringify(
+// 加载示例配置
+function loadExample() {
+  serverJson.value = JSON.stringify(
     {
       command: 'npx',
       args: ['-y', '@modelcontextprotocol/server-filesystem', '/path/to/allowed/directory'],
@@ -901,162 +901,127 @@ function loadSingleExample() {
   )
 }
 
+// 格式化JSON
+function formatJson() {
+  if (!serverJson.value.trim()) {
+    ElMessage.warning('请先输入JSON配置')
+    return
+  }
+
+  try {
+    const parsed = JSON.parse(serverJson.value)
+    serverJson.value = JSON.stringify(parsed, null, 2)
+    ElMessage.success('JSON格式化成功')
+  } catch (e: any) {
+    ElMessage.error(`JSON格式错误: ${e.message}`)
+  }
+}
+
 // 打开文档
 function openDocs() {
   window.open('https://modelcontextprotocol.io/docs/tools/', '_blank')
 }
 
-// 单个添加服务器
-async function handleSingleAdd() {
-  if (!parsedSingleServer.value) {
-    ElMessage.error('没有有效的配置可添加')
+// 提交JSON编辑
+async function handleJsonEditSubmit() {
+  if (!parsedServer.value) {
+    ElMessage.error('没有有效的配置可保存')
     return
   }
 
-  if (isDuplicateServer.value) {
+  if (isDuplicateServer.value && !isEditMode.value) {
     ElMessage.error('该服务器名称已存在')
     return
-  }
-
-  addingSingle.value = true
-
-  try {
-    const serverConfig: MCPServerConfigCreate = {
-      name: parsedSingleServer.value.name || `mcp_${Date.now()}`,
-      transport: parsedSingleServer.value.url
-        ? (parsedSingleServer.value.transport === 'sse' ? TransportModeEnum.SSE : TransportModeEnum.HTTP)
-        : TransportModeEnum.STDIO,
-      command: parsedSingleServer.value.command || '',
-      args: parsedSingleServer.value.args || [],
-      env: parsedSingleServer.value.env || {},
-      url: parsedSingleServer.value.url || '',
-      enabled: true,
-      is_system: false,
-    }
-
-    await store.createServer(serverConfig)
-    ElMessage.success('服务器添加成功')
-    showJsonAddDialog.value = false
-    store.fetchServers()
-  } catch (error) {
-    ElMessage.error('添加服务器失败')
-  } finally {
-    addingSingle.value = false
-  }
-}
-
-// 关闭单个添加对话框
-function handleJsonAddClose() {
-  singleServerJson.value = ''
-  parsedSingleServer.value = null
-  singleParseError.value = ''
-}
-
-// 获取传输模式标签类型
-function getTransportTagType(transport: TransportModeEnum) {
-  const types: Record<TransportModeEnum, string> = {
-    [TransportModeEnum.STDIO]: 'primary',
-    [TransportModeEnum.SSE]: 'success',
-    [TransportModeEnum.HTTP]: 'warning',
-  }
-  return types[transport] || 'info'
-}
-
-// 获取状态标签类型
-function getStatusTagType(status: MCPServerStatusEnum) {
-  const types: Record<MCPServerStatusEnum, string> = {
-    [MCPServerStatusEnum.AVAILABLE]: 'success',
-    [MCPServerStatusEnum.UNAVAILABLE]: 'danger',
-    [MCPServerStatusEnum.UNKNOWN]: 'info',
-  }
-  return types[status] || 'info'
-}
-
-// 获取状态标签
-function getStatusLabel(status: MCPServerStatusEnum): string {
-  const labels: Record<MCPServerStatusEnum, string> = {
-    [MCPServerStatusEnum.AVAILABLE]: '可用',
-    [MCPServerStatusEnum.UNAVAILABLE]: '不可用',
-    [MCPServerStatusEnum.UNKNOWN]: '未知',
-  }
-  return labels[status] || status
-}
-
-// 传输模式变更
-function handleTransportChange() {
-  // 清空模式特定字段
-  formData.command = ''
-  formData.args = []
-  formData.env = {}
-  formData.url = ''
-  argsText.value = ''
-  envText.value = ''
-}
-
-// 提交表单
-async function handleSubmit() {
-  await formRef.value?.validate()
-
-  // 解析文本字段
-  if (formData.transport === 'stdio') {
-    formData.args = argsText.value.split('\n').filter(s => s.trim())
-    formData.env = Object.fromEntries(
-      envText.value.split('\n')
-        .filter(s => s.trim() && s.includes('='))
-        .map(s => {
-          const [key, ...valueParts] = s.split('=')
-          return [key.trim(), valueParts.join('=').trim()]
-        })
-    )
   }
 
   submitting.value = true
 
   try {
-    if (isEdit.value && editingId.value) {
-      await store.updateServer(editingId.value, formData)
-    } else {
-      await store.createServer(formData)
+    const serverConfig: MCPServerConfigCreate = {
+      name: parsedServer.value.name || `mcp_${Date.now()}`,
+      transport: parsedServer.value.url
+        ? (parsedServer.value.transport === 'sse' ? TransportModeEnum.SSE : TransportModeEnum.HTTP)
+        : TransportModeEnum.STDIO,
+      command: parsedServer.value.command || '',
+      args: parsedServer.value.args || [],
+      env: parsedServer.value.env || {},
+      url: parsedServer.value.url || '',
+      headers: parsedServer.value.headers || {},
+      enabled: parsedServer.value.enabled !== undefined ? parsedServer.value.enabled : true,
+      is_system: isCreatingPublicServer.value,
     }
-    showCreateDialog.value = false
+
+    if (isEditMode.value && editingId.value) {
+      // 编辑模式
+      await store.updateServer(editingId.value, serverConfig)
+      ElMessage.success('服务器配置已更新')
+    } else {
+      // 添加模式
+      await store.createServer(serverConfig)
+      ElMessage.success('服务器添加成功')
+    }
+
+    showJsonEditDialog.value = false
+    store.fetchServers()
+  } catch (error) {
+    ElMessage.error(isEditMode.value ? '更新服务器失败' : '添加服务器失败')
   } finally {
     submitting.value = false
   }
 }
 
+// 关闭JSON编辑对话框
+function handleJsonEditClose() {
+  serverJson.value = ''
+  parsedServer.value = null
+  jsonParseError.value = ''
+  isEditMode.value = false
+  editingId.value = null
+}
+
+// =============================================================================
+// 服务器操作相关方法
+// =============================================================================
+
 // 编辑服务器
 function handleEdit(server: MCPServerConfig) {
-  isEdit.value = true
+  isEditMode.value = true
+  isCreatingPublicServer.value = server.is_system
   editingId.value = server.id
 
-  Object.assign(formData, {
+  // 构建完整配置对象
+  const fullConfig: any = {
     name: server.name,
     transport: server.transport,
-    command: server.command || '',
-    args: server.args || [],
-    env: server.env || {},
-    url: server.url || '',
-    auth_type: server.auth_type,
-    auth_token: server.auth_token || '',
-    auto_approve: server.auto_approve || [],
     enabled: server.enabled,
-    is_system: server.is_system,
-  })
+  }
 
-  // 转换为文本格式
-  argsText.value = (server.args || []).join('\n')
-  envText.value = Object.entries(server.env || {})
-    .map(([k, v]) => `${k}=${v}`)
-    .join('\n')
+  // 根据传输模式添加字段
+  if (server.transport === TransportModeEnum.STDIO) {
+    if (server.command) fullConfig.command = server.command
+    if (server.args && server.args.length > 0) fullConfig.args = server.args
+    if (server.env && Object.keys(server.env).length > 0) fullConfig.env = server.env
+  } else {
+    if (server.url) fullConfig.url = server.url
+    if (server.headers && Object.keys(server.headers).length > 0) fullConfig.headers = server.headers
+    if (server.auth_type && server.auth_type !== 'none') {
+      fullConfig.auth_type = server.auth_type
+      if (server.auth_token) fullConfig.auth_token = server.auth_token
+    }
+  }
 
-  showCreateDialog.value = true
+  serverJson.value = JSON.stringify(fullConfig, null, 2)
+  parsedServer.value = fullConfig
+  jsonParseError.value = ''
+
+  showJsonEditDialog.value = true
 }
 
 // 删除服务器
 async function handleDelete(server: MCPServerConfig) {
   try {
     await ElMessageBox.confirm(
-      `确定要删除服务器 "${server.name}" 吗？`,
+      `确定要删除${server.is_system ? '公共服务' : '个人服务'} "${server.name}" 吗？`,
       '确认删除',
       {
         confirmButtonText: '确定',
@@ -1064,7 +1029,7 @@ async function handleDelete(server: MCPServerConfig) {
         type: 'warning',
       }
     )
-    await store.deleteServer(server.id)
+    await store.deleteServer(server.id, server.is_system)
   } catch {
     // 用户取消
   }
@@ -1076,6 +1041,7 @@ async function handleToggleEnabled(server: MCPServerConfig) {
     await store.updateServer(server.id, { enabled: server.enabled })
   } catch (error) {
     server.enabled = !server.enabled
+    ElMessage.error('更新启用状态失败')
   }
 }
 
@@ -1110,13 +1076,38 @@ async function handleTest(server: MCPServerConfig) {
   }
 }
 
-// 关闭对话框
-function handleDialogClose() {
-  isEdit.value = false
-  editingId.value = null
-  formRef.value?.resetFields()
-  argsText.value = ''
-  envText.value = ''
+// =============================================================================
+// 辅助方法
+// =============================================================================
+
+// 获取传输模式标签类型
+function getTransportTagType(transport: TransportModeEnum) {
+  const types: Record<TransportModeEnum, string> = {
+    [TransportModeEnum.STDIO]: 'primary',
+    [TransportModeEnum.SSE]: 'success',
+    [TransportModeEnum.HTTP]: 'warning',
+  }
+  return types[transport] || 'info'
+}
+
+// 获取状态标签类型
+function getStatusTagType(status: MCPServerStatusEnum) {
+  const types: Record<MCPServerStatusEnum, string> = {
+    [MCPServerStatusEnum.AVAILABLE]: 'success',
+    [MCPServerStatusEnum.UNAVAILABLE]: 'danger',
+    [MCPServerStatusEnum.UNKNOWN]: 'info',
+  }
+  return types[status] || 'info'
+}
+
+// 获取状态标签
+function getStatusLabel(status: MCPServerStatusEnum): string {
+  const labels: Record<MCPServerStatusEnum, string> = {
+    [MCPServerStatusEnum.AVAILABLE]: '可用',
+    [MCPServerStatusEnum.UNAVAILABLE]: '不可用',
+    [MCPServerStatusEnum.UNKNOWN]: '未知',
+  }
+  return labels[status] || status
 }
 
 // 初始化
@@ -1154,9 +1145,69 @@ onMounted(() => {
   gap: 12px;
 }
 
-/* 文件上传对话框样式 */
-.import-file-dialog {
+/* 导入对话框样式 */
+.import-dialog,
+.json-edit-dialog {
   padding: 8px 0;
+}
+
+.import-type-selector {
+  padding: 16px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.selector-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #303133;
+}
+
+.selector-label .el-icon {
+  color: #409eff;
+}
+
+.import-type-selector :deep(.el-radio-group) {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.import-type-selector :deep(.el-radio) {
+  margin-right: 0;
+  padding: 12px 16px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  background: #fff;
+  transition: all 0.3s;
+}
+
+.import-type-selector :deep(.el-radio:hover) {
+  border-color: #409eff;
+  background: #ecf5ff;
+}
+
+.import-type-selector :deep(.el-radio.is-checked) {
+  border-color: #409eff;
+  background: #ecf5ff;
+}
+
+.radio-desc {
+  margin-left: 8px;
+  font-size: 13px;
+  color: #909399;
+  font-weight: normal;
+}
+
+.import-summary {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
 }
 
 .upload-area {
@@ -1173,11 +1224,7 @@ onMounted(() => {
   margin-bottom: 16px;
 }
 
-/* JSON添加对话框样式 */
-.json-add-dialog {
-  padding: 8px 0;
-}
-
+/* JSON编辑对话框样式 */
 .example-buttons {
   display: flex;
   justify-content: space-between;
@@ -1218,15 +1265,15 @@ onMounted(() => {
   color: #303133;
 }
 
-.form-tip {
-  margin-left: 12px;
-  color: #909399;
-  font-size: 12px;
-}
-
 .test-result,
 .test-loading {
   text-align: center;
   padding: 20px;
+}
+
+.test-loading .el-icon {
+  font-size: 48px;
+  color: #409eff;
+  margin-bottom: 16px;
 }
 </style>

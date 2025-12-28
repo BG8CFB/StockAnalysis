@@ -74,6 +74,11 @@ async def execute_analysis_workflow(
     ws_manager = await get_ws_manager()
     report_service = get_report_service()
 
+    # 用于并发控制
+    batch_id = None
+    data_collection_model_id = None
+    debate_model_id = None
+
     try:
         # 1. 加载用户智能体配置
         config_service = get_agent_config_service()
@@ -82,73 +87,178 @@ async def execute_analysis_workflow(
         if not user_config:
             raise Exception("无法加载用户智能体配置")
 
-        # 2. 获取用户配置的 AI 模型
+        # 2. 确定使用的两个 AI 模型
         model_service = get_model_service()
-        model_id = user_config.phase1.model_id if user_config.phase1 else None
 
-        if not model_id:
-            # 使用默认模型
-            model = await model_service.get_default_model(user_id=user_id)
+        # 确定数据收集模型（第一阶段）
+        if request.data_collection_model:
+            data_collection_model = await model_service.get_model(
+                request.data_collection_model, user_id, is_admin=False
+            )
+            if not data_collection_model:
+                raise Exception(f"未找到指定的数据收集模型: {request.data_collection_model}")
         else:
-            model = await model_service.get_model(model_id, user_id, is_admin=False)
+            # 使用用户配置或系统默认
+            model_id = user_config.phase1.model_id if user_config.phase1 else None
+            if model_id:
+                data_collection_model = await model_service.get_model(model_id, user_id, is_admin=False)
+            else:
+                data_collection_model = await model_service.get_default_model(user_id=user_id)
 
-        if not model:
+        # 确定辩论模型（第二三四阶段）
+        if request.debate_model:
+            debate_model = await model_service.get_model(
+                request.debate_model, user_id, is_admin=False
+            )
+            if not debate_model:
+                raise Exception(f"未找到指定的辩论模型: {request.debate_model}")
+        else:
+            # 使用用户配置或系统默认
+            model_id = None
+            # 优先级：phase2 > phase3 > phase4 > phase1 > 系统默认
+            for phase_key in ['phase2', 'phase3', 'phase4', 'phase1']:
+                phase_config = getattr(user_config, phase_key, None)
+                if phase_config and hasattr(phase_config, 'model_id') and phase_config.model_id:
+                    model_id = phase_config.model_id
+                    break
+
+            if model_id:
+                debate_model = await model_service.get_model(model_id, user_id, is_admin=False)
+            else:
+                debate_model = await model_service.get_default_model(user_id=user_id)
+
+        if not data_collection_model or not debate_model:
             raise Exception("未找到可用的 AI 模型配置")
 
-        # 3. 获取 LLM Provider 实例
-        llm = await model_service.get_llm_provider(
-            model_id=str(model.id),
+        data_collection_model_id = str(data_collection_model.id)
+        debate_model_id = str(debate_model.id)
+
+        logger.info(
+            f"任务 {task_id} 模型配置: "
+            f"数据收集={data_collection_model.name}({data_collection_model_id}), "
+            f"辩论={debate_model.name}({debate_model_id})"
+        )
+
+        # 3. 请求并发控制（两个模型都需要获取槽位）
+        from modules.trading_agents.core.concurrency_controller import get_concurrency_controller
+        concurrency_controller = get_concurrency_controller()
+
+        # 为数据收集模型请求并发
+        data_collection_config = {
+            "max_concurrency": data_collection_model.max_concurrency,
+            "task_concurrency": data_collection_model.task_concurrency,
+            "batch_concurrency": data_collection_model.batch_concurrency,
+        }
+
+        data_collection_execution = await concurrency_controller.request_execution(
+            model_id=data_collection_model_id,
+            task_id=task_id,
+            user_id=user_id,
+            model_config=data_collection_config,
+        )
+
+        # 为辩论模型请求并发
+        debate_config = {
+            "max_concurrency": debate_model.max_concurrency,
+            "task_concurrency": debate_model.task_concurrency,
+            "batch_concurrency": debate_model.batch_concurrency,
+        }
+
+        debate_execution = await concurrency_controller.request_execution(
+            model_id=debate_model_id,
+            task_id=task_id,
+            user_id=user_id,
+            model_config=debate_config,
+        )
+
+        # 检查是否都能立即执行
+        if not data_collection_execution["can_execute"] or not debate_execution["can_execute"]:
+            logger.info(
+                f"任务 {task_id} 需要排队: "
+                f"数据收集模型队列={data_collection_execution['queue_position']}, "
+                f"辩论模型队列={debate_execution['queue_position']}"
+            )
+            # TODO: 实现排队等待逻辑
+            # 目前先等待一会儿再重试
+            await asyncio.sleep(5)
+
+            # 重新请求
+            data_collection_execution = await concurrency_controller.request_execution(
+                model_id=data_collection_model_id,
+                task_id=task_id,
+                user_id=user_id,
+                model_config=data_collection_config,
+            )
+            debate_execution = await concurrency_controller.request_execution(
+                model_id=debate_model_id,
+                task_id=task_id,
+                user_id=user_id,
+                model_config=debate_config,
+            )
+
+        # 4. 获取两个 LLM Provider 实例
+        data_collection_llm = await model_service.get_llm_provider(
+            model_id=data_collection_model_id,
             user_id=user_id,
             is_admin=False
         )
 
-        if not llm:
+        debate_llm = await model_service.get_llm_provider(
+            model_id=debate_model_id,
+            user_id=user_id,
+            is_admin=False
+        )
+
+        if not data_collection_llm or not debate_llm:
             raise Exception("无法创建 LLM Provider 实例")
 
-        # 4. 获取可用工具列表
+        # 5. 获取可用工具列表
         tool_registry = get_tool_registry()
         available_tools = tool_registry.list_available_tools()
         logger.info(f"可用工具数量: {len(available_tools)}")
 
-        # 5. 创建工作流引擎
+        # 6. 创建工作流引擎（注意：需要传递两个 LLM Provider）
+        # 当前引擎设计只支持单一 LLM，这里我们需要一个解决方案
+        # 方案：使用 debate_llm 作为主引擎，但在创建智能体时使用 data_collection_llm
+
         workflow = AgentWorkflowEngine(
-            llm=llm,
+            llm=debate_llm,  # 主引擎使用辩论模型
             config=user_config,
             ws_manager=ws_manager,
         )
 
-        # 6. 注册所有阶段的智能体
-        # 阶段1：分析师团队（需要工具）
-        phase1_agents = create_phase1_agents(llm, tools=available_tools)
+        # 7. 注册所有阶段的智能体
+        # 阶段1：分析师团队（使用数据收集模型 + 需要工具）
+        phase1_agents = create_phase1_agents(data_collection_llm, tools=available_tools)
         for agent in phase1_agents:
             workflow.register_agent(agent)
 
-        # 阶段2：辩论团队（不需要工具）
+        # 阶段2：辩论团队（使用辩论模型 + 不需要工具）
         if user_config.phase2 and user_config.phase2.enabled:
-            phase2_agents = create_phase2_agents(llm)
+            phase2_agents = create_phase2_agents(debate_llm)
             for agent in phase2_agents:
                 workflow.register_agent(agent)
 
-        # 阶段3：风险评估（不需要工具）
+        # 阶段3：风险评估（使用辩论模型 + 不需要工具）
         if user_config.phase3 and user_config.phase3.enabled:
-            phase3_agents = create_phase3_agents(llm)
+            phase3_agents = create_phase3_agents(debate_llm)
             for agent in phase3_agents:
                 workflow.register_agent(agent)
 
-        # 阶段4：总结（不需要工具）
+        # 阶段4：总结（使用辩论模型 + 不需要工具）
         if user_config.phase4 and user_config.phase4.enabled:
-            phase4_agents = create_phase4_agents(llm)
+            phase4_agents = create_phase4_agents(debate_llm)
             for agent in phase4_agents:
                 workflow.register_agent(agent)
 
-        # 7. 执行工作流
+        # 8. 执行工作流
         result = await workflow.execute_workflow(
             task_id=task_id,
             user_id=user_id,
             request=request
         )
 
-        # 7. 从结果中提取推荐和价格信息
+        # 9. 从结果中提取推荐和价格信息
         final_recommendation = None
         buy_price = None
         sell_price = None
@@ -161,7 +271,7 @@ async def execute_analysis_workflow(
                 from modules.trading_agents.schemas import RecommendationEnum
                 final_recommendation = RecommendationEnum.BUY
 
-        # 8. 完成任务
+        # 10. 完成任务
         await task_manager.complete_task(
             task_id=task_id,
             final_recommendation=final_recommendation,
@@ -170,7 +280,7 @@ async def execute_analysis_workflow(
             token_usage=result.get("token_usage"),
         )
 
-        # 9. 创建分析报告
+        # 11. 创建分析报告
         try:
             from modules.trading_agents.schemas import RecommendationEnum, RiskLevelEnum
 
@@ -209,3 +319,47 @@ async def execute_analysis_workflow(
             error_message=str(e),
             error_details={"type": type(e).__name__}
         )
+
+    finally:
+        # 释放并发资源（两个模型都需要释放）
+        try:
+            from modules.trading_agents.core.concurrency_controller import get_concurrency_controller
+            concurrency_controller = get_concurrency_controller()
+
+            # 释放数据收集模型槽位
+            if data_collection_model_id:
+                try:
+                    await concurrency_controller.release_execution(
+                        model_id=data_collection_model_id,
+                        task_id=task_id,
+                        user_id=user_id,
+                        batch_id=batch_id,
+                    )
+                    logger.info(
+                        f"已释放任务 {task_id} 的数据收集模型并发槽位: "
+                        f"model_id={data_collection_model_id}"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"释放数据收集模型并发槽位失败: task_id={task_id}, error={e}"
+                    )
+
+            # 释放辩论模型槽位
+            if debate_model_id:
+                try:
+                    await concurrency_controller.release_execution(
+                        model_id=debate_model_id,
+                        task_id=task_id,
+                        user_id=user_id,
+                        batch_id=batch_id,
+                    )
+                    logger.info(
+                        f"已释放任务 {task_id} 的辩论模型并发槽位: "
+                        f"model_id={debate_model_id}"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"释放辩论模型并发槽位失败: task_id={task_id}, error={e}"
+                    )
+        except Exception as e:
+            logger.error(f"释放并发资源时发生错误: task_id={task_id}, error={e}")
