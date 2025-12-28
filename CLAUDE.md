@@ -514,6 +514,59 @@ Admin alert panel with timeline and list views
 Automatic continuation after timeout
 `ToolTimeoutException` for error handling
 
+**9. MCP Bug Patching**
+
+MCP Python SDK 和第三方服务器存在兼容性问题，已通过 monkey patch 修复：
+
+### 已知问题与修复
+
+**问题 1：空 SSE 数据导致 ValidationError**（Issue #1672）
+- **症状**：`ValidationError: Invalid JSON: EOF while parsing a value`
+- **原因**：MCP 服务器发送空 priming events，Python 客户端尝试解析为 JSON
+- **修复**：在解析前检查 SSE 数据是否为空，跳过空数据
+
+**问题 2：streamable_http ClosedResourceError**（Issue #1190）
+- **症状**：`ClosedResourceError in streamable_http.py`
+- **原因**：v1.12.0+ 的资源管理问题
+- **修复**：通过 monkey patch 缓解（待官方修复）
+
+**问题 3：自定义错误响应格式不兼容**（Finance MCP 服务器）
+- **症状**：`ValidationError: 11 validation errors for JSONRPCMessage`
+- **原因**：Finance MCP 返回 `{code: 1001, msg: "...", success: false}`，不符合 JSON-RPC 2.0 标准
+- **修复**：检测自定义格式并记录日志，避免崩溃
+
+### 补丁实现
+
+**位置**：`backend/modules/trading_agents/services/mcp_patch.py`
+
+**修复内容**：
+```python
+def apply_mcp_patches() -> None:
+    """应用所有 MCP 补丁"""
+    patches_applied = []
+
+    # 1. 修复空 SSE 数据解析
+    _patch_streamable_http_empty_sse()
+    patches_applied.append("空 SSE 数据解析修复")
+
+    # 2. 修复自定义错误响应格式
+    _patch_streamable_http_custom_error_format()
+    patches_applied.append("自定义错误响应格式兼容")
+
+    logger.info(f"✅ MCP 补丁已应用: {', '.join(patches_applied)}")
+```
+
+**应用方式**（已在 `main.py` 中集成）：
+```python
+from modules.trading_agents.services.mcp_patch import apply_mcp_patches
+apply_mcp_patches()  # 应用启动时自动调用
+```
+
+### 参考链接
+- https://github.com/modelcontextprotocol/python-sdk/issues/1672
+- https://github.com/modelcontextprotocol/python-sdk/issues/1190
+- https://github.com/FlowLLM-AI/finance-mcp (Finance MCP 服务器)
+
 ### API Endpoints (TradingAgents)
 
 | Method | Path | Description | Auth |

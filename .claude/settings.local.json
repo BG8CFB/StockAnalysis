@@ -1,4 +1,8 @@
 {
+  "enabledPlugins": {
+    "glm-plan-usage@zai-coding-plugins": true,
+    "glm-plan-bug@zai-coding-plugins": true
+  },
   "permissions": {
     "allow": [
       "Bash",
@@ -82,7 +86,9 @@
       "Bash(timeout /t 60 /nobreak)",
       "Bash(tasklist:*)",
       "Bash(timeout 60 python:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(cd:*)",
+      "Edit"
     ],
     "deny": [],
     "ask": []

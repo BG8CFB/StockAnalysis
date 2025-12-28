@@ -36,7 +36,7 @@
           </div>
           <div class="benefit-card">
             <div class="benefit-icon">
-              <el-icon><Shield /></el-icon>
+              <el-icon><Lock /></el-icon>
             </div>
             <div class="benefit-content">
               <h3>安全可靠</h3>
@@ -154,8 +154,7 @@ import {
   UserFilled,
   ArrowRight,
   DataAnalysis,
-  TrendCharts,
-  Shield
+  TrendCharts
 } from '@element-plus/icons-vue'
 import { useUserStore } from '../store'
 import SliderCaptcha from '@core/components/SliderCaptcha.vue'

@@ -843,7 +843,7 @@ async function handleSubmit() {
       },
     })
 
-    currentBatchId.value = result.batch_id
+    currentBatchId.value = result.id  // 从 BatchTaskResponse 提取 id
     ElMessage.success(`批量分析任务已创建，共 ${formData.stock_codes.length} 只股票`)
 
     // 开始刷新任务状态

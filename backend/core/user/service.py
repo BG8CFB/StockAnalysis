@@ -40,7 +40,12 @@ class UserExistsError(Exception):
 
 
 class InvalidCredentialsError(Exception):
-    """无效凭证错误"""
+    """无效凭证错误 - 账号密码错误或Token无效"""
+    pass
+
+
+class InvalidUserStatusError(Exception):
+    """用户状态无效 - 账号待审核/已禁用/已拒绝"""
     pass
 
 
@@ -256,15 +261,18 @@ class UserService:
             await self._record_login_failure(data.email, client_ip)
             raise InvalidCredentialsError("邮箱或密码错误")
 
-        # 6. 检查用户状态
+        # 8. ❗️ 检查用户状态 (根据不同情况抛出不同异常)
         user_status = user.get("status", UserStatus.ACTIVE)
+        
+        # 8.1 用户状态检查
         if user_status == UserStatus.PENDING:
-            raise InvalidCredentialsError("账号待审核，请等待管理员审核")
+            raise InvalidUserStatusError("账号待审核，请等待管理员审核")
         if user_status == UserStatus.DISABLED:
-            raise InvalidCredentialsError("账号已被禁用")
+            raise InvalidUserStatusError("账号已被禁用")
         if user_status == UserStatus.REJECTED:
-            raise InvalidCredentialsError("账号已被拒绝")
-
+            raise InvalidUserStatusError("账号已被拒绝")
+        
+        # 8.2 is_active 字段检查
         if not user.get("is_active", True):
             raise InvalidCredentialsError("账号已被禁用")
 

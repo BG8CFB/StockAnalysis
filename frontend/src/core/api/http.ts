@@ -104,6 +104,14 @@ http.interceptors.response.use(
     // ==================== 401 处理：Token 过期 ====================
     if (status === 401 && extendedConfig && !extendedConfig._retry) {
       console.log('[Http] 401 Interceptor triggered', { url: extendedConfig.url, isRefreshing })
+
+      // 登录接口的401错误（密码错误/用户状态异常）不应该尝试刷新token
+      // 直接返回错误，让用户看到正确的错误提示
+      if (extendedConfig.url?.includes('/users/login') || extendedConfig.url?.includes('/users/register')) {
+        console.log('[Http] Login/Register 401 error, skip token refresh')
+        return Promise.reject(error)
+      }
+
       // 如果是刷新 token 的请求本身失败了，或者已经在重试中，直接返回错误
       // 避免死循环：如果当前 URL 是刷新 token 的 URL，则不进行重试
       if (extendedConfig.url?.includes('/refresh-token') || extendedConfig.url?.includes('/users/refresh-token')) {

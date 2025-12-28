@@ -31,6 +31,16 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+# 应用 MCP Python SDK Bug 补丁
+# 修复：空 SSE 数据导致 ValidationError（Issue #1672）
+# 参考：https://github.com/modelcontextprotocol/python-sdk/issues/1672
+try:
+    from modules.trading_agents.services.mcp_patch import apply_mcp_patches
+    apply_mcp_patches()
+except Exception as e:
+    logger.warning(f"MCP 补丁应用失败: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""

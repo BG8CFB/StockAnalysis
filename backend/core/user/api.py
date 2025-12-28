@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
 
-from core.user.service import UserService, UserExistsError, InvalidCredentialsError, IPBlockedError, CaptchaRequiredError
+from core.user.service import UserService, UserExistsError, InvalidCredentialsError, IPBlockedError, CaptchaRequiredError, InvalidUserStatusError
 from core.user.models import (
     UserModel, LoginRequest, RegisterRequest, TokenResponse,
     RequestPasswordResetRequest, ResetPasswordRequest,
@@ -60,11 +60,11 @@ async def login(request: Request, data: LoginRequest):
             "refresh_token": refresh_token,
             "token_type": "bearer"
         }
-    except InvalidCredentialsError:
+    except InvalidUserStatusError:
+        # 用户状态问题:返回 403 Forbidden (比 401 更准确)
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="用户名或密码错误",
-            headers={"WWW-Authenticate": "Bearer"},
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e),
         )
     except IPBlockedError:
         raise HTTPException(
@@ -76,6 +76,13 @@ async def login(request: Request, data: LoginRequest):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="请完成图形验证码",
             headers={"X-Captcha-Required": "true"}
+        )
+    except InvalidCredentialsError:
+        # 只有真正的账号密码错误才返回 401
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="用户名或密码错误",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
 @router.post("/users/captcha/generate", response_model=CaptchaGenerateResponse)

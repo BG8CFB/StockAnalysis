@@ -22,7 +22,9 @@ import type {
   ReportSummary,
 } from './types'
 
-const BASE_URL = '/trading-agents'
+// AI 模型管理使用核心模块路径
+const AI_BASE_URL = '/ai'
+const TRADING_AGENTS_BASE_URL = '/trading-agents'
 
 // =============================================================================
 // AI 模型管理 API
@@ -33,43 +35,43 @@ export const modelApi = {
    * 创建 AI 模型配置
    */
   createModel: (data: AIModelConfigCreate) =>
-    httpPost<AIModelConfig>(`${BASE_URL}/models`, data),
+    httpPost<AIModelConfig>(`${AI_BASE_URL}/models`, data),
 
   /**
    * 获取模型列表
    */
   listModels: () =>
-    httpGet<{ system: AIModelConfig[]; user: AIModelConfig[] }>(`${BASE_URL}/models`),
+    httpGet<{ system: AIModelConfig[]; user: AIModelConfig[] }>(`${AI_BASE_URL}/models`),
 
   /**
    * 获取单个模型配置
    */
   getModel: (modelId: string) =>
-    httpGet<AIModelConfig>(`${BASE_URL}/models/${modelId}`),
+    httpGet<AIModelConfig>(`${AI_BASE_URL}/models/${modelId}`),
 
   /**
    * 更新模型配置
    */
   updateModel: (modelId: string, data: AIModelConfigUpdate) =>
-    httpPut<AIModelConfig>(`${BASE_URL}/models/${modelId}`, data),
+    httpPut<AIModelConfig>(`${AI_BASE_URL}/models/${modelId}`, data),
 
   /**
    * 删除模型配置
    */
   deleteModel: (modelId: string) =>
-    httpDelete<{ success: boolean; message: string }>(`${BASE_URL}/models/${modelId}`),
+    httpDelete<{ success: boolean; message: string }>(`${AI_BASE_URL}/models/${modelId}`),
 
   /**
    * 测试模型连接
    */
   testModel: (modelId: string) =>
-    httpPost<ConnectionTestResponse>(`${BASE_URL}/models/${modelId}/test`, {}),
+    httpPost<ConnectionTestResponse>(`${AI_BASE_URL}/models/${modelId}/test`, {}),
 
   /**
    * 测试模型连接（通用接口）
    */
   testModelConnection: (data: AIModelTestRequest) =>
-    httpPost<ConnectionTestResponse>(`${BASE_URL}/models/test`, data),
+    httpPost<ConnectionTestResponse>(`${AI_BASE_URL}/models/test`, data),
 }
 
 // =============================================================================
@@ -81,43 +83,43 @@ export const mcpApi = {
    * 创建 MCP 服务器配置
    */
   createServer: (data: MCPServerConfigCreate) =>
-    httpPost<MCPServerConfig>(`${BASE_URL}/mcp-servers`, data),
+    httpPost<MCPServerConfig>(`${TRADING_AGENTS_BASE_URL}/mcp-servers`, data),
 
   /**
    * 获取服务器列表
    */
   listServers: () =>
-    httpGet<{ system: MCPServerConfig[]; user: MCPServerConfig[] }>(`${BASE_URL}/mcp-servers`),
+    httpGet<{ system: MCPServerConfig[]; user: MCPServerConfig[] }>(`${TRADING_AGENTS_BASE_URL}/mcp-servers`),
 
   /**
    * 获取单个服务器配置
    */
   getServer: (serverId: string) =>
-    httpGet<MCPServerConfig>(`${BASE_URL}/mcp-servers/${serverId}`),
+    httpGet<MCPServerConfig>(`${TRADING_AGENTS_BASE_URL}/mcp-servers/${serverId}`),
 
   /**
    * 更新服务器配置
    */
   updateServer: (serverId: string, data: MCPServerConfigUpdate) =>
-    httpPut<MCPServerConfig>(`${BASE_URL}/mcp-servers/${serverId}`, data),
+    httpPut<MCPServerConfig>(`${TRADING_AGENTS_BASE_URL}/mcp-servers/${serverId}`, data),
 
   /**
    * 删除服务器配置
    */
   deleteServer: (serverId: string) =>
-    httpDelete<{ success: boolean; message: string }>(`${BASE_URL}/mcp-servers/${serverId}`),
+    httpDelete<{ success: boolean; message: string }>(`${TRADING_AGENTS_BASE_URL}/mcp-servers/${serverId}`),
 
   /**
    * 测试服务器连接
    */
   testServer: (serverId: string) =>
-    httpPost<ConnectionTestResponse>(`${BASE_URL}/mcp-servers/${serverId}/test`, {}),
+    httpPost<ConnectionTestResponse>(`${TRADING_AGENTS_BASE_URL}/mcp-servers/${serverId}/test`, {}),
 
   /**
    * 获取服务器工具列表
    */
   getServerTools: (serverId: string) =>
-    httpGet<{ tools: MCPTool[] }>(`${BASE_URL}/mcp-servers/${serverId}/tools`),
+    httpGet<{ tools: MCPTool[] }>(`${TRADING_AGENTS_BASE_URL}/mcp-servers/${serverId}/tools`),
 }
 
 // =============================================================================
@@ -130,47 +132,47 @@ export const agentConfigApi = {
    * 返回生效配置（个人配置或公共配置）
    */
   getAgentConfig: () =>
-    httpGet<UserAgentConfig>(`${BASE_URL}/agent-config`),
+    httpGet<UserAgentConfig>(`${TRADING_AGENTS_BASE_URL}/agent-config`),
 
   /**
    * 更新用户智能体配置
    * 更新后会标记为已自定义
    */
   updateConfig: (data: UserAgentConfigUpdate) =>
-    httpPut<UserAgentConfig>(`${BASE_URL}/agent-config`, data),
+    httpPut<UserAgentConfig>(`${TRADING_AGENTS_BASE_URL}/agent-config`, data),
 
   /**
    * 重置为默认配置
    * 重置为公共配置（模板）
    */
   resetConfig: () =>
-    httpPost<UserAgentConfig>(`${BASE_URL}/agent-config/reset`, {}),
+    httpPost<UserAgentConfig>(`${TRADING_AGENTS_BASE_URL}/agent-config/reset`, {}),
 
   /**
    * 获取公共智能体配置（模板）
    * 仅管理员可访问
    */
   getPublicConfig: () =>
-    httpGet<UserAgentConfig>(`${BASE_URL}/agent-config/public`),
+    httpGet<UserAgentConfig>(`${TRADING_AGENTS_BASE_URL}/agent-config/public`),
 
   /**
    * 更新公共智能体配置（模板）
    * 仅管理员可访问
    */
   updatePublicConfig: (data: UserAgentConfigUpdate) =>
-    httpPut<UserAgentConfig>(`${BASE_URL}/agent-config/public`, data),
+    httpPut<UserAgentConfig>(`${TRADING_AGENTS_BASE_URL}/agent-config/public`, data),
 
   /**
    * 导出配置
    */
   exportConfig: () =>
-    httpPost<{ config: Record<string, unknown> }>(`${BASE_URL}/agent-config/export`, {}),
+    httpPost<{ config: Record<string, unknown> }>(`${TRADING_AGENTS_BASE_URL}/agent-config/export`, {}),
 
   /**
    * 导入配置
    */
   importConfig: (configData: Record<string, unknown>) =>
-    httpPost<UserAgentConfig>(`${BASE_URL}/agent-config/import`, configData),
+    httpPost<UserAgentConfig>(`${TRADING_AGENTS_BASE_URL}/agent-config/import`, configData),
 }
 
 // =============================================================================
@@ -182,13 +184,13 @@ export const taskApi = {
    * 创建分析任务
    */
   createTask: (data: AnalysisTaskCreate) =>
-    httpPost<{ task_id: string }>(`${BASE_URL}/tasks`, data),
+    httpPost<AnalysisTaskResponse>(`${TRADING_AGENTS_BASE_URL}/tasks`, data),
 
   /**
    * 创建批量任务
    */
   createBatchTask: (data: BatchTaskCreate) =>
-    httpPost<{ batch_id: string }>(`${BASE_URL}/tasks/batch`, data),
+    httpPost<BatchTaskResponse>(`${TRADING_AGENTS_BASE_URL}/tasks/batch`, data),
 
   /**
    * 获取任务列表
@@ -201,37 +203,37 @@ export const taskApi = {
     limit?: number
     offset?: number
   }) =>
-    httpGet<{ tasks: AnalysisTask[]; total: number }>(`${BASE_URL}/tasks`, params),
+    httpGet<{ tasks: AnalysisTask[]; total: number }>(`${TRADING_AGENTS_BASE_URL}/tasks`, params),
 
   /**
    * 获取任务详情
    */
   getTask: (taskId: string) =>
-    httpGet<AnalysisTask>(`${BASE_URL}/tasks/${taskId}`),
+    httpGet<AnalysisTask>(`${TRADING_AGENTS_BASE_URL}/tasks/${taskId}`),
 
   /**
    * 取消任务
    */
   cancelTask: (taskId: string) =>
-    httpPost<{ success: boolean; message: string }>(`${BASE_URL}/tasks/${taskId}/cancel`, {}),
+    httpPost<{ success: boolean; message: string }>(`${TRADING_AGENTS_BASE_URL}/tasks/${taskId}/cancel`, {}),
 
   /**
    * 重试任务
    */
   retryTask: (taskId: string) =>
-    httpPost<{ task_id: string }>(`${BASE_URL}/tasks/${taskId}/retry`, {}),
+    httpPost<AnalysisTaskResponse>(`${TRADING_AGENTS_BASE_URL}/tasks/${taskId}/retry`, {}),
 
   /**
    * 删除任务
    */
   deleteTask: (taskId: string) =>
-    httpDelete<{ success: boolean; message: string }>(`${BASE_URL}/tasks/${taskId}`),
+    httpDelete<{ success: boolean; message: string }>(`${TRADING_AGENTS_BASE_URL}/tasks/${taskId}`),
 
   /**
    * 获取任务队列位置
    */
   getQueuePosition: (taskId: string) =>
-    httpGet<{ position: number; waiting_count: number }>(`${BASE_URL}/tasks/${taskId}/queue-position`),
+    httpGet<{ position: number; waiting_count: number }>(`${TRADING_AGENTS_BASE_URL}/tasks/${taskId}/queue-position`),
 }
 
 // =============================================================================
@@ -249,25 +251,25 @@ export const reportApi = {
     limit?: number
     offset?: number
   }) =>
-    httpGet<{ reports: AnalysisReport[] }>(`${BASE_URL}/reports`, params),
+    httpGet<{ reports: AnalysisReport[] }>(`${TRADING_AGENTS_BASE_URL}/reports`, params),
 
   /**
    * 获取报告统计摘要
    */
   getReportSummary: (days?: number) =>
-    httpGet<ReportSummary>(`${BASE_URL}/reports/summary`, { days }),
+    httpGet<ReportSummary>(`${TRADING_AGENTS_BASE_URL}/reports/summary`, { days }),
 
   /**
    * 获取报告详情
    */
   getReport: (reportId: string) =>
-    httpGet<AnalysisReport>(`${BASE_URL}/reports/${reportId}`),
+    httpGet<AnalysisReport>(`${TRADING_AGENTS_BASE_URL}/reports/${reportId}`),
 
   /**
    * 删除报告
    */
   deleteReport: (reportId: string) =>
-    httpDelete<{ success: boolean; message: string }>(`${BASE_URL}/reports/${reportId}`),
+    httpDelete<{ success: boolean; message: string }>(`${TRADING_AGENTS_BASE_URL}/reports/${reportId}`),
 }
 
 // =============================================================================
@@ -279,5 +281,5 @@ export const healthApi = {
    * 健康检查
    */
   check: () =>
-    httpGet<{ status: string; module: string }>(`${BASE_URL}/health`),
+    httpGet<{ status: string; module: string }>(`${TRADING_AGENTS_BASE_URL}/health`),
 }

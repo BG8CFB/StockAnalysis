@@ -693,7 +693,7 @@ async function handleSubmit() {
     ElMessage.success('分析任务已创建')
     router.push({
       name: 'AnalysisDetail',
-      params: { taskId: result.task_id },
+      params: { taskId: result.id },  // 从 AnalysisTaskResponse 提取 id
     })
   } catch (error) {
     console.error('创建任务失败:', error)

@@ -344,7 +344,7 @@ export const useTradingAgentsStore = defineStore('tradingAgents', () => {
     try {
       const result = await taskApi.createTask(data)
       ElMessage.success('分析任务已创建')
-      return result.task_id
+      return result.id  // 从 AnalysisTaskResponse 提取 id
     } catch (error: any) {
       ElMessage.error(error.response?.data?.detail || '创建任务失败')
       throw error
@@ -355,7 +355,7 @@ export const useTradingAgentsStore = defineStore('tradingAgents', () => {
     try {
       const result = await taskApi.createBatchTask(data)
       ElMessage.success('批量任务已创建')
-      return result.batch_id
+      return result.id  // 从 BatchTaskResponse 提取 id
     } catch (error: any) {
       ElMessage.error(error.response?.data?.detail || '创建批量任务失败')
       throw error
@@ -389,7 +389,7 @@ export const useTradingAgentsStore = defineStore('tradingAgents', () => {
       const result = await taskApi.retryTask(taskId)
       await fetchTasks()
       ElMessage.success('任务已重新提交')
-      return result
+      return result.id  // 从 AnalysisTaskResponse 提取 id
     } catch (error: any) {
       ElMessage.error(error.response?.data?.detail || '重试任务失败')
       throw error
