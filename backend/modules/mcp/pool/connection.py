@@ -17,6 +17,9 @@ from modules.mcp.config.loader import (
     get_connection_complete_timeout,
     get_connection_failed_timeout,
 )
+from modules.mcp.core.adapter import create_mcp_client
+from modules.mcp.core.interceptors import get_production_interceptors
+from modules.mcp.core.session import mcp_session_context, load_tools_with_session
 
 logger = logging.getLogger(__name__)
 
@@ -103,16 +106,21 @@ class MCPConnection:
         logger.info(f"[MCPConnection] 开始连接: {self.connection_id}")
 
         try:
-            # 创建 MultiServerMCPClient
-            self._client = MultiServerMCPClient(
-                {self.server_name: self._connection_config}
+            # 创建 MCP 客户端（使用官方标准 + 生产环境 Interceptors）
+            interceptors = get_production_interceptors(
+                max_retries=3,
+                timeout=60.0,
             )
 
-            # 获取工具（这会建立连接）
-            from langchain_mcp_adapters.tools import load_mcp_tools
-            self._tools = await load_mcp_tools(
+            self._client = create_mcp_client(
+                server_configs={self.server_name: self._connection_config},
+                tool_interceptors=interceptors,
+            )
+
+            # 使用官方 Session 上下文管理器加载工具
+            self._tools = await load_tools_with_session(
                 self._client,
-                server_names=[self.server_name],
+                self.server_name,
             )
 
             # 提取会话对象（用于后续工具调用）
