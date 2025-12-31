@@ -1,273 +1,192 @@
 """
-MCP 会话管理
+MCP 会话管理（官方标准实现）
 
-提供 MCP 会话的创建、管理和清理功能。
+基于 langchain-mcp-adapters 官方推荐的 Session 上下文管理器模式。
+
+官方文档: https://docs.langchain.com/oss/python/langchain/mcp#stateful-sessions
 """
 
 import asyncio
 import logging
-from typing import Dict, Optional, Any
-from datetime import datetime, timedelta
+from typing import Dict, Optional, Any, List
+from contextlib import asynccontextmanager
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
-from modules.mcp.config.loader import (
-    get_session_timeout,
-    get_session_idle_timeout,
-)
+from langchain_mcp_adapters.tools import load_mcp_tools
+from langchain_mcp_adapters.resources import load_mcp_resources
+from langchain_mcp_adapters.prompts import load_mcp_prompt
+from langchain_core.tools import BaseTool
 
 logger = logging.getLogger(__name__)
 
 
-class MCPSession:
+# =============================================================================
+# 官方推荐的 Session 上下文管理器
+# =============================================================================
+
+@asynccontextmanager
+async def mcp_session_context(
+    client: MultiServerMCPClient,
+    server_name: str,
+):
     """
-    MCP 会话封装
+    MCP Session 上下文管理器（官方标准实现）
 
-    包装 langchain-mcp-adapters 的会话对象，提供额外的生命周期管理。
+    使用官方的 client.session() 上下文管理器，提供：
+    - 自动资源清理
+    - 状态持久化
+    - 多工具调用间保持状态
+
+    Args:
+        client: MultiServerMCPClient 实例
+        server_name: MCP 服务器名称
+
+    Yields:
+        原始 Session 对象（可用于 load_mcp_tools 等）
+
+    Example:
+        ```python
+        client = MultiServerMCPClient({...})
+
+        async with mcp_session_context(client, "finance") as session:
+            # 加载工具（带状态）
+            tools = await load_mcp_tools(session)
+
+            # 多个工具调用共享同一会话状态
+            result1 = await session.call_tool("get_stock", {"symbol": "AAPL"})
+            result2 = await session.call_tool("get_price", {"symbol": "AAPL"})
+        ```
     """
+    session = None
+    try:
+        logger.debug(f"[MCPSession] 创建会话: server={server_name}")
 
-    def __init__(
-        self,
-        server_name: str,
-        client: MultiServerMCPClient,
-        session: Any,
-    ):
-        """
-        初始化会话
+        # 使用官方的 session() 上下文管理器
+        async with client.session(server_name) as session:
+            logger.info(f"[MCPSession] 会话已创建: server={server_name}")
+            yield session
 
-        Args:
-            server_name: 服务器名称
-            client: MultiServerMCPClient 实例
-            session: 原始会话对象
-        """
-        self.server_name = server_name
-        self._client = client
-        self._session = session
-        self.created_at = datetime.utcnow()
-        self.last_used_at = datetime.utcnow()
-
-    async def call_tool(
-        self,
-        tool_name: str,
-        arguments: Dict[str, Any],
-    ) -> Any:
-        """
-        调用工具
-
-        Args:
-            tool_name: 工具名称
-            arguments: 工具参数
-
-        Returns:
-            工具执行结果
-        """
-        self.last_used_at = datetime.utcnow()
-        return await self._session.call_tool(tool_name, arguments)
-
-    async def close(self) -> None:
-        """关闭会话"""
-        if hasattr(self._session, 'close'):
-            await self._session.close()
-        logger.debug(f"[MCPSession] 会话已关闭: {self.server_name}")
-
-    @property
-    def idle_time(self) -> float:
-        """获取空闲时长（秒）"""
-        return (datetime.utcnow() - self.last_used_at).total_seconds()
-
-    @property
-    def age(self) -> float:
-        """获取会话年龄（秒）"""
-        return (datetime.utcnow() - self.created_at).total_seconds()
+    except Exception as e:
+        logger.error(
+            f"[MCPSession] 会话错误: server={server_name}, error={e}",
+            exc_info=True
+        )
+        raise
+    finally:
+        if session:
+            logger.debug(f"[MCPSession] 会话已清理: server={server_name}")
 
 
-class MCPSessionManager:
+# =============================================================================
+# 官方推荐的资源加载函数
+# =============================================================================
+
+async def load_tools_with_session(
+    client: MultiServerMCPClient,
+    server_name: str,
+) -> List[BaseTool]:
     """
-    MCP 会话管理器
+    使用有状态会话加载 MCP 工具（官方标准方式）
 
-    管理多个 MCP 会话的生命周期，提供会话复用和自动清理功能。
+    Args:
+        client: MultiServerMCPClient 实例
+        server_name: MCP 服务器名称
 
-    注意：langchain-mcp-adapters 已经内置了会话管理，
-    这个管理器主要用于高级场景（如会话复用、预热等）。
+    Returns:
+        LangChain 工具列表
+
+    Example:
+        ```python
+        client = create_mcp_client({...})
+        tools = await load_tools_with_session(client, "finance")
+        ```
     """
-
-    # 会话配置（从配置文件加载）
-    SESSION_TIMEOUT = get_session_timeout()
-    IDLE_TIMEOUT = get_session_idle_timeout()
-
-    def __init__(self):
-        """初始化会话管理器"""
-        self._sessions: Dict[str, MCPSession] = {}
-        self._lock = asyncio.Lock()
-        self._cleanup_task: Optional[asyncio.Task] = None
-
-    async def start_cleanup_task(self, interval: int = 60) -> None:
-        """
-        启动定期清理任务
-
-        Args:
-            interval: 清理间隔（秒）
-        """
-        if self._cleanup_task and not self._cleanup_task.done():
-            logger.warning("[MCPSessionManager] 清理任务已在运行")
-            return
-
-        self._cleanup_task = asyncio.create_task(self._cleanup_loop(interval))
-        logger.info(f"[MCPSessionManager] 启动清理任务，间隔: {interval}秒")
-
-    async def stop_cleanup_task(self) -> None:
-        """停止清理任务"""
-        if self._cleanup_task:
-            self._cleanup_task.cancel()
-            try:
-                await self._cleanup_task
-            except asyncio.CancelledError:
-                pass
-            logger.info("[MCPSessionManager] 清理任务已停止")
-
-    async def _cleanup_loop(self, interval: int) -> None:
-        """清理循环"""
-        while True:
-            try:
-                await asyncio.sleep(interval)
-                await self.cleanup_expired_sessions()
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"[MCPSessionManager] 清理任务出错: {e}", exc_info=True)
-
-    async def cleanup_expired_sessions(self) -> int:
-        """
-        清理过期会话
-
-        Returns:
-            清理的会话数量
-        """
-        async with self._lock:
-            now = datetime.utcnow()
-            to_remove = []
-
-            for session_id, session in self._sessions.items():
-                # 检查会话超时
-                if session.age > self.SESSION_TIMEOUT:
-                    to_remove.append(session_id)
-                    logger.info(
-                        f"[MCPSessionManager] 会话超时: {session_id}, "
-                        f"age={session.age:.0f}s"
-                    )
-                # 检查空闲超时
-                elif session.idle_time > self.IDLE_TIMEOUT:
-                    to_remove.append(session_id)
-                    logger.info(
-                        f"[MCPSessionManager] 会话空闲超时: {session_id}, "
-                        f"idle={session.idle_time:.0f}s"
-                    )
-
-            for session_id in to_remove:
-                session = self._sessions.pop(session_id)
-                await session.close()
-
-            if to_remove:
-                logger.info(f"[MCPSessionManager] 清理过期会话: {len(to_remove)} 个")
-
-            return len(to_remove)
-
-    async def get_or_create_session(
-        self,
-        server_name: str,
-        connection_config: Dict[str, Any],
-    ) -> MCPSession:
-        """
-        获取或创建会话
-
-        Args:
-            server_name: 服务器名称
-            connection_config: 连接配置
-
-        Returns:
-            MCPSession 对象
-        """
-        async with self._lock:
-            # 检查是否有可用会话
-            session_id = f"{server_name}"
-            existing_session = self._sessions.get(session_id)
-
-            if existing_session and existing_session.idle_time < self.IDLE_TIMEOUT:
-                logger.debug(f"[MCPSessionManager] 复用现有会话: {session_id}")
-                existing_session.last_used_at = datetime.utcnow()
-                return existing_session
-
-            # 创建新会话
-            client = MultiServerMCPClient({
-                server_name: connection_config
-            })
-
-            # 获取会话对象
-            async with client.session(server_name) as session:
-                # 创建包装对象
-                wrapped_session = MCPSession(server_name, client, session)
-                self._sessions[session_id] = wrapped_session
-
-                logger.info(f"[MCPSessionManager] 创建新会话: {session_id}")
-                return wrapped_session
-
-    async def close_session(self, server_name: str) -> None:
-        """
-        关闭指定服务器的会话
-
-        Args:
-            server_name: 服务器名称
-        """
-        async with self._lock:
-            session_id = f"{server_name}"
-            session = self._sessions.pop(session_id, None)
-            if session:
-                await session.close()
-                logger.info(f"[MCPSessionManager] 关闭会话: {session_id}")
-
-    async def close_all_sessions(self) -> None:
-        """关闭所有会话"""
-        async with self._lock:
-            for session_id, session in self._sessions.items():
-                try:
-                    await session.close()
-                except Exception as e:
-                    logger.error(
-                        f"[MCPSessionManager] 关闭会话出错: {session_id}, error={e}",
-                        exc_info=True
-                    )
-
-            self._sessions.clear()
-            logger.info("[MCPSessionManager] 所有会话已关闭")
-
-    def get_session_count(self) -> int:
-        """获取活跃会话数量"""
-        return len(self._sessions)
-
-    def get_session_stats(self) -> Dict[str, Any]:
-        """获取会话统计信息"""
-        sessions = list(self._sessions.values())
-        return {
-            "total": len(sessions),
-            "sessions": [
-                {
-                    "server_name": s.server_name,
-                    "age": s.age,
-                    "idle_time": s.idle_time,
-                    "created_at": s.created_at.isoformat(),
-                    "last_used_at": s.last_used_at.isoformat(),
-                }
-                for s in sessions
-            ],
-        }
+    async with mcp_session_context(client, server_name) as session:
+        tools = await load_mcp_tools(session)
+        logger.info(
+            f"[MCPSession] 加载工具: server={server_name}, count={len(tools)}"
+        )
+        return tools
 
 
-# 全局会话管理器实例
-_mcp_session_manager: Optional[MCPSessionManager] = None
+async def load_resources_with_session(
+    client: MultiServerMCPClient,
+    server_name: str,
+    uris: Optional[List[str]] = None,
+) -> List[Any]:
+    """
+    使用有状态会话加载 MCP 资源（官方标准方式）
+
+    Args:
+        client: MultiServerMCPClient 实例
+        server_name: MCP 服务器名称
+        uris: 可选，要加载的资源 URI 列表
+
+    Returns:
+        Blob 对象列表
+
+    Example:
+        ```python
+        # 加载所有资源
+        resources = await load_resources_with_session(client, "finance")
+
+        # 加载特定资源
+        resources = await load_resources_with_session(
+            client, "finance",
+            uris=["file:///data/stock_list.csv"]
+        )
+        ```
+    """
+    async with mcp_session_context(client, server_name) as session:
+        if uris:
+            resources = await load_mcp_resources(session, uris=uris)
+        else:
+            resources = await load_mcp_resources(session)
+
+        logger.info(
+            f"[MCPSession] 加载资源: server={server_name}, count={len(resources)}"
+        )
+        return resources
 
 
-def get_mcp_session_manager() -> MCPSessionManager:
-    """获取全局 MCP 会话管理器实例"""
-    global _mcp_session_manager
-    if _mcp_session_manager is None:
-        _mcp_session_manager = MCPSessionManager()
-    return _mcp_session_manager
+async def load_prompt_with_session(
+    client: MultiServerMCPClient,
+    server_name: str,
+    prompt_name: str,
+    arguments: Optional[Dict[str, Any]] = None,
+) -> List[Any]:
+    """
+    使用有状态会话加载 MCP Prompt（官方标准方式）
+
+    Args:
+        client: MultiServerMCPClient 实例
+        server_name: MCP 服务器名称
+        prompt_name: Prompt 名称
+        arguments: 可选，Prompt 参数
+
+    Returns:
+        Message 列表
+
+    Example:
+        ```python
+        # 加载默认 prompt
+        messages = await load_prompt_with_session(client, "finance", "summarize")
+
+        # 加载带参数的 prompt
+        messages = await load_prompt_with_session(
+            client, "finance", "code_review",
+            arguments={"language": "python", "focus": "security"}
+        )
+        ```
+    """
+    async with mcp_session_context(client, server_name) as session:
+        if arguments:
+            messages = await load_mcp_prompt(session, prompt_name, arguments=arguments)
+        else:
+            messages = await load_mcp_prompt(session, prompt_name)
+
+        logger.info(
+            f"[MCPSession] 加载 Prompt: server={server_name}, prompt={prompt_name}"
+        )
+        return messages
+

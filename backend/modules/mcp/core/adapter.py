@@ -1,5 +1,5 @@
 """
-MCP 适配器 - 使用官方 langchain-mcp-adapters 框架
+MCP 适配器 - 官方标准实现
 
 基于 LangChain/LangGraph 官方 MCP 适配器，支持所有传输模式：
 - stdio: 标准输入输出
@@ -11,8 +11,7 @@ MCP 适配器 - 使用官方 langchain-mcp-adapters 框架
 """
 
 import logging
-from typing import List, Dict, Any, Optional
-from datetime import timedelta
+from typing import List, Dict, Any, Optional, Callable
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_core.tools import BaseTool
@@ -23,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# 连接配置构建函数
+# 连接配置构建函数（官方标准）
 # =============================================================================
 
 def build_stdio_connection(
@@ -34,7 +33,7 @@ def build_stdio_connection(
     encoding: str = "utf-8",
 ) -> Dict[str, Any]:
     """
-    构建 stdio 传输模式的连接配置
+    构建 stdio 传输模式的连接配置（官方标准）
 
     Args:
         command: 启动命令（如 "python", "node", "npx"）
@@ -69,7 +68,7 @@ def build_sse_connection(
     sse_read_timeout: float = 300.0,
 ) -> Dict[str, Any]:
     """
-    构建 SSE 传输模式的连接配置
+    构建 SSE 传输模式的连接配置（官方标准）
 
     Args:
         url: SSE 端点 URL
@@ -98,12 +97,12 @@ def build_sse_connection(
 def build_streamable_http_connection(
     url: str,
     headers: Optional[Dict[str, str]] = None,
-    timeout: Optional[timedelta] = None,
-    sse_read_timeout: Optional[timedelta] = None,
+    timeout: Optional[float] = None,
+    sse_read_timeout: Optional[float] = None,
     terminate_on_close: bool = True,
 ) -> Dict[str, Any]:
     """
-    构建 Streamable HTTP 传输模式的连接配置（推荐）
+    构建 Streamable HTTP 传输模式的连接配置（官方推荐）
 
     Args:
         url: HTTP 端点 URL
@@ -122,9 +121,9 @@ def build_streamable_http_connection(
 
     if headers:
         config["headers"] = headers
-    if timeout:
+    if timeout is not None:
         config["timeout"] = timeout
-    if sse_read_timeout:
+    if sse_read_timeout is not None:
         config["sse_read_timeout"] = sse_read_timeout
     if not terminate_on_close:
         config["terminate_on_close"] = terminate_on_close
@@ -134,7 +133,7 @@ def build_streamable_http_connection(
 
 def build_websocket_connection(url: str) -> Dict[str, Any]:
     """
-    构建 WebSocket 传输模式的连接配置
+    构建 WebSocket 传输模式的连接配置（官方标准）
 
     Args:
         url: WebSocket 端点 URL
@@ -149,61 +148,7 @@ def build_websocket_connection(url: str) -> Dict[str, Any]:
 
 
 # =============================================================================
-# MCP 工具获取函数
-# =============================================================================
-
-async def get_mcp_tools(
-    server_name: str,
-    connection_config: Dict[str, Any],
-) -> List[BaseTool]:
-    """
-    从 MCP 服务器获取 LangChain 工具列表
-
-    这是推荐的用法，返回的工具可以直接用于 LangGraph 智能体。
-
-    Args:
-        server_name: 服务器名称
-        connection_config: 连接配置（由 build_*_connection 函数构建）
-
-    Returns:
-        LangChain BaseTool 列表
-
-    Raises:
-        MCPConnectionError: 连接失败时抛出
-    """
-    try:
-        logger.info(
-            f"获取 MCP 工具: server_name={server_name}, "
-            f"transport={connection_config.get('transport')}"
-        )
-
-        # 创建 MultiServerMCPClient
-        client = MultiServerMCPClient({
-            server_name: connection_config
-        })
-
-        # 获取工具（使用官方推荐的 client.get_tools() 方法）
-        tools = await client.get_tools()
-
-        logger.info(
-            f"MCP 工具获取成功: server_name={server_name}, "
-            f"tool_count={len(tools)}"
-        )
-
-        return tools
-
-    except Exception as e:
-        logger.error(
-            f"MCP 工具获取失败: server_name={server_name}, error={e}",
-            exc_info=True
-        )
-        raise MCPConnectionError(
-            f"无法连接到 MCP 服务器 {server_name}: {e}"
-        ) from e
-
-
-# =============================================================================
-# 辅助函数
+# 认证头构建（官方标准）
 # =============================================================================
 
 def build_auth_headers(
@@ -212,7 +157,7 @@ def build_auth_headers(
     auth_token: Optional[str] = None,
 ) -> Optional[Dict[str, str]]:
     """
-    构建认证头
+    构建认证头（官方标准）
 
     支持两种配置方式：
     1. 直接配置 headers 字段（优先级更高）
@@ -261,7 +206,7 @@ def build_auth_headers(
 
 def map_transport_mode(transport: str) -> str:
     """
-    映射传输模式到官方框架格式
+    映射传输模式到官方框架格式（官方标准）
 
     支持的映射：
     - stdio -> stdio
@@ -292,4 +237,165 @@ def map_transport_mode(transport: str) -> str:
             f"不支持的传输模式: {transport}，"
             f"支持的模式: {list(mapping.keys())}"
         )
+    return result
+
+
+# =============================================================================
+# 客户端创建函数（官方标准）
+# =============================================================================
+
+def create_mcp_client(
+    server_configs: Dict[str, Dict[str, Any]],
+    tool_interceptors: Optional[List[Callable]] = None,
+) -> MultiServerMCPClient:
+    """
+    创建 MCP 客户端（官方标准）
+
+    这是创建 MultiServerMCPClient 的推荐方式，支持：
+    - 多服务器配置
+    - 工具拦截器（Interceptors）
+    - 访问 ToolRuntime 上下文
+
+    Args:
+        server_configs: 服务器配置字典
+        tool_interceptors: 工具拦截器列表（可选）
+
+    Returns:
+        MultiServerMCPClient 实例
+
+    Example:
+        ```python
+        from modules.mcp.core.interceptors import get_default_interceptors
+
+        client = create_mcp_client(
+            server_configs={
+                "finance": {
+                    "transport": "streamable_http",
+                    "url": "http://localhost:8000/mcp",
+                    "headers": {"Authorization": "Bearer token"},
+                }
+            },
+            tool_interceptors=get_default_interceptors()
+        )
+
+        tools = await client.get_tools()
+        ```
+    """
+    logger.info(
+        f"创建 MCP 客户端: servers={list(server_configs.keys())}, "
+        f"interceptors={len(tool_interceptors) if tool_interceptors else 0}"
+    )
+
+    return MultiServerMCPClient(
+        server_configs,
+        tool_interceptors=tool_interceptors or [],
+    )
+
+
+async def get_mcp_tools(
+    server_name: str,
+    connection_config: Dict[str, Any],
+    tool_interceptors: Optional[List[Callable]] = None,
+) -> List[BaseTool]:
+    """
+    从 MCP 服务器获取 LangChain 工具列表（官方标准）
+
+    这是推荐的用法，返回的工具可以直接用于 LangGraph 智能体。
+
+    Args:
+        server_name: 服务器名称
+        connection_config: 连接配置（由 build_*_connection 函数构建）
+        tool_interceptors: 可选的工具拦截器列表
+
+    Returns:
+        LangChain BaseTool 列表
+
+    Raises:
+        MCPConnectionError: 连接失败时抛出
+    """
+    try:
+        logger.info(
+            f"获取 MCP 工具: server_name={server_name}, "
+            f"transport={connection_config.get('transport')}, "
+            f"interceptors={len(tool_interceptors) if tool_interceptors else 0}"
+        )
+
+        # 创建 MultiServerMCPClient（支持 interceptors）
+        client = MultiServerMCPClient(
+            {server_name: connection_config},
+            tool_interceptors=tool_interceptors or [],
+        )
+
+        # 获取工具（使用官方推荐的 client.get_tools() 方法）
+        tools = await client.get_tools()
+
+        logger.info(
+            f"MCP 工具获取成功: server_name={server_name}, "
+            f"tool_count={len(tools)}"
+        )
+
+        return tools
+
+    except Exception as e:
+        logger.error(
+            f"MCP 工具获取失败: server_name={server_name}, error={e}",
+            exc_info=True
+        )
+        raise MCPConnectionError(
+            f"无法连接到 MCP 服务器 {server_name}: {e}"
+        ) from e
+
+
+async def get_mcp_tools_multi_server(
+    server_configs: Dict[str, Dict[str, Any]],
+    tool_interceptors: Optional[List[Callable]] = None,
+) -> Dict[str, List[BaseTool]]:
+    """
+    从多个 MCP 服务器获取工具（官方标准）
+
+    Args:
+        server_configs: 多服务器配置字典
+        tool_interceptors: 工具拦截器列表
+
+    Returns:
+        {server_name: [tools]} 的字典
+
+    Example:
+        ```python
+        from modules.mcp.core.interceptors import get_production_interceptors
+
+        server_configs = {
+            "finance": build_streamable_http_connection("http://localhost:8000/mcp"),
+            "weather": build_sse_connection("http://localhost:8001/sse"),
+        }
+
+        all_tools = await get_mcp_tools_multi_server(
+            server_configs,
+            tool_interceptors=get_production_interceptors()
+        )
+        ```
+    """
+    client = create_mcp_client(server_configs, tool_interceptors)
+
+    result = {}
+
+    for server_name in server_configs.keys():
+        try:
+            # 获取该服务器的工具
+            tools = await client.get_tools()
+            result[server_name] = tools
+
+            logger.info(
+                f"获取 MCP 工具成功: server={server_name}, "
+                f"tool_count={len(tools)}"
+            )
+
+        except Exception as e:
+            logger.error(
+                f"获取 MCP 工具失败: server={server_name}, error={e}",
+                exc_info=True
+            )
+            # 继续处理其他服务器
+            result[server_name] = []
+
     return result
