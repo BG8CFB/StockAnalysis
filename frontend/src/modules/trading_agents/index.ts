@@ -14,7 +14,6 @@ export { default as BatchAnalysisView } from './views/analysis/BatchAnalysisView
 export { default as AnalysisDetailView } from './views/analysis/AnalysisDetailView.vue'
 
 // 任务中心
-export { default as TaskListView } from './views/task/TaskListView.vue'
 export { default as TaskCenterView } from './views/task/TaskCenterView.vue'
 
 // 管理员页面

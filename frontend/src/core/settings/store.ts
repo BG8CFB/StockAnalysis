@@ -75,19 +75,6 @@ export const useSettingsStore = defineStore('settings', () => {
     try {
       const info = await settingsApi.getSystemInfo()
       systemInfo.value = info
-      systemConfig.value = {
-        require_approval: info.require_approval,
-        app_name: info.app_name,
-        app_version: info.app_version,
-        debug: info.debug,
-        registration_open: info.registration_open,
-      }
-      systemStatus.value = {
-        initialized: info.initialized,
-        mongodb_connected: info.mongodb_connected,
-        redis_connected: info.redis_connected,
-        user_stats: info.user_stats,
-      }
       return info
     } catch (error: any) {
       console.error('获取系统信息失败:', error)

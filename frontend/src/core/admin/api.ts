@@ -3,9 +3,17 @@
  * 统一管理所有管理员相关的 API
  */
 import { httpGet, httpPost, httpPut, httpDelete } from '@core/api/http'
-import type { User, UserListQuery, UserListResponse } from './types'
 
 // ==================== 管理员专用类型 ====================
+
+export interface UserListQuery {
+  skip?: number
+  limit?: number
+  search?: string
+  role?: string
+  status?: string
+  is_active?: boolean
+}
 
 export interface CreateUserRequest {
   email: string
@@ -169,9 +177,7 @@ export const adminApi = {
 
 // 导出类型
 export type {
-  User,
   UserListQuery,
-  UserListResponse,
   CreateUserRequest,
   UpdateUserRequest,
   UserListItemResponse,

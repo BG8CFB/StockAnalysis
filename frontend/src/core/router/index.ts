@@ -99,10 +99,9 @@ router.beforeEach(async (to, from, next) => {
   }
 
   // ==================== 认证检查（最佳实践：只检查状态，不调用 API）====================
-  // 登录状态判断：有 token 或有 userInfo 都视为已登录
+  // 登录状态判断：isLoggedIn 计算属性已包含 token 检查
   // 注意：token 验证已在 main.ts 启动时完成，这里只检查状态
-  // 使用 isLoggedIn 计算属性，它同时检查 token 和 userInfo
-  const isLoggedIn = userStore.isLoggedIn || !!userStore.userInfo
+  const isLoggedIn = userStore.isLoggedIn
 
   if (requiresAuth && !isLoggedIn) {
     next({

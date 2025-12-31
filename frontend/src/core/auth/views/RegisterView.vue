@@ -183,8 +183,7 @@ import {
   TrendCharts
 } from '@element-plus/icons-vue'
 import { useUserStore } from '../store'
-import SliderCaptcha from '@core/components/SliderCaptcha.vue'
-import type { CaptchaData } from '../api'
+import SliderCaptcha, { type CaptchaData } from '@core/components/SliderCaptcha.vue'
 
 const router = useRouter()
 const userStore = useUserStore()

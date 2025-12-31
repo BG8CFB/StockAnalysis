@@ -122,33 +122,32 @@
             </el-menu-item>
           </template>
 
-          <el-menu-item index="/settings/trading-agents/models">
+          <el-menu-item index="/settings/mcp-servers">
             <span class="sub-dot" />
-            <span>AI 模型库</span>
+            <span>MCP 服务器管理</span>
           </el-menu-item>
 
-          <!-- Nested Group for Analysis Settings -->
-          <el-sub-menu
-            index="trading-agents-settings"
-            class="nested-submenu"
-          >
-            <template #title>
-              <span class="sub-dot group-dot" />
-              <span>分析引擎配置</span>
-            </template>
-            <el-menu-item index="/settings/trading-agents/mcp-servers">
-              <span class="line-guide" />
-              <span>MCP 服务</span>
+          <template v-if="isAdmin">
+            <el-menu-item index="/settings/mcp-settings">
+              <span class="sub-dot" />
+              <span>MCP 系统配置</span>
             </el-menu-item>
-            <el-menu-item index="/settings/trading-agents/agent-config">
-              <span class="line-guide" />
-              <span>智能体参数</span>
-            </el-menu-item>
-            <el-menu-item index="/settings/trading-agents/analysis">
-              <span class="line-guide" />
-              <span>分析规则</span>
-            </el-menu-item>
-          </el-sub-menu>
+          </template>
+
+          <el-menu-item index="/settings/trading-agents/models">
+            <span class="sub-dot" />
+            <span>AI 模型管理</span>
+          </el-menu-item>
+
+          <el-menu-item index="/settings/trading-agents/agent-config">
+            <span class="sub-dot" />
+            <span>智能体配置</span>
+          </el-menu-item>
+
+          <el-menu-item index="/settings/trading-agents/analysis">
+            <span class="sub-dot" />
+            <span>分析设置</span>
+          </el-menu-item>
         </el-sub-menu>
       </el-menu>
     </div>
@@ -221,7 +220,8 @@ async function handleLogout() {
     await userStore.logout()
     router.push('/login')
     ElMessage.success('已安全退出')
-  } catch {}
+  } catch {
+  }
 }
 </script>
 

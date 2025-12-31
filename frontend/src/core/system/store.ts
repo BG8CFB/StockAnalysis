@@ -3,7 +3,8 @@
  */
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { systemApi, type SystemStatusResponse } from './api'
+import { systemApi } from './api'
+import type { SystemStatus } from '@core/shared/types'
 
 export const useSystemStore = defineStore('system', () => {
   // 状态

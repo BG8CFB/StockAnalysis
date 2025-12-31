@@ -3,12 +3,12 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { adminApi } from './api'
-import type { User, UserListQuery, AuditLog } from '@core/user'
+import { adminApi, type UserListItemResponse, type UserListQuery } from './api'
+import type { AuditLog } from '@core/shared/types'
 
 export const useAdminStore = defineStore('admin', () => {
   // 状态
-  const users = ref<User[]>([])
+  const users = ref<UserListItemResponse[]>([])
   const total = ref(0)
   const loading = ref(false)
   const auditLogs = ref<AuditLog[]>([])

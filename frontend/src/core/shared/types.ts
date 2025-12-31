@@ -69,6 +69,7 @@ export interface UserInfo {
   is_verified: boolean
   created_at: string
   last_login_at: string | null
+  avatar?: string
 }
 
 /** 完整用户信息（包含管理字段） */
@@ -121,12 +122,12 @@ export interface UserListResponse {
 
 /** 系统配置（后端 GET /settings/system 返回） */
 export interface SystemConfig {
-  REQUIRE_APPROVAL: boolean
-  PASSWORD_MIN_LENGTH: number
-  ENABLE_REGISTRATION: boolean
-  ENABLE_PASSWORD_RESET: boolean
-  SESSION_TIMEOUT: number
-  REJECTED_USER_RETENTION_DAYS: number
+  require_approval: boolean
+  password_min_length: number
+  enable_registration: boolean
+  enable_password_reset: boolean
+  session_timeout: number
+  rejected_user_retention_days: number
 }
 
 /** 系统状态（后端 GET /system/status 返回） */
@@ -137,6 +138,14 @@ export interface SystemStatus {
   status: string
   debug?: boolean
   captcha_enabled?: boolean
+  mongodb_connected?: boolean
+  redis_connected?: boolean
+  user_stats?: {
+    total: number
+    active: number
+    pending: number
+    disabled: number
+  }
 }
 
 /** 系统信息（后端 GET /system/info 返回，包含完整系统信息） */

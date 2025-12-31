@@ -92,10 +92,16 @@ const moduleRoutes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, title: 'AI 模型管理' },
   },
   {
-    path: '/settings/trading-agents/mcp-servers',
-    name: 'TradingAgentsMCPServers',
-    component: () => import('@modules/trading_agents/views/MCPServerManagementView.vue'),
+    path: '/settings/mcp-servers',
+    name: 'SettingsMCPServers',
+    component: () => import('@modules/settings/views/MCPServerManagementView.vue'),
     meta: { requiresAuth: true, title: 'MCP 服务器管理' },
+  },
+  {
+    path: '/settings/mcp-settings',
+    name: 'SettingsMCPSettings',
+    component: () => import('@modules/settings/views/MCPSettingsView.vue'),
+    meta: { requiresAuth: true, title: 'MCP 系统配置', adminOnly: true },
   },
   {
     path: '/settings/trading-agents/agent-config',

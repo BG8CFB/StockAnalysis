@@ -634,14 +634,14 @@ import {
   InfoFilled,
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@core/auth/store'
-import { useTradingAgentsStore } from '../store'
+import { useTradingAgentsStore } from '@/modules/trading_agents/store'
 import {
   TransportModeEnum,
   MCPServerStatusEnum,
   type MCPServerConfig,
   type MCPServerConfigCreate,
   type MCPTool,
-} from '../types'
+} from '@/modules/trading_agents/types'
 
 const userStore = useUserStore()
 const store = useTradingAgentsStore()

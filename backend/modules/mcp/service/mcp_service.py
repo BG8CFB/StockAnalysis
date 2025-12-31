@@ -7,12 +7,13 @@ MCP 服务器配置管理服务
 import logging
 import asyncio
 import json
+import time
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from bson import ObjectId
 
 from core.db.mongodb import mongodb
-from modules.trading_agents.schemas import (
+from modules.mcp.schemas import (
     MCPServerConfigCreate,
     MCPServerConfigUpdate,
     MCPServerConfigResponse,
@@ -21,6 +22,11 @@ from modules.trading_agents.schemas import (
     AuthTypeEnum,
     ConnectionTestResponse,
 )
+from modules.mcp.core.adapter import (
+    build_auth_headers,
+    map_transport_mode,
+)
+from modules.mcp.core.exceptions import MCPConnectionError
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +92,7 @@ class MCPService:
             "env": request.env or {},
             # http/sse/websocket 模式配置
             "url": request.url,
-            "headers": request.headers or {},  # ← 添加 headers 字段
+            "headers": request.headers or {},
             # 认证配置（兼容旧版本）
             "auth_type": request.auth_type.value if request.auth_type else AuthTypeEnum.NONE.value,
             "auth_token": request.auth_token,
@@ -108,14 +114,13 @@ class MCPService:
 
         logger.info(
             f"创建 MCP 服务器配置: name={request.name}, "
-                f"transport={request.transport}, user={user_id}, "
-                f"is_system={request.is_system}"
+            f"transport={request.transport}, user={user_id}, "
+            f"is_system={request.is_system}"
         )
 
         # 创建后立即进行状态检测（异步后台任务）
-        import asyncio
         server_id = str(result.inserted_id)
-        asyncio.create_task(self._check_server_status_after_create(server_id, user_id, is_admin=False))
+        asyncio.create_task(self._check_server_status_after_create(server_id))
 
         return MCPServerConfigResponse.from_db(doc)
 
@@ -175,7 +180,7 @@ class MCPService:
         collection = await self._get_collection()
 
         # 查询所有服务器（包括禁用的），由前端来决定如何显示
-        query = {}  # 移除 enabled 过滤，显示所有服务器
+        query = {}
 
         if is_admin:
             # 管理员查看所有服务器
@@ -269,7 +274,7 @@ class MCPService:
             update_data["env"] = request.env
         if request.url is not None:
             update_data["url"] = request.url
-        if request.headers is not None:  # ← 添加 headers 更新
+        if request.headers is not None:
             update_data["headers"] = request.headers
         if request.auth_type is not None:
             update_data["auth_type"] = request.auth_type.value
@@ -331,8 +336,6 @@ class MCPService:
         if not doc.get("is_system") and doc.get("owner_id") != user_id:
             return False
 
-        # TODO: 检查是否有进行中的任务使用该服务器
-
         # 删除配置
         result = await collection.delete_one({"_id": object_id})
 
@@ -361,8 +364,8 @@ class MCPService:
         Returns:
             测试结果
         """
-        import time
-        from ..tools.mcp_adapter import MCPAdapterFactory
+        from modules.mcp.core.adapter import get_mcp_tools
+
         start_time = time.time()
 
         # 获取服务器配置
@@ -373,76 +376,30 @@ class MCPService:
                 message="服务器配置不存在",
             )
 
-        # 创建 MCP 适配器配置
-        config = {
-            "command": server.command,
-            "args": server.args,
-            "env": server.env,
-            "url": server.url,
-            "headers": server.headers,  # ← 添加 headers 字段（优先级高于 auth_type）
-            "auth_type": server.auth_type.value,
-            "auth_token": server.auth_token,
-        }
-
-        adapter = None
+        # 构建连接配置
         try:
-            # 创建适配器
-            adapter = MCPAdapterFactory.create_adapter(
-                name=server.name,
-                transport=server.transport.value,
-                config=config,
-            )
+            connection_config = self._build_connection_config(server)
 
-            # 连接并测试
-            connected = await adapter.connect()
+            # 测试连接
+            tools = await get_mcp_tools(server.name, connection_config)
 
             latency_ms = int((time.time() - start_time) * 1000)
 
-            if connected:
-                # 尝试获取工具列表以验证MCP协议
-                try:
-                    tools = await adapter.list_tools()
-                    tool_count = len(tools) if isinstance(tools, list) else 0
+            # 更新状态为可用
+            await self._update_server_status(
+                server_id, MCPServerStatusEnum.AVAILABLE
+            )
 
-                    # 更新状态为可用
-                    await self._update_server_status(
-                        server_id, MCPServerStatusEnum.AVAILABLE
-                    )
+            logger.info(
+                f"MCP 服务器连接测试成功: server_id={server_id}, "
+                f"tools={len(tools)}"
+            )
 
-                    logger.info(
-                        f"MCP 服务器连接测试成功: server_id={server_id}, "
-                        f"tools={tool_count}"
-                    )
-
-                    return ConnectionTestResponse(
-                        success=True,
-                        message=f"连接成功，检测到 {tool_count} 个工具",
-                        latency_ms=latency_ms,
-                    )
-                except Exception as e:
-                    # 连接成功但无法获取工具列表
-                    logger.warning(
-                        f"MCP 服务器连接成功但工具列表获取失败: "
-                        f"server_id={server_id}, error={e}"
-                    )
-                    await self._update_server_status(
-                        server_id, MCPServerStatusEnum.AVAILABLE
-                    )
-                    return ConnectionTestResponse(
-                        success=True,
-                        message="连接成功，但无法获取工具列表",
-                        latency_ms=latency_ms,
-                    )
-            else:
-                # 连接失败
-                await self._update_server_status(
-                    server_id, MCPServerStatusEnum.UNAVAILABLE
-                )
-                return ConnectionTestResponse(
-                    success=False,
-                    message="连接失败：无法建立MCP连接",
-                    latency_ms=latency_ms,
-                )
+            return ConnectionTestResponse(
+                success=True,
+                message=f"连接成功，检测到 {len(tools)} 个工具",
+                latency_ms=latency_ms,
+            )
 
         except Exception as e:
             latency_ms = int((time.time() - start_time) * 1000)
@@ -452,20 +409,15 @@ class MCPService:
                 server_id, MCPServerStatusEnum.UNAVAILABLE
             )
 
-            logger.error(f"MCP 服务器连接测试失败: server_id={server_id}, error={e}")
+            logger.error(
+                f"MCP 服务器连接测试失败: server_id={server_id}, error={e}"
+            )
 
             return ConnectionTestResponse(
                 success=False,
                 message=f"连接测试失败: {str(e)}",
                 latency_ms=latency_ms,
             )
-        finally:
-            # 清理连接
-            if adapter:
-                try:
-                    await adapter.disconnect()
-                except Exception:
-                    pass
 
     async def get_server_tools(
         self,
@@ -484,54 +436,41 @@ class MCPService:
         Returns:
             工具列表
         """
-        from ..tools.mcp_adapter import MCPAdapterFactory
+        from modules.mcp.core.adapter import get_mcp_tools
 
         # 获取服务器配置
         server = await self.get_server(server_id, user_id, is_admin)
         if not server:
             return []
 
-        # 创建 MCP 适配器配置
-        config = {
-            "command": server.command,
-            "args": server.args,
-            "env": server.env,
-            "url": server.url,
-            "headers": server.headers,  # ← 添加 headers 字段（优先级高于 auth_type）
-            "auth_type": server.auth_type.value,
-            "auth_token": server.auth_token,
-        }
-
-        adapter = None
         try:
-            # 创建适配器
-            adapter = MCPAdapterFactory.create_adapter(
-                name=server.name,
-                transport=server.transport.value,
-                config=config,
+            # 构建连接配置
+            connection_config = self._build_connection_config(server)
+
+            # 获取工具
+            tools = await get_mcp_tools(server.name, connection_config)
+
+            # 转换为字典格式
+            tool_list = []
+            for tool in tools:
+                tool_dict = {
+                    "name": tool.name,
+                    "description": tool.description or "",
+                }
+                if hasattr(tool, 'args_schema') and tool.args_schema:
+                    if hasattr(tool.args_schema, 'model_json_schema'):
+                        tool_dict["inputSchema"] = tool.args_schema.model_json_schema()
+                    elif hasattr(tool.args_schema, 'schema'):
+                        tool_dict["inputSchema"] = tool.args_schema.schema()
+
+                tool_list.append(tool_dict)
+
+            logger.info(
+                f"获取 MCP 工具列表成功: server={server.name}, "
+                f"count={len(tool_list)}"
             )
 
-            # 连接并获取工具列表
-            if await adapter.connect():
-                tools = await adapter.list_tools()
-
-                # 适配器现在直接返回工具列表
-                if not isinstance(tools, list):
-                    logger.warning(
-                        f"MCP 适配器返回非列表类型: server={server.name}, "
-                        f"type={type(tools).__name__}"
-                    )
-                    tools = []
-
-                logger.info(
-                    f"获取 MCP 工具列表成功: server={server.name}, "
-                    f"count={len(tools)}"
-                )
-
-                return tools
-            else:
-                logger.warning(f"无法连接到 MCP 服务器: {server.name}")
-                return []
+            return tool_list
 
         except Exception as e:
             logger.error(
@@ -539,31 +478,71 @@ class MCPService:
                 exc_info=True
             )
             return []
-        finally:
-            # 清理连接
-            if adapter:
-                try:
-                    await adapter.disconnect()
-                except Exception:
-                    pass
 
     # ========================================================================
     # 辅助方法
     # ========================================================================
 
-    async def _check_server_status_after_create(
-        self,
-        server_id: str,
-        user_id: str,
-        is_admin: bool = False
-    ) -> None:
+    def _build_connection_config(self, server: MCPServerConfigResponse) -> Dict[str, Any]:
+        """
+        构建 MCP 连接配置
+
+        Args:
+            server: 服务器配置
+
+        Returns:
+            连接配置字典
+        """
+        # 获取认证头
+        headers = build_auth_headers(
+            headers=server.headers,
+            auth_type=server.auth_type.value,
+            auth_token=server.auth_token,
+        )
+
+        transport = map_transport_mode(server.transport.value)
+
+        # 根据传输模式构建配置
+        if transport == "stdio":
+            from modules.mcp.core.adapter import build_stdio_connection
+            return build_stdio_connection(
+                command=server.command,
+                args=server.args,
+                env=server.env,
+            )
+        elif transport == "sse":
+            from modules.mcp.core.adapter import build_sse_connection
+            return build_sse_connection(
+                url=server.url,
+                headers=headers,
+            )
+        elif transport == "streamable_http":
+            from modules.mcp.core.adapter import build_streamable_http_connection
+            return build_streamable_http_connection(
+                url=server.url,
+                headers=headers,
+            )
+        elif transport == "websocket":
+            from modules.mcp.core.adapter import build_websocket_connection
+            return build_websocket_connection(
+                url=server.url,
+            )
+        else:
+            raise ValueError(f"不支持的传输模式: {transport}")
+
+    async def _check_server_status_after_create(self, server_id: str) -> None:
         """
         创建后自动检测服务器状态（后台任务）
 
         这个方法会在创建服务器后异步调用，自动检测服务器是否可用。
         """
         try:
-            result = await self.test_server_connection(server_id, user_id, is_admin)
+            # 使用系统用户进行测试
+            result = await self.test_server_connection(
+                server_id=server_id,
+                user_id="system",
+                is_admin=True
+            )
             logger.info(f"自动状态检测完成: server_id={server_id}, success={result.success}")
         except Exception as e:
             logger.error(f"自动状态检测失败: server_id={server_id}, error={e}")
@@ -591,17 +570,6 @@ class MCPService:
                 }
             }
         )
-
-    def _get_auth_headers(self, server: MCPServerConfigResponse) -> Dict[str, str]:
-        """获取认证头"""
-        if server.auth_type == AuthTypeEnum.BEARER and server.auth_token:
-            return {"Authorization": f"Bearer {server.auth_token}"}
-        elif server.auth_type == AuthTypeEnum.BASIC and server.auth_token:
-            # auth_token 格式: "username:password"
-            import base64
-            encoded = base64.b64encode(server.auth_token.encode()).decode()
-            return {"Authorization": f"Basic {encoded}"}
-        return {}
 
 
 # =============================================================================

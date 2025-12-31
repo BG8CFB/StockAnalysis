@@ -5,7 +5,7 @@
 type EventCallback<T = unknown> = (data: T) => void
 
 class EventBus {
-  private events: Map<string, Set<EventCallback>>
+  private events: Map<string, Set<EventCallback<unknown>>>
 
   constructor() {
     this.events = new Map()
@@ -15,7 +15,7 @@ class EventBus {
     if (!this.events.has(event)) {
       this.events.set(event, new Set())
     }
-    this.events.get(event)!.add(callback)
+    this.events.get(event)!.add(callback as EventCallback<unknown>)
 
     // 返回取消订阅函数
     return () => {
@@ -26,7 +26,7 @@ class EventBus {
   off<T = unknown>(event: string, callback: EventCallback<T>): void {
     const callbacks = this.events.get(event)
     if (callbacks) {
-      callbacks.delete(callback)
+      callbacks.delete(callback as EventCallback<unknown>)
       if (callbacks.size === 0) {
         this.events.delete(event)
       }
@@ -47,11 +47,11 @@ class EventBus {
   }
 
   once<T = unknown>(event: string, callback: EventCallback<T>): void {
-    const wrappedCallback: EventCallback<T> = (data) => {
-      callback(data)
-      this.off(event, wrappedCallback as EventCallback)
+    const wrappedCallback: EventCallback<unknown> = (data) => {
+      callback(data as T)
+      this.off(event, wrappedCallback)
     }
-    this.on(event, wrappedCallback as EventCallback)
+    this.on(event, wrappedCallback as EventCallback<T>)
   }
 
   clear(): void {

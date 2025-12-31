@@ -29,8 +29,8 @@ const showImportDialog = () => {
 }
 
 // 处理文件选择
-const handleFileChange = (file: File) => {
-  importFile.value = file
+const handleFileChange = (file: any) => {
+  importFile.value = file.raw
   return false // 阻止自动上传
 }
 

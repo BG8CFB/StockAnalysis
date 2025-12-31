@@ -9,8 +9,15 @@ import logging
 from typing import Optional
 from datetime import datetime, timedelta
 
-from modules.trading_agents.services.mcp_service import get_mcp_service
-from modules.trading_agents.schemas import MCPServerStatusEnum
+from core.db.mongodb import mongodb
+from modules.mcp.schemas import MCPServerStatusEnum, MCPServerConfigResponse
+from modules.mcp.service.mcp_service import get_mcp_service
+from modules.mcp.config.loader import (
+    get_health_check_enabled,
+    get_health_check_interval,
+    get_health_check_timeout,
+    get_health_check_max_concurrent_checks,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -22,10 +29,10 @@ class MCPHealthChecker:
     定期检测所有启用的MCP服务器状态，更新数据库中的状态信息。
     """
 
-    # 健康检查配置
-    CHECK_INTERVAL = 300              # 检查间隔（秒）- 5分钟
-    CHECK_TIMEOUT = 10                # 单次检查超时（秒）
-    MAX_CONCURRENT_CHECKS = 5         # 最大并发检查数
+    # 健康检查配置（从配置文件加载）
+    CHECK_INTERVAL = get_health_check_interval()
+    CHECK_TIMEOUT = get_health_check_timeout()
+    MAX_CONCURRENT_CHECKS = get_health_check_max_concurrent_checks()
 
     # 状态衰减配置
     STALE_THRESHOLD = 600             # 状态过期阈值（秒）- 10分钟
@@ -37,7 +44,6 @@ class MCPHealthChecker:
         self._running = False
 
         # 追踪连续失败次数
-        # {server_id: failure_count}
         self._failure_counts: dict[str, int] = {}
 
         logger.info("MCP健康检查器已初始化")
@@ -86,18 +92,10 @@ class MCPHealthChecker:
             mcp_service = get_mcp_service()
 
             # 获取所有启用的服务器列表
-            # 这里需要获取所有服务器，包括系统级和用户级
-            # 由于list_servers需要user_id，我们使用数据库直接查询
-            from core.db.mongodb import mongodb
-            from bson import ObjectId
-
             collection = mongodb.get_collection("mcp_servers")
-
-            # 查询所有启用的服务器
             cursor = collection.find({"enabled": True})
             servers = []
             async for doc in cursor:
-                from modules.trading_agents.schemas import MCPServerConfigResponse
                 servers.append(MCPServerConfigResponse.from_db(doc))
 
             logger.info(f"找到 {len(servers)} 个启用的MCP服务器")
@@ -159,8 +157,6 @@ class MCPHealthChecker:
             logger.info(f"检查服务器状态: server={server_name}")
 
             # 执行连接测试
-            # 注意：test_server_connection需要user_id和is_admin参数
-            # 对于系统级服务器，我们可以使用一个特殊的系统用户ID
             result = await self._test_connection(server)
 
             if result:
@@ -192,59 +188,63 @@ class MCPHealthChecker:
         Returns:
             连接是否成功
         """
-        from ..tools.mcp_adapter import MCPAdapterFactory
+        from modules.mcp.core.adapter import get_mcp_tools
+        from modules.mcp.core.adapter import build_auth_headers, map_transport_mode
 
-        adapter = None
         try:
-            # 创建 MCP 适配器配置
-            config = {
-                "command": server.command,
-                "args": server.args,
-                "env": server.env,
-                "url": server.url,
-                "headers": server.headers,  # ← 添加 headers 字段
-                "auth_type": server.auth_type.value,
-                "auth_token": server.auth_token,
-            }
-
-            # 创建适配器
-            adapter = MCPAdapterFactory.create_adapter(
-                name=server.name,
-                transport=server.transport.value,
-                config=config,
+            # 构建连接配置
+            headers = build_auth_headers(
+                headers=server.headers,
+                auth_type=server.auth_type.value,
+                auth_token=server.auth_token,
             )
 
-            # 连接并检查可用性
-            if await adapter.connect():
-                # 尝试获取工具列表以验证MCP协议
-                try:
-                    tools = await adapter.list_tools()
-                    tool_count = len(tools) if isinstance(tools, list) else 0
+            transport = map_transport_mode(server.transport.value)
 
-                    await self._update_server_status(
-                        server.id, MCPServerStatusEnum.AVAILABLE
-                    )
-
-                    logger.debug(
-                        f"MCP服务器连接成功: server={server.name}, tools={tool_count}"
-                    )
-                    return True
-
-                except Exception as e:
-                    # 连接成功但无法获取工具列表
-                    logger.warning(
-                        f"MCP服务器连接成功但工具列表获取失败: "
-                        f"server={server.name}, error={e}"
-                    )
-                    await self._update_server_status(
-                        server.id, MCPServerStatusEnum.AVAILABLE
-                    )
-                    return True
+            # 根据传输模式构建配置
+            if transport == "stdio":
+                from modules.mcp.core.adapter import build_stdio_connection
+                connection_config = build_stdio_connection(
+                    command=server.command,
+                    args=server.args,
+                    env=server.env,
+                )
+            elif transport == "sse":
+                from modules.mcp.core.adapter import build_sse_connection
+                connection_config = build_sse_connection(
+                    url=server.url,
+                    headers=headers,
+                )
+            elif transport == "streamable_http":
+                from modules.mcp.core.adapter import build_streamable_http_connection
+                connection_config = build_streamable_http_connection(
+                    url=server.url,
+                    headers=headers,
+                )
+            elif transport == "websocket":
+                from modules.mcp.core.adapter import build_websocket_connection
+                connection_config = build_websocket_connection(
+                    url=server.url,
+                )
             else:
+                logger.warning(f"不支持的传输模式: {transport}")
                 await self._update_server_status(
                     server.id, MCPServerStatusEnum.UNAVAILABLE
                 )
                 return False
+
+            # 测试连接
+            tools = await get_mcp_tools(server.name, connection_config)
+            tool_count = len(tools) if isinstance(tools, list) else 0
+
+            await self._update_server_status(
+                server.id, MCPServerStatusEnum.AVAILABLE
+            )
+
+            logger.debug(
+                f"MCP服务器连接成功: server={server.name}, tools={tool_count}"
+            )
+            return True
 
         except asyncio.TimeoutError:
             logger.warning(f"连接超时: server={server.name}")
@@ -258,13 +258,6 @@ class MCPHealthChecker:
                 server.id, MCPServerStatusEnum.UNAVAILABLE
             )
             return False
-        finally:
-            # 清理连接
-            if adapter:
-                try:
-                    await adapter.disconnect()
-                except Exception:
-                    pass
 
     async def _update_server_status(
         self,
@@ -273,9 +266,7 @@ class MCPHealthChecker:
     ):
         """更新服务器状态"""
         try:
-            from core.db.mongodb import mongodb
             from bson import ObjectId
-
             collection = mongodb.get_collection("mcp_servers")
 
             await collection.update_one(
@@ -301,11 +292,9 @@ class MCPHealthChecker:
             服务器是否可用
         """
         try:
-            from core.db.mongodb import mongodb
             from bson import ObjectId
-            from modules.trading_agents.schemas import MCPServerConfigResponse
-
             collection = mongodb.get_collection("mcp_servers")
+
             doc = await collection.find_one({"_id": ObjectId(server_id)})
 
             if not doc:

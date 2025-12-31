@@ -240,6 +240,9 @@ async def reset_password(data: ResetPasswordRequest):
 @router.post("/users/refresh-token", response_model=TokenResponse)
 async def refresh_token(data: dict):
     """刷新访问令牌"""
+    import time
+    start_time = time.time()
+    logger.info(f"Token refresh request received")
     try:
         refresh_token_value = data.get("refresh_token")
         if not refresh_token_value:
@@ -249,18 +252,24 @@ async def refresh_token(data: dict):
             )
         
         access_token, new_refresh_token = await user_service.refresh_access_token(refresh_token_value)
+        elapsed_time = time.time() - start_time
+        logger.info(f"Token refresh success, elapsed: {elapsed_time:.2f}s")
         return {
             "access_token": access_token,
             "refresh_token": new_refresh_token,
             "token_type": "bearer"
         }
     except ValueError as e:
+        elapsed_time = time.time() - start_time
+        logger.warning(f"Token refresh failed (ValueError): {str(e)}, elapsed: {elapsed_time:.2f}s")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(e),
             headers={"WWW-Authenticate": "Bearer"},
         )
     except Exception as e:
+        elapsed_time = time.time() - start_time
+        logger.error(f"Token refresh failed (Exception): {str(e)}, elapsed: {elapsed_time:.2f}s", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"刷新令牌失败: {str(e)}"

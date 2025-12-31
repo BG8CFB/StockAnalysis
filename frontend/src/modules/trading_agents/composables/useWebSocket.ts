@@ -20,15 +20,15 @@ export enum WebSocketStatus {
 // WebSocket 配置
 const WS_CONFIG = {
   // 心跳间隔（秒）
-  HEARTBEAT_INTERVAL: 30,
+  HEARTBEAT_INTERVAL: Number(import.meta.env.VITE_WS_HEARTBEAT_INTERVAL) || 30,
   // 心跳超时（秒）
-  HEARTBEAT_TIMEOUT: 35,
+  HEARTBEAT_TIMEOUT: Number(import.meta.env.VITE_WS_HEARTBEAT_TIMEOUT) || 35,
   // 重连基础延迟（毫秒）
-  BASE_RETRY_DELAY: 1000,
+  BASE_RETRY_DELAY: Number(import.meta.env.VITE_WS_BASE_RETRY_DELAY) || 1000,
   // 重连最大延迟（毫秒）
-  MAX_RETRY_DELAY: 30000,
+  MAX_RETRY_DELAY: Number(import.meta.env.VITE_WS_MAX_RETRY_DELAY) || 30000,
   // 最大重试次数
-  MAX_RETRY_COUNT: 10,
+  MAX_RETRY_COUNT: Number(import.meta.env.VITE_WS_MAX_RETRY_COUNT) || 10,
   // WebSocket 端点
   WS_ENDPOINT: (taskId: string) => `/api/trading-agents/ws/${taskId}`,
 }

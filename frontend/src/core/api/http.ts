@@ -36,11 +36,11 @@ interface ExtendedAxiosRequestConfig extends AxiosRequestConfig {
 
 // ==================== 创建 Axios 实例 ====================
 
-const baseURL = import.meta.env.VITE_API_BASE_URL || '/api'
+const baseURL: string = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api'
 
 const http: AxiosInstance = axios.create({
   baseURL,
-  timeout: 30000,
+  timeout: 60000,
   headers: {
     'Content-Type': 'application/json',
   },

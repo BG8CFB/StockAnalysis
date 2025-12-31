@@ -13,12 +13,10 @@ from core.auth.dependencies import get_current_user
 from core.user.models import UserModel
 from core.auth.rbac import Role, Permission, require_role, require_permission
 from core.ai.model import get_model_service
-from modules.trading_agents.services.mcp_service import get_mcp_service
 from modules.trading_agents.core.task_manager import get_task_manager
 from modules.trading_agents.services.report_service import get_report_service
 from modules.trading_agents.core.batch_manager import get_batch_manager
 from modules.trading_agents.core.alerts import get_alert_manager, AlertEventType, AlertSeverity
-from modules.trading_agents.schemas import MCPServerConfigCreate
 
 logger = logging.getLogger(__name__)
 
@@ -152,82 +150,8 @@ async def delete_model(
 
 
 # =============================================================================
-# MCP 服务器管理
+# MCP 服务器管理端点已迁移到 modules/mcp/api/routes.py
 # =============================================================================
-
-@router.get("/mcp-servers")
-async def list_all_mcp_servers(
-    admin_user: UserModel = Depends(get_admin_user),
-    include_disabled: bool = Query(False),
-):
-    """
-    获取所有 MCP 服务器配置（管理员）
-    """
-    mcp_service = get_mcp_service()
-    result = await mcp_service.list_servers(
-        user_id=str(admin_user.id),
-        is_admin=True
-    )
-
-    # 合并系统级和用户级服务器
-    all_servers = result.get("system", []) + result.get("user", [])
-    if not include_disabled:
-        all_servers = [s for s in all_servers if s.enabled]
-
-    return {
-        "total": len(all_servers),
-        "servers": all_servers,
-    }
-
-
-@router.post("/mcp-servers")
-async def create_system_mcp_server(
-    request: MCPServerConfigCreate,
-    admin_user: UserModel = Depends(get_admin_user),
-):
-    """
-    创建系统级 MCP 服务器配置（管理员）
-    """
-    from modules.trading_agents.schemas import MCPServerConfigCreate, TransportModeEnum
-
-    mcp_service = get_mcp_service()
-
-    # 强制设置为系统级配置
-    request.is_system = True
-
-    server = await mcp_service.create_server(
-        user_id=str(admin_user.id),
-        request=request
-    )
-
-    logger.info(f"管理员创建系统 MCP 服务器: name={request.name}, admin={admin_user.username}")
-
-    return server
-
-
-@router.delete("/mcp-servers/{server_id}")
-async def delete_mcp_server(
-    server_id: str,
-    admin_user: UserModel = Depends(get_admin_user),
-):
-    """删除 MCP 服务器配置（管理员）"""
-    mcp_service = get_mcp_service()
-    success = await mcp_service.delete_server(
-        server_id=server_id,
-        user_id=str(admin_user.id),
-        is_admin=True
-    )
-
-    if not success:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="服务器不存在或无权删除"
-        )
-
-    logger.info(f"管理员删除 MCP 服务器: server_id={server_id}, admin={admin_user.username}")
-
-    return {"success": True, "message": "MCP 服务器已删除"}
-
 
 # =============================================================================
 # 任务管理
@@ -536,6 +460,59 @@ async def resolve_alert(
     logger.info(f"管理员解决告警: alert_id={alert_id}, admin={admin_user.username}")
 
     return {"success": True, "message": "告警已解决"}
+
+
+@router.get("/alerts/stats")
+async def get_alerts_stats(
+    admin_user: UserModel = Depends(get_admin_user),
+):
+    """
+    获取告警统计信息（管理员）
+    """
+    from core.db.mongodb import mongodb
+    from datetime import datetime, timedelta
+
+    alerts_collection = mongodb.database.alerts
+
+    # 总告警数
+    total = await alerts_collection.count_documents({})
+
+    # 未解决告警数
+    unresolved = await alerts_collection.count_documents({"resolved": False})
+
+    # 严重告警数
+    critical = await alerts_collection.count_documents({"severity": "critical", "resolved": False})
+
+    # 今日新增告警数
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today = await alerts_collection.count_documents({"timestamp": {"$gte": today_start}})
+
+    # 按严重程度统计
+    severity_stats = {}
+    pipeline = [
+        {"$group": {"_id": "$severity", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}}
+    ]
+    async for doc in alerts_collection.aggregate(pipeline):
+        severity_stats[doc["_id"]] = doc["count"]
+
+    # 按事件类型统计
+    type_stats = {}
+    pipeline = [
+        {"$group": {"_id": "$event_type", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}}
+    ]
+    async for doc in alerts_collection.aggregate(pipeline):
+        type_stats[doc["_id"]] = doc["count"]
+
+    return {
+        "total": total,
+        "unresolved": unresolved,
+        "critical": critical,
+        "today": today,
+        "by_severity": severity_stats,
+        "by_type": type_stats,
+    }
 
 
 # =============================================================================

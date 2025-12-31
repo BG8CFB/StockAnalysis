@@ -22,6 +22,7 @@ module.exports = {
   ],
   rules: {
     'vue/multi-word-component-names': 'off',
+    'no-empty': 'off',
     '@typescript-eslint/no-explicit-any': 'warn',
     '@typescript-eslint/no-unused-vars': ['warn', {
       argsIgnorePattern: '^_',

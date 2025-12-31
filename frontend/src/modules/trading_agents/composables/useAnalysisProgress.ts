@@ -4,7 +4,7 @@
  *
  * @see docs/design.md 第1520-1522行
  */
-import { ref, computed, watch } from 'vue'
+import { ref, computed } from 'vue'
 import type { TaskEvent, AnalysisTask } from '../types'
 
 // 阶段定义

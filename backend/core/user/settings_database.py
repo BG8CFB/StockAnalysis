@@ -18,7 +18,13 @@ async def init_user_settings_indexes() -> None:
     # ========================================
     # 用户配置集合
     # ========================================
-    await db.user_settings.create_index("user_id", name="idx_user_id", unique=True)
+    try:
+        await db.user_settings.create_index("user_id", name="idx_user_id", unique=True)
+    except Exception as e:
+        if "duplicate key error" in str(e) or "E11000" in str(e):
+            logger.warning(f"user_settings 索引已存在或存在重复数据，跳过创建: {e}")
+        else:
+            raise
     await db.user_settings.create_index("created_at", name="idx_created_at")
     await db.user_settings.create_index("updated_at", name="idx_updated_at")
 

@@ -11,6 +11,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query, BackgroundTasks
 from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel
 
 from core.auth.dependencies import get_current_user, get_current_active_user
 from core.user.dependencies import get_current_admin_user
@@ -26,9 +27,7 @@ from modules.trading_agents.schemas import (
     BatchTaskResponse,
     TaskStatusEnum,
     MessageResponse,
-    MCPServerConfigCreate,
-    MCPServerConfigUpdate,
-    MCPServerConfigResponse,
+
     UserAgentConfigCreate,
     UserAgentConfigUpdate,
     UserAgentConfigResponse,
@@ -43,7 +42,6 @@ from core.ai.model.schemas import ConnectionTestResponse
 from core.background_tasks import create_analysis_task_background
 # AI 模型服务已迁移到核心模块，API路由也已迁移
 # from core.ai.model import get_model_service
-from modules.trading_agents.services.mcp_service import get_mcp_service
 from modules.trading_agents.services.agent_config_service import get_agent_config_service
 from modules.trading_agents.services.report_service import get_report_service, ReportService
 from core.auth.rbac import Role, Permission
@@ -52,6 +50,60 @@ logger = logging.getLogger(__name__)
 
 # 创建路由器
 router = APIRouter(prefix="/trading-agents", tags=["TradingAgents"])
+
+
+# =============================================================================
+# 辅助函数
+# =============================================================================
+
+def filter_sensitive_prompts(config: UserAgentConfigResponse) -> UserAgentConfigResponse:
+    """
+    过滤智能体配置中的敏感提示词
+
+    用于普通用户获取精简配置，不暴露系统提示词。
+
+    Args:
+        config: 完整的智能体配置
+
+    Returns:
+        精简后的智能体配置（不含 role_definition）
+    """
+    from modules.trading_agents.schemas import (
+        Phase1ConfigSlim, Phase2ConfigSlim, Phase3ConfigSlim,
+        Phase4ConfigSlim, AgentConfigSlim
+    )
+
+    def filter_agent(agent):
+        """过滤单个智能体的提示词"""
+        return AgentConfigSlim(
+            slug=agent.slug,
+            name=agent.name,
+            when_to_use=agent.when_to_use,
+            enabled_mcp_servers=agent.enabled_mcp_servers,
+            enabled_local_tools=agent.enabled_local_tools,
+            enabled=agent.enabled,
+        )
+
+    def filter_phase(phase, slim_class):
+        """过滤阶段配置的提示词"""
+        return slim_class(
+            enabled=phase.enabled,
+            max_rounds=phase.max_rounds,
+            agents=[filter_agent(a) for a in phase.agents],
+            max_concurrency=getattr(phase, 'max_concurrency', None)
+        )
+
+    # 创建新的配置对象（去掉 role_definition）
+    filtered_config = config.model_copy(
+        update={
+            "phase1": filter_phase(config.phase1, Phase1ConfigSlim),
+            "phase2": filter_phase(config.phase2, Phase2ConfigSlim) if config.phase2 else None,
+            "phase3": filter_phase(config.phase3, Phase3ConfigSlim) if config.phase3 else None,
+            "phase4": filter_phase(config.phase4, Phase4ConfigSlim) if config.phase4 else None,
+        }
+    )
+
+    return filtered_config
 
 
 # =============================================================================
@@ -583,169 +635,11 @@ async def get_task_queue_position(
 
 
 # =============================================================================
-# MCP 服务器管理端点
+# MCP 服务器管理端点已迁移到 modules/mcp/api/routes.py
 # =============================================================================
 
-@router.post("/mcp-servers", response_model=MCPServerConfigResponse)
-async def create_mcp_server(
-    request: MCPServerConfigCreate,
-    current_user: UserModel = Depends(get_current_active_user),
-):
-    """
-    创建 MCP 服务器配置
-
-    Args:
-        request: 服务器配置请求
-        current_user: 当前用户
-
-    Returns:
-        创建的服务器配置
-
-    Note:
-        - is_system=True: 只有管理员可以创建公共服务
-        - is_system=False: 任何用户都可以创建个人服务
-    """
-    is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
-    service = get_mcp_service()
-    return await service.create_server(str(current_user.id), request, is_admin)
-
-
-@router.get("/mcp-servers")
-async def list_mcp_servers(
-    current_user: UserModel = Depends(get_current_active_user),
-):
-    """
-    列出 MCP 服务器配置
-
-    Args:
-        current_user: 当前用户
-
-    Returns:
-        服务器配置列表 {"system": [...], "user": [...]}
-    """
-    is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
-    service = get_mcp_service()
-    return await service.list_servers(str(current_user.id), is_admin)
-
-
-@router.get("/mcp-servers/{server_id}", response_model=MCPServerConfigResponse)
-async def get_mcp_server(
-    server_id: str,
-    current_user: UserModel = Depends(get_current_active_user),
-):
-    """
-    获取单个 MCP 服务器配置
-
-    Args:
-        server_id: 服务器 ID
-        current_user: 当前用户
-
-    Returns:
-        服务器配置
-    """
-    is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
-    service = get_mcp_service()
-    server = await service.get_server(server_id, str(current_user.id), is_admin)
-
-    if not server:
-        raise HTTPException(status_code=404, detail="MCP 服务器配置不存在")
-
-    return server
-
-
-@router.put("/mcp-servers/{server_id}", response_model=MCPServerConfigResponse)
-async def update_mcp_server(
-    server_id: str,
-    request: MCPServerConfigUpdate,
-    current_user: UserModel = Depends(get_current_active_user),
-):
-    """
-    更新 MCP 服务器配置
-
-    Args:
-        server_id: 服务器 ID
-        request: 更新请求
-        current_user: 当前用户
-
-    Returns:
-        更新后的服务器配置
-    """
-    is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
-    service = get_mcp_service()
-    server = await service.update_server(server_id, str(current_user.id), request, is_admin)
-
-    if not server:
-        raise HTTPException(status_code=404, detail="MCP 服务器配置不存在或无权修改")
-
-    return server
-
-
-@router.delete("/mcp-servers/{server_id}", response_model=MessageResponse)
-async def delete_mcp_server(
-    server_id: str,
-    current_user: UserModel = Depends(get_current_active_user),
-):
-    """
-    删除 MCP 服务器配置
-
-    Args:
-        server_id: 服务器 ID
-        current_user: 当前用户
-
-    Returns:
-        操作结果
-    """
-    is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
-    service = get_mcp_service()
-    success = await service.delete_server(server_id, str(current_user.id), is_admin)
-
-    if not success:
-        raise HTTPException(status_code=404, detail="MCP 服务器配置不存在或无权删除")
-
-    return MessageResponse(message="MCP 服务器配置已删除", success=True)
-
-
-@router.post("/mcp-servers/{server_id}/test", response_model=ConnectionTestResponse)
-async def test_mcp_server(
-    server_id: str,
-    current_user: UserModel = Depends(get_current_active_user),
-):
-    """
-    测试 MCP 服务器连接
-
-    Args:
-        server_id: 服务器 ID
-        current_user: 当前用户
-
-    Returns:
-        测试结果
-    """
-    is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
-    service = get_mcp_service()
-    return await service.test_server_connection(server_id, str(current_user.id), is_admin)
-
-
-@router.get("/mcp-servers/{server_id}/tools")
-async def get_mcp_server_tools(
-    server_id: str,
-    current_user: UserModel = Depends(get_current_active_user),
-):
-    """
-    获取 MCP 服务器的工具列表
-
-    Args:
-        server_id: 服务器 ID
-        current_user: 当前用户
-
-    Returns:
-        工具列表
-    """
-    is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
-    service = get_mcp_service()
-    return {"tools": await service.get_server_tools(server_id, str(current_user.id), is_admin)}
-
-
 # =============================================================================
+
 # 智能体配置管理端点
 # =============================================================================
 
@@ -830,6 +724,10 @@ async def reset_agent_config(
 
 @router.get("/agent-config/public", response_model=UserAgentConfigResponse)
 async def get_public_config(
+    include_prompts: bool = Query(
+        False,
+        description="是否包含提示词。仅管理员可获取完整配置。"
+    ),
     current_admin: UserModel = Depends(get_current_admin_user),
 ):
     """
@@ -838,6 +736,7 @@ async def get_public_config(
     仅管理员可访问
 
     Args:
+        include_prompts: 是否包含提示词
         current_admin: 当前管理员
 
     Returns:
@@ -848,6 +747,10 @@ async def get_public_config(
 
     if not config:
         raise HTTPException(status_code=404, detail="公共配置不存在")
+
+    # 如果不需要包含提示词，进行过滤
+    if not include_prompts:
+        config = filter_sensitive_prompts(config)
 
     return config
 

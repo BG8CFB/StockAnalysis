@@ -192,9 +192,9 @@ export const useTradingAgentsStore = defineStore('tradingAgents', () => {
     }
   }
 
-  async function deleteServer(serverId: string, isSystem: boolean = false) {
+  async function deleteServer(serverId: string) {
     try {
-      await mcpApi.deleteServer(serverId, isSystem)
+      await mcpApi.deleteServer(serverId)
       await fetchServers()
       ElMessage.success('MCP 服务器配置已删除')
     } catch (error: any) {

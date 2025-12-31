@@ -97,7 +97,7 @@ import { ElMessage } from 'element-plus'
 import { ArrowRight, ArrowDoubleRight, Check, Close, Refresh } from '@element-plus/icons-vue'
 import { httpPost, httpGet } from '@core/api/http'
 
-interface CaptchaData {
+export interface CaptchaData {
   token: string
   puzzle_position: { x: number; y: number }
 }

@@ -106,3 +106,58 @@ async def get_current_verified_user(
             detail="用户邮箱未验证",
         )
     return current_user
+
+
+async def get_current_user_from_query(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    token: Optional[str] = None,
+) -> UserModel:
+    """
+    获取当前用户（支持从 Authorization Header 或查询参数获取 token）
+
+    用于 SSE 连接等不支持自定义 header 的场景
+    """
+    # 优先从 Authorization Header 获取 token
+    auth_token = None
+    if credentials is not None:
+        auth_token = credentials.credentials
+
+    # 如果 Header 中没有 token，从查询参数获取
+    if auth_token is None and token is not None:
+        auth_token = token
+
+    if auth_token is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="未提供认证令牌",
+        )
+
+    payload = jwt_manager.verify_token(auth_token, "access")
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="无效的认证令牌",
+        )
+
+    user_id = payload.get("sub")
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="令牌格式错误",
+        )
+
+    try:
+        user = await mongodb.database.users.find_one({"_id": PyObjectId(user_id)})
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="用户不存在",
+            )
+        return UserModel(**user)
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="获取用户信息失败",
+        )

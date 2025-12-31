@@ -35,6 +35,12 @@ from modules.trading_agents.websocket import (
     create_task_completed_event,
     create_task_failed_event,
 )
+# MCP 连接释放支持
+from modules.trading_agents.tools.mcp_tool_filter import (
+    complete_task_connections,
+    fail_task_connections,
+    release_task_connections,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -362,6 +368,12 @@ class TaskManager:
             )
         )
 
+        # 立即释放 MCP 连接（任务取消不需要延迟）
+        try:
+            await release_task_connections(task_id)
+        except Exception as e:
+            logger.warning(f"MCP 连接释放失败: task_id={task_id}, error={e}")
+
         logger.info(f"任务已取消: task_id={task_id}")
 
     async def stop_task(self, task_id: str) -> None:
@@ -411,6 +423,12 @@ class TaskManager:
                 task_id=task_id,
             )
         )
+
+        # 立即释放 MCP 连接（任务停止不需要延迟）
+        try:
+            await release_task_connections(task_id)
+        except Exception as e:
+            logger.warning(f"MCP 连接释放失败: task_id={task_id}, error={e}")
 
         logger.info(f"任务已停止: task_id={task_id}")
 
@@ -519,6 +537,12 @@ class TaskManager:
         if task_id in self._running_tasks:
             del self._running_tasks[task_id]
 
+        # 标记 MCP 连接为完成状态（延迟 10 秒后销毁）
+        try:
+            await complete_task_connections(task_id)
+        except Exception as e:
+            logger.warning(f"MCP 连接完成标记失败: task_id={task_id}, error={e}")
+
         logger.info(f"任务已完成: task_id={task_id}, recommendation={final_recommendation}")
 
     async def fail_task(
@@ -560,6 +584,12 @@ class TaskManager:
         # 移除运行中的任务
         if task_id in self._running_tasks:
             del self._running_tasks[task_id]
+
+        # 标记 MCP 连接为失败状态（延迟 30 秒后销毁）
+        try:
+            await fail_task_connections(task_id)
+        except Exception as e:
+            logger.warning(f"MCP 连接失败标记失败: task_id={task_id}, error={e}")
 
         logger.error(f"任务失败: task_id={task_id}, error={error_message}")
 

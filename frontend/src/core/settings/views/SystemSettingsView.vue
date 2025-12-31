@@ -125,7 +125,7 @@ import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import { useSettingsStore } from '@core/settings'
 import { useUserStore } from '@core/auth/store'
-import type { SystemConfig, SystemStatus } from '@core/settings'
+import type { SystemConfig, SystemStatus, SystemInfo } from '@core/settings'
 
 const settingsStore = useSettingsStore()
 const userStore = useUserStore()
@@ -140,9 +140,10 @@ const saving = ref(false)
 // 系统状态
 const systemStatus = computed(() => settingsStore.systemStatus)
 const systemConfig = computed(() => settingsStore.systemConfig)
+const systemInfo = computed(() => settingsStore.systemInfo)
 
 // 配置表单
-const configForm = ref<Partial<SystemConfig>>({
+const configForm = ref<Partial<SystemInfo>>({
   app_name: '',
   app_version: '',
   debug: false,
@@ -186,8 +187,8 @@ async function handleSaveConfig() {
   saving.value = true
   try {
     await settingsStore.updateConfig({
-      require_approval: configForm.value.require_approval,
-      registration_open: configForm.value.registration_open,
+      require_approval: configForm.value.require_approval ?? true,
+      registration_open: configForm.value.registration_open ?? true,
     })
     ElMessage.success('配置已保存')
   } catch (error: any) {

@@ -70,7 +70,11 @@ export function useSSE(options: SSEOptions) {
   const error = ref<Error | null>(null)
 
   // SSE 端点
-  const SSE_ENDPOINT = `/api/trading-agents/stream/${taskId}`
+  const getSSEEndpoint = () => {
+    const token = localStorage.getItem('access_token')
+    const baseEndpoint = `/api/trading-agents/stream/${taskId}`
+    return token ? `${baseEndpoint}?token=${encodeURIComponent(token)}` : baseEndpoint
+  }
 
   // 计算属性：是否已连接
   const isConnected = computed(() => status.value === SSEStatus.OPEN)
@@ -167,12 +171,13 @@ export function useSSE(options: SSEOptions) {
     isComplete.value = false
     error.value = null
 
-    console.log('[SSE] 正在连接:', SSE_ENDPOINT)
+    const sseUrl = getSSEEndpoint()
+    console.log('[SSE] 正在连接:', sseUrl)
 
     setStatus(SSEStatus.CONNECTING)
 
     try {
-      eventSource = new EventSource(SSE_ENDPOINT)
+      eventSource = new EventSource(sseUrl)
 
       eventSource.onopen = handleOpen
       eventSource.onmessage = handleMessage

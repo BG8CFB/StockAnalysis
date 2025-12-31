@@ -7,11 +7,18 @@ import type { SystemConfig, SystemInfo } from './types'
 
 export const settingsApi = {
   /**
-   * 获取系统配置
-   * 后端: GET /settings/system
-   */
-  getSystemConfig: () =>
-    httpGet<SystemConfig>('/settings/system'),
+ * 获取系统状态
+ * 后端: GET /system/status
+ */
+getSystemStatus: () =>
+  httpGet<SystemStatus>('/system/status'),
+
+/**
+ * 获取系统配置
+ * 后端: GET /settings/system
+ */
+getSystemConfig: () =>
+  httpGet<SystemConfig>('/settings/system'),
 
   /**
    * 更新系统配置（仅超级管理员）

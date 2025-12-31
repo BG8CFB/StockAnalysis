@@ -6,12 +6,15 @@
 """
 
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
+
+from langchain_core.tools import BaseTool
 
 from modules.trading_agents.agents.base import AnalystAgent
 from core.ai.llm.provider import LLMProvider
 from modules.trading_agents.tools.registry import ToolRegistry, ToolDefinition
 from modules.trading_agents.schemas import Phase1Config, AgentConfig
+from modules.trading_agents.tools.mcp_tool_filter import filter_tools_for_agent
 
 logger = logging.getLogger(__name__)
 
@@ -61,36 +64,47 @@ class GenericAnalystTemplate(AnalystAgent):
 class AnalystFactory:
     """
     分析师工厂
-    
+
     负责根据配置动态创建分析师智能体实例。
     """
-    
+
     def __init__(self, llm_provider: LLMProvider, tool_registry: ToolRegistry):
         self.llm = llm_provider
         self.tool_registry = tool_registry
 
-    def create_analysts(self, config: Phase1Config) -> List[AnalystAgent]:
+    def create_analysts(
+        self,
+        config: Phase1Config,
+        user_id: Optional[str] = None,
+        task_id: Optional[str] = None,
+    ) -> List[AnalystAgent]:
         """
         根据配置创建分析师列表
-        
+
         Args:
             config: 第一阶段配置
-            
+            user_id: 用户 ID（用于 MCP 连接池，预留）
+            task_id: 任务 ID（用于 MCP 连接池，预留）
+
         Returns:
             分析师实例列表
         """
         analysts = []
-        
+
         if not config.enabled:
             return []
-            
+
+        # TODO: 在此通过 MCP 工具过滤器获取连接
+        # 当提供 user_id 和 task_id 时，预先获取 MCP 连接
+        # 这将在后续实现中启用
+
         for agent_cfg in config.agents:
             if not agent_cfg.enabled:
                 continue
-                
+
             # 获取工具
             tools = self._get_tools_for_agent(agent_cfg)
-            
+
             # 创建实例
             analyst = GenericAnalystTemplate(
                 slug=agent_cfg.slug,
@@ -99,21 +113,21 @@ class AnalystFactory:
                 llm=self.llm,  # TODO: 如果支持多模型，这里需要根据 config.model_id 获取特定模型
                 tools=tools
             )
-            
+
             analysts.append(analyst)
             logger.info(f"创建分析师智能体: {analyst.name} ({analyst.slug})")
-            
+
         return analysts
 
     def _get_tools_for_agent(self, agent_cfg: AgentConfig) -> List[ToolDefinition]:
         """根据智能体配置获取可用工具"""
         tools = []
-        
+
         # 1. 获取 MCP 工具
         for server_name in agent_cfg.enabled_mcp_servers:
             mcp_tools = self.tool_registry.get_tools_by_server(server_name)
             tools.extend(mcp_tools)
-            
+
         # 2. 获取本地工具
         for tool_name in agent_cfg.enabled_local_tools:
             tool = self.tool_registry.get_tool(tool_name)
@@ -121,7 +135,7 @@ class AnalystFactory:
                 tools.append(tool)
             else:
                 logger.warning(f"智能体 {agent_cfg.slug} 配置的本地工具不存在: {tool_name}")
-                
+
         return tools
 
 

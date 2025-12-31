@@ -312,10 +312,12 @@ export interface AnalysisTask {
   current_agent: string | null
   progress: number
   reports: Record<string, string>
+  final_report?: string
   final_recommendation: RecommendationEnum | null
   buy_price: number | null
   sell_price: number | null
   token_usage?: TokenUsage
+  risk_level?: string
   error_message: string | null
   error_details: Record<string, unknown> | null
   created_at: string

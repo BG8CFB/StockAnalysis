@@ -161,12 +161,12 @@
             class="reports-card"
           >
             <template #header>
-              <span>分析报告 ({{ progress.generatedReports.length }})</span>
+              <span>分析报告 ({{ progress.generatedReports.value.length }})</span>
             </template>
 
             <div class="reports-list">
               <ReportCard
-                v-for="report in progress.generatedReports"
+                v-for="report in progress.generatedReports.value"
                 :key="report.agent"
                 :agent-name="report.agent"
                 :report="report.report"
@@ -186,7 +186,7 @@
               :buy-price="task.buy_price"
               :sell-price="task.sell_price"
               :total-tokens="task.token_usage?.total_tokens || 0"
-              :estimated-cost="estimatedCost"
+              :estimated-cost="estimatedCost.value"
               :is-complete="task.status === TaskStatusEnum.COMPLETED"
               :is-streaming="false"
             />
@@ -203,17 +203,17 @@
             <template #header>
               <span>工具调用</span>
               <el-badge
-                :value="progress.recentToolCalls.length"
+                :value="progress.recentToolCalls.value.length"
                 :max="99"
               />
             </template>
 
-            <ToolCallLog :tool-calls="progress.recentToolCalls" />
+            <ToolCallLog :tool-calls="progress.recentToolCalls.value" />
           </el-card>
 
           <!-- Token 使用 -->
           <el-card
-            v-if="tokenStats.totalTokens > 0"
+            v-if="tokenStats.value.totalTokens > 0"
             shadow="never"
             class="token-card"
           >
@@ -224,20 +224,20 @@
             <div class="token-stats">
               <div class="stat-row">
                 <span class="stat-label">输入:</span>
-                <span class="stat-value">{{ formatTokenCount(tokenStats.promptTokens) }}</span>
+                <span class="stat-value">{{ formatTokenCount(tokenStats.value.promptTokens) }}</span>
               </div>
               <div class="stat-row">
                 <span class="stat-label">输出:</span>
-                <span class="stat-value">{{ formatTokenCount(tokenStats.completionTokens) }}</span>
+                <span class="stat-value">{{ formatTokenCount(tokenStats.value.completionTokens) }}</span>
               </div>
               <el-divider />
               <div class="stat-row stat-total">
                 <span class="stat-label">总计:</span>
-                <span class="stat-value">{{ formatTokenCount(tokenStats.totalTokens) }}</span>
+                <span class="stat-value">{{ formatTokenCount(tokenStats.value.totalTokens) }}</span>
               </div>
               <div class="stat-row">
                 <span class="stat-label">估算成本:</span>
-                <span class="stat-value">¥{{ estimatedCost.toFixed(2) }}</span>
+                <span class="stat-value">¥{{ estimatedCost.value.toFixed(2) }}</span>
               </div>
             </div>
           </el-card>

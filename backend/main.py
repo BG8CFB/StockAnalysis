@@ -18,10 +18,9 @@ from core.user.api import router as user_router
 from core.user import settings_router as user_settings_router
 from core.system.api import router as system_router
 from core.ai.api import router as ai_core_router
-from modules.analysis.api import router as analysis_router
-from modules.task_center.api import router as task_center_router
 from modules.screener.api import router as screener_router
 from modules.ask_stock.api import router as ask_stock_router
+from modules.mcp.api import router as mcp_router
 from modules.trading_agents.api import router as trading_agents_router
 from modules.trading_agents.admin_api import router as trading_agents_admin_router
 
@@ -115,8 +114,8 @@ async def lifespan(app: FastAPI):
         logger.warning(f"TradingAgents 公共配置初始化失败: {e}")
 
     # 启动 MCP 健康检查器和会话管理器
-    from modules.trading_agents.services.mcp_health_checker import get_mcp_health_checker
-    from modules.trading_agents.services.mcp_session_manager import get_mcp_session_manager
+    from modules.mcp.service.health_checker import get_mcp_health_checker
+    from modules.mcp.core.session import get_mcp_session_manager
     try:
         health_checker = get_mcp_health_checker()
         await health_checker.start()
@@ -126,7 +125,7 @@ async def lifespan(app: FastAPI):
 
     try:
         session_manager = get_mcp_session_manager()
-        await session_manager.start()
+        await session_manager.start_cleanup_task()
         logger.info("MCP 会话管理器已启动")
     except Exception as e:
         logger.warning(f"MCP 会话管理器启动失败: {e}")
@@ -160,8 +159,8 @@ async def lifespan(app: FastAPI):
         logger.warning(f"TradingAgents 任务队列停止失败: {e}")
 
     # 停止 MCP 健康检查器和会话管理器
-    from modules.trading_agents.services.mcp_health_checker import get_mcp_health_checker
-    from modules.trading_agents.services.mcp_session_manager import get_mcp_session_manager
+    from modules.mcp.service.health_checker import get_mcp_health_checker
+    from modules.mcp.core.session import get_mcp_session_manager
     try:
         health_checker = get_mcp_health_checker()
         await health_checker.stop()
@@ -171,7 +170,7 @@ async def lifespan(app: FastAPI):
 
     try:
         session_manager = get_mcp_session_manager()
-        await session_manager.stop()
+        await session_manager.stop_cleanup_task()
         logger.info("MCP 会话管理器已停止")
     except Exception as e:
         logger.warning(f"MCP 会话管理器停止失败: {e}")
@@ -215,10 +214,9 @@ def create_app() -> FastAPI:
     app.include_router(user_settings_router, prefix=settings.API_V1_PREFIX)  # 用户配置管理
 
     # 业务模块路由
-    app.include_router(analysis_router, prefix=settings.API_V1_PREFIX)
-    app.include_router(task_center_router, prefix=settings.API_V1_PREFIX)
     app.include_router(screener_router, prefix=settings.API_V1_PREFIX)
     app.include_router(ask_stock_router, prefix=settings.API_V1_PREFIX)
+    app.include_router(mcp_router, prefix=settings.API_V1_PREFIX)  # MCP 模块路由
     app.include_router(trading_agents_router, prefix=settings.API_V1_PREFIX)
     app.include_router(trading_agents_admin_router, prefix=settings.API_V1_PREFIX)  # TradingAgents 管理员 API
 

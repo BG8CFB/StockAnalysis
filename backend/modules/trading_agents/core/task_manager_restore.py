@@ -167,7 +167,7 @@ async def _mark_task_failed(
         task_id: 任务 ID
         reason: 失败原因
     """
-    await mongodb_db.analysis_tasks.update_one(
+    await mongodb_db.database.analysis_tasks.update_one(
         {"_id": ObjectId(task_id)},
         {
             "$set": {

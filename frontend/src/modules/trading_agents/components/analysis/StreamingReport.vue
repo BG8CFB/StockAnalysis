@@ -103,12 +103,18 @@ interface Props {
   sellPrice?: number | null
   totalTokens?: number
   estimatedCost?: number
-  isStreaming?: boolean
-  isComplete?: boolean
-  showTokenStats?: boolean
+  isStreaming: boolean
+  isComplete: boolean
+  showTokenStats: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
+  content: '',
+  recommendation: null,
+  buyPrice: null,
+  sellPrice: null,
+  totalTokens: 0,
+  estimatedCost: 0,
   isStreaming: false,
   isComplete: false,
   showTokenStats: true,
