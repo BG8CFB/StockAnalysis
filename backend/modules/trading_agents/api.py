@@ -252,24 +252,89 @@ async def create_tasks(
         raise HTTPException(status_code=500, detail=f"任务创建失败: {str(e)}")
 
 
+@router.get("/tasks/status-counts")
+async def get_task_status_counts(
+    current_user: UserModel = Depends(get_current_active_user),
+):
+    """
+    获取用户任务状态统计
+
+    为状态标签栏提供数量徽章。
+
+    Args:
+        current_user: 当前用户
+
+    Returns:
+        各状态任务数量
+    """
+    task_manager = get_task_manager()
+    user_id = str(current_user.id)
+
+    # 并行查询各状态数量
+    from asyncio import gather
+
+    async def count_status(status_value):
+        return await task_manager.count_tasks(
+            user_id=user_id,
+            status=status_value,
+        ) if status_value else 0
+
+    # 并行获取各状态数量
+    counts = await gather(
+        count_status(TaskStatusEnum.PENDING),
+        count_status(TaskStatusEnum.RUNNING),
+        count_status(TaskStatusEnum.COMPLETED),
+        count_status(TaskStatusEnum.FAILED),
+        count_status(TaskStatusEnum.CANCELLED),
+        count_status(TaskStatusEnum.STOPPED),
+    )
+
+    pending_count, running_count, completed_count, failed_count, cancelled_count, stopped_count = counts
+
+    # 返回分组统计
+    return {
+        "all": sum(counts),
+        "running": pending_count + running_count,  # 进行中 = 待执行 + 分析中
+        "completed": completed_count,
+        "failed": failed_count,
+        "cancelled": cancelled_count + stopped_count,  # 已取消 = 已取消 + 已停止
+        "_detail": {  # 详细统计（可选，用于调试）
+            "pending": pending_count,
+            "running": running_count,
+            "completed": completed_count,
+            "failed": failed_count,
+            "cancelled": cancelled_count,
+            "stopped": stopped_count,
+        }
+    }
+
+
 @router.get("/tasks")
 async def list_tasks(
     status: Optional[TaskStatusEnum] = None,
     stock_code: Optional[str] = None,
+    stock_name: Optional[str] = None,
     recommendation: Optional[str] = None,
     risk_level: Optional[str] = None,
+    start_date: Optional[str] = Query(None, description="开始日期 (ISO 8601格式)"),
+    end_date: Optional[str] = Query(None, description="结束日期 (ISO 8601格式)"),
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
     current_user: UserModel = Depends(get_current_active_user),
 ):
     """
-    列出用户的分析任务
+    列出用户的分析任务（增强版）
+
+    支持多条件筛选：状态、股票代码、股票名称、推荐结果、风险等级、时间范围。
 
     Args:
         status: 状态过滤
-        stock_code: 股票代码过滤
+        stock_code: 股票代码过滤（模糊匹配）
+        stock_name: 股票名称过滤（模糊匹配）
         recommendation: 推荐结果过滤
         risk_level: 风险等级过滤
+        start_date: 开始日期过滤
+        end_date: 结束日期过滤
         limit: 返回数量限制
         offset: 偏移量
         current_user: 当前用户
@@ -462,16 +527,205 @@ async def stream_task(
         raise
 
 
-@router.delete("/tasks/{task_id}", response_model=MessageResponse)
-async def delete_task(
-    task_id: str,
+@router.delete("/tasks/clear")
+async def clear_tasks_by_status(
+    statuses: str = Query(..., description="要清空的状态列表，逗号分隔，例如: failed,cancelled,stopped"),
+    delete_reports: bool = Query(False, description="是否同时删除关联报告"),
     current_user: UserModel = Depends(get_current_active_user),
 ):
     """
-    删除任务
+    批量清空指定状态的所有任务
+
+    仅支持清空失败、已取消、已终止状态的任务。
+    用户只能清空自己的任务。
+
+    Args:
+        statuses: 状态列表（逗号分隔）
+        delete_reports: 是否同时删除关联报告
+        current_user: 当前用户
+
+    Returns:
+        删除结果
+    """
+    from bson import ObjectId
+
+    # 解析状态列表
+    status_list = [s.strip() for s in statuses.split(",")]
+
+    # 安全检查：仅允许清空失败、取消、终止状态
+    allowed_statuses = {
+        TaskStatusEnum.FAILED.value,
+        TaskStatusEnum.CANCELLED.value,
+        TaskStatusEnum.STOPPED.value,
+        TaskStatusEnum.EXPIRED.value,
+    }
+    invalid_statuses = set(status_list) - allowed_statuses
+    if invalid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"不允许清空以下状态: {', '.join(invalid_statuses)}. 仅允许清空失败、已取消、已终止状态的任务"
+        )
+
+    user_id = str(current_user.id)
+
+    # 构建查询条件
+    query = {
+        "user_id": user_id,
+        "status": {"$in": status_list}
+    }
+
+    # 先统计要删除的数量
+    count = await mongodb.database.analysis_tasks.count_documents(query)
+
+    if count == 0:
+        return MessageResponse(
+            message=f"没有找到需要清空的任务",
+            success=False
+        )
+
+    logger.info(f"用户 {user_id} 清空任务", {
+        "statuses": status_list,
+        "count": count,
+        "delete_reports": delete_reports
+    })
+
+    # 执行删除
+    delete_result = await mongodb.database.analysis_tasks.delete_many(query)
+
+    # 如果需要删除关联报告
+    if delete_reports:
+        # 查询已删除任务的 ID
+        task_ids = [str(tid) for tid in await mongodb.database.analysis_tasks.distinct("_id", query)]
+        if task_ids:
+            await mongodb.database.analysis_reports.delete_many({"task_id": {"$in": task_ids}})
+
+    # 记录审计日志
+    from core.admin.audit_logger import get_audit_logger
+    audit_logger = get_audit_logger()
+    await audit_logger.log_action(
+        user_id=user_id,
+        action="clear_tasks",
+        details={
+            "statuses": status_list,
+            "deleted_count": delete_result.deleted_count,
+            "delete_reports": delete_reports
+        }
+    )
+
+    return MessageResponse(
+        message=f"已清空 {delete_result.deleted_count} 个任务",
+        success=True
+    )
+
+
+@router.delete("/tasks/batch-delete")
+async def batch_delete_tasks(
+    task_ids: list[str],
+    delete_reports: bool = Query(False, description="是否同时删除关联报告"),
+    current_user: UserModel = Depends(get_current_active_user),
+):
+    """
+    批量删除指定的任务
+
+    验证每个任务的所有权，仅删除属于当前用户的任务。
+    不允许删除运行中的任务。
+
+    Args:
+        task_ids: 任务 ID 列表
+        delete_reports: 是否同时删除关联报告
+        current_user: 当前用户
+
+    Returns:
+        删除结果
+    """
+    from bson import ObjectId
+
+    # 安全检查：限制批量删除数量
+    if len(task_ids) > 100:
+        raise HTTPException(
+            status_code=400,
+            detail="单次批量删除最多支持 100 个任务"
+        )
+
+    user_id = str(current_user.id)
+    success_count = 0
+    failed_tasks = []
+
+    logger.info(f"用户 {user_id} 批量删除任务", {
+        "task_ids_count": len(task_ids),
+        "delete_reports": delete_reports
+    })
+
+    # 逐个验证和删除任务
+    for task_id in task_ids:
+        try:
+            # 验证 ObjectId 格式
+            obj_id = ObjectId(task_id)
+
+            # 查询任务
+            task = await mongodb.database.analysis_tasks.find_one({"_id": obj_id})
+
+            if not task:
+                failed_tasks.append({"task_id": task_id, "reason": "任务不存在"})
+                continue
+
+            # 验证所有权
+            if task["user_id"] != user_id:
+                failed_tasks.append({"task_id": task_id, "reason": "无权操作此任务"})
+                continue
+
+            # 检查任务状态，运行中的任务不能删除
+            if task["status"] == TaskStatusEnum.RUNNING.value:
+                failed_tasks.append({"task_id": task_id, "reason": "运行中的任务不能删除"})
+                continue
+
+            # 删除任务
+            await mongodb.database.analysis_tasks.delete_one({"_id": obj_id})
+
+            # 如果需要删除关联报告
+            if delete_reports:
+                await mongodb.database.analysis_reports.delete_many({"task_id": task_id})
+
+            success_count += 1
+
+        except Exception as e:
+            logger.error(f"批量删除任务失败: task_id={task_id}, error={e}")
+            failed_tasks.append({"task_id": task_id, "reason": str(e)})
+
+    # 记录审计日志
+    from core.admin.audit_logger import get_audit_logger
+    audit_logger = get_audit_logger()
+    await audit_logger.log_action(
+        user_id=user_id,
+        action="batch_delete_tasks",
+        details={
+            "total": len(task_ids),
+            "success_count": success_count,
+            "failed_count": len(failed_tasks),
+            "delete_reports": delete_reports
+        }
+    )
+
+    return {
+        "success_count": success_count,
+        "failed_count": len(failed_tasks),
+        "failed_tasks": failed_tasks,
+        "message": f"成功删除 {success_count} 个任务" + (f"，失败 {len(failed_tasks)} 个" if failed_tasks else "")
+    }
+
+
+@router.delete("/tasks/{task_id}", response_model=MessageResponse)
+async def delete_task(
+    task_id: str,
+    delete_reports: bool = Query(False, description="是否同时删除关联报告"),
+    current_user: UserModel = Depends(get_current_active_user),
+):
+    """
+    删除单个任务
 
     Args:
         task_id: 任务 ID
+        delete_reports: 是否同时删除关联报告
         current_user: 当前用户
 
     Returns:
@@ -493,8 +747,9 @@ async def delete_task(
         from bson import ObjectId
         await mongodb.database.analysis_tasks.delete_one({"_id": ObjectId(task_id)})
 
-        # 同时删除关联的报告
-        await mongodb.database.analysis_reports.delete_many({"task_id": task_id})
+        # 如果需要删除关联报告
+        if delete_reports:
+            await mongodb.database.analysis_reports.delete_many({"task_id": task_id})
 
         return MessageResponse(
             message="任务已删除",

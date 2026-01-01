@@ -11,8 +11,6 @@ from typing import Optional
 
 from cryptography.fernet import Fernet, InvalidToken
 
-from core.config import settings
-
 logger = logging.getLogger(__name__)
 
 
@@ -114,7 +112,7 @@ class EncryptionManager:
         try:
             # 尝试 base64 解码 (Fernet 使用 urlsafe base64)
             decoded = base64.urlsafe_b64decode(value)
-            
+
             # Fernet 格式: version(1) + timestamp(8) + IV(16) + ciphertext + HMAC(32)
             # 最小长度: 1 + 8 + 16 + 16 (1 block) + 32 = 73 bytes
             # 实际上只要 header 合法且长度足够就可以认为是加密的

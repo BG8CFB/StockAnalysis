@@ -12,12 +12,14 @@ from pydantic import BaseModel, Field, model_validator
 
 class PlatformTypeEnum(str, Enum):
     """平台类型枚举"""
-    PRESET = "preset"   # 预设平台
-    CUSTOM = "custom"   # 自定义平台
+
+    PRESET = "preset"  # 预设平台
+    CUSTOM = "custom"  # 自定义平台
 
 
 class PresetPlatformEnum(str, Enum):
     """预设平台枚举"""
+
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     AZURE_OPENAI = "azure_openai"
@@ -32,72 +34,45 @@ class PresetPlatformEnum(str, Enum):
 
 class ModelProviderEnum(str, Enum):
     """AI 模型提供商枚举（保留兼容性）"""
-    ZHIPU = "zhipu"             # 智谱AI
-    DEEPSEEK = "deepseek"       # DeepSeek
-    QWEN = "qwen"               # 通义千问
-    OPENAI = "openai"           # OpenAI
-    OLLAMA = "ollama"           # Ollama
-    CUSTOM = "custom"           # 自定义
+
+    ZHIPU = "zhipu"  # 智谱AI
+    DEEPSEEK = "deepseek"  # DeepSeek
+    QWEN = "qwen"  # 通义千问
+    OPENAI = "openai"  # OpenAI
+    OLLAMA = "ollama"  # Ollama
+    CUSTOM = "custom"  # 自定义
 
 
 class AIModelConfigBase(BaseModel):
     """AI 模型配置基础模型"""
+
     name: str = Field(..., min_length=1, max_length=100, description="显示名称")
     platform_type: PlatformTypeEnum = Field(
-        default=PlatformTypeEnum.CUSTOM,
-        description="平台类型（预设/自定义）"
+        default=PlatformTypeEnum.CUSTOM, description="平台类型（预设/自定义）"
     )
     platform_name: Optional[PresetPlatformEnum] = Field(
-        None,
-        description="预设平台名称（仅预设平台需要）"
+        None, description="预设平台名称（仅预设平台需要）"
     )
-    provider: Optional[ModelProviderEnum] = Field(
-        None,
-        description="提供商（保留兼容性）"
-    )
+    provider: Optional[ModelProviderEnum] = Field(None, description="提供商（保留兼容性）")
     api_base_url: str = Field(..., min_length=1, description="API 基础 URL")
     api_key: str = Field(..., min_length=1, description="API Key")
-    model_id: str = Field(
-        ...,
-        min_length=1,
-        max_length=100,
-        description="模型 ID"
-    )
-    custom_headers: Dict[str, str] = Field(
-        default_factory=dict,
-        description="自定义请求头"
-    )
-    max_concurrency: int = Field(
-        default=40,
-        ge=1,
-        le=200,
-        description="模型最大并发数"
-    )
+    model_id: str = Field(..., min_length=1, max_length=100, description="模型 ID")
+    custom_headers: Dict[str, str] = Field(default_factory=dict, description="自定义请求头")
+    max_concurrency: int = Field(default=40, ge=1, le=200, description="模型最大并发数")
     task_concurrency: int = Field(
-        default=2,
-        ge=1,
-        le=10,
-        description="单任务并发数（单个任务可同时运行的智能体数）"
+        default=2, ge=1, le=10, description="单任务并发数（单个任务可同时运行的智能体数）"
     )
     batch_concurrency: int = Field(
         default=1,
         ge=1,
         le=50,
-        description=(
-            "批量任务并发数（用户可同时运行的批量任务数，"
-            "公共模型由管理员控制）"
-        )
+        description=("批量任务并发数（用户可同时运行的批量任务数，" "公共模型由管理员控制）"),
     )
-    timeout_seconds: int = Field(
-        default=60,
-        ge=10,
-        le=600,
-        description="超时时间（秒）"
-    )
+    timeout_seconds: int = Field(default=60, ge=10, le=600, description="超时时间（秒）")
     temperature: float = Field(default=0.5, ge=0.0, le=1.0, description="温度参数")
     enabled: bool = Field(default=True, description="是否启用")
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def validate_concurrency(self) -> "AIModelConfigBase":
         """验证并发参数的合理性"""
         if self.task_concurrency > self.max_concurrency:
@@ -116,11 +91,13 @@ class AIModelConfigBase(BaseModel):
 
 class AIModelConfigCreate(AIModelConfigBase):
     """创建 AI 模型配置请求"""
+
     is_system: bool = Field(default=False, description="是否为系统级配置")
 
 
 class AIModelConfigUpdate(BaseModel):
     """更新 AI 模型配置请求"""
+
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     platform_type: Optional[PlatformTypeEnum] = None
     platform_name: Optional[PresetPlatformEnum] = None
@@ -136,23 +113,27 @@ class AIModelConfigUpdate(BaseModel):
     temperature: Optional[float] = Field(None, ge=0.0, le=1.0)
     enabled: Optional[bool] = None
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def validate_concurrency(self) -> "AIModelConfigUpdate":
         """验证并发参数的合理性（仅当所有相关参数都提供时才验证）"""
-        if all([
-            self.max_concurrency is not None,
-            self.task_concurrency is not None,
-        ]):
+        if all(
+            [
+                self.max_concurrency is not None,
+                self.task_concurrency is not None,
+            ]
+        ):
             if self.task_concurrency > self.max_concurrency:
                 raise ValueError(
                     f"单任务并发数({self.task_concurrency})不能大于模型最大并发数({self.max_concurrency})"
                 )
 
-        if all([
-            self.max_concurrency is not None,
-            self.task_concurrency is not None,
-            self.batch_concurrency is not None,
-        ]):
+        if all(
+            [
+                self.max_concurrency is not None,
+                self.task_concurrency is not None,
+                self.batch_concurrency is not None,
+            ]
+        ):
             if self.batch_concurrency * self.task_concurrency > self.max_concurrency:
                 raise ValueError(
                     f"批量任务并发数({self.batch_concurrency}) × "
@@ -165,12 +146,14 @@ class AIModelConfigUpdate(BaseModel):
 
 class AIModelConfigResponse(AIModelConfigBase):
     """AI 模型配置响应"""
+
     id: str
     is_system: bool
     owner_id: Optional[str]
     created_at: datetime
     updated_at: datetime
     masked_api_key: str = Field(..., description="脱敏后的 API Key")
+    api_key_valid: bool = Field(default=True, description="API Key 是否有效（解密成功）")
 
     @classmethod
     def from_db(cls, data: Dict[str, Any]) -> "AIModelConfigResponse":
@@ -178,16 +161,27 @@ class AIModelConfigResponse(AIModelConfigBase):
         api_key_encrypted = data.get("api_key", "")
 
         # 尝试解密 API Key（兼容未加密的旧数据）
+        api_key_valid = True  # 默认认为有效
         try:
             from core.security.encryption import decrypt_sensitive_data, is_encrypted
+
             if is_encrypted(api_key_encrypted):
                 api_key = decrypt_sensitive_data(api_key_encrypted)
             else:
                 # 未加密的旧数据，直接使用
                 api_key = api_key_encrypted
         except Exception:
-            # 解密失败，可能是旧数据或密钥错误，返回空字符串
-            api_key = ""
+            # 解密失败，可能是密钥变更或数据损坏
+            # 使用占位符避免验证失败，并标记为无效
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                f"API Key 解密失败: model_id={data.get('model_id')}, "
+                f"model_name={data.get('name')}. 请重新配置 API Key。"
+            )
+            api_key = "DECRYPT_FAILED_PLEASE_UPDATE"  # 使用占位符而非空字符串
+            api_key_valid = False  # 标记为无效
 
         masked = cls._mask_api_key(api_key)
 
@@ -210,9 +204,7 @@ class AIModelConfigResponse(AIModelConfigBase):
             id=str(data["_id"]),
             name=data["name"],
             platform_type=platform_type or PlatformTypeEnum.CUSTOM,
-            platform_name=(
-                PresetPlatformEnum(platform_name) if platform_name else None
-            ),
+            platform_name=(PresetPlatformEnum(platform_name) if platform_name else None),
             provider=ModelProviderEnum(provider) if provider else None,
             api_base_url=data["api_base_url"],
             api_key=api_key,  # 解密后的明文（仅在内存中使用）
@@ -229,6 +221,7 @@ class AIModelConfigResponse(AIModelConfigBase):
             created_at=data["created_at"],
             updated_at=data["updated_at"],
             masked_api_key=masked,
+            api_key_valid=api_key_valid,  # 标记 API Key 是否有效
         )
 
     @staticmethod
@@ -241,6 +234,7 @@ class AIModelConfigResponse(AIModelConfigBase):
 
 class AIModelTestRequest(BaseModel):
     """测试 AI 模型连接请求"""
+
     api_base_url: str
     api_key: str
     model_id: str
@@ -249,6 +243,7 @@ class AIModelTestRequest(BaseModel):
 
 class ConnectionTestResponse(BaseModel):
     """连接测试响应"""
+
     success: bool
     message: str
     latency_ms: Optional[int] = None
@@ -257,27 +252,20 @@ class ConnectionTestResponse(BaseModel):
 
 class ListModelsRequest(BaseModel):
     """获取模型列表请求"""
+
     platform_type: PlatformTypeEnum = Field(..., description="平台类型")
     platform_name: Optional[PresetPlatformEnum] = Field(
-        None,
-        description="预设平台名称（预设平台时必填）"
+        None, description="预设平台名称（预设平台时必填）"
     )
     api_base_url: str = Field(..., description="API 基础 URL")
     api_key: str = Field(..., description="API Key")
-    custom_headers: Dict[str, str] = Field(
-        default_factory=dict,
-        description="自定义请求头"
-    )
-    timeout_seconds: int = Field(
-        default=10,
-        ge=5,
-        le=30,
-        description="超时时间（秒）"
-    )
+    custom_headers: Dict[str, str] = Field(default_factory=dict, description="自定义请求头")
+    timeout_seconds: int = Field(default=10, ge=5, le=30, description="超时时间（秒）")
 
 
 class ModelInfo(BaseModel):
     """模型信息"""
+
     id: str = Field(..., description="模型 ID")
     name: Optional[str] = Field(None, description="模型名称")
     created_at: Optional[int] = Field(None, description="创建时间戳")
@@ -286,17 +274,11 @@ class ModelInfo(BaseModel):
 
 class ListModelsResponse(BaseModel):
     """获取模型列表响应"""
+
     success: bool = Field(..., description="是否成功")
     message: str = Field(..., description="响应消息")
-    models: List[ModelInfo] = Field(
-        default_factory=list,
-        description="模型列表"
-    )
+    models: List[ModelInfo] = Field(default_factory=list, description="模型列表")
     is_from_api: bool = Field(
-        default=False,
-        description="是否从 API 获取（True=API获取，False=预设列表）"
+        default=False, description="是否从 API 获取（True=API获取，False=预设列表）"
     )
-    fallback_used: bool = Field(
-        default=False,
-        description="是否使用了预设列表作为兜底"
-    )
+    fallback_used: bool = Field(default=False, description="是否使用了预设列表作为兜底")
