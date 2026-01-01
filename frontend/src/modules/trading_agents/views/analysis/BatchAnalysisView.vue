@@ -583,8 +583,7 @@ import {
   Timer,
 } from '@element-plus/icons-vue'
 import { useTradingAgentsStore } from '../../store'
-import { useUserStore } from '@core/auth/store'
-import { agentConfigApi, taskApi } from '../../api'
+import { agentConfigApi, settingsApi, taskApi } from '../../api'
 import { PROVIDER_PRESETS } from '../../types'
 import {
   TaskStatusEnum,
@@ -598,7 +597,6 @@ import {
 
 const router = useRouter()
 const store = useTradingAgentsStore()
-const userStore = useUserStore()
 
 // 表单引用
 const formRef = ref<FormInstance>()
@@ -667,9 +665,9 @@ async function loadAgentConfig() {
       stagesConfig.stage1.selected_agents = activeAnalysts.value.map(a => a.slug)
     }
 
-    // 从用户偏好设置中加载默认辩论轮次
-    const prefs = userStore.preferences
-    const tradingAgentsSettings = (prefs as any)?.trading_agents || {}
+    // 从 TradingAgents 设置 API 加载默认配置
+    const settingsResponse = await settingsApi.getSettings()
+    const tradingAgentsSettings = settingsResponse.settings
     const defaultDebateRounds = tradingAgentsSettings.default_debate_rounds ?? 3
 
     // 设置默认辩论轮次
@@ -736,30 +734,8 @@ const marketOptions = [
 // 输入的文本
 const codesText = ref('')
 
-// 获取 TradingAgents 设置（从 localStorage 或 userStore 读取）
-const getTradingAgentsSettings = () => {
-  // 优先从 localStorage 读取（因为后端 UserPreferences 不支持 trading_agents）
-  const localSettingsStr = localStorage.getItem('trading_agents_settings')
-  if (localSettingsStr) {
-    try {
-      return JSON.parse(localSettingsStr)
-    } catch (error) {
-      console.error('Failed to parse trading_agents_settings from localStorage:', error)
-    }
-  }
-
-  // 降级从 userStore 读取
-  const prefs = userStore.preferences
-  return (prefs as any)?.trading_agents || {}
-}
-
-// 获取默认辩论轮次
-const getDefaultDebateRounds = () => {
-  const settings = getTradingAgentsSettings()
-  return settings.default_debate_rounds ?? 3
-}
-
 // 阶段配置（默认状态）
+// 注意：初始值使用默认的 3 轮辩论，稍后会在 loadAgentConfig 中从设置 API 加载真实值
 const stagesConfig = reactive<AnalysisStagesConfig>({
   stage1: {
     enabled: true,
@@ -769,14 +745,14 @@ const stagesConfig = reactive<AnalysisStagesConfig>({
     enabled: true, // 默认启用
     debate: {
       enabled: true,
-      rounds: getDefaultDebateRounds(), // 从用户设置读取默认辩论轮次
+      rounds: 3, // 默认 3 轮，稍后会被覆盖
     },
   },
   stage3: {
     enabled: false, // 默认不启用
     debate: {
       enabled: false,
-      rounds: getDefaultDebateRounds(), // 从用户设置读取默认辩论轮次
+      rounds: 3, // 默认 3 轮，稍后会被覆盖
     },
   },
   stage4: {
@@ -989,14 +965,10 @@ function handleReset() {
   stagesConfig.stage1.selected_agents = activeAnalysts.value.map(a => a.slug)
   stagesConfig.stage2.enabled = true
   stagesConfig.stage2.debate.enabled = true
-  // 使用用户设置的默认辩论轮次
-  const prefs = userStore.preferences
-  const tradingAgentsSettings = (prefs as any)?.trading_agents || {}
-  const defaultDebateRounds = tradingAgentsSettings.default_debate_rounds ?? 3
-  stagesConfig.stage2.debate.rounds = defaultDebateRounds
+  stagesConfig.stage2.debate.rounds = 3 // 使用默认值
   stagesConfig.stage3.enabled = false
   stagesConfig.stage3.debate.enabled = false
-  stagesConfig.stage3.debate.rounds = defaultDebateRounds
+  stagesConfig.stage3.debate.rounds = 3 // 使用默认值
   formData.trade_date = new Date().toISOString().split('T')[0]
 }
 

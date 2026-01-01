@@ -393,9 +393,9 @@
                 >
                   <el-option
                     v-for="model in enabledModels"
-                    :key="model.model_id"
+                    :key="model.id"
                     :label="model.name"
-                    :value="model.model_id"
+                    :value="model.id"
                   />
                 </el-select>
                 <span class="model-tip">用于第一阶段数据收集</span>
@@ -412,9 +412,9 @@
                 >
                   <el-option
                     v-for="model in enabledModels"
-                    :key="model.model_id"
+                    :key="model.id"
                     :label="model.name"
-                    :value="model.model_id"
+                    :value="model.id"
                   />
                 </el-select>
                 <span class="model-tip">用于辩论和总结阶段</span>
@@ -516,8 +516,7 @@ import {
   Clock,
 } from '@element-plus/icons-vue'
 import { useTradingAgentsStore } from '../../store'
-import { useUserStore } from '@core/auth/store'
-import { agentConfigApi } from '../../api'
+import { agentConfigApi, settingsApi } from '../../api'
 import {
   TaskStatusEnum,
   StockMarketEnum,
@@ -528,7 +527,6 @@ import {
 
 const router = useRouter()
 const store = useTradingAgentsStore()
-const userStore = useUserStore()
 
 // 表单引用
 const formRef = ref<FormInstance>()
@@ -590,8 +588,9 @@ async function loadAgentConfig() {
       stagesConfig.stage1.selected_agents = activeAnalysts.value.map(a => a.slug)
     }
 
-    const prefs = userStore.preferences
-    const tradingAgentsSettings = (prefs as any)?.trading_agents || {}
+    // 从 TradingAgents 设置 API 加载默认配置
+    const settingsResponse = await settingsApi.getSettings()
+    const tradingAgentsSettings = settingsResponse.settings
     const defaultDebateRounds = tradingAgentsSettings.default_debate_rounds ?? 3
 
     stagesConfig.stage2.debate.rounds = defaultDebateRounds
