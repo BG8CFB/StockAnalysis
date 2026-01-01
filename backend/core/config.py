@@ -55,9 +55,9 @@ class Settings(BaseSettings):
 
     # Redis 配置
     REDIS_URL: str = "redis://localhost:6379/0"
-    REDIS_MAX_CONNECTIONS: int = 10
-    REDIS_SOCKET_TIMEOUT: int = 5
-    REDIS_SOCKET_CONNECT_TIMEOUT: int = 5
+    REDIS_MAX_CONNECTIONS: int = 50  # 增加连接池大小
+    REDIS_SOCKET_TIMEOUT: int = 10  # 增加超时时间到 10 秒
+    REDIS_SOCKET_CONNECT_TIMEOUT: int = 10  # 增加连接超时到 10 秒
 
     # 安全配置
     PASSWORD_MIN_LENGTH: int = 8

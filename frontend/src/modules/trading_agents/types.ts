@@ -55,6 +55,24 @@ export enum ModelProviderEnum {
   CUSTOM = 'custom',
 }
 
+export enum PlatformTypeEnum {
+  PRESET = 'preset',   // 预设平台
+  CUSTOM = 'custom',   // 自定义平台
+}
+
+export enum PresetPlatformEnum {
+  OPENAI = 'openai',
+  ANTHROPIC = 'anthropic',
+  AZURE_OPENAI = 'azure_openai',
+  BAIDU = 'baidu',
+  ALIBABA = 'alibaba',
+  TENCENT = 'tencent',
+  DEEPSEEK = 'deepseek',
+  MOONSHOT = 'moonshot',
+  ZHIPU = 'zhipu',
+  ZHIPU_CODING = 'zhipu_coding',  // 智谱AI编程套餐
+}
+
 export enum StockMarketEnum {
   A_SHARE = 'a_share',      // A股
   HONG_KONG = 'hong_kong',  // 港股
@@ -68,10 +86,13 @@ export enum StockMarketEnum {
 export interface AIModelConfig {
   id: string
   name: string
-  provider: ModelProviderEnum
+  platform_type: PlatformTypeEnum
+  platform_name?: PresetPlatformEnum
+  provider?: ModelProviderEnum  // 保留兼容性
   api_base_url: string
   api_key: string
   model_id: string
+  custom_headers?: Record<string, string>
   max_concurrency: number
   task_concurrency: number
   batch_concurrency: number
@@ -87,10 +108,13 @@ export interface AIModelConfig {
 
 export interface AIModelConfigCreate {
   name: string
-  provider: ModelProviderEnum
+  platform_type: PlatformTypeEnum
+  platform_name?: PresetPlatformEnum
+  provider?: ModelProviderEnum  // 保留兼容性
   api_base_url: string
   api_key: string
   model_id: string
+  custom_headers?: Record<string, string>
   max_concurrency?: number
   task_concurrency?: number
   batch_concurrency?: number
@@ -102,10 +126,13 @@ export interface AIModelConfigCreate {
 
 export interface AIModelConfigUpdate {
   name?: string
+  platform_type?: PlatformTypeEnum
+  platform_name?: PresetPlatformEnum
   provider?: ModelProviderEnum
   api_base_url?: string
   api_key?: string
   model_id?: string
+  custom_headers?: Record<string, string>
   max_concurrency?: number
   task_concurrency?: number
   batch_concurrency?: number
@@ -126,6 +153,30 @@ export interface ConnectionTestResponse {
   message: string
   latency_ms?: number
   details?: Record<string, unknown>
+}
+
+export interface ListModelsRequest {
+  platform_type: PlatformTypeEnum
+  platform_name?: PresetPlatformEnum
+  api_base_url: string
+  api_key: string
+  custom_headers?: Record<string, string>
+  timeout_seconds?: number
+}
+
+export interface ModelInfo {
+  id: string
+  name?: string
+  created_at?: number
+  owned_by?: string
+}
+
+export interface ListModelsResponse {
+  success: boolean
+  message: string
+  models: ModelInfo[]
+  is_from_api: boolean
+  fallback_used: boolean
 }
 
 // =============================================================================

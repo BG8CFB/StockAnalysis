@@ -9,22 +9,13 @@
         </p>
       </div>
       <div class="header-actions">
-        <!-- 添加个人模型 - 所有用户可用 -->
+        <!-- 添加模型 -->
         <el-button
           type="primary"
           :icon="Plus"
-          @click="openAddModelDialog(false)"
+          @click="openAddModelDialog()"
         >
-          添加个人模型
-        </el-button>
-        <!-- 添加系统模型 - 管理员和超管可见 -->
-        <el-button
-          v-if="canManageSystemModels"
-          type="warning"
-          :icon="Plus"
-          @click="openAddModelDialog(true)"
-        >
-          添加系统模型
+          添加模型
         </el-button>
       </div>
     </div>
@@ -47,6 +38,17 @@
               label="名称"
               width="180"
             />
+            <el-table-column
+              prop="platform_type"
+              label="类型"
+              width="80"
+            >
+              <template #default="{ row }">
+                <el-tag :type="row.platform_type === 'preset' ? 'success' : 'info'" size="small">
+                  {{ row.platform_type === 'preset' ? '预设' : '自定义' }}
+                </el-tag>
+              </template>
+            </el-table-column>
             <el-table-column
               prop="provider"
               label="提供商"
@@ -135,6 +137,17 @@
               label="名称"
               width="180"
             />
+            <el-table-column
+              prop="platform_type"
+              label="类型"
+              width="80"
+            >
+              <template #default="{ row }">
+                <el-tag :type="row.platform_type === 'preset' ? 'success' : 'info'" size="small">
+                  {{ row.platform_type === 'preset' ? '预设' : '自定义' }}
+                </el-tag>
+              </template>
+            </el-table-column>
             <el-table-column
               prop="provider"
               label="提供商"
@@ -252,55 +265,113 @@
           </el-radio-group>
         </el-form-item>
 
+        <!-- 平台类型选择 -->
+        <el-form-item label="平台类型" prop="platform_type">
+          <el-radio-group v-model="formData.platform_type" @change="handlePlatformTypeChange">
+            <el-radio value="preset">预设平台</el-radio>
+            <el-radio value="custom">自定义平台</el-radio>
+          </el-radio-group>
+        </el-form-item>
+
+        <!-- 预设平台选择 -->
         <el-form-item
-          label="提供商"
-          prop="provider"
+          v-if="formData.platform_type === 'preset'"
+          label="预设平台"
+          prop="platform_name"
         >
           <el-select
-            v-model="formData.provider"
-            placeholder="选择提供商"
-            style="width: 200px"
-            @change="handleProviderChange"
+            v-model="formData.platform_name"
+            placeholder="选择平台"
+            @change="handlePresetPlatformChange"
+            style="width: 100%"
           >
             <el-option
-              v-for="preset in providerOptions"
-              :key="preset.value"
-              :label="preset.name"
-              :value="preset.value"
-            />
+              v-for="platform in presetPlatforms"
+              :key="platform.id"
+              :label="platform.name"
+              :value="platform.id"
+            >
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <el-icon><component :is="platform.icon" /></el-icon>
+                <span>{{ platform.name }}</span>
+              </div>
+            </el-option>
           </el-select>
         </el-form-item>
 
-        <el-form-item
-          label="API 地址"
-          prop="api_base_url"
-        >
+        <!-- API 地址 -->
+        <el-form-item label="API 地址" prop="api_base_url">
           <el-input
             v-model="formData.api_base_url"
-            placeholder="https://api.example.com/v1"
+            placeholder="https://api.openai.com/v1"
+            :readonly="formData.platform_type === 'preset'"
           />
         </el-form-item>
 
-        <el-form-item
-          label="模型 ID"
-          prop="model_id"
-        >
-          <el-input
-            v-model="formData.model_id"
-            placeholder="例如: gpt-4"
-          />
-        </el-form-item>
-
-        <el-form-item
-          label="API Key"
-          prop="api_key"
-        >
+        <!-- API Key -->
+        <el-form-item label="API Key" prop="api_key">
           <el-input
             v-model="formData.api_key"
             type="password"
-            placeholder="请输入 API Key"
             show-password
+            placeholder="sk-..."
           />
+        </el-form-item>
+
+        <!-- 模型选择/输入 -->
+        <!-- 预设平台且非手动输入 -->
+        <template v-if="formData.platform_type === 'preset' && !manualInputModel">
+          <el-form-item label="模型" prop="model_id">
+            <div style="display: flex; gap: 8px;">
+              <el-select
+                v-model="formData.model_id"
+                placeholder="选择或手动输入模型"
+                style="flex: 1"
+                filterable
+                allow-create
+                @change="handleModelChange"
+              >
+                <el-option
+                  v-for="model in availableModels"
+                  :key="model"
+                  :label="model"
+                  :value="model"
+                />
+              </el-select>
+              <el-button
+                :loading="loadingModels"
+                :disabled="!formData.api_key"
+                @click="fetchModels"
+              >
+                获取模型列表
+              </el-button>
+            </div>
+          </el-form-item>
+        </template>
+
+        <!-- 自定义平台或手动输入 -->
+        <el-form-item v-else label="模型 ID" prop="model_id">
+          <el-input
+            v-model="formData.model_id"
+            placeholder="gpt-4o 或自定义模型 ID"
+          />
+        </el-form-item>
+
+        <!-- 预设平台可切换到手动输入 -->
+        <el-form-item v-if="formData.platform_type === 'preset'">
+          <el-checkbox v-model="manualInputModel">手动输入模型 ID</el-checkbox>
+        </el-form-item>
+
+        <!-- 自定义请求头 -->
+        <el-form-item label="自定义请求头">
+          <el-button size="small" @click="addCustomHeader">
+            添加请求头
+          </el-button>
+
+          <div v-for="(value, key, index) in formData.custom_headers" :key="index" style="margin-top: 8px; display: flex; gap: 8px;">
+            <el-input v-model="formData.custom_headers[key]" placeholder="Header Value" style="flex: 1" />
+            <el-button size="small" type="danger" @click="removeCustomHeader(key)">删除</el-button>
+          </div>
         </el-form-item>
 
         <el-form-item
@@ -422,7 +493,9 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit, Delete, Connection } from '@element-plus/icons-vue'
 import { useUserStore } from '@core/auth/store'
 import { useTradingAgentsStore } from '../store'
-import { PROVIDER_PRESETS, ModelProviderEnum, type AIModelConfig, type AIModelConfigCreate } from '../types'
+import { PROVIDER_PRESETS, ModelProviderEnum, PlatformTypeEnum, PresetPlatformEnum, type AIModelConfig, type AIModelConfigCreate } from '../types'
+import { PRESET_PLATFORMS, getPresetPlatforms, type PlatformMetadata } from '@core/model/platforms'
+import { modelApi } from '../api'
 
 const userStore = useUserStore()
 const store = useTradingAgentsStore()
@@ -471,10 +544,13 @@ const testResult = ref<{ success: boolean; message: string; latency_ms?: number 
 // 表单数据
 const formData = reactive<AIModelConfigCreate>({
   name: '',
-  provider: ModelProviderEnum.ZHIPU,
+  platform_type: PlatformTypeEnum.CUSTOM,
+  platform_name: undefined,
+  provider: undefined,
   api_base_url: '',
   api_key: '',
   model_id: '',
+  custom_headers: {},
   max_concurrency: 40,
   task_concurrency: 2,
   batch_concurrency: 1,
@@ -483,6 +559,22 @@ const formData = reactive<AIModelConfigCreate>({
   enabled: true,
   is_system: false,
 })
+
+// 获取预设平台列表
+const presetPlatforms = computed(() => getPresetPlatforms())
+
+// 当前选中的预设平台配置
+const currentPresetPlatform = computed(() => {
+  if (formData.platform_type === PlatformTypeEnum.PRESET && formData.platform_name) {
+    return PRESET_PLATFORMS[formData.platform_name]
+  }
+  return null
+})
+
+// 模型列表
+const availableModels = ref<string[]>([])
+const loadingModels = ref(false)
+const manualInputModel = ref(false)
 
 // 表单验证规则
 const formRules = {
@@ -512,13 +604,77 @@ function getProviderLabel(provider: ModelProviderEnum): string {
   return PROVIDER_PRESETS[provider]?.name || provider
 }
 
-// 提供商变更时自动填充
-function handleProviderChange(provider: ModelProviderEnum) {
-  const preset = PROVIDER_PRESETS[provider]
-  if (preset) {
-    formData.api_base_url = preset.defaultBaseUrl
-    formData.model_id = preset.exampleModelId
+// 当平台类型改变时
+function handlePlatformTypeChange() {
+  if (formData.platform_type === PlatformTypeEnum.CUSTOM) {
+    formData.platform_name = undefined
   }
+  availableModels.value = []
+  manualInputModel.value = false
+}
+
+// 当预设平台改变时
+function handlePresetPlatformChange() {
+  const platform = currentPresetPlatform.value
+  if (platform) {
+    formData.api_base_url = platform.baseUrl
+    // ❌ 删除：formData.custom_headers = { ...platform.defaultHeaders }
+    // ✅ 保持空对象，用户需要额外添加请求头时才显示
+    formData.custom_headers = {}
+  }
+  availableModels.value = []
+  manualInputModel.value = false
+}
+
+// 获取模型列表
+async function fetchModels() {
+  if (formData.platform_type !== PlatformTypeEnum.PRESET || !formData.platform_name) {
+    return
+  }
+
+  loadingModels.value = true
+  try {
+    const platform = currentPresetPlatform.value
+
+    // 合并默认请求头和用户自定义请求头
+    const mergedHeaders = {
+      ...(platform?.defaultHeaders || {}),
+      ...formData.custom_headers
+    }
+
+    const response = await modelApi.listAvailableModels({
+      platform_type: formData.platform_type,
+      platform_name: formData.platform_name,
+      api_base_url: formData.api_base_url,
+      api_key: formData.api_key,
+      custom_headers: mergedHeaders,
+    })
+
+    if (response.success) {
+      availableModels.value = response.models.map(m => m.id)
+      ElMessage.success(response.message)
+    }
+  } catch (error: any) {
+    ElMessage.error(error.message || '获取模型列表失败')
+  } finally {
+    loadingModels.value = false
+  }
+}
+
+// 当模型选择改变时
+function handleModelChange() {
+  // 可以在这里添加逻辑
+}
+
+// 添加自定义请求头
+function addCustomHeader() {
+  const key = `custom-header-${Object.keys(formData.custom_headers).length + 1}`
+  formData.custom_headers[key] = ''
+}
+
+// 删除自定义请求头
+function removeCustomHeader(key: string) {
+  delete formData.custom_headers[key]
 }
 
 // 验证并发参数
@@ -562,26 +718,35 @@ async function handleSubmit() {
 }
 
 // 打开添加模型对话框
-function openAddModelDialog(isSystem: boolean) {
+function openAddModelDialog() {
   isEdit.value = false
-  isCreatingSystemModel.value = isSystem
+  // 普通用户默认创建个人模型
+  formData.is_system = false
+  isCreatingSystemModel.value = false
   editingId.value = null
 
   // 重置表单数据
   Object.assign(formData, {
     name: '',
-    provider: ModelProviderEnum.ZHIPU,
+    platform_type: PlatformTypeEnum.CUSTOM,
+    platform_name: undefined,
+    provider: undefined,
     api_base_url: '',
     api_key: '',
     model_id: '',
+    custom_headers: {},
     max_concurrency: 40,
     task_concurrency: 2,
     batch_concurrency: 1,
     timeout_seconds: 60,
     temperature: 0.5,
     enabled: true,
-    is_system: isSystem, // 设置is_system
+    is_system: false, // 普通用户默认创建个人模型
   })
+
+  // 重置响应式状态
+  availableModels.value = []
+  manualInputModel.value = false
 
   showCreateDialog.value = true
 }
@@ -593,10 +758,13 @@ function handleEdit(model: AIModelConfig) {
   editingId.value = model.id
   Object.assign(formData, {
     name: model.name,
+    platform_type: model.platform_type,
+    platform_name: model.platform_name,
     provider: model.provider,
     api_base_url: model.api_base_url,
     api_key: model.api_key,
     model_id: model.model_id,
+    custom_headers: model.custom_headers || {},
     max_concurrency: model.max_concurrency,
     task_concurrency: model.task_concurrency,
     batch_concurrency: model.batch_concurrency,
@@ -700,6 +868,12 @@ onMounted(() => {
   font-size: 13px;
   color: #909399;
   font-weight: normal;
+}
+
+.form-tip {
+  margin-left: 12px;
+  font-size: 13px;
+  color: #909399;
 }
 
 .test-result,

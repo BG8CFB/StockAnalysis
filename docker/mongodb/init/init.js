@@ -14,6 +14,7 @@ db = db.getSiblingDB('stock_analysis');
 
 // 创建初始索引
 db.users.createIndex({ email: 1 }, { unique: true });
+db.users.createIndex({ username: 1 }, { unique: true });  // 用户名唯一索引
 db.users.createIndex({ created_at: 1 });
 db.user_preferences.createIndex({ user_id: 1 });
 db.user_preferences.createIndex({ user_id: 1, key: 1 }, { unique: true });

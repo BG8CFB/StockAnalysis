@@ -25,20 +25,20 @@ export const useUserStore = defineStore('user', () => {
   // ==================== 方法 ====================
 
   /**
-   * 用户登录
+   * 用户登录 - 支持用户名或邮箱
    */
   async function login(
-    email: string,
+    account: string,
     password: string,
     captchaToken?: string,
     slideX?: number,
     slideY?: number
   ) {
-    console.log('[UserStore] login called', { email })
+    console.log('[UserStore] login called', { account })
     loading.value = true
     try {
       const response = await authApi.login({
-        email,
+        account,
         password,
         captcha_token: captchaToken,
         slide_x: slideX,

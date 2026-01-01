@@ -98,12 +98,6 @@ const moduleRoutes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, title: 'MCP 服务器管理' },
   },
   {
-    path: '/settings/mcp-settings',
-    name: 'SettingsMCPSettings',
-    component: () => import('@modules/settings/views/MCPSettingsView.vue'),
-    meta: { requiresAuth: true, title: 'MCP 系统配置', adminOnly: true },
-  },
-  {
     path: '/settings/trading-agents/agent-config',
     name: 'TradingAgentsAgentConfig',
     component: () => import('@modules/trading_agents/views/AgentConfigView.vue'),

@@ -33,7 +33,7 @@ async def restore_running_tasks_with_checkpoint(
         (恢复的任务数量, 失败的任务数量)
     """
     # 查找所有运行中的任务
-    running_tasks = await mongodb_db.analysis_tasks.find({
+    running_tasks = await mongodb_db.get_collection("analysis_tasks").find({
         "status": TaskStatusEnum.RUNNING.value
     }).to_list(None)
 
@@ -83,7 +83,7 @@ async def restore_running_tasks_with_checkpoint(
                 continue
 
             # 将任务状态重置为 PENDING，保留已完成报告
-            await mongodb_db.analysis_tasks.update_one(
+            await mongodb_db.get_collection("analysis_tasks").update_one(
                 {"_id": task_doc["_id"]},
                 {
                     "$set": {
@@ -97,7 +97,7 @@ async def restore_running_tasks_with_checkpoint(
             )
 
             # 清除开始时间
-            await mongodb_db.analysis_tasks.update_one(
+            await mongodb_db.get_collection("analysis_tasks").update_one(
                 {"_id": task_doc["_id"]},
                 {"$unset": ["started_at"]}
             )
@@ -167,7 +167,7 @@ async def _mark_task_failed(
         task_id: 任务 ID
         reason: 失败原因
     """
-    await mongodb_db.database.analysis_tasks.update_one(
+    await mongodb_db.get_collection("analysis_tasks").update_one(
         {"_id": ObjectId(task_id)},
         {
             "$set": {

@@ -13,9 +13,9 @@ export type UserStatus = 'pending' | 'active' | 'disabled' | 'rejected'
 
 // ==================== 认证相关类型 ====================
 
-/** 登录请求 */
+/** 登录请求 - 支持用户名或邮箱 */
 export interface LoginRequest {
-  email: string
+  account: string  // 用户名或邮箱
   password: string
   captcha_token?: string
   slide_x?: number

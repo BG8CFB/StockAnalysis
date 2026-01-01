@@ -8,6 +8,8 @@ import type {
   AIModelConfigUpdate,
   AIModelTestRequest,
   ConnectionTestResponse,
+  ListModelsRequest,
+  ListModelsResponse,
   MCPServerConfig,
   MCPServerConfigCreate,
   MCPServerConfigUpdate,
@@ -76,6 +78,12 @@ export const modelApi = {
    */
   testModelConnection: (data: AIModelTestRequest) =>
     httpPost<ConnectionTestResponse>(`${AI_BASE_URL}/models/test`, data),
+
+  /**
+   * 获取可用的模型列表
+   */
+  listAvailableModels: (data: ListModelsRequest) =>
+    httpPost<ListModelsResponse>(`${AI_BASE_URL}/models/list-available`, data),
 }
 
 // =============================================================================

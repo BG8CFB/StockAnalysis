@@ -30,8 +30,8 @@ export const authApi = {
    * 检查是否需要验证码
    * 后端: GET /users/captcha/required
    */
-  checkCaptchaRequired: (email: string) =>
-    httpGet<CaptchaRequiredResponse>(`/users/captcha/required?email=${encodeURIComponent(email)}`),
+  checkCaptchaRequired: (account: string) =>
+    httpGet<CaptchaRequiredResponse>(`/users/captcha/required?account=${encodeURIComponent(account)}`),
 
   /**
    * 用户登录

@@ -43,6 +43,77 @@ class AgentConfigService:
         self._db = None
         self._config_loader = ConfigLoader()
 
+    # ========================================================================
+    # 阶段配置验证
+    # ========================================================================
+
+    def _validate_phase_update(
+        self,
+        phase_key: str,
+        new_phase_data,
+        old_doc: dict
+    ):
+        """
+        验证阶段配置更新
+
+        规则：
+        - phase1: 允许所有修改（添加、删除、编辑智能体）
+        - phase2/3/4: 只能修改 role_definition，不能修改其他字段
+
+        Args:
+            phase_key: 阶段键 (phase1, phase2, phase3, phase4)
+            new_phase_data: 新的阶段配置数据
+            old_doc: 旧的数据库文档
+
+        Raises:
+            ValueError: 验证失败
+        """
+        from modules.trading_agents.schemas import Phase2Config, Phase3Config, Phase4Config
+
+        # phase1 允许所有修改
+        if phase_key == "phase1":
+            return
+
+        # phase2/3/4 只能修改 role_definition
+        if phase_key in ["phase2", "phase3", "phase4"]:
+            old_phase = old_doc.get(phase_key)
+            if not old_phase:
+                # 如果旧配置不存在，不允许创建新的智能体列表
+                if new_phase_data and hasattr(new_phase_data, 'agents') and len(new_phase_data.agents) > 0:
+                    raise ValueError(f"{phase_key} 不允许添加智能体，只能修改提示词")
+                return
+
+            old_agents = old_phase.get("agents", [])
+
+            # 检查智能体数量是否改变
+            if new_phase_data and hasattr(new_phase_data, 'agents'):
+                new_agents = new_phase_data.agents or []
+                if len(old_agents) != len(new_agents):
+                    raise ValueError(f"{phase_key} 不允许添加或删除智能体，只能修改提示词")
+
+                # 检查智能体 slug、name 是否改变（只允许修改 role_definition 和 enabled）
+                for i, (old_agent, new_agent) in enumerate(zip(old_agents, new_agents)):
+                    # 检查 slug 是否改变
+                    if old_agent.get("slug") != new_agent.slug:
+                        raise ValueError(f"{phase_key} 不允许修改智能体的 slug，只能修改提示词")
+
+                    # 检查 name 是否改变
+                    if old_agent.get("name") != new_agent.name:
+                        raise ValueError(f"{phase_key} 不允许修改智能体的名称，只能修改提示词")
+
+                    # 检查其他字段是否被修改
+                    allowed_fields = {"slug", "name", "role_definition", "enabled"}
+                    new_agent_dict = new_agent.model_dump() if hasattr(new_agent, 'model_dump') else dict(new_agent)
+
+                    for field in new_agent_dict:
+                        if field not in allowed_fields:
+                            old_value = old_agent.get(field)
+                            new_value = new_agent_dict[field]
+                            if old_value != new_value:
+                                raise ValueError(f"{phase_key} 不允许修改 {field} 字段，只能修改提示词")
+
+        logger.debug(f"阶段配置验证通过: {phase_key}")
+
     def _get_collection(self):
         """获取数据库集合"""
         return mongodb.get_collection(self.COLLECTION_NAME)
@@ -93,16 +164,40 @@ class AgentConfigService:
             "is_public": True
         })
 
-        # 构建更新数据
+        # 如果是更新现有配置，进行验证
+        if doc:
+            # 验证各阶段配置更新
+            for phase_key, phase_data in [
+                ("phase1", request.phase1),
+                ("phase2", request.phase2),
+                ("phase3", request.phase3),
+                ("phase4", request.phase4),
+            ]:
+                if phase_data is not None:
+                    try:
+                        self._validate_phase_update(phase_key, phase_data, doc)
+                    except ValueError as e:
+                        logger.warning(f"公共配置验证失败: {e}")
+                        raise ValueError(str(e))
+
+        # 构建更新数据（强制启用所有阶段）
         update_data = {}
         if request.phase1 is not None:
-            update_data["phase1"] = request.phase1.model_dump()
+            phase1_data = request.phase1.model_dump()
+            phase1_data["enabled"] = True  # 强制启用阶段
+            update_data["phase1"] = phase1_data
         if request.phase2 is not None:
-            update_data["phase2"] = request.phase2.model_dump()
+            phase2_data = request.phase2.model_dump()
+            phase2_data["enabled"] = True  # 强制启用阶段
+            update_data["phase2"] = phase2_data
         if request.phase3 is not None:
-            update_data["phase3"] = request.phase3.model_dump()
+            phase3_data = request.phase3.model_dump()
+            phase3_data["enabled"] = True  # 强制启用阶段
+            update_data["phase3"] = phase3_data
         if request.phase4 is not None:
-            update_data["phase4"] = request.phase4.model_dump()
+            phase4_data = request.phase4.model_dump()
+            phase4_data["enabled"] = True  # 强制启用阶段
+            update_data["phase4"] = phase4_data
 
         update_data["updated_at"] = datetime.utcnow()
 
@@ -394,16 +489,38 @@ class AgentConfigService:
             # 创建新配置，直接标记为已自定义
             return await self._init_user_config(user_id, request, is_customized=True)
 
-        # 构建更新数据
+        # 验证各阶段配置更新
+        for phase_key, phase_data in [
+            ("phase1", request.phase1),
+            ("phase2", request.phase2),
+            ("phase3", request.phase3),
+            ("phase4", request.phase4),
+        ]:
+            if phase_data is not None:
+                try:
+                    self._validate_phase_update(phase_key, phase_data, doc)
+                except ValueError as e:
+                    logger.warning(f"用户配置验证失败: user_id={user_id}, error={e}")
+                    raise ValueError(str(e))
+
+        # 构建更新数据（强制启用所有阶段）
         update_data = {}
         if request.phase1 is not None:
-            update_data["phase1"] = request.phase1.model_dump()
+            phase1_data = request.phase1.model_dump()
+            phase1_data["enabled"] = True  # 强制启用阶段
+            update_data["phase1"] = phase1_data
         if request.phase2 is not None:
-            update_data["phase2"] = request.phase2.model_dump()
+            phase2_data = request.phase2.model_dump()
+            phase2_data["enabled"] = True  # 强制启用阶段
+            update_data["phase2"] = phase2_data
         if request.phase3 is not None:
-            update_data["phase3"] = request.phase3.model_dump()
+            phase3_data = request.phase3.model_dump()
+            phase3_data["enabled"] = True  # 强制启用阶段
+            update_data["phase3"] = phase3_data
         if request.phase4 is not None:
-            update_data["phase4"] = request.phase4.model_dump()
+            phase4_data = request.phase4.model_dump()
+            phase4_data["enabled"] = True  # 强制启用阶段
+            update_data["phase4"] = phase4_data
 
         # 标记为已自定义
         update_data["is_customized"] = True

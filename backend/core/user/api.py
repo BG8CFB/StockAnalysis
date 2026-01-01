@@ -48,19 +48,19 @@ logger = logging.getLogger(__name__)
 
 @router.post("/users/login", response_model=TokenResponse)
 async def login(request: Request, data: LoginRequest):
-    """用户登录"""
-    logger.info(f"Login request received for email: {data.email}")
+    """用户登录 - 支持用户名或邮箱"""
+    logger.info(f"Login request received for account: {data.account}")
     try:
         client_ip = request.client.host
         user, access_token, refresh_token = await user_service.login(data, client_ip)
-        
-        logger.info(f"Login success for email: {data.email}")
+
+        logger.info(f"Login success for account: {data.account}")
         return {
             "access_token": access_token,
             "refresh_token": refresh_token,
             "token_type": "bearer"
         }
-    except InvalidUserStatusError:
+    except InvalidUserStatusError as e:
         # 用户状态问题:返回 403 Forbidden (比 401 更准确)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -81,7 +81,7 @@ async def login(request: Request, data: LoginRequest):
         # 只有真正的账号密码错误才返回 401
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="用户名或密码错误",
+            detail="用户名、邮箱或密码错误",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -126,10 +126,10 @@ async def verify_captcha(request: CaptchaVerifyRequest):
         )
 
 @router.get("/users/captcha/required")
-async def check_captcha_required(email: str):
+async def check_captcha_required(account: str):
     """检查是否需要验证码"""
     try:
-        required, reason = await user_service.check_captcha_required(email, "")
+        required, reason = await user_service.check_captcha_required(account, "")
         return {"required": required, "reason": reason}
     except Exception as e:
         raise HTTPException(

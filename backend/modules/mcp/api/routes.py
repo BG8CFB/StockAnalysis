@@ -14,13 +14,13 @@ from core.auth.dependencies import get_current_user, get_current_active_user
 from core.user.dependencies import get_current_admin_user
 from core.user.models import UserModel
 from core.auth.rbac import Role, Permission
-from core.ai.model.schemas import ConnectionTestResponse
 
 from modules.mcp.schemas import (
     MCPServerConfigCreate,
     MCPServerConfigUpdate,
     MCPServerConfigResponse,
     MCPServerStatusEnum,
+    ConnectionTestResponse,
 )
 from modules.mcp.service.mcp_service import get_mcp_service, MCPService
 from modules.mcp.service.health_checker import get_mcp_health_checker, MCPHealthChecker
@@ -166,29 +166,18 @@ async def test_mcp_server(
     """
     测试 MCP 服务器连接
 
-    手动触发健康检查，测试服务器是否可用。
+    手动触发连接测试，返回详细的测试结果（包括延迟）。
 
     Args:
         server_id: 服务器 ID
         current_user: 当前用户
 
     Returns:
-        测试结果
+        测试结果（包含延迟信息）
     """
     is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
-    health_checker = get_mcp_health_checker()
-    success = await health_checker.check_server_now(server_id)
-
-    if success:
-        return ConnectionTestResponse(
-            success=True,
-            message="连接成功",
-        )
-    else:
-        return ConnectionTestResponse(
-            success=False,
-            message="连接失败",
-        )
+    service = get_mcp_service()
+    return await service.test_server_connection(server_id, str(current_user.id), is_admin)
 
 
 @router.get("/servers/{server_id}/tools")
@@ -467,7 +456,10 @@ async def test_mcp_server_legacy(
     请使用新端点: POST /api/mcp/servers/{server_id}/test
     """
     logger.warning(f"用户使用废弃端点测试 MCP 服务器: user_id={current_user.id}, server_id={server_id}")
-    return await test_mcp_server(server_id, current_user)
+    # 调用 service 方法获取完整响应（包括延迟）
+    is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
+    service = get_mcp_service()
+    return await service.test_server_connection(server_id, str(current_user.id), is_admin)
 
 
 @router.get("/trading-agents/mcp-servers/{server_id}/tools", deprecated=True)

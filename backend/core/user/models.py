@@ -89,12 +89,25 @@ class SystemStatusResponse(BaseModel):
 class RegisterRequest(BaseModel):
     """注册请求"""
     email: EmailStr
-    username: str = Field(..., min_length=2, max_length=50)
+    username: str = Field(..., min_length=2, max_length=20, pattern=r'^[a-zA-Z0-9_]+$')
     password: str = Field(..., min_length=settings.PASSWORD_MIN_LENGTH)
     confirm_password: str
     captcha_token: Optional[str] = None
     slide_x: Optional[int] = None
     slide_y: Optional[int] = None
+
+    @field_validator("username")
+    @classmethod
+    def username_valid(cls, v: str) -> str:
+        """验证用户名格式"""
+        # 禁止纯数字
+        if v.isdigit():
+            raise ValueError("用户名不能为纯数字")
+        # 保留字检查
+        reserved = ["admin", "system", "root", "api", "superadmin"]
+        if v.lower() in reserved:
+            raise ValueError("该用户名不可用")
+        return v
 
     @field_validator("confirm_password")
     @classmethod
@@ -105,8 +118,8 @@ class RegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    """登录请求"""
-    email: EmailStr
+    """登录请求 - 支持用户名或邮箱"""
+    account: str = Field(..., min_length=2, description="用户名或邮箱")
     password: str
     captcha_token: Optional[str] = None
     slide_x: Optional[int] = None

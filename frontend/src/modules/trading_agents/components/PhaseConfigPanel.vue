@@ -1,86 +1,81 @@
 <template>
   <div class="phase-config-panel">
-    <!-- 阶段开关 -->
+    <!-- 阶段标题 -->
     <div class="section-header">
       <h3>{{ phaseTitle }}</h3>
-      <div class="header-controls">
-        <el-switch
-          v-model="localConfig.enabled"
-          active-text="启用"
-          @change="handleEnabledChange"
-        />
-      </div>
     </div>
 
     <el-divider />
 
-    <template v-if="localConfig.enabled">
-      <!-- 智能体列表 -->
-      <div class="agents-section">
-        <div class="section-header">
-          <h4>智能体列表 ({{ localConfig.agents.length }})</h4>
-          <el-button
-            type="primary"
-            size="small"
-            :icon="Plus"
-            @click="handleAddAgent"
-          >
-            添加智能体
-          </el-button>
-        </div>
-
-        <el-table
-          :data="localConfig.agents"
-          stripe
+    <!-- 智能体列表 -->
+    <div class="agents-section">
+      <div class="section-header">
+        <h4>智能体列表 ({{ localConfig.agents.length }})</h4>
+        <!-- 只有第一阶段才显示添加按钮 -->
+        <el-button
+          v-if="phase === 1"
+          type="primary"
           size="small"
+          :icon="Plus"
+          @click="handleAddAgent"
         >
-          <el-table-column
-            prop="name"
-            label="名称"
-            width="180"
-          />
-          <el-table-column
-            prop="slug"
-            label="标识符"
-            width="150"
-          />
-          <el-table-column
-            prop="enabled"
-            label="启用"
-            width="80"
-          >
-            <template #default="{ row }">
-              <el-switch
-                v-model="row.enabled"
-                size="small"
-              />
-            </template>
-          </el-table-column>
-          <el-table-column
-            label="操作"
-            width="200"
-          >
-            <template #default="{ row, $index }">
-              <el-button
-                link
-                type="primary"
-                size="small"
-                @click="handleEditAgent(row)"
-              >
-                编辑
-              </el-button>
-              <el-button
-                link
-                type="danger"
-                size="small"
-                @click="handleDeleteAgent($index)"
-              >
-                删除
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+          添加智能体
+        </el-button>
       </div>
+
+      <el-table
+        :data="localConfig.agents"
+        stripe
+        size="small"
+      >
+        <el-table-column
+          prop="name"
+          label="名称"
+          width="180"
+        />
+        <el-table-column
+          prop="slug"
+          label="标识符"
+          width="150"
+        />
+        <el-table-column
+          prop="enabled"
+          label="启用"
+          width="80"
+        >
+          <template #default="{ row }">
+            <el-switch
+              v-model="row.enabled"
+              size="small"
+            />
+          </template>
+        </el-table-column>
+        <el-table-column
+          label="操作"
+          width="200"
+        >
+          <template #default="{ row, $index }">
+            <el-button
+              link
+              type="primary"
+              size="small"
+              @click="handleEditAgent(row)"
+            >
+              {{ isPhase1 ? '编辑' : '修改提示词' }}
+            </el-button>
+            <!-- 只有第一阶段才显示删除按钮 -->
+            <el-button
+              v-if="isPhase1"
+              link
+              type="danger"
+              size="small"
+              @click="handleDeleteAgent($index)"
+            >
+              删除
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
 
       <!-- 保存按钮 -->
       <div class="action-bar">
@@ -92,17 +87,12 @@
           保存配置
         </el-button>
       </div>
-    </template>
-
-    <el-empty
-      v-else
-      description="该阶段已禁用"
-    />
+    </div>
 
     <!-- 智能体编辑对话框 -->
     <el-dialog
       v-model="showAgentDialog"
-      :title="isEditAgent ? '编辑智能体' : '添加智能体'"
+      :title="dialogTitle"
       width="700px"
       @close="handleAgentDialogClose"
     >
@@ -112,70 +102,117 @@
         :rules="agentRules"
         label-width="120px"
       >
-        <el-form-item
-          label="智能体名称"
-          prop="name"
-        >
-          <el-input
-            v-model="agentForm.name"
-            placeholder="例如: 技术分析师"
-          />
-        </el-form-item>
-
-        <el-form-item
-          label="唯一标识符"
-          prop="slug"
-        >
-          <el-input
-            v-model="agentForm.slug"
-            placeholder="例如: technical_analyst"
-            :disabled="isEditAgent"
-          />
-          <span class="form-tip">只能包含字母、数字和下划线</span>
-        </el-form-item>
-
-        <el-form-item
-          label="角色定义"
-          prop="role_definition"
-        >
-          <el-input
-            v-model="agentForm.role_definition"
-            type="textarea"
-            :rows="6"
-            placeholder="你是一位专业的股票分析师，负责..."
-          />
-          <span class="form-tip">系统提示词，定义智能体的角色和职责</span>
-        </el-form-item>
-
-        <el-form-item label="使用场景">
-          <el-input
-            v-model="agentForm.when_to_use"
-            type="textarea"
-            :rows="2"
-            placeholder="用于分析股票的技术指标..."
-          />
-        </el-form-item>
-
-        <el-form-item label="启用的 MCP 服务器">
-          <el-select
-            v-model="agentForm.enabled_mcp_servers"
-            multiple
-            placeholder="选择 MCP 服务器"
-            style="width: 100%"
+        <!-- 第一阶段：允许修改所有字段 -->
+        <template v-if="isPhase1">
+          <el-form-item
+            label="智能体名称"
+            prop="name"
           >
-            <el-option
-              v-for="server in serverOptions"
-              :key="server.id"
-              :label="server.name"
-              :value="server.id"
+            <el-input
+              v-model="agentForm.name"
+              placeholder="例如: 技术分析师"
             />
-          </el-select>
-          <span class="form-tip">该智能体可使用的 MCP 服务器</span>
-        </el-form-item>
+          </el-form-item>
 
-        <el-form-item label="启用状态">
-          <el-switch v-model="agentForm.enabled" />
-        </el-form-item>
+          <el-form-item
+            label="唯一标识符"
+            prop="slug"
+          >
+            <el-input
+              v-model="agentForm.slug"
+              placeholder="例如: technical_analyst"
+              :disabled="isEditAgent"
+            />
+            <span class="form-tip">只能包含字母、数字和下划线</span>
+          </el-form-item>
+
+          <el-form-item
+            label="角色定义"
+            prop="role_definition"
+          >
+            <el-input
+              v-model="agentForm.role_definition"
+              type="textarea"
+              :rows="6"
+              placeholder="你是一位专业的股票分析师，负责..."
+            />
+            <span class="form-tip">系统提示词，定义智能体的角色和职责</span>
+          </el-form-item>
+
+          <el-form-item label="使用场景">
+            <el-input
+              v-model="agentForm.when_to_use"
+              type="textarea"
+              :rows="2"
+              placeholder="用于分析股票的技术指标..."
+            />
+          </el-form-item>
+
+          <el-form-item label="启用的 MCP 服务器">
+            <el-select
+              v-model="agentForm.enabled_mcp_servers"
+              multiple
+              placeholder="选择 MCP 服务器"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="server in serverOptions"
+                :key="server.id"
+                :label="server.name"
+                :value="server.id"
+              />
+            </el-select>
+            <span class="form-tip">该智能体可使用的 MCP 服务器</span>
+          </el-form-item>
+
+          <el-form-item label="启用状态">
+            <el-switch v-model="agentForm.enabled" />
+          </el-form-item>
+        </template>
+
+        <!-- 第二、三、四阶段：只能修改提示词 -->
+        <template v-else>
+          <el-alert
+            title="提示"
+            type="info"
+            :closable="false"
+            style="margin-bottom: 16px"
+          >
+            本阶段只能修改智能体的提示词（角色定义），其他字段不可修改。
+          </el-alert>
+
+          <el-form-item label="智能体名称">
+            <el-input
+              v-model="agentForm.name"
+              disabled
+            />
+          </el-form-item>
+
+          <el-form-item label="唯一标识符">
+            <el-input
+              v-model="agentForm.slug"
+              disabled
+            />
+          </el-form-item>
+
+          <el-form-item
+            label="角色定义"
+            prop="role_definition"
+          >
+            <el-input
+              v-model="agentForm.role_definition"
+              type="textarea"
+              :rows="10"
+              placeholder="你是一位专业的股票分析师，负责..."
+            />
+            <span class="form-tip">系统提示词，定义智能体的角色和职责</span>
+          </el-form-item>
+
+          <el-form-item label="启用状态">
+            <el-switch v-model="agentForm.enabled" />
+            <span class="form-tip">可以启用或禁用此智能体</span>
+          </el-form-item>
+        </template>
       </el-form>
 
       <template #footer>
@@ -213,10 +250,22 @@ interface Emits {
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
+// 是否为第一阶段
+const isPhase1 = computed(() => props.phase === 1)
+
 // 阶段标题
 const phaseTitle = computed(() => {
   const titles = ['', '分析师团队', '研究辩论', '风险评估', '总结输出']
   return titles[props.phase] || ''
+})
+
+// 对话框标题
+const dialogTitle = computed(() => {
+  if (isPhase1.value) {
+    return isEditAgent.value ? '编辑智能体' : '添加智能体'
+  } else {
+    return '修改提示词'
+  }
 })
 
 // 本地配置
@@ -268,14 +317,6 @@ const agentRules = {
 // 保存状态
 const saving = ref(false)
 
-// 启用变更
-function handleEnabledChange() {
-  if (!localConfig.enabled) {
-    // 禁用时清空智能体列表
-    localConfig.agents = []
-  }
-}
-
 // 添加智能体
 function handleAddAgent() {
   isEditAgent.value = false
@@ -307,20 +348,30 @@ function handleDeleteAgent(index: number) {
 async function handleSaveAgent() {
   await agentFormRef.value?.validate()
 
-  const agentData: AgentConfig = {
-    slug: agentForm.slug,
-    name: agentForm.name,
-    role_definition: agentForm.role_definition,
-    when_to_use: agentForm.when_to_use,
-    enabled_mcp_servers: [...agentForm.enabled_mcp_servers],
-    enabled_local_tools: [],
-    enabled: agentForm.enabled,
-  }
+  if (isPhase1.value) {
+    // 第一阶段：保存所有字段
+    const agentData: AgentConfig = {
+      slug: agentForm.slug,
+      name: agentForm.name,
+      role_definition: agentForm.role_definition,
+      when_to_use: agentForm.when_to_use,
+      enabled_mcp_servers: [...agentForm.enabled_mcp_servers],
+      enabled_local_tools: [],
+      enabled: agentForm.enabled,
+    }
 
-  if (isEditAgent.value) {
-    localConfig.agents[editingAgentIndex.value] = agentData
+    if (isEditAgent.value) {
+      localConfig.agents[editingAgentIndex.value] = agentData
+    } else {
+      localConfig.agents.push(agentData)
+    }
   } else {
-    localConfig.agents.push(agentData)
+    // 第二、三、四阶段：只保存 role_definition 和 enabled
+    if (isEditAgent.value) {
+      const existingAgent = localConfig.agents[editingAgentIndex.value]
+      existingAgent.role_definition = agentForm.role_definition
+      existingAgent.enabled = agentForm.enabled
+    }
   }
 
   showAgentDialog.value = false

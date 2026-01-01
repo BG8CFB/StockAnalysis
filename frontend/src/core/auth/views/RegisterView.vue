@@ -219,7 +219,12 @@ const rules: FormRules = {
   ],
   username: [
     { required: true, message: '请输入显示名称', trigger: 'blur' },
-    { min: 2, max: 50, message: '长度在 2 到 50 个字符', trigger: 'blur' },
+    { min: 2, max: 20, message: '长度在 2 到 20 个字符', trigger: 'blur' },
+    {
+      pattern: /^[a-zA-Z0-9_]+$/,
+      message: '只能包含字母、数字和下划线',
+      trigger: 'blur'
+    },
   ],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },

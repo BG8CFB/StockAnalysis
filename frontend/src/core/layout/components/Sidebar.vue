@@ -127,13 +127,6 @@
             <span>MCP 服务器管理</span>
           </el-menu-item>
 
-          <template v-if="isAdmin">
-            <el-menu-item index="/settings/mcp-settings">
-              <span class="sub-dot" />
-              <span>MCP 系统配置</span>
-            </el-menu-item>
-          </template>
-
           <el-menu-item index="/settings/trading-agents/models">
             <span class="sub-dot" />
             <span>AI 模型管理</span>

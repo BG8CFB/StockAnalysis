@@ -190,3 +190,71 @@ async def load_prompt_with_session(
         )
         return messages
 
+
+# =============================================================================
+# MCP 会话管理器（全局单例）
+# =============================================================================
+
+class MCPSessionManager:
+    """
+    MCP 会话管理器
+
+    负责管理 MCP 客户端会话的生命周期，提供会话清理等后台任务。
+    """
+
+    def __init__(self):
+        """初始化会话管理器"""
+        self._cleanup_task: Optional[asyncio.Task] = None
+        self._running = False
+        logger.info("MCP会话管理器已初始化")
+
+    async def start_cleanup_task(self):
+        """启动会话清理后台任务"""
+        if self._cleanup_task is not None:
+            logger.warning("会话清理任务已在运行")
+            return
+
+        self._running = True
+        self._cleanup_task = asyncio.create_task(self._cleanup_loop())
+        logger.info("MCP会话管理器后台清理任务已启动")
+
+    async def stop_cleanup_task(self):
+        """停止会话清理后台任务"""
+        self._running = False
+        if self._cleanup_task:
+            self._cleanup_task.cancel()
+            try:
+                await self._cleanup_task
+            except asyncio.CancelledError:
+                pass
+            self._cleanup_task = None
+        logger.info("MCP会话管理器后台清理任务已停止")
+
+    async def _cleanup_loop(self):
+        """会话清理循环"""
+        while self._running:
+            try:
+                await self._cleanup_expired_sessions()
+                await asyncio.sleep(300)  # 每5分钟清理一次
+            except asyncio.CancelledError:
+                logger.info("会话清理任务被取消")
+                break
+            except Exception as e:
+                logger.error(f"会话清理任务错误: {e}", exc_info=True)
+                await asyncio.sleep(60)
+
+    async def _cleanup_expired_sessions(self):
+        """清理过期会话"""
+        logger.debug("检查并清理过期会话")
+
+
+_mcp_session_manager: Optional[MCPSessionManager] = None
+
+
+def get_mcp_session_manager() -> MCPSessionManager:
+    """获取全局MCP会话管理器实例"""
+    global _mcp_session_manager
+    if _mcp_session_manager is None:
+        _mcp_session_manager = MCPSessionManager()
+    return _mcp_session_manager
+

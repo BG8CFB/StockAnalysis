@@ -2,6 +2,7 @@
 用户核心业务逻辑服务
 集成验证码、限流、IP信任管理、审核工作流、密码重置
 """
+import logging
 import json
 import secrets
 from datetime import datetime
@@ -30,6 +31,8 @@ from core.user.models import (
     UserModel,
     UserStatus,
 )
+
+logger = logging.getLogger(__name__)
 
 # ==================== 异常类 ====================
 
@@ -64,11 +67,6 @@ class UserNotFoundError(Exception):
     pass
 
 
-class InvalidUserStatusError(Exception):
-    """用户状态无效"""
-    pass
-
-
 # ==================== 用户服务 ====================
 
 
@@ -84,6 +82,28 @@ class UserService:
     def db(self) -> AsyncIOMotorDatabase:
         """获取数据库实例（延迟加载）"""
         return mongodb.database
+
+    # ==================== 辅助方法 ====================
+
+    @staticmethod
+    def _is_email(value: str) -> bool:
+        """判断字符串是否为邮箱格式"""
+        import re
+        pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        return bool(re.match(pattern, value))
+
+    async def _find_user_by_account(self, account: str) -> Optional[dict]:
+        """根据账号（用户名或邮箱）查找用户
+
+        Returns:
+            用户字典或 None
+        """
+        if self._is_email(account):
+            # 输入的是邮箱
+            return await self.db.users.find_one({"email": account})
+        else:
+            # 输入的是用户名
+            return await self.db.users.find_one({"username": account})
 
     # ==================== 注册 ====================
 
@@ -113,10 +133,15 @@ class UserService:
             if not await self.captcha.verify_captcha(captcha_token, slide_x, slide_y):
                 raise ValueError("验证码验证失败")
 
-        # 3. 检查用户是否已存在
-        existing = await self.db.users.find_one({"email": data.email})
-        if existing:
+        # 3. 检查邮箱是否已存在
+        existing_email = await self.db.users.find_one({"email": data.email})
+        if existing_email:
             raise UserExistsError("该邮箱已被注册")
+
+        # 3.1 检查用户名是否已存在
+        existing_username = await self.db.users.find_one({"username": data.username})
+        if existing_username:
+            raise UserExistsError("该用户名已被使用")
 
         # 4. 根据配置决定初始状态
         initial_status = UserStatus.ACTIVE if not settings.REQUIRE_APPROVAL else UserStatus.PENDING
@@ -167,7 +192,7 @@ class UserService:
 
     # ==================== 登录 ====================
 
-    async def check_captcha_required(self, email: str, client_ip: str) -> tuple[bool, Optional[str]]:
+    async def check_captcha_required(self, account: str, client_ip: str) -> tuple[bool, Optional[str]]:
         """检查是否需要验证码
 
         Returns:
@@ -185,13 +210,13 @@ class UserService:
         ip_failures = await redis.get(failures_key)
         ip_failures = int(ip_failures) if ip_failures else 0
 
-        # 3. 检查邮箱失败次数
-        email_failures_key = UserRedisKey.login_failures_email(email)
-        email_failures = await redis.get(email_failures_key)
-        email_failures = int(email_failures) if email_failures else 0
+        # 3. 检查账号失败次数
+        account_failures_key = f"login_failures:account:{account}"
+        account_failures = await redis.get(account_failures_key)
+        account_failures = int(account_failures) if account_failures else 0
 
         # 4. 查询用户，检查是否为信任 IP
-        user = await self.db.users.find_one({"email": email})
+        user = await self._find_user_by_account(account)
         if user:
             user_id = str(user["_id"])
             is_trusted = await self.ip_trust.is_ip_trusted(user_id, client_ip)
@@ -201,9 +226,9 @@ class UserService:
 
         # 5. 根据失败次数决定是否需要验证码
         max_failures = settings.LOGIN_MAX_ATTEMPTS
-        if ip_failures >= 3 or email_failures >= 3:
+        if ip_failures >= 3 or account_failures >= 3:
             return True, "登录失败次数过多，请完成验证码后继续"
-        if ip_failures >= max_failures or email_failures >= max_failures:
+        if ip_failures >= max_failures or account_failures >= max_failures:
             return True, "登录已被临时锁定，请完成验证码"
 
         return False, None
@@ -216,8 +241,9 @@ class UserService:
         slide_x: Optional[int] = None,
         slide_y: Optional[int] = None,
     ) -> tuple[UserModel, str, str]:
-        """用户登录（带验证码和限流）"""
+        """用户登录（带验证码和限流）- 支持用户名或邮箱"""
         redis = await get_redis()
+        account = data.account  # 使用新字段名
 
         # 1. 检查 IP 封禁状态
         blocked_key = UserRedisKey.login_blocked_ip(client_ip)
@@ -231,8 +257,8 @@ class UserService:
         ip_failures = await redis.get(failures_key)
         ip_failures = int(ip_failures) if ip_failures else 0
 
-        # 3. 检查是否需要验证码
-        user = await self.db.users.find_one({"email": data.email})
+        # 3. 根据账号类型查询用户
+        user = await self._find_user_by_account(account)
         needs_captcha = False
 
         if user:
@@ -249,27 +275,27 @@ class UserService:
                 if not captcha_token or slide_x is None or slide_y is None:
                     raise CaptchaRequiredError("请完成图形验证码")
                 if not await self.captcha.verify_captcha(captcha_token, slide_x, slide_y):
-                    await self._record_login_failure(data.email, client_ip)
+                    await self._record_login_failure(account, client_ip)
                     raise InvalidCredentialsError("验证码验证失败")
 
         # 5. 验证用户凭证
         if not user:
-            await self._record_login_failure(data.email, client_ip)
-            raise InvalidCredentialsError("邮箱或密码错误")
+            await self._record_login_failure(account, client_ip)
+            raise InvalidCredentialsError("用户名或密码错误")
 
         # 检查密码字段是否存在
         if not user.get("hashed_password"):
-            logger.error(f"用户 {data.email} 缺少 hashed_password 字段，无法登录")
-            await self._record_login_failure(data.email, client_ip)
+            logger.error(f"用户 {account} 缺少 hashed_password 字段，无法登录")
+            await self._record_login_failure(account, client_ip)
             raise InvalidCredentialsError("账号数据异常，请联系管理员")
 
         if not password_manager.verify_password(data.password, user["hashed_password"]):
-            await self._record_login_failure(data.email, client_ip)
-            raise InvalidCredentialsError("邮箱或密码错误")
+            await self._record_login_failure(account, client_ip)
+            raise InvalidCredentialsError("用户名或密码错误")
 
         # 8. ❗️ 检查用户状态 (根据不同情况抛出不同异常)
         user_status = user.get("status", UserStatus.ACTIVE)
-        
+
         # 8.1 用户状态检查
         if user_status == UserStatus.PENDING:
             raise InvalidUserStatusError("账号待审核，请等待管理员审核")
@@ -277,13 +303,13 @@ class UserService:
             raise InvalidUserStatusError("账号已被禁用")
         if user_status == UserStatus.REJECTED:
             raise InvalidUserStatusError("账号已被拒绝")
-        
+
         # 8.2 is_active 字段检查
         if not user.get("is_active", True):
             raise InvalidCredentialsError("账号已被禁用")
 
         # 7. 登录成功，清除失败记录
-        await self._clear_login_failures(data.email, client_ip)
+        await self._clear_login_failures(account, client_ip)
 
         # 8. 记录 IP 信任
         user_id = str(user["_id"])
@@ -320,7 +346,7 @@ class UserService:
 
         return user_model, access_token, refresh_token
 
-    async def _record_login_failure(self, email: str, client_ip: str) -> None:
+    async def _record_login_failure(self, account: str, client_ip: str) -> None:
         """记录登录失败"""
         redis = await get_redis()
 
@@ -329,21 +355,21 @@ class UserService:
         ip_failures = await redis.incr(ip_key)
         await redis.expire(ip_key, settings.LOGIN_FAIL_WINDOW)
 
-        # 增加邮箱失败计数
-        email_key = UserRedisKey.login_failures_email(email)
-        await redis.incr(email_key)
-        await redis.expire(email_key, settings.LOGIN_FAIL_WINDOW)
+        # 增加账号失败计数
+        account_key = f"login_failures:account:{account}"
+        await redis.incr(account_key)
+        await redis.expire(account_key, settings.LOGIN_FAIL_WINDOW)
 
         # 检查是否需要封禁
         if ip_failures >= settings.LOGIN_MAX_ATTEMPTS:
             blocked_key = UserRedisKey.login_blocked_ip(client_ip)
             await redis.set(blocked_key, settings.LOGIN_BLOCK_DURATION, ex=settings.LOGIN_BLOCK_DURATION)
 
-    async def _clear_login_failures(self, email: str, client_ip: str) -> None:
+    async def _clear_login_failures(self, account: str, client_ip: str) -> None:
         """清除登录失败记录"""
         redis = await get_redis()
         await redis.delete(UserRedisKey.login_failures_ip(client_ip))
-        await redis.delete(UserRedisKey.login_failures_email(email))
+        await redis.delete(f"login_failures:account:{account}")
 
     # ==================== 用户信息 ====================
 
@@ -356,10 +382,27 @@ class UserService:
         return UserModel.model_validate(user)
 
     async def update_user(self, user_id: str, data: UpdateUserRequest) -> Optional[UserModel]:
-        """更新用户信息"""
+        """更新用户信息 - 检查 email 和 username 唯一性"""
         update_data = {k: v for k, v in data.model_dump(exclude_unset=True).items() if v is not None}
         if not update_data:
             return await self.get_user(user_id)
+
+        # 检查唯一性（排除当前用户）
+        if "email" in update_data:
+            existing = await self.db.users.find_one({
+                "email": update_data["email"],
+                "_id": {"$ne": ObjectId(user_id)}  # 排除自己
+            })
+            if existing:
+                raise ValueError("该邮箱已被其他用户使用")
+
+        if "username" in update_data:
+            existing = await self.db.users.find_one({
+                "username": update_data["username"],
+                "_id": {"$ne": ObjectId(user_id)}  # 排除自己
+            })
+            if existing:
+                raise ValueError("该用户名已被其他用户使用")
 
         update_data["updated_at"] = datetime.utcnow()
 

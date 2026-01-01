@@ -379,11 +379,14 @@ class MCPService:
         # 构建连接配置
         try:
             connection_config = self._build_connection_config(server)
+            logger.debug(f"开始测试 MCP 连接: server_id={server_id}, name={server.name}")
 
             # 测试连接
             tools = await get_mcp_tools(server.name, connection_config)
 
+            # 在连接测试完成后计算延迟
             latency_ms = int((time.time() - start_time) * 1000)
+            logger.debug(f"连接测试完成: server_id={server_id}, latency={latency_ms}ms, tools={len(tools)}")
 
             # 更新状态为可用
             await self._update_server_status(
@@ -392,7 +395,7 @@ class MCPService:
 
             logger.info(
                 f"MCP 服务器连接测试成功: server_id={server_id}, "
-                f"tools={len(tools)}"
+                f"tools={len(tools)}, latency={latency_ms}ms"
             )
 
             return ConnectionTestResponse(
@@ -403,6 +406,7 @@ class MCPService:
 
         except Exception as e:
             latency_ms = int((time.time() - start_time) * 1000)
+            logger.debug(f"连接测试失败: server_id={server_id}, latency={latency_ms}ms, error={str(e)}")
 
             # 更新状态
             await self._update_server_status(

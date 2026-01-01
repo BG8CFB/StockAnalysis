@@ -375,11 +375,28 @@ class AdminService:
         user_id: str,
         update_data: dict,
     ) -> UserModel:
-        """更新用户信息"""
+        """更新用户信息 - 检查 email 和 username 唯一性"""
         # 过滤 None 值
         update_data = {k: v for k, v in update_data.items() if v is not None}
         if not update_data:
             return await self._get_user_model(user_id)
+
+        # 检查唯一性（排除当前用户）
+        if "email" in update_data:
+            existing = await self.db.users.find_one({
+                "email": update_data["email"],
+                "_id": {"$ne": ObjectId(user_id)}  # 排除自己
+            })
+            if existing:
+                raise ValueError("该邮箱已被其他用户使用")
+
+        if "username" in update_data:
+            existing = await self.db.users.find_one({
+                "username": update_data["username"],
+                "_id": {"$ne": ObjectId(user_id)}  # 排除自己
+            })
+            if existing:
+                raise ValueError("该用户名已被其他用户使用")
 
         update_data["updated_at"] = datetime.utcnow()
 

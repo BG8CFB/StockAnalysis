@@ -9,7 +9,7 @@ import logging
 import asyncio
 import time
 from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict
 from bson import ObjectId
 
 from core.db.mongodb import mongodb
@@ -21,8 +21,13 @@ from core.ai.model.schemas import (
     AIModelConfigResponse,
     AIModelTestRequest,
     ConnectionTestResponse,
+    ListModelsRequest,
+    ListModelsResponse,
+    ModelInfo,
+    PlatformTypeEnum,
+    PresetPlatformEnum,
 )
-from core.security.encryption import encrypt_sensitive_data, decrypt_sensitive_data, is_encrypted
+from core.security.encryption import encrypt_sensitive_data
 
 logger = logging.getLogger(__name__)
 
@@ -78,10 +83,13 @@ class AIModelService:
         # 创建文档
         doc = {
             "name": request.name,
-            "provider": request.provider.value,
+            "platform_type": request.platform_type.value,
+            "platform_name": request.platform_name.value if request.platform_name else None,
+            "provider": request.provider.value if request.provider else None,
             "api_base_url": request.api_base_url,
             "api_key": encrypted_api_key,  # 加密存储
             "model_id": request.model_id,
+            "custom_headers": request.custom_headers,
             "max_concurrency": request.max_concurrency,
             "task_concurrency": request.task_concurrency,
             "batch_concurrency": request.batch_concurrency,
@@ -280,6 +288,10 @@ class AIModelService:
         update_data = {}
         if request.name is not None:
             update_data["name"] = request.name
+        if request.platform_type is not None:
+            update_data["platform_type"] = request.platform_type.value
+        if request.platform_name is not None:
+            update_data["platform_name"] = request.platform_name.value
         if request.provider is not None:
             update_data["provider"] = request.provider.value
         if request.api_base_url is not None:
@@ -289,6 +301,8 @@ class AIModelService:
             update_data["api_key"] = encrypt_sensitive_data(request.api_key)
         if request.model_id is not None:
             update_data["model_id"] = request.model_id
+        if request.custom_headers is not None:
+            update_data["custom_headers"] = request.custom_headers
         if request.max_concurrency is not None:
             update_data["max_concurrency"] = request.max_concurrency
         if request.task_concurrency is not None:
@@ -436,6 +450,155 @@ class AIModelService:
                 message=f"连接测试失败: {str(e)}",
                 latency_ms=latency_ms,
             )
+
+    async def list_available_models(
+        self,
+        request: ListModelsRequest
+    ) -> ListModelsResponse:
+        """
+        获取可用的模型列表
+
+        尝试从 API 获取，失败时使用预设模型列表作为兜底。
+
+        Args:
+            request: 获取模型列表请求
+
+        Returns:
+            模型列表响应
+        """
+        import httpx
+
+        # 如果是预设平台，先尝试从 API 获取
+        if request.platform_type == PlatformTypeEnum.PRESET and request.platform_name:
+            # 预设平台的模型列表配置
+            preset_platforms_models = {
+                PresetPlatformEnum.OPENAI: [
+                    "gpt-4o", "gpt-4o-mini", "o1-preview", "o1-mini",
+                    "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo"
+                ],
+                PresetPlatformEnum.ANTHROPIC: [
+                    "claude-sonnet-4-5-20250514", "claude-opus-4-20250514",
+                    "claude-3-5-haiku-20241022", "claude-3-haiku-20240307"
+                ],
+                PresetPlatformEnum.AZURE_OPENAI: [
+                    "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-35-turbo"
+                ],
+                PresetPlatformEnum.BAIDU: [
+                    "ernie-4.0-8k", "ernie-3.5-8k", "ernie-speed-8k", "ernie-lite-8k"
+                ],
+                PresetPlatformEnum.ALIBABA: [
+                    "qwen-max", "qwen-plus", "qwen-turbo", "qwen-long"
+                ],
+                PresetPlatformEnum.TENCENT: [
+                    "hunyuan-pro", "hunyuan-standard", "hunyuan-lite"
+                ],
+                PresetPlatformEnum.DEEPSEEK: [
+                    "deepseek-chat", "deepseek-coder"
+                ],
+                PresetPlatformEnum.MOONSHOT: [
+                    "moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"
+                ],
+                PresetPlatformEnum.ZHIPU: [
+                    "glm-4-plus",
+                    "glm-4-plus-coder",
+                    "glm-4-0520",
+                    "glm-4-0520-coder",
+                    "glm-4-air",
+                    "glm-4-flash"
+                ],
+                PresetPlatformEnum.ZHIPU_CODING: [
+                    "glm-4.7"  # 编程套餐专用模型
+                ],
+            }
+
+            fallback_models = preset_platforms_models.get(request.platform_name, [])
+
+            # 只有支持列出模型的平台才尝试 API 调用
+            support_list_models_platforms = [
+                PresetPlatformEnum.OPENAI,
+                PresetPlatformEnum.AZURE_OPENAI,
+                PresetPlatformEnum.ALIBABA,
+                PresetPlatformEnum.DEEPSEEK,
+                PresetPlatformEnum.MOONSHOT,
+            ]
+
+            if request.platform_name in support_list_models_platforms:
+                try:
+                    # 构建请求头
+                    headers = {
+                        "Authorization": f"Bearer {request.api_key}",
+                        **request.custom_headers
+                    }
+
+                    # 构建模型列表端点 URL
+                    models_url = f"{request.api_base_url.rstrip('/')}/models"
+
+                    # 发送请求
+                    async with httpx.AsyncClient(timeout=request.timeout_seconds) as client:
+                        response = await client.get(models_url, headers=headers)
+                        response.raise_for_status()
+                        data = response.json()
+
+                        # 解析响应
+                        models = []
+                        if "data" in data:
+                            for item in data["data"]:
+                                models.append(ModelInfo(
+                                    id=item.get("id", ""),
+                                    name=item.get("id", ""),
+                                    created_at=item.get("created"),
+                                    owned_by=item.get("owned_by")
+                                ))
+
+                        logger.info(
+                            f"成功从 API 获取模型列表: platform={request.platform_name}, "
+                            f"count={len(models)}"
+                        )
+
+                        return ListModelsResponse(
+                            success=True,
+                            message=f"成功获取 {len(models)} 个模型",
+                            models=models,
+                            is_from_api=True,
+                            fallback_used=False
+                        )
+
+                except httpx.TimeoutException:
+                    logger.warning(f"获取模型列表超时: platform={request.platform_name}")
+                except httpx.HTTPStatusError as e:
+                    logger.warning(
+                        f"获取模型列表 HTTP 错误: platform={request.platform_name}, "
+                        f"status={e.response.status_code}"
+                    )
+                except Exception as e:
+                    logger.warning(f"获取模型列表失败: platform={request.platform_name}, error={e}")
+
+            # API 调用失败，使用预设列表作为兜底
+            logger.info(f"使用预设模型列表作为兜底: platform={request.platform_name}")
+            models = [
+                ModelInfo(
+                    id=model_id,
+                    name=model_id,
+                    created_at=None,
+                    owned_by=None
+                ) for model_id in fallback_models
+            ]
+            return ListModelsResponse(
+                success=True,
+                message=f"API 获取失败，使用预设列表（{len(models)} 个模型）",
+                models=models,
+                is_from_api=False,
+                fallback_used=True
+            )
+
+        # 自定义平台，直接返回空列表（用户手动输入）
+        return ListModelsResponse(
+            success=True,
+            message="自定义平台请手动输入模型 ID",
+            models=[],
+            is_from_api=False,
+            fallback_used=False
+        )
 
     # ========================================================================
     # LLM Provider 获取

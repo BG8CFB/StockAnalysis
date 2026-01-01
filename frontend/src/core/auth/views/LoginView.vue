@@ -55,13 +55,12 @@
           @submit.prevent
         >
           <el-form-item
-            label="邮箱地址"
-            prop="email"
+            label="账号"
+            prop="account"
           >
             <el-input
-              v-model="form.email"
-              type="email"
-              placeholder="your@email.com"
+              v-model="form.account"
+              placeholder="请输入用户名或邮箱"
               :prefix-icon="Message"
             />
           </el-form-item>
@@ -161,7 +160,7 @@ const captchaReason = ref('')
 const captchaData = ref<CaptchaData | null>(null)
 
 const form = reactive({
-  email: '',
+  account: '',
   password: '',
   captcha_token: '',
   slide_x: 0,
@@ -169,9 +168,9 @@ const form = reactive({
 })
 
 const rules: FormRules = {
-  email: [
-    { required: true, message: '请输入邮箱', trigger: 'blur' },
-    { type: 'email', message: '请输入正确的邮箱格式', trigger: 'blur' },
+  account: [
+    { required: true, message: '请输入用户名或邮箱', trigger: 'blur' },
+    { min: 2, message: '用户名或邮箱长度至少2位', trigger: 'blur' },
   ],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
@@ -216,7 +215,7 @@ async function handleLogin() {
     loading.value = true
     try {
       const success = await userStore.login(
-        form.email,
+        form.account,
         form.password,
         form.captcha_token || undefined,
         form.slide_x || undefined,

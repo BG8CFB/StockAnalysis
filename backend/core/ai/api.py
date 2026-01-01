@@ -5,10 +5,8 @@
 """
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import JSONResponse
 
 from core.auth.dependencies import get_current_active_user
 from core.user.models import UserModel
@@ -20,6 +18,8 @@ from core.ai.model.schemas import (
     AIModelConfigResponse,
     AIModelTestRequest,
     ConnectionTestResponse,
+    ListModelsRequest,
+    ListModelsResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -202,6 +202,25 @@ async def test_model_connection(
     """
     service = get_model_service()
     return await service.test_model_connection(request)
+
+
+@router.post("/models/list-available", response_model=ListModelsResponse)
+async def list_available_models(
+    request: ListModelsRequest,
+    current_user: UserModel = Depends(get_current_active_user),
+):
+    """
+    获取可用的模型列表
+
+    Args:
+        request: 获取模型列表请求
+        current_user: 当前用户
+
+    Returns:
+        模型列表响应
+    """
+    service = get_model_service()
+    return await service.list_available_models(request)
 
 
 # =============================================================================

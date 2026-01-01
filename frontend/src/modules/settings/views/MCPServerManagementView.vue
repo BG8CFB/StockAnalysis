@@ -9,6 +9,14 @@
         </p>
       </div>
       <div class="header-actions">
+        <!-- MCP 系统设置 - 仅管理员可见 -->
+        <el-button
+          v-if="canManageSystemServers"
+          :icon="Setting"
+          @click="showSystemSettingsDialog = true"
+        >
+          系统设置
+        </el-button>
         <!-- 导入配置 - 所有用户可用 -->
         <el-button
           :icon="Upload"
@@ -612,12 +620,192 @@
         <p>正在测试连接...</p>
       </div>
     </el-dialog>
+
+    <!-- MCP 系统设置对话框 - 仅管理员可见 -->
+    <el-dialog
+      v-model="showSystemSettingsDialog"
+      title="MCP 系统配置"
+      width="700px"
+      @close="handleSystemSettingsClose"
+    >
+      <el-form
+        ref="settingsFormRef"
+        :model="systemSettings"
+        :rules="systemSettingsRules"
+        label-width="160px"
+        class="system-settings-form"
+      >
+        <!-- 连接池配置 -->
+        <div class="settings-section">
+          <h4 class="section-title">
+            <el-icon><Connection /></el-icon>
+            连接池配置
+          </h4>
+
+          <el-form-item
+            label="个人并发上限"
+            prop="pool_personal_max_concurrency"
+          >
+            <el-input-number
+              v-model="systemSettings.pool_personal_max_concurrency"
+              :min="1"
+              :max="1000"
+              :step="10"
+            />
+            <span class="form-item-desc">每个用户的个人 MCP 最大并发连接数</span>
+          </el-form-item>
+
+          <el-form-item
+            label="公共并发上限"
+            prop="pool_public_per_user_max"
+          >
+            <el-input-number
+              v-model="systemSettings.pool_public_per_user_max"
+              :min="1"
+              :max="100"
+              :step="1"
+            />
+            <span class="form-item-desc">每个用户使用公共 MCP 的最大并发连接数</span>
+          </el-form-item>
+
+          <el-form-item
+            label="个人队列大小"
+            prop="pool_personal_queue_size"
+          >
+            <el-input-number
+              v-model="systemSettings.pool_personal_queue_size"
+              :min="10"
+              :max="1000"
+              :step="10"
+            />
+            <span class="form-item-desc">个人 MCP 请求队列最大容量</span>
+          </el-form-item>
+
+          <el-form-item
+            label="公共队列大小"
+            prop="pool_public_queue_size"
+          >
+            <el-input-number
+              v-model="systemSettings.pool_public_queue_size"
+              :min="10"
+              :max="500"
+              :step="10"
+            />
+            <span class="form-item-desc">公共 MCP 请求队列最大容量</span>
+          </el-form-item>
+        </div>
+
+        <!-- 连接生命周期配置 -->
+        <div class="settings-section">
+          <h4 class="section-title">
+            <el-icon><Timer /></el-icon>
+            连接生命周期
+          </h4>
+
+          <el-form-item
+            label="完成超时时间"
+            prop="connection_complete_timeout"
+          >
+            <el-input-number
+              v-model="systemSettings.connection_complete_timeout"
+              :min="1"
+              :max="300"
+              :step="1"
+            />
+            <span class="form-item-desc">任务完成后连接销毁等待时间（秒）</span>
+          </el-form-item>
+
+          <el-form-item
+            label="失败超时时间"
+            prop="connection_failed_timeout"
+          >
+            <el-input-number
+              v-model="systemSettings.connection_failed_timeout"
+              :min="1"
+              :max="600"
+              :step="1"
+            />
+            <span class="form-item-desc">任务失败后连接销毁等待时间（秒）</span>
+          </el-form-item>
+        </div>
+
+        <!-- 健康检查配置 -->
+        <div class="settings-section">
+          <h4 class="section-title">
+            <el-icon><Monitor /></el-icon>
+            健康检查
+          </h4>
+
+          <el-form-item
+            label="启用健康检查"
+            prop="health_check_enabled"
+          >
+            <el-switch v-model="systemSettings.health_check_enabled" />
+            <span class="form-item-desc">自动检测 MCP 服务器状态</span>
+          </el-form-item>
+
+          <el-form-item
+            label="检查间隔时间"
+            prop="health_check_interval"
+          >
+            <el-input-number
+              v-model="systemSettings.health_check_interval"
+              :min="10"
+              :max="3600"
+              :step="10"
+              :disabled="!systemSettings.health_check_enabled"
+            />
+            <span class="form-item-desc">健康检查间隔时间（秒）</span>
+          </el-form-item>
+
+          <el-form-item
+            label="检查超时时间"
+            prop="health_check_timeout"
+          >
+            <el-input-number
+              v-model="systemSettings.health_check_timeout"
+              :min="5"
+              :max="300"
+              :step="1"
+              :disabled="!systemSettings.health_check_enabled"
+            />
+            <span class="form-item-desc">单次健康检查超时时间（秒）</span>
+          </el-form-item>
+        </div>
+
+        <!-- 最后更新时间 -->
+        <div
+          v-if="systemSettings.updated_at"
+          class="last-updated"
+        >
+          <el-text
+            type="info"
+            size="small"
+          >
+            最后更新: {{ formatUpdateTime(systemSettings.updated_at) }}
+          </el-text>
+        </div>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="handleSystemSettingsReset">
+          恢复默认
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="systemSettingsSaving"
+          @click="handleSystemSettingsSave"
+        >
+          保存配置
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, watch, computed } from 'vue'
-import { ElMessage, ElMessageBox, type UploadFile, type UploadRawFile } from 'element-plus'
+import { ElMessage, ElMessageBox, type UploadFile, type UploadRawFile, type FormInstance, type FormRules } from 'element-plus'
 import {
   Plus,
   Edit,
@@ -632,6 +820,8 @@ import {
   MagicStick,
   Loading,
   InfoFilled,
+  Setting,
+  Timer,
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@core/auth/store'
 import { useTradingAgentsStore } from '@/modules/trading_agents/store'
@@ -642,6 +832,7 @@ import {
   type MCPServerConfigCreate,
   type MCPTool,
 } from '@/modules/trading_agents/types'
+import { getMCPSettings, updateMCPSettings, resetMCPSettings, type MCPSystemSettings } from '../api/mcp'
 
 const userStore = useUserStore()
 const store = useTradingAgentsStore()
@@ -662,6 +853,7 @@ const showImportDialog = ref(false)      // 导入配置对话框
 const showJsonEditDialog = ref(false)    // JSON编辑对话框(添加/编辑统一)
 const showToolsDialog = ref(false)
 const showTestDialog = ref(false)
+const showSystemSettingsDialog = ref(false)  // MCP 系统设置对话框
 
 // JSON编辑器状态
 const isEditMode = ref(false)            // 是否为编辑模式
@@ -726,6 +918,128 @@ const isDuplicateServer = computed(() => {
   }
   return existingServerNames.value.has(parsedServer.value.name)
 })
+
+// =============================================================================
+// MCP 系统设置相关
+// =============================================================================
+
+// MCP 系统设置表单引用
+const settingsFormRef = ref<FormInstance>()
+
+// MCP 系统设置状态
+const systemSettingsSaving = ref(false)
+
+// MCP 系统设置数据
+const systemSettings = reactive<MCPSystemSettings>({
+  pool_personal_max_concurrency: 100,
+  pool_public_per_user_max: 10,
+  pool_personal_queue_size: 200,
+  pool_public_queue_size: 50,
+  connection_complete_timeout: 10,
+  connection_failed_timeout: 30,
+  health_check_enabled: true,
+  health_check_interval: 300,
+  health_check_timeout: 30,
+})
+
+// MCP 系统设置验证规则
+const systemSettingsRules: FormRules<MCPSystemSettings> = {
+  pool_personal_max_concurrency: [
+    { required: true, message: '请输入个人并发上限', trigger: 'blur' },
+    { type: 'number', min: 1, max: 1000, message: '范围为 1-1000', trigger: 'blur' },
+  ],
+  pool_public_per_user_max: [
+    { required: true, message: '请输入公共并发上限', trigger: 'blur' },
+    { type: 'number', min: 1, max: 100, message: '范围为 1-100', trigger: 'blur' },
+  ],
+  pool_personal_queue_size: [
+    { required: true, message: '请输入个人队列大小', trigger: 'blur' },
+    { type: 'number', min: 10, max: 1000, message: '范围为 10-1000', trigger: 'blur' },
+  ],
+  pool_public_queue_size: [
+    { required: true, message: '请输入公共队列大小', trigger: 'blur' },
+    { type: 'number', min: 10, max: 500, message: '范围为 10-500', trigger: 'blur' },
+  ],
+  connection_complete_timeout: [
+    { required: true, message: '请输入完成超时时间', trigger: 'blur' },
+    { type: 'number', min: 1, max: 300, message: '范围为 1-300', trigger: 'blur' },
+  ],
+  connection_failed_timeout: [
+    { required: true, message: '请输入失败超时时间', trigger: 'blur' },
+    { type: 'number', min: 1, max: 600, message: '范围为 1-600', trigger: 'blur' },
+  ],
+  health_check_interval: [
+    { required: true, message: '请输入检查间隔时间', trigger: 'blur' },
+    { type: 'number', min: 10, max: 3600, message: '范围为 10-3600', trigger: 'blur' },
+  ],
+  health_check_timeout: [
+    { required: true, message: '请输入检查超时时间', trigger: 'blur' },
+    { type: 'number', min: 5, max: 300, message: '范围为 5-300', trigger: 'blur' },
+  ],
+}
+
+// 加载 MCP 系统设置
+async function loadSystemSettings() {
+  try {
+    const data = await getMCPSettings()
+    Object.assign(systemSettings, data)
+  } catch (error) {
+    ElMessage.error('加载系统配置失败')
+  }
+}
+
+// 保存 MCP 系统设置
+async function handleSystemSettingsSave() {
+  if (!settingsFormRef.value) return
+
+  await settingsFormRef.value.validate(async (valid) => {
+    if (!valid) return
+
+    systemSettingsSaving.value = true
+    try {
+      const data = await updateMCPSettings(systemSettings)
+      Object.assign(systemSettings, data)
+      ElMessage.success('MCP 系统配置已保存，已对所有用户生效')
+      showSystemSettingsDialog.value = false
+    } catch (error) {
+      ElMessage.error('保存系统配置失败')
+    } finally {
+      systemSettingsSaving.value = false
+    }
+  })
+}
+
+// 恢复默认 MCP 系统设置
+async function handleSystemSettingsReset() {
+  try {
+    await ElMessageBox.confirm(
+      '确定要恢复为默认配置吗？当前配置将被清空，系统将使用 YAML 默认值。',
+      '恢复默认配置',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    )
+
+    await resetMCPSettings()
+    await loadSystemSettings()
+    ElMessage.success('已恢复为默认配置')
+  } catch {
+    // 用户取消
+  }
+}
+
+// 关闭 MCP 系统设置对话框
+function handleSystemSettingsClose() {
+  // 重新加载配置以确保数据一致
+  loadSystemSettings()
+}
+
+// 格式化更新时间
+function formatUpdateTime(dateStr: string): string {
+  return new Date(dateStr).toLocaleString('zh-CN')
+}
 
 // =============================================================================
 // 导入配置相关方法
@@ -1115,6 +1429,10 @@ function getStatusLabel(status: MCPServerStatusEnum): string {
 // 初始化
 onMounted(() => {
   store.fetchServers()
+  // 管理员加载系统配置
+  if (canManageSystemServers.value) {
+    loadSystemSettings()
+  }
 })
 </script>
 
@@ -1277,5 +1595,44 @@ onMounted(() => {
   font-size: 48px;
   color: #409eff;
   margin-bottom: 16px;
+}
+
+/* MCP 系统设置对话框样式 */
+.system-settings-form {
+  max-height: 500px;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.settings-section {
+  margin-bottom: 24px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.settings-section:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.section-title .el-icon {
+  color: #409eff;
+}
+
+.form-item-desc {
+  margin-left: 12px;
+  font-size: 12px;
+  color: #909399;
 }
 </style>

@@ -1,9 +1,4 @@
 {
-  "enabledPlugins": {
-    "glm-plan-usage@zai-coding-plugins": true,
-    "glm-plan-bug@zai-coding-plugins": true
-  },
-  "alwaysThinkingEnabled": true,
   "permissions": {
     "allow": [
       "Bash",
@@ -89,9 +84,16 @@
       "Bash(timeout 60 python:*)",
       "Bash(dir:*)",
       "Edit",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(git:*)",
+      "SlashCommand(/commit)"
     ],
     "deny": [],
     "ask": []
-  }
+  },
+  "enabledPlugins": {
+    "glm-plan-usage@zai-coding-plugins": true,
+    "glm-plan-bug@zai-coding-plugins": true
+  },
+  "alwaysThinkingEnabled": true
 }
