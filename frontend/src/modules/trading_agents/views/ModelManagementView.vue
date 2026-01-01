@@ -44,7 +44,10 @@
               width="80"
             >
               <template #default="{ row }">
-                <el-tag :type="row.platform_type === 'preset' ? 'success' : 'info'" size="small">
+                <el-tag
+                  :type="row.platform_type === 'preset' ? 'success' : 'info'"
+                  size="small"
+                >
                   {{ row.platform_type === 'preset' ? '预设' : '自定义' }}
                 </el-tag>
               </template>
@@ -143,7 +146,10 @@
               width="80"
             >
               <template #default="{ row }">
-                <el-tag :type="row.platform_type === 'preset' ? 'success' : 'info'" size="small">
+                <el-tag
+                  :type="row.platform_type === 'preset' ? 'success' : 'info'"
+                  size="small"
+                >
                   {{ row.platform_type === 'preset' ? '预设' : '自定义' }}
                 </el-tag>
               </template>
@@ -266,10 +272,20 @@
         </el-form-item>
 
         <!-- 平台类型选择 -->
-        <el-form-item label="平台类型" prop="platform_type">
-          <el-radio-group v-model="formData.platform_type" @change="handlePlatformTypeChange">
-            <el-radio value="preset">预设平台</el-radio>
-            <el-radio value="custom">自定义平台</el-radio>
+        <el-form-item
+          label="平台类型"
+          prop="platform_type"
+        >
+          <el-radio-group
+            v-model="formData.platform_type"
+            @change="handlePlatformTypeChange"
+          >
+            <el-radio value="preset">
+              预设平台
+            </el-radio>
+            <el-radio value="custom">
+              自定义平台
+            </el-radio>
           </el-radio-group>
         </el-form-item>
 
@@ -282,8 +298,8 @@
           <el-select
             v-model="formData.platform_name"
             placeholder="选择平台"
-            @change="handlePresetPlatformChange"
             style="width: 100%"
+            @change="handlePresetPlatformChange"
           >
             <el-option
               v-for="platform in presetPlatforms"
@@ -300,7 +316,10 @@
         </el-form-item>
 
         <!-- API 地址 -->
-        <el-form-item label="API 地址" prop="api_base_url">
+        <el-form-item
+          label="API 地址"
+          prop="api_base_url"
+        >
           <el-input
             v-model="formData.api_base_url"
             placeholder="https://api.openai.com/v1"
@@ -309,7 +328,10 @@
         </el-form-item>
 
         <!-- API Key -->
-        <el-form-item label="API Key" prop="api_key">
+        <el-form-item
+          label="API Key"
+          prop="api_key"
+        >
           <el-input
             v-model="formData.api_key"
             type="password"
@@ -321,7 +343,10 @@
         <!-- 模型选择/输入 -->
         <!-- 预设平台且非手动输入 -->
         <template v-if="formData.platform_type === 'preset' && !manualInputModel">
-          <el-form-item label="模型" prop="model_id">
+          <el-form-item
+            label="模型"
+            prop="model_id"
+          >
             <div style="display: flex; gap: 8px;">
               <el-select
                 v-model="formData.model_id"
@@ -350,7 +375,11 @@
         </template>
 
         <!-- 自定义平台或手动输入 -->
-        <el-form-item v-else label="模型 ID" prop="model_id">
+        <el-form-item
+          v-else
+          label="模型 ID"
+          prop="model_id"
+        >
           <el-input
             v-model="formData.model_id"
             placeholder="gpt-4o 或自定义模型 ID"
@@ -359,18 +388,37 @@
 
         <!-- 预设平台可切换到手动输入 -->
         <el-form-item v-if="formData.platform_type === 'preset'">
-          <el-checkbox v-model="manualInputModel">手动输入模型 ID</el-checkbox>
+          <el-checkbox v-model="manualInputModel">
+            手动输入模型 ID
+          </el-checkbox>
         </el-form-item>
 
         <!-- 自定义请求头 -->
         <el-form-item label="自定义请求头">
-          <el-button size="small" @click="addCustomHeader">
+          <el-button
+            size="small"
+            @click="addCustomHeader"
+          >
             添加请求头
           </el-button>
 
-          <div v-for="(value, key, index) in formData.custom_headers" :key="index" style="margin-top: 8px; display: flex; gap: 8px;">
-            <el-input v-model="formData.custom_headers[key]" placeholder="Header Value" style="flex: 1" />
-            <el-button size="small" type="danger" @click="removeCustomHeader(key)">删除</el-button>
+          <div
+            v-for="(value, key, index) in formData.custom_headers"
+            :key="index"
+            style="margin-top: 8px; display: flex; gap: 8px;"
+          >
+            <el-input
+              v-model="formData.custom_headers[key]"
+              placeholder="Header Value"
+              style="flex: 1"
+            />
+            <el-button
+              size="small"
+              type="danger"
+              @click="removeCustomHeader(key)"
+            >
+              删除
+            </el-button>
           </div>
         </el-form-item>
 

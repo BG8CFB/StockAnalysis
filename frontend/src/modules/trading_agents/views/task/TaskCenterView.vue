@@ -14,7 +14,9 @@
 
     <!-- 统计条 -->
     <div class="stats-bar">
-      <div class="stats-label">统计概览：</div>
+      <div class="stats-label">
+        统计概览：
+      </div>
       <div class="stats-items">
         <div
           v-for="item in statsItems"
@@ -85,10 +87,22 @@
               style="width: 120px"
               @change="handleSearch"
             >
-              <el-option label="全部" value="" />
-              <el-option label="买入" value="buy" />
-              <el-option label="卖出" value="sell" />
-              <el-option label="持有" value="hold" />
+              <el-option
+                label="全部"
+                value=""
+              />
+              <el-option
+                label="买入"
+                value="buy"
+              />
+              <el-option
+                label="卖出"
+                value="sell"
+              />
+              <el-option
+                label="持有"
+                value="hold"
+              />
             </el-select>
           </el-form-item>
 
@@ -103,10 +117,22 @@
               style="width: 110px"
               @change="handleSearch"
             >
-              <el-option label="全部" value="" />
-              <el-option label="高" value="high" />
-              <el-option label="中" value="medium" />
-              <el-option label="低" value="low" />
+              <el-option
+                label="全部"
+                value=""
+              />
+              <el-option
+                label="高"
+                value="high"
+              />
+              <el-option
+                label="中"
+                value="medium"
+              />
+              <el-option
+                label="低"
+                value="low"
+              />
             </el-select>
           </el-form-item>
 
