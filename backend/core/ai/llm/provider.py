@@ -25,6 +25,7 @@ class Message:
     content: str
     tool_calls: Optional[List[Dict[str, Any]]] = None
     tool_call_id: Optional[str] = None
+    reasoning_content: Optional[str] = None  # 思考内容（用于支持思考模式的模型）
 
 
 @dataclass
@@ -58,6 +59,8 @@ class ChatResponse:
     tool_calls: Optional[List[ToolCall]] = None
     usage: Optional[Dict[str, int]] = None
     model: str = ""
+    reasoning_content: Optional[str] = None  # 思考内容
+    thinking_tokens: Optional[int] = None  # 思考 token 数量
 
 
 # =============================================================================
@@ -235,6 +238,10 @@ def format_messages_for_logging(messages: List[Message]) -> List[Dict[str, Any]]
         }
         if msg.tool_calls:
             formatted_msg["tool_calls"] = f"[{len(msg.tool_calls)} tool calls]"
+        if msg.reasoning_content:
+            # 记录思考内容的前100个字符
+            reasoning_preview = msg.reasoning_content[:100] + "..." if len(msg.reasoning_content) > 100 else msg.reasoning_content
+            formatted_msg["reasoning_content"] = reasoning_preview
         formatted.append(formatted_msg)
     return formatted
 

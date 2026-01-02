@@ -79,6 +79,12 @@ export enum StockMarketEnum {
   US = 'us',                // 美股
 }
 
+export enum ThinkingModeEnum {
+  PRESERVED = 'preserved',      // 保留式思考（GLM-4.7, Claude Opus 4.5）
+  CLEAR_ON_NEW = 'clear_on_new', // 新轮次清除（DeepSeek）
+  AUTO = 'auto',                 // 自动处理（OpenAI 等）
+}
+
 // =============================================================================
 // AI 模型配置
 // =============================================================================
@@ -99,6 +105,8 @@ export interface AIModelConfig {
   timeout_seconds: number
   temperature: number
   enabled: boolean
+  thinking_enabled: boolean  // 是否支持思考模式
+  thinking_mode?: ThinkingModeEnum | null  // 思考模式类型
   is_system: boolean
   owner_id: string | null
   masked_api_key: string
@@ -121,6 +129,8 @@ export interface AIModelConfigCreate {
   timeout_seconds?: number
   temperature?: number
   enabled?: boolean
+  thinking_enabled?: boolean  // 是否支持思考模式
+  thinking_mode?: ThinkingModeEnum | null  // 思考模式类型
   is_system?: boolean
 }
 
@@ -139,6 +149,8 @@ export interface AIModelConfigUpdate {
   timeout_seconds?: number
   temperature?: number
   enabled?: boolean
+  thinking_enabled?: boolean  // 是否支持思考模式
+  thinking_mode?: ThinkingModeEnum | null  // 思考模式类型
 }
 
 export interface AIModelTestRequest {
@@ -412,6 +424,30 @@ export interface UnifiedTaskResponse {
   message: string
 }
 
+// 任务响应（用于单个任务详情）
+export interface AnalysisTaskResponse {
+  id: string
+  user_id: string
+  stock_code: string
+  trade_date: string
+  status: TaskStatusEnum
+  current_phase: number
+  current_agent: string | null
+  progress: number
+  reports: Record<string, string>
+  final_recommendation: RecommendationEnum | null
+  buy_price: number | null
+  sell_price: number | null
+  token_usage: TokenUsage
+  error_message: string | null
+  error_details: Record<string, unknown> | null
+  created_at: string
+  started_at: string | null
+  completed_at: string | null
+  expired_at: string | null
+  batch_id: string | null
+}
+
 // =============================================================================
 // Token 使用统计
 // =============================================================================
@@ -420,6 +456,7 @@ export interface TokenUsage {
   prompt_tokens: number
   completion_tokens: number
   total_tokens: number
+  thinking_tokens?: number  // 思考模式使用的token数量（可选）
 }
 
 // =============================================================================
@@ -432,6 +469,8 @@ export interface TaskEvent {
   timestamp: number
   data: Record<string, unknown>
 }
+
+export type TaskEventHandler = (event: TaskEvent) => void
 
 // =============================================================================
 // 分析报告
@@ -466,19 +505,6 @@ export interface ReportSummary {
     hold: number
   }
 }
-
-// =============================================================================
-// WebSocket 事件
-// =============================================================================
-
-export interface TaskEvent {
-  event_type: string
-  task_id: string
-  timestamp: number
-  data: Record<string, unknown>
-}
-
-export type TaskEventHandler = (event: TaskEvent) => void
 
 // =============================================================================
 // 提供商预设配置

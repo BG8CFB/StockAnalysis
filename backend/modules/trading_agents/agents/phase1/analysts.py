@@ -31,22 +31,22 @@ class GenericAnalystTemplate(AnalystAgent):
     """
 
     def __init__(
-        self, 
-        slug: str, 
-        name: str, 
-        role_definition: str, 
-        llm: LLMProvider, 
-        tools: Optional[List[ToolDefinition]] = None
+        self,
+        slug: str,
+        name: str,
+        role_definition: str,
+        llm: LLMProvider,
+        tools: Optional[List[Any]] = None  # 改为 Any，支持 BaseTool
     ):
         """
         初始化通用分析师
-        
+
         Args:
             slug: 唯一标识
             name: 显示名称
             role_definition: 角色定义 (Prompt)
             llm: LLM Provider
-            tools: 工具列表
+            tools: 工具列表（LangChain BaseTool）
         """
         super().__init__(
             slug=slug,
@@ -71,20 +71,23 @@ class AnalystFactory:
     def __init__(self, llm_provider: LLMProvider, tool_registry: ToolRegistry):
         self.llm = llm_provider
         self.tool_registry = tool_registry
+        # 注入 MCP 工具过滤器
+        from modules.trading_agents.tools.mcp_tool_filter import get_mcp_tool_filter
+        self.mcp_filter = get_mcp_tool_filter()
 
-    def create_analysts(
+    async def create_analysts(
         self,
         config: Phase1Config,
-        user_id: Optional[str] = None,
-        task_id: Optional[str] = None,
+        user_id: str,
+        task_id: str,
     ) -> List[AnalystAgent]:
         """
-        根据配置创建分析师列表
+        根据配置创建分析师列表（异步方法）
 
         Args:
             config: 第一阶段配置
-            user_id: 用户 ID（用于 MCP 连接池，预留）
-            task_id: 任务 ID（用于 MCP 连接池，预留）
+            user_id: 用户 ID（用于 MCP 连接池）
+            task_id: 任务 ID（用于 MCP 连接池）
 
         Returns:
             分析师实例列表
@@ -94,124 +97,99 @@ class AnalystFactory:
         if not config.enabled:
             return []
 
-        # TODO: 在此通过 MCP 工具过滤器获取连接
-        # 当提供 user_id 和 task_id 时，预先获取 MCP 连接
-        # 这将在后续实现中启用
+        if not user_id or not task_id:
+            raise ValueError("user_id 和 task_id 是必需的")
 
         for agent_cfg in config.agents:
             if not agent_cfg.enabled:
                 continue
 
-            # 获取工具
-            tools = self._get_tools_for_agent(agent_cfg)
+            # 获取可执行的 LangChain 工具（通过 MCP 过滤器）
+            langchain_tools = await self._get_tools_for_agent(
+                agent_cfg=agent_cfg,
+                user_id=user_id,
+                task_id=task_id,
+            )
 
-            # 创建实例
+            # 创建实例（传递 BaseTool 列表，不是 ToolDefinition）
             analyst = GenericAnalystTemplate(
                 slug=agent_cfg.slug,
                 name=agent_cfg.name,
                 role_definition=agent_cfg.role_definition,
-                llm=self.llm,  # TODO: 如果支持多模型，这里需要根据 config.model_id 获取特定模型
-                tools=tools
+                llm=self.llm,
+                tools=langchain_tools,  # 类型：List[BaseTool]
             )
 
             analysts.append(analyst)
-            logger.info(f"创建分析师智能体: {analyst.name} ({analyst.slug})")
+            logger.info(
+                f"创建分析师智能体: {analyst.name} ({analyst.slug}), "
+                f"MCP服务器: {agent_cfg.enabled_mcp_servers}, 工具数: {len(langchain_tools)}"
+            )
 
         return analysts
 
-    def _get_tools_for_agent(self, agent_cfg: AgentConfig) -> List[ToolDefinition]:
-        """根据智能体配置获取可用工具"""
-        tools = []
+    async def _get_tools_for_agent(
+        self,
+        agent_cfg: AgentConfig,
+        user_id: str,
+        task_id: str,
+    ) -> List[Any]:
+        """
+        根据智能体配置获取可执行的 LangChain 工具
 
-        # 1. 获取 MCP 工具
-        for server_name in agent_cfg.enabled_mcp_servers:
-            mcp_tools = self.tool_registry.get_tools_by_server(server_name)
-            tools.extend(mcp_tools)
+        Args:
+            agent_cfg: 智能体配置
+            user_id: 用户 ID
+            task_id: 任务 ID
 
-        # 2. 获取本地工具
-        for tool_name in agent_cfg.enabled_local_tools:
-            tool = self.tool_registry.get_tool(tool_name)
-            if tool:
-                tools.append(tool)
-            else:
-                logger.warning(f"智能体 {agent_cfg.slug} 配置的本地工具不存在: {tool_name}")
+        Returns:
+            LangChain BaseTool 列表（可执行）
+        """
+        tools: List[Any] = []
+
+        # 1. 通过 MCP 工具过滤器获取可执行的工具（带连接）
+        # 注意：即使 enabled_mcp_servers 为空，也会使用所有可用服务器（默认全开）
+        try:
+            langchain_tools = await self.mcp_filter.get_tools_for_agent(
+                agent_config=agent_cfg,
+                user_id=user_id,
+                task_id=task_id,
+                all_tools=self.tool_registry.list_all_tools(),
+            )
+
+            tools.extend(langchain_tools)
+            logger.info(
+                f"智能体 {agent_cfg.slug} 获取到 {len(langchain_tools)} 个 MCP 工具 "
+                f"(配置服务器: {agent_cfg.enabled_mcp_servers if agent_cfg.enabled_mcp_servers else '默认全部'})"
+            )
+        except Exception as e:
+            logger.error(
+                f"获取 MCP 工具失败: agent={agent_cfg.slug}, error={e}",
+                exc_info=True
+            )
+            # 继续执行，不中断整个流程
+
+        # 2. 获取本地工具（如果有）
+        if agent_cfg.enabled_local_tools:
+            from langchain_core.tools import StructuredTool
+
+            for tool_name in agent_cfg.enabled_local_tools:
+                tool_def = self.tool_registry.get_tool(tool_name)
+                if tool_def and tool_def.handler:
+                    # 将本地工具包装为 LangChain BaseTool
+                    langchain_tool = StructuredTool.from_function(
+                        func=tool_def.handler,
+                        name=tool_def.name,
+                        description=tool_def.description,
+                    )
+                    tools.append(langchain_tool)
+                elif tool_def:
+                    logger.warning(
+                        f"智能体 {agent_cfg.slug} 配置的本地工具没有处理器: {tool_name}"
+                    )
+                else:
+                    logger.warning(
+                        f"智能体 {agent_cfg.slug} 配置的本地工具不存在: {tool_name}"
+                    )
 
         return tools
-
-
-# =============================================================================
-# 辅助函数 (向后兼容/测试用)
-# =============================================================================
-
-def create_phase1_agents(
-    llm: LLMProvider,
-    tools: List[ToolDefinition] = None,
-) -> List[AnalystAgent]:
-    """
-    创建默认的阶段1分析师智能体 (保留用于测试兼容性)
-    
-    注意：生产环境应使用 AnalystFactory
-    """
-    # 构造默认配置
-    from modules.trading_agents.schemas import AgentConfig
-    
-    default_agents = [
-        AgentConfig(
-            slug="phase1_technical",
-            name="技术分析师",
-            role_definition="""你是一位专业的股票技术分析师。
-你的任务是：
-1. 分析股票的技术指标（MACD、RSI、KDJ、BOLL、MA等）
-2. 识别价格趋势和关键支撑/阻力位
-3. 检测图表形态（头肩顶、双底等）
-4. 给出技术面买入/卖出/持有建议
-
-请使用可用的工具获取股票数据，然后生成专业的技术分析报告。""",
-            when_to_use="技术分析",
-            enabled=True
-        ),
-        AgentConfig(
-            slug="phase1_fundamental",
-            name="基本面分析师",
-            role_definition="""你是一位专业的股票基本面分析师。
-你的任务是：
-1. 分析公司的财务状况（营收、利润、现金流等）
-2. 评估公司的估值水平（PE、PB、PS等）
-3. 研究行业竞争格局和发展前景
-4. 给出基本面买入/卖出/持有建议
-
-请使用可用的工具获取公司数据和行业信息，然后生成专业的基本面分析报告。""",
-            when_to_use="基本面分析",
-            enabled=True
-        ),
-        AgentConfig(
-            slug="phase1_sentiment",
-            name="市场情绪分析师",
-            role_definition="""你是一位专业的市场情绪分析师。
-你的任务是：
-1. 分析市场情绪和投资者预期
-2. 研究资金流向（北向资金、主力资金等）
-3. 分析新闻舆情和社交媒体讨论
-4. 给出情绪面买入/卖出/持有建议
-
-请使用可用的工具获取市场数据和新闻信息，然后生成专业的情绪面分析报告。""",
-            when_to_use="情绪分析",
-            enabled=True
-        )
-    ]
-    
-    # 手动注入工具 (因为这里绕过了 Factory 的工具查找逻辑)
-    # 在这个兼容模式下，我们将所有传入的工具都给所有 agent
-    
-    analysts = []
-    for cfg in default_agents:
-        analyst = GenericAnalystTemplate(
-            slug=cfg.slug,
-            name=cfg.name,
-            role_definition=cfg.role_definition,
-            llm=llm,
-            tools=tools
-        )
-        analysts.append(analyst)
-        
-    return analysts

@@ -57,6 +57,12 @@ class BaseAgent(ABC):
             "total_tokens": 0,
         }
 
+        # 思考模式配置
+        self._thinking_config: Dict[str, Any] = {
+            "enabled": False,
+            "mode": None,
+        }
+
     @abstractmethod
     async def execute(self, state: AgentState) -> str:
         """
@@ -117,6 +123,10 @@ class BaseAgent(ABC):
         self,
         messages: List[Message],
         tools: Optional[List[Tool]] = None,
+        thinking_enabled: bool = False,
+        thinking_mode: Optional[str] = None,
+        budget_tokens: Optional[int] = None,
+        reasoning_effort: Optional[str] = None,
         **kwargs
     ) -> str:
         """
@@ -125,6 +135,10 @@ class BaseAgent(ABC):
         Args:
             messages: 消息列表
             tools: 可用工具列表
+            thinking_enabled: 是否启用思考模式
+            thinking_mode: 思考模式类型
+            budget_tokens: Token预算（Claude）
+            reasoning_effort: 推理级别（OpenAI）
             **kwargs: 其他参数
 
         Returns:
@@ -142,6 +156,10 @@ class BaseAgent(ABC):
             response = await self.llm.chat_completion(
                 messages=messages,
                 tools=llm_tools,
+                thinking_enabled=thinking_enabled,
+                thinking_mode=thinking_mode,
+                budget_tokens=budget_tokens,
+                reasoning_effort=reasoning_effort,
                 **kwargs
             )
 
@@ -150,6 +168,12 @@ class BaseAgent(ABC):
                 self._token_usage["prompt_tokens"] += response.usage.get("prompt_tokens", 0)
                 self._token_usage["completion_tokens"] += response.usage.get("completion_tokens", 0)
                 self._token_usage["total_tokens"] += response.usage.get("total_tokens", 0)
+
+            # 记录思考 token（如果有）
+            if response.thinking_tokens:
+                self._token_usage["thinking_tokens"] = (
+                    self._token_usage.get("thinking_tokens", 0) + response.thinking_tokens
+                )
 
             return response.content
 
@@ -173,6 +197,38 @@ class BaseAgent(ABC):
             "completion_tokens": 0,
             "total_tokens": 0,
         }
+
+    def set_thinking_config(
+        self,
+        enabled: bool = False,
+        mode: Optional[str] = None,
+        budget_tokens: Optional[int] = None,
+        reasoning_effort: Optional[str] = None,
+    ) -> None:
+        """
+        设置思考模式配置
+
+        Args:
+            enabled: 是否启用思考模式
+            mode: 思考模式类型（preserved/clear_on_new/auto）
+            budget_tokens: Token预算（Claude）
+            reasoning_effort: 推理级别（OpenAI）
+        """
+        self._thinking_config = {
+            "enabled": enabled,
+            "mode": mode,
+            "budget_tokens": budget_tokens,
+            "reasoning_effort": reasoning_effort,
+        }
+
+    def get_thinking_config(self) -> Dict[str, Any]:
+        """
+        获取思考模式配置
+
+        Returns:
+            思考配置字典
+        """
+        return self._thinking_config.copy()
 
     async def with_tool_loop_detection(
         self,
@@ -271,11 +327,21 @@ class AnalystAgent(BaseAgent):
                 for tool in self.tools
             ]
 
+        # 获取思考配置
+        thinking_config = self.get_thinking_config()
+
         # 调用 LLM
         report = await self.with_tool_loop_detection(
             task_id=state["task_id"],
             state=state,
-            func=lambda: self.call_llm(messages, llm_tools)
+            func=lambda: self.call_llm(
+                messages,
+                llm_tools,
+                thinking_enabled=thinking_config.get("enabled", False),
+                thinking_mode=thinking_config.get("mode"),
+                budget_tokens=thinking_config.get("budget_tokens"),
+                reasoning_effort=thinking_config.get("reasoning_effort")
+            )
         )
 
         return report
@@ -371,7 +437,15 @@ class DebateAgent(BaseAgent):
             辩论内容
         """
         messages = self.build_messages(state)
-        return await self.call_llm(messages)
+        thinking_config = self.get_thinking_config()
+
+        return await self.call_llm(
+            messages,
+            thinking_enabled=thinking_config.get("enabled", False),
+            thinking_mode=thinking_config.get("mode"),
+            budget_tokens=thinking_config.get("budget_tokens"),
+            reasoning_effort=thinking_config.get("reasoning_effort")
+        )
 
 
 # =============================================================================
@@ -441,4 +515,12 @@ class SummaryAgent(BaseAgent):
             最终报告内容
         """
         messages = self.build_messages(state)
-        return await self.call_llm(messages)
+        thinking_config = self.get_thinking_config()
+
+        return await self.call_llm(
+            messages,
+            thinking_enabled=thinking_config.get("enabled", False),
+            thinking_mode=thinking_config.get("mode"),
+            budget_tokens=thinking_config.get("budget_tokens"),
+            reasoning_effort=thinking_config.get("reasoning_effort")
+        )

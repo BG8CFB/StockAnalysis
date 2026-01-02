@@ -180,23 +180,23 @@ class AgentConfigService:
                         logger.warning(f"公共配置验证失败: {e}")
                         raise ValueError(str(e))
 
-        # 构建更新数据（强制启用所有阶段）
+        # 构建更新数据（保留用户的选择）
         update_data = {}
         if request.phase1 is not None:
             phase1_data = request.phase1.model_dump()
-            phase1_data["enabled"] = True  # 强制启用阶段
+            # 保留用户选择的 enabled 状态
             update_data["phase1"] = phase1_data
         if request.phase2 is not None:
             phase2_data = request.phase2.model_dump()
-            phase2_data["enabled"] = True  # 强制启用阶段
+            # 保留用户选择的 enabled 状态
             update_data["phase2"] = phase2_data
         if request.phase3 is not None:
             phase3_data = request.phase3.model_dump()
-            phase3_data["enabled"] = True  # 强制启用阶段
+            # 保留用户选择的 enabled 状态
             update_data["phase3"] = phase3_data
         if request.phase4 is not None:
             phase4_data = request.phase4.model_dump()
-            phase4_data["enabled"] = True  # 强制启用阶段
+            # 保留用户选择的 enabled 状态
             update_data["phase4"] = phase4_data
 
         update_data["updated_at"] = datetime.utcnow()
@@ -503,23 +503,23 @@ class AgentConfigService:
                     logger.warning(f"用户配置验证失败: user_id={user_id}, error={e}")
                     raise ValueError(str(e))
 
-        # 构建更新数据（强制启用所有阶段）
+        # 构建更新数据（保留用户的选择）
         update_data = {}
         if request.phase1 is not None:
             phase1_data = request.phase1.model_dump()
-            phase1_data["enabled"] = True  # 强制启用阶段
+            # 保留用户选择的 enabled 状态
             update_data["phase1"] = phase1_data
         if request.phase2 is not None:
             phase2_data = request.phase2.model_dump()
-            phase2_data["enabled"] = True  # 强制启用阶段
+            # 保留用户选择的 enabled 状态
             update_data["phase2"] = phase2_data
         if request.phase3 is not None:
             phase3_data = request.phase3.model_dump()
-            phase3_data["enabled"] = True  # 强制启用阶段
+            # 保留用户选择的 enabled 状态
             update_data["phase3"] = phase3_data
         if request.phase4 is not None:
             phase4_data = request.phase4.model_dump()
-            phase4_data["enabled"] = True  # 强制启用阶段
+            # 保留用户选择的 enabled 状态
             update_data["phase4"] = phase4_data
 
         # 标记为已自定义

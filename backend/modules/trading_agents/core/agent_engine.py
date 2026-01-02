@@ -48,22 +48,36 @@ class AgentWorkflowEngine:
         llm: LLMProvider,
         config: UserAgentConfigResponse,
         ws_manager = None,
+        data_collection_llm: Optional[LLMProvider] = None,
+        data_collection_model_config: Optional[Dict[str, Any]] = None,
+        debate_model_config: Optional[Dict[str, Any]] = None,
     ):
         """
         初始化工作流引擎
 
         Args:
-            llm: LLM Provider
+            llm: LLM Provider（默认用于所有阶段，优先级低于data_collection_llm）
             config: 用户智能体配置
             ws_manager: WebSocket 管理器（用于实时推送）
+            data_collection_llm: 数据收集阶段LLM（第一阶段）
+            data_collection_model_config: 数据收集模型配置（包含thinking_enabled等）
+            debate_model_config: 辩论模型配置（包含thinking_enabled等）
         """
         self.llm = llm
         self.config = config
         self.ws_manager = ws_manager  # 如果为None，调用者负责处理
 
+        # 双模型支持
+        self.data_collection_llm = data_collection_llm or llm
+        self.debate_llm = llm
+
+        # 模型配置（用于思考模式）
+        self.data_collection_model_config = data_collection_model_config or {}
+        self.debate_model_config = debate_model_config or {}
+
         # 并发控制器
         self.concurrency = get_concurrency_manager()
-        
+
         # 工具注册表
         self.tool_registry = ToolRegistry()
 
@@ -73,38 +87,9 @@ class AgentWorkflowEngine:
         self.phase3_enabled = config.phase3.enabled if config.phase3 else False
         self.phase4_enabled = config.phase4.enabled if config.phase4 else False
 
-        # 智能体映射
+        # 智能体映射（动态初始化）
         self._agents: Dict[str, BaseAgent] = {}
-        
-        # 初始化所有智能体
-        self._initialize_agents()
-
-    def _initialize_agents(self):
-        """初始化并注册所有阶段的智能体"""
-        # Phase 1: 使用工厂动态创建
-        if self.config.phase1:
-            factory = AnalystFactory(self.llm, self.tool_registry)
-            analysts = factory.create_analysts(self.config.phase1)
-            for agent in analysts:
-                self.register_agent(agent)
-                
-        # Phase 2: 研究员辩论
-        if self.config.phase2:
-            phase2_agents = create_phase2_agents(self.llm)
-            for agent in phase2_agents:
-                self.register_agent(agent)
-                
-        # Phase 3: 风险评估
-        if self.config.phase3:
-            phase3_agents = create_phase3_agents(self.llm)
-            for agent in phase3_agents:
-                self.register_agent(agent)
-                
-        # Phase 4: 总结
-        if self.config.phase4:
-            phase4_agents = create_phase4_agents(self.llm)
-            for agent in phase4_agents:
-                self.register_agent(agent)
+        self._phase1_agents: List[AnalystAgent] = []
 
     def register_agent(self, agent: BaseAgent) -> None:
         """
@@ -115,6 +100,142 @@ class AgentWorkflowEngine:
         """
         self._agents[agent.slug] = agent
         logger.info(f"注册智能体: {agent.slug}")
+
+    async def _initialize_mcp_connections(self, user_id: str, task_id: str) -> None:
+        """
+        提前初始化所有需要的MCP连接
+
+        在智能体初始化之前，先扫描所有阶段的配置，
+        收集所有启用的MCP服务器，一次性初始化所有连接。
+
+        这样可以：
+        1. 快速失败：如果MCP连接失败，任务根本不会开始
+        2. 预热连接：确保所有工具已就绪
+        3. 性能可预测：工具调用时无延迟
+
+        Args:
+            user_id: 用户 ID
+            task_id: 任务 ID
+        """
+        from modules.trading_agents.tools.mcp_tool_filter import get_mcp_tool_filter
+        from modules.trading_agents.schemas import AgentConfig
+
+        logger.info(f"[MCP预初始化] 开始初始化MCP连接: user_id={user_id}, task_id={task_id}")
+
+        # 收集所有需要初始化MCP工具的智能体配置
+        agent_configs: List[AgentConfig] = []
+
+        # 扫描所有阶段的智能体配置
+        if self.config.phase1 and self.config.phase1.enabled:
+            agent_configs.extend([cfg for cfg in self.config.phase1.agents if cfg.enabled])
+
+        if self.config.phase2 and self.config.phase2.enabled:
+            agent_configs.extend([cfg for cfg in self.config.phase2.agents if cfg.enabled])
+
+        if self.config.phase3 and self.config.phase3.enabled:
+            agent_configs.extend([cfg for cfg in self.config.phase3.agents if cfg.enabled])
+
+        if self.config.phase4 and self.config.phase4.enabled:
+            agent_configs.extend([cfg for cfg in self.config.phase4.agents if cfg.enabled])
+
+        if not agent_configs:
+            logger.info("[MCP预初始化] 没有启用的智能体，跳过MCP初始化")
+            return
+
+        # 获取MCP工具过滤器
+        mcp_filter = get_mcp_tool_filter()
+        all_tools = self.tool_registry.list_all_tools()
+
+        # 提前初始化所有智能体的MCP工具
+        init_success_count = 0
+        init_failure_count = 0
+
+        for agent_cfg in agent_configs:
+            try:
+                # 调用 get_tools_for_agent 会触发连接创建
+                tools = await mcp_filter.get_tools_for_agent(
+                    agent_config=agent_cfg,
+                    user_id=user_id,
+                    task_id=task_id,
+                    all_tools=all_tools,
+                )
+
+                init_success_count += 1
+                logger.info(
+                    f"[MCP预初始化] 智能体 {agent_cfg.slug} 的MCP工具初始化成功: "
+                    f"{len(tools)} 个工具"
+                )
+
+            except Exception as e:
+                init_failure_count += 1
+                logger.error(
+                    f"[MCP预初始化] 智能体 {agent_cfg.slug} 的MCP工具初始化失败: {e}",
+                    exc_info=True
+                )
+                # ✅ 关键：如果MCP初始化失败，立即抛出异常，阻止任务开始
+                raise RuntimeError(
+                    f"MCP连接初始化失败（智能体: {agent_cfg.slug}）: {e}\n"
+                    f"任务无法开始，请检查MCP服务器配置。"
+                ) from e
+
+        logger.info(
+            f"[MCP预初始化] MCP连接初始化完成: "
+            f"成功={init_success_count}, 失败={init_failure_count}"
+        )
+
+    async def _initialize_agents_for_task(self, user_id: str, task_id: str) -> None:
+        """
+        为任务动态初始化智能体（带 MCP 连接）
+
+        Args:
+            user_id: 用户 ID
+            task_id: 任务 ID
+        """
+        logger.info(f"开始为任务初始化智能体: user_id={user_id}, task_id={task_id}")
+
+        # ✅ 提前初始化所有MCP连接（在智能体初始化之前）
+        # 这样可以快速失败，如果MCP连接失败，任务根本不会开始
+        await self._initialize_mcp_connections(user_id, task_id)
+
+        # Phase 1: 使用工厂动态创建（异步，带 MCP 连接）
+        if self.config.phase1:
+            factory = AnalystFactory(self.data_collection_llm, self.tool_registry)
+            analysts = await factory.create_analysts(
+                self.config.phase1,
+                user_id=user_id,
+                task_id=task_id,
+            )
+            self._phase1_agents = analysts
+            for agent in analysts:
+                # 设置数据收集模型的思考配置
+                self._apply_thinking_config(agent, self.data_collection_model_config)
+                self.register_agent(agent)
+
+        # Phase 2: 研究员辩论
+        if self.config.phase2:
+            phase2_agents = create_phase2_agents(self.debate_llm, phase2_config=self.config.phase2)
+            for agent in phase2_agents:
+                # 设置辩论模型的思考配置
+                self._apply_thinking_config(agent, self.debate_model_config)
+                self.register_agent(agent)
+
+        # Phase 3: 风险评估
+        if self.config.phase3:
+            phase3_agents = create_phase3_agents(self.debate_llm, phase3_config=self.config.phase3)
+            for agent in phase3_agents:
+                # 设置辩论模型的思考配置
+                self._apply_thinking_config(agent, self.debate_model_config)
+                self.register_agent(agent)
+
+        # Phase 4: 总结
+        if self.config.phase4:
+            phase4_agents = create_phase4_agents(self.debate_llm, phase4_config=self.config.phase4)
+            for agent in phase4_agents:
+                # 设置辩论模型的思考配置
+                self._apply_thinking_config(agent, self.debate_model_config)
+                self.register_agent(agent)
+
+        logger.info(f"智能体初始化完成: 总计 {len(self._agents)} 个智能体")
 
     def get_agent(self, slug: str) -> Optional[BaseAgent]:
         """
@@ -145,6 +266,9 @@ class AgentWorkflowEngine:
         Returns:
             最终报告和元数据
         """
+        # 动态初始化智能体（传递 user_id 和 task_id）
+        await self._initialize_agents_for_task(user_id, task_id)
+
         # 从 request.stages 中读取阶段配置
         stages = request.stages
         stage1_enabled = stages.stage1.enabled
@@ -539,6 +663,24 @@ class AgentWorkflowEngine:
 
         # 默认启用
         return True
+
+    def _apply_thinking_config(self, agent: BaseAgent, model_config: Dict[str, Any]) -> None:
+        """
+        将模型配置中的思考参数应用到智能体
+
+        Args:
+            agent: 智能体实例
+            model_config: 模型配置字典
+        """
+        # 提取思考配置，优先使用任务参数，否则使用模型默认配置
+        thinking_enabled = model_config.get("thinking_enabled", model_config.get("model_thinking_enabled", False))
+        thinking_mode = model_config.get("thinking_mode") or model_config.get("model_thinking_mode")
+
+        # 设置到agent
+        agent.set_thinking_config(
+            enabled=thinking_enabled,
+            mode=thinking_mode,
+        )
 
     async def _run_analyst(self, agent: AnalystAgent, state: AgentState) -> Dict[str, Any]:
         """

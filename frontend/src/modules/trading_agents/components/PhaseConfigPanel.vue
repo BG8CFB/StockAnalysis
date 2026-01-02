@@ -157,12 +157,12 @@
             >
               <el-option
                 v-for="server in serverOptions"
-                :key="server.id"
+                :key="server.name"
                 :label="server.name"
-                :value="server.id"
+                :value="server.name"
               />
             </el-select>
-            <span class="form-tip">该智能体可使用的 MCP 服务器</span>
+            <span class="form-tip">该智能体可使用的 MCP 服务器（按名称存储）</span>
           </el-form-item>
 
           <el-form-item label="启用状态">

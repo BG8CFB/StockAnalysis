@@ -56,14 +56,25 @@ class MCPToolFilter:
         # 智能体启用的 MCP 服务器（按名称）
         enabled_server_names = set(agent_config.enabled_mcp_servers)
 
-        # 取交集：用户可用 AND 智能体启用
-        valid_server_names = enabled_server_names & available_servers.keys()
+        # 逻辑：如果智能体没有明确配置启用哪些服务器，则使用所有可用的服务器（默认全开）
+        if enabled_server_names:
+            # 明确配置了：只使用配置的服务器
+            valid_server_names = enabled_server_names & available_servers.keys()
+            logger.info(
+                f"智能体 {agent_config.slug} 使用配置的 MCP 服务器: {valid_server_names}"
+            )
+        else:
+            # 没有配置：使用所有可用的服务器（默认全开）
+            valid_server_names = set(available_servers.keys())
+            logger.info(
+                f"智能体 {agent_config.slug} 未配置 MCP 服务器，使用所有可用服务器: {valid_server_names}"
+            )
 
         if not valid_server_names:
             logger.info(
                 f"智能体 {agent_config.slug} 没有可用的 MCP 服务器。"
                 f"用户可用: {list(available_servers.keys())}, "
-                f"智能体启用: {enabled_server_names}"
+                f"智能体配置: {enabled_server_names if enabled_server_names else '未配置（默认全开）'}"
             )
             return []
 

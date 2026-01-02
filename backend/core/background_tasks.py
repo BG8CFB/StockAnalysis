@@ -13,8 +13,6 @@ from modules.trading_agents.schemas import AnalysisTaskCreate
 from modules.trading_agents.services.agent_config_service import get_agent_config_service
 from core.ai.model import get_model_service
 from modules.trading_agents.core.agent_engine import AgentWorkflowEngine
-from modules.trading_agents.tools.registry import get_tool_registry
-from modules.trading_agents.agents import create_phase1_agents, create_phase2_agents, create_phase3_agents, create_phase4_agents
 from modules.trading_agents.services.report_service import get_report_service
 from modules.trading_agents.websocket import get_ws_manager
 
@@ -224,41 +222,36 @@ async def execute_analysis_workflow(
         available_tools = tool_registry.list_available_tools()
         logger.info(f"可用工具数量: {len(available_tools)}")
 
-        # 6. 创建工作流引擎（注意：需要传递两个 LLM Provider）
-        # 当前引擎设计只支持单一 LLM，这里我们需要一个解决方案
-        # 方案：使用 debate_llm 作为主引擎，但在创建智能体时使用 data_collection_llm
+        # 6. 准备思考配置（从模型配置中读取）
+        data_collection_thinking_config = {
+            "thinking_enabled": data_collection_model.thinking_enabled,
+            "thinking_mode": data_collection_model.thinking_mode,
+        }
 
+        debate_thinking_config = {
+            "thinking_enabled": debate_model.thinking_enabled,
+            "thinking_mode": debate_model.thinking_mode,
+        }
+
+        if data_collection_model.thinking_enabled or debate_model.thinking_enabled:
+            logger.info(
+                f"任务 {task_id} 使用思考模式: "
+                f"数据收集模型(thinking_enabled={data_collection_model.thinking_enabled}, mode={data_collection_model.thinking_mode}), "
+                f"辩论模型(thinking_enabled={debate_model.thinking_enabled}, mode={debate_model.thinking_mode})"
+            )
+
+        # 7. 创建工作流引擎
+        # 注意：引擎会在 execute_workflow 时动态初始化智能体（包括 MCP 连接）
         workflow = AgentWorkflowEngine(
             llm=debate_llm,  # 主引擎使用辩论模型
-            config=user_config,
+            config=agent_config,
             ws_manager=ws_manager,
+            data_collection_llm=data_collection_llm,  # 第一阶段使用数据收集模型
+            data_collection_model_config=data_collection_thinking_config,
+            debate_model_config=debate_thinking_config,
         )
 
-        # 7. 注册所有阶段的智能体
-        # 阶段1：分析师团队（使用数据收集模型 + 需要工具）
-        phase1_agents = create_phase1_agents(data_collection_llm, tools=available_tools)
-        for agent in phase1_agents:
-            workflow.register_agent(agent)
-
-        # 阶段2：辩论团队（使用辩论模型 + 不需要工具）
-        if user_config.phase2 and user_config.phase2.enabled:
-            phase2_agents = create_phase2_agents(debate_llm)
-            for agent in phase2_agents:
-                workflow.register_agent(agent)
-
-        # 阶段3：风险评估（使用辩论模型 + 不需要工具）
-        if user_config.phase3 and user_config.phase3.enabled:
-            phase3_agents = create_phase3_agents(debate_llm)
-            for agent in phase3_agents:
-                workflow.register_agent(agent)
-
-        # 阶段4：总结（使用辩论模型 + 不需要工具）
-        if user_config.phase4 and user_config.phase4.enabled:
-            phase4_agents = create_phase4_agents(debate_llm)
-            for agent in phase4_agents:
-                workflow.register_agent(agent)
-
-        # 8. 执行工作流
+        # 8. 执行工作流（智能体会在 execute_workflow 内部动态初始化）
         result = await workflow.execute_workflow(
             task_id=task_id,
             user_id=user_id,

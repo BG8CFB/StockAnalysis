@@ -359,21 +359,6 @@ async def get_mcp_tools_multi_server(
 
     Returns:
         {server_name: [tools]} 的字典
-
-    Example:
-        ```python
-        from modules.mcp.core.interceptors import get_production_interceptors
-
-        server_configs = {
-            "finance": build_streamable_http_connection("http://localhost:8000/mcp"),
-            "weather": build_sse_connection("http://localhost:8001/sse"),
-        }
-
-        all_tools = await get_mcp_tools_multi_server(
-            server_configs,
-            tool_interceptors=get_production_interceptors()
-        )
-        ```
     """
     client = create_mcp_client(server_configs, tool_interceptors)
 

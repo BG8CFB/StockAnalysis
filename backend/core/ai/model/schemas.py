@@ -43,6 +43,14 @@ class ModelProviderEnum(str, Enum):
     CUSTOM = "custom"  # 自定义
 
 
+class ThinkingModeEnum(str, Enum):
+    """思考模式类型枚举"""
+
+    PRESERVED = "preserved"  # 保留式思考（GLM-4.7, Claude Opus 4.5）
+    CLEAR_ON_NEW = "clear_on_new"  # 新轮次清除（DeepSeek）
+    AUTO = "auto"  # 自动处理（OpenAI 等）
+
+
 class AIModelConfigBase(BaseModel):
     """AI 模型配置基础模型"""
 
@@ -71,6 +79,10 @@ class AIModelConfigBase(BaseModel):
     timeout_seconds: int = Field(default=60, ge=10, le=600, description="超时时间（秒）")
     temperature: float = Field(default=0.5, ge=0.0, le=1.0, description="温度参数")
     enabled: bool = Field(default=True, description="是否启用")
+    thinking_enabled: bool = Field(default=False, description="是否支持思考模式")
+    thinking_mode: Optional[ThinkingModeEnum] = Field(
+        None, description="思考模式类型（仅支持思考的模型需要配置）"
+    )
 
     @model_validator(mode="after")
     def validate_concurrency(self) -> "AIModelConfigBase":
@@ -112,6 +124,8 @@ class AIModelConfigUpdate(BaseModel):
     timeout_seconds: Optional[int] = Field(None, ge=10, le=600)
     temperature: Optional[float] = Field(None, ge=0.0, le=1.0)
     enabled: Optional[bool] = None
+    thinking_enabled: Optional[bool] = None
+    thinking_mode: Optional[ThinkingModeEnum] = None
 
     @model_validator(mode="after")
     def validate_concurrency(self) -> "AIModelConfigUpdate":
@@ -216,6 +230,8 @@ class AIModelConfigResponse(AIModelConfigBase):
             timeout_seconds=data["timeout_seconds"],
             temperature=data["temperature"],
             enabled=data["enabled"],
+            thinking_enabled=data.get("thinking_enabled", False),
+            thinking_mode=data.get("thinking_mode"),
             is_system=data.get("is_system", False),
             owner_id=data.get("owner_id"),
             created_at=data["created_at"],

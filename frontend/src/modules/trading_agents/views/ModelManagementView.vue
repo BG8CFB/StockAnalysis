@@ -484,6 +484,56 @@
           />
         </el-form-item>
 
+        <!-- 思考模式配置 -->
+        <el-divider style="margin: 16px 0;" />
+        <el-form-item>
+          <template #label>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span>思考模式</span>
+              <el-tooltip
+                content="启用后可增强AI推理能力，但会消耗更多token。不同模型支持不同模式。"
+                placement="top"
+              >
+                <el-icon><QuestionFilled /></el-icon>
+              </el-tooltip>
+            </div>
+          </template>
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <el-switch
+              v-model="formData.thinking_enabled"
+              active-text="启用"
+              inactive-text="关闭"
+            />
+            <div v-if="formData.thinking_enabled" style="margin-top: 8px;">
+              <div style="margin-bottom: 8px; font-size: 13px; color: #606266;">思考模式类型:</div>
+              <el-radio-group v-model="formData.thinking_mode" style="display: flex; flex-direction: column; gap: 8px;">
+                <el-radio :value="ThinkingModeEnum.PRESERVED" style="margin-right: 0;">
+                  <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <span style="font-weight: 500;">保留式思考 (GLM-4.7, Claude)</span>
+                    <span style="font-size: 12px; color: #909399;">适合长任务，保持多轮连贯性，思考内容会保留</span>
+                  </div>
+                </el-radio>
+                <el-radio :value="ThinkingModeEnum.CLEAR_ON_NEW" style="margin-right: 0;">
+                  <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <span style="font-weight: 500;">新轮次清除 (DeepSeek)</span>
+                    <span style="font-size: 12px; color: #909399;">适合批量任务，每轮独立思考，新对话清除旧内容</span>
+                  </div>
+                </el-radio>
+                <el-radio :value="ThinkingModeEnum.AUTO" style="margin-right: 0;">
+                  <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <span style="font-weight: 500;">自动处理 (OpenAI o1/o3)</span>
+                    <span style="font-size: 12px; color: #909399;">模型自动管理思考过程</span>
+                  </div>
+                </el-radio>
+              </el-radio-group>
+              <div style="margin-top: 8px; padding: 8px 12px; background: #f0f9ff; border-radius: 4px; font-size: 12px; color: #409eff;">
+                <el-icon><InfoFilled /></el-icon>
+                请根据模型类型选择合适的思考模式，否则可能无法生效
+              </div>
+            </div>
+          </div>
+        </el-form-item>
+
         <el-form-item label="启用状态">
           <el-switch v-model="formData.enabled" />
         </el-form-item>
@@ -538,10 +588,10 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Edit, Delete, Connection } from '@element-plus/icons-vue'
+import { Plus, Edit, Delete, Connection, QuestionFilled, InfoFilled } from '@element-plus/icons-vue'
 import { useUserStore } from '@core/auth/store'
 import { useTradingAgentsStore } from '../store'
-import { PROVIDER_PRESETS, ModelProviderEnum, PlatformTypeEnum, PresetPlatformEnum, type AIModelConfig, type AIModelConfigCreate } from '../types'
+import { PROVIDER_PRESETS, ModelProviderEnum, PlatformTypeEnum, PresetPlatformEnum, ThinkingModeEnum, type AIModelConfig, type AIModelConfigCreate } from '../types'
 import { PRESET_PLATFORMS, getPresetPlatforms, type PlatformMetadata } from '@core/model/platforms'
 import { modelApi } from '../api'
 
@@ -605,6 +655,8 @@ const formData = reactive<AIModelConfigCreate>({
   timeout_seconds: 60,
   temperature: 0.5,
   enabled: true,
+  thinking_enabled: false,  // 是否启用思考模式
+  thinking_mode: null,  // 思考模式类型
   is_system: false,
 })
 
@@ -819,6 +871,8 @@ function handleEdit(model: AIModelConfig) {
     timeout_seconds: model.timeout_seconds,
     temperature: model.temperature,
     enabled: model.enabled,
+    thinking_enabled: model.thinking_enabled || false,
+    thinking_mode: model.thinking_mode || null,
     is_system: model.is_system,
   })
   showCreateDialog.value = true

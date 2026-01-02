@@ -352,13 +352,27 @@ def get_pool_public_queue_size() -> int:
 
 
 def get_connection_complete_timeout() -> int:
-    """获取连接完成后超时时间（秒）"""
-    return get_mcp_config("connection", "complete_timeout", default=10)
+    """
+    获取连接完成后超时时间（秒）
+
+    优化说明：从10秒降低到2秒
+    - 2秒缓冲期足够覆盖边界情况（比如任务完成后的后续清理工作）
+    - 减少资源占用，避免连接长时间保持
+    - 如果用户快速重试，2秒足够复用连接
+    """
+    return get_mcp_config("connection", "complete_timeout", default=2)
 
 
 def get_connection_failed_timeout() -> int:
-    """获取连接失败后超时时间（秒）"""
-    return get_mcp_config("connection", "failed_timeout", default=30)
+    """
+    获取连接失败后超时时间（秒）
+
+    优化说明：从30秒降低到10秒
+    - 保留更长时间便于调试和查看错误信息
+    - 但不需要30秒那么长
+    - 减少失败连接的资源占用
+    """
+    return get_mcp_config("connection", "failed_timeout", default=10)
 
 
 def get_connection_connect_timeout() -> int:

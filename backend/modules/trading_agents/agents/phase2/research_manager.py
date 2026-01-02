@@ -16,12 +16,12 @@ logger = logging.getLogger(__name__)
 class ResearchManager(BaseAgent):
     """
     研究经理
-    
+
     在多空辩论结束后，综合双方观点，做出客观裁决。
     """
 
-    def __init__(self, llm: LLMProvider):
-        role_definition = """你是一位资深的研究经理。
+    # 默认提示词（当用户未自定义时使用）
+    DEFAULT_ROLE_DEFINITION = """你是一位资深的研究经理。
 
 你的任务是：
 1. 审阅看涨和看跌研究员的辩论记录
@@ -38,12 +38,16 @@ class ResearchManager(BaseAgent):
 - **指导意见**：给交易员的高层建议（如"建议轻仓试错"或"建议坚决回避"）
 """
 
+    def __init__(self, llm: LLMProvider, role_definition: str = None):
+        # 优先使用传入的 role_definition，否则使用默认值
+        final_role_definition = role_definition or self.DEFAULT_ROLE_DEFINITION
+
         super().__init__(
             slug="phase2_manager",
             name="研究经理",
             llm=llm,
         )
-        self._role_definition = role_definition
+        self._role_definition = final_role_definition
 
     def get_system_prompt(self) -> str:
         return self._role_definition

@@ -217,6 +217,9 @@ async def create_tasks(
                         market=request.market,
                         trade_date=request.trade_date,
                         stages=request.stages,
+                        # 传递用户选择的模型参数（空值时后台会使用默认模型）
+                        data_collection_model=request.data_collection_model,
+                        debate_model=request.debate_model,
                     ),
                     config=config
                 )
@@ -235,6 +238,9 @@ async def create_tasks(
                     market=request.market,
                     trade_date=request.trade_date,
                     stages=request.stages,
+                    # 传递用户选择的模型参数（空值时后台会使用默认模型）
+                    data_collection_model=request.data_collection_model,
+                    debate_model=request.debate_model,
                 ),
                 config=config,
             )
@@ -802,14 +808,16 @@ async def retry_task(
         if not original_task:
             raise HTTPException(status_code=404, detail="任务不存在")
 
-        # 创建新任务请求
+        # 创建新任务请求（从原任务的 stages 字段重建配置）
+        original_stages = original_task.get("stages", {})
+
         new_request = AnalysisTaskCreate(
             stock_code=original_task["stock_code"],
+            market=original_task.get("market", "a_share"),  # 添加缺失字段
             trade_date=original_task["trade_date"],
-            phase2_enabled=original_task.get("phase2_enabled", True),
-            phase3_enabled=original_task.get("phase3_enabled", True),
-            phase4_enabled=original_task.get("phase4_enabled", True),
-            max_debate_rounds=original_task.get("max_debate_rounds"),
+            stages=AnalysisStagesConfig(**original_stages),  # 使用 stages 字段
+            data_collection_model=original_task.get("data_collection_model"),  # 保留模型选择
+            debate_model=original_task.get("debate_model"),  # 保留模型选择
         )
 
         # 创建新任务

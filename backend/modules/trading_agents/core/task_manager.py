@@ -113,6 +113,9 @@ class TaskManager:
             "stages": request.stages.model_dump(),
             "batch_id": None,
             "interrupt_signal": False,
+            # 保存模型选择，便于追踪和调试
+            "data_collection_model": request.data_collection_model,
+            "debate_model": request.debate_model,
         }
 
         # 插入数据库
@@ -162,6 +165,9 @@ class TaskManager:
                     market=request.market,
                     trade_date=request.trade_date,
                     stages=request.stages,
+                    # 传递用户选择的模型参数（空值时后台会使用默认模型）
+                    data_collection_model=request.data_collection_model,
+                    debate_model=request.debate_model,
                 ),
                 config=config,
             )

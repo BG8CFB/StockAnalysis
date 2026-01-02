@@ -21,6 +21,8 @@ from .provider import (
     format_messages_for_logging,
     retry_on_failure,
 )
+from .thinking_adapter import ThinkingParameterAdapter
+from .thinking_parser import ThinkingResponseParser
 from core.ai.exceptions import ModelConnectionException
 
 logger = logging.getLogger(__name__)
@@ -78,6 +80,10 @@ class OpenAICompatProvider(LLMProvider):
         tools: Optional[List[Tool]] = None,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
+        thinking_enabled: bool = False,
+        thinking_mode: Optional[str] = None,
+        budget_tokens: Optional[int] = None,
+        reasoning_effort: Optional[str] = None,
         **kwargs
     ) -> ChatResponse:
         """
@@ -88,6 +94,10 @@ class OpenAICompatProvider(LLMProvider):
             tools: 可用工具列表
             temperature: 温度参数
             max_tokens: 最大生成 token 数
+            thinking_enabled: 是否启用思考模式
+            thinking_mode: 思考模式类型
+            budget_tokens: Token 预算（Claude）
+            reasoning_effort: 推理级别
             **kwargs: 其他参数
 
         Returns:
@@ -96,7 +106,8 @@ class OpenAICompatProvider(LLMProvider):
         logger.debug(
             f"LLM 请求: model={self.model_id}, "
             f"messages={format_messages_for_logging(messages)}, "
-            f"tools={len(tools) if tools else 0}"
+            f"tools={len(tools) if tools else 0}, "
+            f"thinking={thinking_enabled}"
         )
 
         async def _request():
@@ -111,11 +122,11 @@ class OpenAICompatProvider(LLMProvider):
                         "content": msg.content,
                         **({"tool_calls": msg.tool_calls} if msg.tool_calls else {}),
                         **({"tool_call_id": msg.tool_call_id} if msg.tool_call_id else {}),
+                        **({"reasoning_content": msg.reasoning_content} if msg.reasoning_content else {}),
                     }
                     for msg in messages
                 ],
                 "temperature": self.get_temperature(temperature),
-                **(kwargs if kwargs else {}),
             }
 
             # 添加工具（如果有）
@@ -131,6 +142,24 @@ class OpenAICompatProvider(LLMProvider):
             # 添加 max_tokens（如果有）
             if max_tokens:
                 payload["max_tokens"] = max_tokens
+
+            # 适配思考参数
+            thinking_params = ThinkingParameterAdapter.adapt(
+                model_id=self.model_id,
+                thinking_enabled=thinking_enabled,
+                thinking_mode=thinking_mode,
+                budget_tokens=budget_tokens,
+                reasoning_effort=reasoning_effort
+            )
+
+            # 如果模型支持思考模式，添加思考参数
+            if thinking_params:
+                payload.update(thinking_params)
+                logger.debug(f"已启用思考模式: {thinking_params}")
+
+            # 添加其他 kwargs
+            if kwargs:
+                payload.update(kwargs)
 
             # 发送请求
             start_time = time.time()
@@ -148,7 +177,7 @@ class OpenAICompatProvider(LLMProvider):
             data = response.json()
             logger.debug(f"LLM 响应: latency={elapsed:.0f}ms, tokens={data.get('usage', {})}")
 
-            return self._parse_response(data)
+            return self._parse_response(data, thinking_enabled)
 
         # 使用重试机制
         try:
@@ -278,12 +307,13 @@ class OpenAICompatProvider(LLMProvider):
             logger.error(f"连接测试失败: model={self.model_id}, error={e}")
             return False
 
-    def _parse_response(self, data: Dict[str, Any]) -> ChatResponse:
+    def _parse_response(self, data: Dict[str, Any], thinking_enabled: bool = False) -> ChatResponse:
         """
         解析 API 响应
 
         Args:
             data: API 响应数据
+            thinking_enabled: 是否启用了思考模式
 
         Returns:
             ChatResponse 对象
@@ -292,8 +322,19 @@ class OpenAICompatProvider(LLMProvider):
             choice = data["choices"][0]
             message = choice["message"]
 
-            # 解析内容
-            content = message.get("content", "")
+            # 如果启用了思考模式，使用 ThinkingResponseParser
+            if thinking_enabled:
+                parsed = ThinkingResponseParser.parse_response(self.model_id, data)
+                content = parsed.get("content", "")
+                reasoning_content = parsed.get("reasoning_content")
+                thinking_tokens = parsed.get("thinking_tokens")
+                usage = parsed.get("usage")
+            else:
+                # 原有逻辑
+                content = message.get("content", "")
+                reasoning_content = None
+                thinking_tokens = None
+                usage = data.get("usage")
 
             # 解析工具调用
             tool_calls = None
@@ -310,7 +351,9 @@ class OpenAICompatProvider(LLMProvider):
             return ChatResponse(
                 content=content,
                 tool_calls=tool_calls,
-                usage=data.get("usage"),
+                reasoning_content=reasoning_content,
+                thinking_tokens=thinking_tokens,
+                usage=usage,
                 model=data.get("model", self.model_id),
             )
         except (KeyError, IndexError) as e:
