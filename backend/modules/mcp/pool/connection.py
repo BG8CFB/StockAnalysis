@@ -17,9 +17,6 @@ from modules.mcp.config.loader import (
     get_connection_complete_timeout,
     get_connection_failed_timeout,
 )
-from modules.mcp.core.adapter import create_mcp_client
-from modules.mcp.core.interceptors import get_production_interceptors
-from modules.mcp.core.session import mcp_session_context, load_tools_with_session
 
 logger = logging.getLogger(__name__)
 
@@ -71,9 +68,8 @@ class MCPConnection:
         self.state = ConnectionState.IDLE
         self._connection_config = connection_config
 
-        # 客户端和会话（初始化时创建）
+        # 客户端（初始化时创建）
         self._client: Optional[MultiServerMCPClient] = None
-        self._session: Optional[Any] = None  # MCPSession (类型取决于实现)
         self._tools: List[BaseTool] = []
 
         # 时间戳
@@ -91,7 +87,7 @@ class MCPConnection:
 
     async def initialize(self) -> List[BaseTool]:
         """
-        初始化连接，返回工具列表
+        初始化连接，返回工具列表（官方标准实现）
 
         Returns:
             LangChain 工具列表
@@ -106,26 +102,17 @@ class MCPConnection:
         logger.info(f"[MCPConnection] 开始连接: {self.connection_id}")
 
         try:
-            # 创建 MCP 客户端（使用官方标准 + 生产环境 Interceptors）
-            interceptors = get_production_interceptors(
-                max_retries=3,
-                timeout=60.0,
+            # 创建 MCP 客户端
+            self._client = MultiServerMCPClient(
+                {self.server_name: self._connection_config}
             )
 
-            self._client = create_mcp_client(
-                server_configs={self.server_name: self._connection_config},
-                tool_interceptors=interceptors,
+            # 使用官方 get_tools() 方法加载工具
+            # 官方实现会自动管理 session 生命周期
+            # 工具对象可以在后续调用时自动创建 session
+            self._tools = await self._client.get_tools(
+                server_name=self.server_name
             )
-
-            # 使用官方 Session 上下文管理器加载工具
-            self._tools = await load_tools_with_session(
-                self._client,
-                self.server_name,
-            )
-
-            # 提取会话对象（用于后续工具调用）
-            # 注意：具体实现取决于 langchain-mcp-adapters 版本
-            self._session = self._client._sessions.get(self.server_name)
 
             self.state = ConnectionState.ACTIVE
             self.last_used_at = datetime.utcnow()
@@ -228,7 +215,6 @@ class MCPConnection:
                     )
 
             self._client = None
-            self._session = None
             self._tools = []
 
             logger.info(f"[MCPConnection] 连接已关闭: {self.connection_id}")

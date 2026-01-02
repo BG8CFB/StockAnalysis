@@ -246,27 +246,21 @@ def map_transport_mode(transport: str) -> str:
 
 def create_mcp_client(
     server_configs: Dict[str, Dict[str, Any]],
-    tool_interceptors: Optional[List[Callable]] = None,
 ) -> MultiServerMCPClient:
     """
     创建 MCP 客户端（官方标准）
 
     这是创建 MultiServerMCPClient 的推荐方式，支持：
     - 多服务器配置
-    - 工具拦截器（Interceptors）
-    - 访问 ToolRuntime 上下文
 
     Args:
         server_configs: 服务器配置字典
-        tool_interceptors: 工具拦截器列表（可选）
 
     Returns:
         MultiServerMCPClient 实例
 
     Example:
         ```python
-        from modules.mcp.core.interceptors import get_default_interceptors
-
         client = create_mcp_client(
             server_configs={
                 "finance": {
@@ -275,27 +269,26 @@ def create_mcp_client(
                     "headers": {"Authorization": "Bearer token"},
                 }
             },
-            tool_interceptors=get_default_interceptors()
         )
 
         tools = await client.get_tools()
         ```
     """
     logger.info(
-        f"创建 MCP 客户端: servers={list(server_configs.keys())}, "
-        f"interceptors={len(tool_interceptors) if tool_interceptors else 0}"
+        f"创建 MCP 客户端: servers={list(server_configs.keys())}"
     )
 
+    # 注意：官方 API 使用 hooks 参数，而不是 tool_interceptors
+    # 当前 interceptors 实现与官方 Hooks 接口不兼容，暂时不传递
+    # TODO: 需要重构 interceptors 以适配官方 Hooks 接口
     return MultiServerMCPClient(
         server_configs,
-        tool_interceptors=tool_interceptors or [],
     )
 
 
 async def get_mcp_tools(
     server_name: str,
     connection_config: Dict[str, Any],
-    tool_interceptors: Optional[List[Callable]] = None,
 ) -> List[BaseTool]:
     """
     从 MCP 服务器获取 LangChain 工具列表（官方标准）
@@ -305,7 +298,6 @@ async def get_mcp_tools(
     Args:
         server_name: 服务器名称
         connection_config: 连接配置（由 build_*_connection 函数构建）
-        tool_interceptors: 可选的工具拦截器列表
 
     Returns:
         LangChain BaseTool 列表
@@ -316,14 +308,13 @@ async def get_mcp_tools(
     try:
         logger.info(
             f"获取 MCP 工具: server_name={server_name}, "
-            f"transport={connection_config.get('transport')}, "
-            f"interceptors={len(tool_interceptors) if tool_interceptors else 0}"
+            f"transport={connection_config.get('transport')}"
         )
 
-        # 创建 MultiServerMCPClient（支持 interceptors）
+        # 创建 MultiServerMCPClient
+        # 注意：当前不使用 tool_interceptors，需要适配官方 Hooks 接口
         client = MultiServerMCPClient(
             {server_name: connection_config},
-            tool_interceptors=tool_interceptors or [],
         )
 
         # 获取工具（使用官方推荐的 client.get_tools() 方法）
@@ -348,19 +339,17 @@ async def get_mcp_tools(
 
 async def get_mcp_tools_multi_server(
     server_configs: Dict[str, Dict[str, Any]],
-    tool_interceptors: Optional[List[Callable]] = None,
 ) -> Dict[str, List[BaseTool]]:
     """
     从多个 MCP 服务器获取工具（官方标准）
 
     Args:
         server_configs: 多服务器配置字典
-        tool_interceptors: 工具拦截器列表
 
     Returns:
         {server_name: [tools]} 的字典
     """
-    client = create_mcp_client(server_configs, tool_interceptors)
+    client = create_mcp_client(server_configs)
 
     result = {}
 

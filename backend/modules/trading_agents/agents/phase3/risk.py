@@ -84,7 +84,6 @@ def create_phase3_agents(llm: LLMProvider, phase3_config=None) -> List:
         智能体列表
     """
     from .risk_analysts import AggressiveRiskAgent, ConservativeRiskAgent, NeutralRiskAgent
-    from .risk_manager import RiskDiscussionManager
 
     # 如果没有提供配置，使用默认提示词创建智能体
     if not phase3_config or not phase3_config.agents:

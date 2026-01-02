@@ -15,6 +15,7 @@ from core.ai.model import get_model_service
 from modules.trading_agents.core.agent_engine import AgentWorkflowEngine
 from modules.trading_agents.services.report_service import get_report_service
 from modules.trading_agents.websocket import get_ws_manager
+from modules.trading_agents.tools import get_tool_registry
 
 logger = logging.getLogger(__name__)
 
@@ -86,8 +87,9 @@ async def execute_analysis_workflow(
             raise Exception("无法加载用户智能体配置")
 
         # 2. 加载用户模型偏好
-        from core.user.settings_database import get_user_settings
-        user_settings = await get_user_settings(user_id)
+        from core.user.settings_service import get_user_settings_service
+        settings_service = get_user_settings_service()
+        user_settings = await settings_service.get_user_settings(user_id)
 
         # 3. 确定使用的两个 AI 模型
         model_service = get_model_service()

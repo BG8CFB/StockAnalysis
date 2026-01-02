@@ -1,17 +1,15 @@
 """
 MCP Tool Interceptors（官方标准实现）
 
-基于 langchain-mcp-adapters 官方推荐的 Interceptors 模式。
-
+注意：当前拦截器系统需要重构以适配官方 Hooks 接口。
 官方文档: https://docs.langchain.com/oss/python/langchain/mcp#interceptors
+官方 Hooks 接口参考: langchain_mcp_adapters.hooks
 """
 
 import logging
 import asyncio
 from typing import Callable, Optional, List, Any, Dict
 from datetime import datetime
-
-from langchain_mcp_adapters.interceptors import MCPToolCallRequest
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +19,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 async def logging_interceptor(
-    request: MCPToolCallRequest,
+    request: Any,
     handler: Callable,
 ) -> Any:
     """
@@ -34,9 +32,9 @@ async def logging_interceptor(
     Returns:
         工具调用结果
     """
-    tool_name = request.name
-    server_name = request.server_name
-    args = request.args or {}
+    tool_name = getattr(request, 'name', 'unknown')
+    server_name = getattr(request, 'server_name', 'unknown')
+    args = getattr(request, 'args', {})
 
     start_time = datetime.now()
     logger.info(
@@ -67,7 +65,7 @@ async def logging_interceptor(
 
 
 async def retry_interceptor(
-    request: MCPToolCallRequest,
+    request: Any,
     handler: Callable,
     max_retries: int = 3,
     delay: float = 1.0,
@@ -86,7 +84,7 @@ async def retry_interceptor(
     Returns:
         工具调用结果
     """
-    tool_name = request.name
+    tool_name = getattr(request, 'name', 'unknown')
     last_error = None
 
     for attempt in range(max_retries):
@@ -113,7 +111,7 @@ async def retry_interceptor(
 
 
 async def inject_user_context_interceptor(
-    request: MCPToolCallRequest,
+    request: Any,
     handler: Callable,
     user_id: Optional[str] = None,
     user_context: Optional[Dict[str, Any]] = None,
@@ -132,13 +130,19 @@ async def inject_user_context_interceptor(
     """
     # 注入 user_id 到工具参数
     if user_id and hasattr(request, 'args'):
-        request.args = request.args or {}
-        request.args['user_id'] = user_id
+        args = getattr(request, 'args', {})
+        if args is None:
+            setattr(request, 'args', {})
+            args = getattr(request, 'args')
+        args['user_id'] = user_id
 
     # 注入额外上下文
     if user_context and hasattr(request, 'args'):
-        request.args = request.args or {}
-        request.args.update(user_context)
+        args = getattr(request, 'args', {})
+        if args is None:
+            setattr(request, 'args', {})
+            args = getattr(request, 'args')
+        args.update(user_context)
 
     logger.debug(
         f"[MCP Interceptor] 注入用户上下文: user_id={user_id}, "
@@ -149,7 +153,7 @@ async def inject_user_context_interceptor(
 
 
 async def timeout_interceptor(
-    request: MCPToolCallRequest,
+    request: Any,
     handler: Callable,
     timeout: float = 30.0,
 ) -> Any:
@@ -167,7 +171,7 @@ async def timeout_interceptor(
     Raises:
         asyncio.TimeoutError: 工具调用超时
     """
-    tool_name = request.name
+    tool_name = getattr(request, 'name', 'unknown')
 
     try:
         return await asyncio.wait_for(handler(request), timeout=timeout)
@@ -182,7 +186,7 @@ async def timeout_interceptor(
 
 
 async def require_authentication_interceptor(
-    request: MCPToolCallRequest,
+    request: Any,
     handler: Callable,
     sensitive_tools: Optional[List[str]] = None,
     user_id: Optional[str] = None,
@@ -202,7 +206,7 @@ async def require_authentication_interceptor(
     Raises:
         PermissionError: 未认证用户尝试调用敏感工具
     """
-    tool_name = request.name
+    tool_name = getattr(request, 'name', 'unknown')
     sensitive_tools = sensitive_tools or []
 
     # 检查是否为敏感工具
@@ -218,7 +222,7 @@ async def require_authentication_interceptor(
 
 
 async def fallback_interceptor(
-    request: MCPToolCallRequest,
+    request: Any,
     handler: Callable,
     fallback_result: Any = None,
     fallback_on_errors: Optional[List[type]] = None,
@@ -239,7 +243,7 @@ async def fallback_interceptor(
         return await handler(request)
 
     except tuple(fallback_on_errors or [Exception]) as e:
-        tool_name = request.name
+        tool_name = getattr(request, 'name', 'unknown')
         logger.warning(
             f"[MCP Interceptor] 工具调用失败，返回降级结果: "
             f"tool={tool_name}, error={e}"

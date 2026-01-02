@@ -455,7 +455,7 @@ class AgentWorkflowEngine:
 
         # 如果启用辩论，运行辩论
         if debate_enabled and max_rounds > 0:
-            from ..agents.phase2.debate_manager import DebateManager
+            from modules.trading_agents.agents.phase2.debate_manager import DebateManager
 
             debate_manager = DebateManager(
                 bull_agent=bull_agent,
