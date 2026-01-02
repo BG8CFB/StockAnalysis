@@ -110,8 +110,8 @@ class MCPConnectionPool:
                 logger.warning(f"[MCPConnectionPool] 服务器未注册: {server_id}")
                 return
 
-            # 禁用服务器
-            await self.disable_server(server_id)
+            # 禁用服务器（内部版本，避免死锁）
+            await self._disable_server_no_lock(server_id)
 
             # 清理资源
             del self._servers[server_id]
@@ -128,28 +128,37 @@ class MCPConnectionPool:
             server_id: 服务器 ID
         """
         async with self._server_lock:
-            if server_id not in self._servers:
-                return
+            await self._disable_server_no_lock(server_id)
 
-            # 标记为禁用
-            self._servers[server_id]["enabled"] = False
+    async def _disable_server_no_lock(self, server_id: str) -> None:
+        """
+        禁用服务器（内部版本，不获取锁，假设已获取）
 
-            # 遍历活跃连接，标记为关闭状态
-            # 注意：不立即断开，让任务自然完成
-            connections_to_close = []
-            for conn_id, conn in self._connections.items():
-                if conn.server_id == server_id and conn.is_active:
-                    connections_to_close.append(conn)
+        Args:
+            server_id: 服务器 ID
+        """
+        if server_id not in self._servers:
+            return
 
-            for conn in connections_to_close:
-                logger.info(
-                    f"[MCPConnectionPool] 服务器 {server_id} 被禁用，"
-                    f"连接 {conn_id} 将在任务完成后关闭"
-                )
-                # 标记为关闭（但不强制断开）
-                await conn.mark_complete()
+        # 标记为禁用
+        self._servers[server_id]["enabled"] = False
 
-            logger.info(f"[MCPConnectionPool] 禁用服务器: {server_id}")
+        # 遍历活跃连接，标记为关闭状态
+        # 注意：不立即断开，让任务自然完成
+        connections_to_close = []
+        for conn_id, conn in self._connections.items():
+            if conn.server_id == server_id and conn.is_active:
+                connections_to_close.append(conn)
+
+        for conn in connections_to_close:
+            logger.info(
+                f"[MCPConnectionPool] 服务器 {server_id} 被禁用，"
+                f"连接 {conn_id} 将在任务完成后关闭"
+            )
+            # 标记为关闭（但不强制断开）
+            await conn.mark_complete()
+
+        logger.info(f"[MCPConnectionPool] 禁用服务器: {server_id}")
 
     async def reload_server_config(self, server_id: str) -> Optional[Dict[str, Any]]:
         """

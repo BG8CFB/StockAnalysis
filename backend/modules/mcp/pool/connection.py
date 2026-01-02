@@ -7,7 +7,7 @@ MCP 长连接对象
 import asyncio
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional, List, Dict, Any
 
@@ -73,7 +73,7 @@ class MCPConnection:
         self._tools: List[BaseTool] = []
 
         # 时间戳
-        self.created_at = datetime.utcnow()
+        self.created_at = datetime.now(timezone.utc)
         self.last_used_at: Optional[datetime] = None
 
         # 清理定时器
@@ -115,7 +115,7 @@ class MCPConnection:
             )
 
             self.state = ConnectionState.ACTIVE
-            self.last_used_at = datetime.utcnow()
+            self.last_used_at = datetime.now(timezone.utc)
 
             # 为工具添加 server_id 属性（用于过滤）
             for tool in self._tools:

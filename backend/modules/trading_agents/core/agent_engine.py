@@ -101,24 +101,37 @@ class AgentWorkflowEngine:
         self._agents[agent.slug] = agent
         logger.info(f"注册智能体: {agent.slug}")
 
-    async def _initialize_mcp_connections(self, user_id: str, task_id: str) -> None:
+    async def _initialize_mcp_connections(self, user_id: str, task_id: str) -> Dict[str, Any]:
         """
-        提前初始化所有需要的MCP连接
+        提前初始化所有需要的MCP连接（支持容错策略）
 
-        在智能体初始化之前，先扫描所有阶段的配置，
-        收集所有启用的MCP服务器，一次性初始化所有连接。
-
-        这样可以：
-        1. 快速失败：如果MCP连接失败，任务根本不会开始
-        2. 预热连接：确保所有工具已就绪
-        3. 性能可预测：工具调用时无延迟
+        基于最佳实践（LangGraph Tool Calling + Interceptors），实现智能体级别的容错：
+        1. 收集所有智能体的 MCP 配置（包括必需性标记）
+        2. 分类处理：required（必需）vs optional（可选）
+        3. required 失败 → 阻止任务启动（保持现有行为）
+        4. optional 失败 → 记录警告，跳过该服务器
+        5. 返回初始化结果统计
 
         Args:
             user_id: 用户 ID
             task_id: 任务 ID
+
+        Returns:
+            初始化结果统计：{
+                "total_servers": 总服务器数,
+                "required_success": 必需服务器成功数,
+                "required_failed": 必需服务器失败数,
+                "optional_success": 可选服务器成功数,
+                "optional_failed": 可选服务器失败数,
+                "unavailable_servers": 不可用服务器列表
+            }
+
+        Raises:
+            RuntimeError: 当任何必需 MCP 服务器初始化失败时
         """
         from modules.trading_agents.tools.mcp_tool_filter import get_mcp_tool_filter
-        from modules.trading_agents.schemas import AgentConfig
+        from modules.trading_agents.schemas import AgentConfig, MCPServerConfig
+        from collections import defaultdict
 
         logger.info(f"[MCP预初始化] 开始初始化MCP连接: user_id={user_id}, task_id={task_id}")
 
@@ -140,48 +153,168 @@ class AgentWorkflowEngine:
 
         if not agent_configs:
             logger.info("[MCP预初始化] 没有启用的智能体，跳过MCP初始化")
-            return
+            return {
+                "total_servers": 0,
+                "required_success": 0,
+                "required_failed": 0,
+                "optional_success": 0,
+                "optional_failed": 0,
+                "unavailable_servers": [],
+            }
+
+        # 收集所有 MCP 服务器配置（按智能体分组）
+        # 结构: {"agent_slug": [MCPServerConfig, ...]}
+        agent_mcp_configs: Dict[str, List[MCPServerConfig]] = {}
+        for agent_cfg in agent_configs:
+            agent_mcp_configs[agent_cfg.slug] = agent_cfg.enabled_mcp_servers
+
+        # 合并所有服务器的初始化任务
+        # 结构: {"server_name": {"required": bool, "agents": [agent_slugs]}}
+        server_init_tasks: Dict[str, Dict[str, Any]] = {}
+        for agent_slug, server_configs in agent_mcp_configs.items():
+            for server_config in server_configs:
+                server_name = server_config.name
+                if server_name not in server_init_tasks:
+                    server_init_tasks[server_name] = {
+                        "required": server_config.required,
+                        "agents": [],
+                    }
+                server_init_tasks[server_name]["agents"].append(agent_slug)
+
+        if not server_init_tasks:
+            logger.info("[MCP预初始化] 没有配置MCP服务器，跳过初始化")
+            return {
+                "total_servers": 0,
+                "required_success": 0,
+                "required_failed": 0,
+                "optional_success": 0,
+                "optional_failed": 0,
+                "unavailable_servers": [],
+            }
 
         # 获取MCP工具过滤器
         mcp_filter = get_mcp_tool_filter()
         all_tools = self.tool_registry.list_all_tools()
 
-        # 提前初始化所有智能体的MCP工具
-        init_success_count = 0
-        init_failure_count = 0
+        # 初始化统计
+        stats = {
+            "total_servers": len(server_init_tasks),
+            "required_success": 0,
+            "required_failed": 0,
+            "optional_success": 0,
+            "optional_failed": 0,
+            "unavailable_servers": [],
+        }
 
-        for agent_cfg in agent_configs:
+        # 按服务器分类：required vs optional
+        required_servers = [
+            name for name, config in server_init_tasks.items()
+            if config["required"]
+        ]
+        optional_servers = [
+            name for name, config in server_init_tasks.items()
+            if not config["required"]
+        ]
+
+        # 第一步：初始化所有必需服务器（任何一个失败则阻止任务）
+        for server_name in required_servers:
             try:
-                # 调用 get_tools_for_agent 会触发连接创建
+                # 创建临时 AgentConfig 用于初始化
+                temp_agent_config = AgentConfig(
+                    slug="_temp_required",
+                    name="Temporary",
+                    when_to_use="",
+                    enabled_mcp_servers=[
+                        MCPServerConfig(name=server_name, required=True)
+                    ],
+                )
+
                 tools = await mcp_filter.get_tools_for_agent(
-                    agent_config=agent_cfg,
+                    agent_config=temp_agent_config,
                     user_id=user_id,
                     task_id=task_id,
                     all_tools=all_tools,
                 )
 
-                init_success_count += 1
+                stats["required_success"] += 1
                 logger.info(
-                    f"[MCP预初始化] 智能体 {agent_cfg.slug} 的MCP工具初始化成功: "
+                    f"[MCP预初始化] 必需服务器 {server_name} 初始化成功: "
                     f"{len(tools)} 个工具"
                 )
 
             except Exception as e:
-                init_failure_count += 1
+                stats["required_failed"] += 1
+                stats["unavailable_servers"].append({
+                    "server": server_name,
+                    "required": True,
+                    "error": str(e),
+                })
                 logger.error(
-                    f"[MCP预初始化] 智能体 {agent_cfg.slug} 的MCP工具初始化失败: {e}",
+                    f"[MCP预初始化] 必需服务器 {server_name} 初始化失败: {e}",
                     exc_info=True
                 )
-                # ✅ 关键：如果MCP初始化失败，立即抛出异常，阻止任务开始
+                # ✅ 关键：必需服务器失败，立即抛出异常，阻止任务启动
                 raise RuntimeError(
-                    f"MCP连接初始化失败（智能体: {agent_cfg.slug}）: {e}\n"
-                    f"任务无法开始，请检查MCP服务器配置。"
+                    f"必需 MCP 服务器 '{server_name}' 初始化失败: {e}\n"
+                    f"任务无法启动，请检查该服务器配置。\n"
+                    f"影响的智能体: {', '.join(server_init_tasks[server_name]['agents'])}"
                 ) from e
+
+        # 第二步：初始化所有可选服务器（失败时记录警告，不阻止任务）
+        for server_name in optional_servers:
+            try:
+                temp_agent_config = AgentConfig(
+                    slug="_temp_optional",
+                    name="Temporary",
+                    when_to_use="",
+                    enabled_mcp_servers=[
+                        MCPServerConfig(name=server_name, required=False)
+                    ],
+                )
+
+                tools = await mcp_filter.get_tools_for_agent(
+                    agent_config=temp_agent_config,
+                    user_id=user_id,
+                    task_id=task_id,
+                    all_tools=all_tools,
+                )
+
+                stats["optional_success"] += 1
+                logger.info(
+                    f"[MCP预初始化] 可选服务器 {server_name} 初始化成功: "
+                    f"{len(tools)} 个工具"
+                )
+
+            except Exception as e:
+                stats["optional_failed"] += 1
+                stats["unavailable_servers"].append({
+                    "server": server_name,
+                    "required": False,
+                    "error": str(e),
+                })
+                logger.warning(
+                    f"[MCP预初始化] 可选服务器 {server_name} 初始化失败（已跳过）: {e}。"
+                    f"影响的智能体: {', '.join(server_init_tasks[server_name]['agents'])}"
+                )
+                # ✅ 可选服务器失败，记录警告但不抛出异常
 
         logger.info(
             f"[MCP预初始化] MCP连接初始化完成: "
-            f"成功={init_success_count}, 失败={init_failure_count}"
+            f"总计={stats['total_servers']}, "
+            f"必需成功={stats['required_success']}, "
+            f"必需失败={stats['required_failed']}, "
+            f"可选成功={stats['optional_success']}, "
+            f"可选失败={stats['optional_failed']}"
         )
+
+        # 如果所有服务器都失败，阻止任务启动
+        if stats["required_success"] + stats["optional_success"] == 0:
+            raise RuntimeError(
+                "所有 MCP 服务器均不可用，任务无法启动。\n"
+                f"不可用服务器: {', '.join([s['server'] for s in stats['unavailable_servers']])}"
+            )
+
+        return stats
 
     async def _initialize_agents_for_task(self, user_id: str, task_id: str) -> None:
         """

@@ -45,6 +45,22 @@ class TaskStatusEnum(str, Enum):
 # 智能体配置模型
 # =============================================================================
 
+class MCPServerConfig(BaseModel):
+    """MCP 服务器配置（支持容错策略）"""
+    name: str = Field(..., description="服务器名称")
+    required: bool = Field(default=True, description="是否必需（必需服务器失败将阻止任务启动）")
+
+    @classmethod
+    def from_str(cls, server_name: str) -> "MCPServerConfig":
+        """从字符串创建配置（向后兼容）"""
+        return cls(name=server_name, required=True)
+
+    @classmethod
+    def from_list(cls, server_names: List[str]) -> List["MCPServerConfig"]:
+        """从字符串列表创建配置列表（向后兼容）"""
+        return [cls.from_str(name) for name in server_names]
+
+
 class AgentConfig(BaseModel):
     """单个智能体配置（完整版，含提示词）
 
@@ -54,7 +70,10 @@ class AgentConfig(BaseModel):
     name: str = Field(..., min_length=1, max_length=100, description="显示名称")
     role_definition: Optional[str] = Field(None, min_length=1, max_length=10000, description="角色定义（系统提示词）")
     when_to_use: str = Field(..., max_length=500, description="使用场景说明")
-    enabled_mcp_servers: List[str] = Field(default_factory=list, description="启用的 MCP 服务器")
+    enabled_mcp_servers: List[MCPServerConfig] = Field(
+        default_factory=list,
+        description="启用的 MCP 服务器（支持配置必需性）"
+    )
     enabled_local_tools: List[str] = Field(default_factory=list, description="启用的本地工具")
     enabled: bool = Field(default=True, description="是否启用")
 
@@ -68,7 +87,10 @@ class AgentConfigSlim(BaseModel):
     slug: str = Field(..., min_length=1, max_length=50, description="唯一标识符")
     name: str = Field(..., min_length=1, max_length=100, description="显示名称")
     when_to_use: str = Field(..., max_length=500, description="使用场景说明")
-    enabled_mcp_servers: List[str] = Field(default_factory=list, description="启用的 MCP 服务器")
+    enabled_mcp_servers: List[MCPServerConfig] = Field(
+        default_factory=list,
+        description="启用的 MCP 服务器（支持配置必需性）"
+    )
     enabled_local_tools: List[str] = Field(default_factory=list, description="启用的本地工具")
     enabled: bool = Field(default=True, description="是否启用")
 

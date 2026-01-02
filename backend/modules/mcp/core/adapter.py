@@ -49,14 +49,13 @@ def build_stdio_connection(
         "transport": "stdio",
         "command": command,
         "args": args,
+        "encoding": encoding,
     }
 
     if env:
         config["env"] = env
     if cwd:
         config["cwd"] = cwd
-    if encoding != "utf-8":
-        config["encoding"] = encoding
 
     return config
 

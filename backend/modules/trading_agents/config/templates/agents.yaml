@@ -49,6 +49,10 @@ phase1:
         ...（你的综合判断）
       when_to_use: 分析股票技术走势时使用
       enabled_mcp_servers:
+        # 新格式：支持配置服务器是否必需
+        # - name: finance_mcp
+        #   required: true  # 必需：失败将阻止任务启动
+        # 旧格式（仍然兼容，默认为必需）：
         - finance_mcp
       enabled_local_tools: []
       enabled: true
@@ -148,7 +152,13 @@ phase1:
         ...（你的综合判断）
       when_to_use: 分析新闻影响时使用
       enabled_mcp_servers:
-        - finance_mcp
+        # 示例：配置多个 MCP 服务器，并指定必需性
+        - name: finance_mcp
+          required: true     # 必需：失败将阻止任务启动
+        - name: news_mcp
+          required: false    # 可选：失败时跳过，不影响任务
+        # 旧格式兼容：
+        # - finance_mcp      # 默认为必需（required=true）
       enabled_local_tools: []
       enabled: true
 

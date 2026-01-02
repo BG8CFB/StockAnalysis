@@ -39,22 +39,39 @@ class MCPToolFilter:
         all_tools: List[ToolDefinition],
     ) -> List[BaseTool]:
         """
-        获取智能体可用的 MCP 工具
+        获取智能体可用的 MCP 工具（支持容错配置）
 
         Args:
-            agent_config: 智能体配置
+            agent_config: 智能体配置（enabled_mcp_servers 支持必需性标记）
             user_id: 用户 ID
             task_id: 任务 ID
             all_tools: 所有已注册的工具定义
 
         Returns:
             过滤后的 LangChain 工具列表
+
+        Raises:
+            RuntimeError: 当必需 MCP 服务器不可用时
         """
         # 获取用户可用的 MCP 服务器（已启用且可用状态）
         available_servers = await self._get_available_servers(user_id)
 
-        # 智能体启用的 MCP 服务器（按名称）
-        enabled_server_names = set(agent_config.enabled_mcp_servers)
+        # 智能体启用的 MCP 服务器配置（新格式：支持 required 标记）
+        enabled_server_configs = agent_config.enabled_mcp_servers
+
+        # 向后兼容：如果是旧格式（List[str]），转换为 MCPServerConfig
+        if enabled_server_configs and isinstance(enabled_server_configs[0], str):
+            from modules.trading_agents.schemas import MCPServerConfig
+            enabled_server_configs = MCPServerConfig.from_list(enabled_server_configs)
+
+        # 提取服务器名称
+        enabled_server_names = set(config.name for config in enabled_server_configs)
+
+        # 提取必需的服务器名称
+        required_server_names = set(
+            config.name for config in enabled_server_configs
+            if config.required
+        )
 
         # 逻辑：如果智能体没有明确配置启用哪些服务器，则使用所有可用的服务器（默认全开）
         if enabled_server_names:
@@ -68,6 +85,14 @@ class MCPToolFilter:
             valid_server_names = set(available_servers.keys())
             logger.info(
                 f"智能体 {agent_config.slug} 未配置 MCP 服务器，使用所有可用服务器: {valid_server_names}"
+            )
+
+        # 检查必需服务器是否可用（必须在返回之前检查）
+        missing_required = required_server_names - valid_server_names
+        if missing_required:
+            raise RuntimeError(
+                f"智能体 {agent_config.slug} 的必需 MCP 服务器不可用: {missing_required}。"
+                f"可用的服务器: {valid_server_names}"
             )
 
         if not valid_server_names:
@@ -111,11 +136,23 @@ class MCPToolFilter:
                 )
 
             except Exception as e:
-                logger.error(
-                    f"获取 MCP 服务器工具失败: server={server_name}, error={e}",
-                    exc_info=True
+                # 检查此服务器是否是必需的
+                is_required = any(
+                    config.name == server_name and config.required
+                    for config in enabled_server_configs
                 )
-                # 继续尝试其他服务器
+
+                if is_required:
+                    # 必需服务器失败，抛出异常
+                    raise RuntimeError(
+                        f"智能体 {agent_config.slug} 的必需 MCP 服务器 '{server_name}' 连接失败: {e}"
+                    ) from e
+                else:
+                    # 可选服务器失败，记录警告并继续
+                    logger.warning(
+                        f"智能体 {agent_config.slug} 的可选 MCP 服务器 '{server_name}' 连接失败（已跳过）: {e}"
+                    )
+                    continue
 
         return langchain_tools
 

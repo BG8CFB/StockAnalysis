@@ -67,7 +67,9 @@ StockAnalysis/
 │   │   │   ├── api.py                 # AI 核心 API（模型管理）
 │   │   │   ├── llm/                   # LLM 提供商
 │   │   │   │   ├── provider.py        # LLM Provider（OpenAI 兼容）
-│   │   │   │   └── openai_compat.py   # OpenAI 接口适配
+│   │   │   │   ├── openai_compat.py   # OpenAI 接口适配
+│   │   │   │   ├── thinking_adapter.py # 思考模式适配器
+│   │   │   │   └── thinking_parser.py  # 思考模式解析器
 │   │   │   └── model/                 # 模型服务
 │   │   │       ├── service.py         # 模型 CRUD 与连接测试
 │   │   │       └── schemas.py         # 模型数据模型
@@ -162,6 +164,27 @@ StockAnalysis/
 │   │   │   │   ├── manager.py         # WebSocket 管理器
 │   │   │   │   └── events.py          # 事件定义
 │   │   │   └── tests/                 # 测试
+│   │   ├── mcp/                        # MCP 模块（独立）
+│   │   │   ├── api/                    # API 层
+│   │   │   │   └── routes.py           # MCP API 路由
+│   │   │   ├── pool/                   # 连接池
+│   │   │   │   ├── pool.py             # 连接池管理
+│   │   │   │   ├── queue.py            # 队列管理
+│   │   │   │   └── connection.py       # 连接管理
+│   │   │   ├── service/                # 服务层
+│   │   │   │   ├── mcp_service.py      # MCP 服务
+│   │   │   │   └── health_checker.py   # 健康检查服务
+│   │   │   ├── core/                   # 核心层
+│   │   │   │   ├── adapter.py          # MCP 适配器
+│   │   │   │   ├── session.py          # 会话管理
+│   │   │   │   ├── interceptors.py     # 拦截器
+│   │   │   │   └── exceptions.py       # 异常定义
+│   │   │   ├── config/                 # 配置管理
+│   │   │   │   ├── loader.py           # 配置加载器
+│   │   │   │   ├── settings_service.py # 设置服务
+│   │   │   │   ├── settings_models.py  # 设置模型
+│   │   │   │   └── default_config.yaml # 默认配置
+│   │   │   └── schemas.py              # 数据模型
 │   │   ├── analysis/                  # 基础分析模块
 │   │   │   ├── api.py                 # 分析 API
 │   │   │   ├── batch_api.py           # 批量分析 API
@@ -265,10 +288,9 @@ StockAnalysis/
 │   ├── package.json                   # npm 依赖
 │   └── Dockerfile                     # 前端 Dockerfile
 ├── docs/                              # 项目文档
-│   ├── design.md                      # 设计文档
-│   ├── requirements.md                # 需求文档
-│   ├── tasks.md                       # 任务文档
-│   └── TradingAgents智能体系统深度分析.md
+│   ├── MCP模块设计方案.md
+│   ├── 股票数据源模块设计方案.md
+│   └── 系统设计文档.md
 ├── docker/                            # Docker 配置
 │   ├── mongodb/init/
 │   │   └── init.js                    # MongoDB 初始化脚本
@@ -298,8 +320,8 @@ StockAnalysis/
 ├── 设置 (settings)
 │   ├── 用户管理                      # /settings/users [adminOnly]
 │   ├── 系统设置                      # /settings/system [adminOnly]
+│   ├── MCP 服务器管理                # /settings/mcp-servers
 │   ├── AI 模型管理                   # /settings/trading-agents/models
-│   ├── MCP 服务器管理                # /settings/trading-agents/mcp-servers
 │   ├── 智能体配置                    # /settings/trading-agents/agent-config
 │   └── 分析设置                      # /settings/trading-agents/analysis
 └── 管理员 (admin)                    # [adminOnly]
@@ -336,7 +358,7 @@ StockAnalysis/
 - 路由注册顺序：
   1. 核心路由：settings, core_admin, ai_core
   2. 基础设施路由：system, user, user_settings
-  3. 业务模块路由：analysis, task_center, screener, ask_stock, trading_agents, trading_agents_admin
+  3. 业务模块路由：screener, ask_stock, mcp, trading_agents, trading_agents_admin
 
 **5. 应用生命周期管理** ([`backend/main.py`](backend/main.py) - `lifespan`)
 - **启动阶段**：
@@ -387,9 +409,12 @@ StockAnalysis/
 | 智能体引擎 | [`backend/modules/trading_agents/core/agent_engine.py`](backend/modules/trading_agents/core/agent_engine.py) |
 | 任务管理器 | [`backend/modules/trading_agents/core/task_manager.py`](backend/modules/trading_agents/core/task_manager.py) |
 | 并发控制器 | [`backend/modules/trading_agents/core/concurrency_controller.py`](backend/modules/trading_agents/core/concurrency_controller.py) |
-| MCP 服务 | [`backend/modules/trading_agents/services/mcp_service.py`](backend/modules/trading_agents/services/mcp_service.py) |
-| MCP 补丁 | [`backend/modules/trading_agents/services/mcp_patch.py`](backend/modules/trading_agents/services/mcp_patch.py) |
+| MCP 工具过滤器 | [`backend/modules/trading_agents/tools/mcp_tool_filter.py`](backend/modules/trading_agents/tools/mcp_tool_filter.py) |
 | 智能体配置模板 | [`backend/modules/trading_agents/config/templates/agents.yaml`](backend/modules/trading_agents/config/templates/agents.yaml) |
+| MCP 模块 API | [`backend/modules/mcp/api/routes.py`](backend/modules/mcp/api/routes.py) |
+| MCP 连接池 | [`backend/modules/mcp/pool/pool.py`](backend/modules/mcp/pool/pool.py) |
+| MCP 适配器 | [`backend/modules/mcp/core/adapter.py`](backend/modules/mcp/core/adapter.py) |
+| MCP 默认配置 | [`backend/modules/mcp/config/default_config.yaml`](backend/modules/mcp/config/default_config.yaml) |
 | 前端路由加载 | [`frontend/src/core/router/module_loader.ts`](frontend/src/core/router/module_loader.ts) |
 | 前端 HTTP 客户端 | [`frontend/src/core/api/http.ts`](frontend/src/core/api/http.ts) |
 
@@ -468,13 +493,6 @@ StockAnalysis/
 - `GET /api/trading-agents/reports/summary` - 获取报告统计摘要
 - `GET /api/trading-agents/reports/{id}` - 获取报告详情
 - `DELETE /api/trading-agents/reports/{id}` - 删除报告
-- `GET /api/trading-agents/mcp-servers` - 列出 MCP 服务器
-- `POST /api/trading-agents/mcp-servers` - 创建 MCP 服务器
-- `GET /api/trading-agents/mcp-servers/{id}` - 获取 MCP 服务器
-- `PUT /api/trading-agents/mcp-servers/{id}` - 更新 MCP 服务器
-- `DELETE /api/trading-agents/mcp-servers/{id}` - 删除 MCP 服务器
-- `POST /api/trading-agents/mcp-servers/{id}/test` - 测试 MCP 服务器连接
-- `GET /api/trading-agents/mcp-servers/{id}/tools` - 获取 MCP 服务器工具列表
 - `GET /api/trading-agents/agent-config` - 获取智能体配置
 - `PUT /api/trading-agents/agent-config` - 更新智能体配置
 - `POST /api/trading-agents/agent-config/reset` - 重置为默认配置
@@ -493,6 +511,19 @@ StockAnalysis/
 - `GET /api/trading-agents/admin/all-tasks` - 获取所有任务（跨用户）
 - `DELETE /api/trading-agents/admin/all-tasks/{id}` - 删除任意任务
 - `POST /api/trading-agents/admin/all-tasks/{id}/cancel` - 取消/停止任意任务
+
+### MCP 模块
+- `GET /api/mcp/servers` - 列出 MCP 服务器
+- `POST /api/mcp/servers` - 创建 MCP 服务器
+- `GET /api/mcp/servers/{id}` - 获取 MCP 服务器详情
+- `PUT /api/mcp/servers/{id}` - 更新 MCP 服务器
+- `DELETE /api/mcp/servers/{id}` - 删除 MCP 服务器
+- `POST /api/mcp/servers/{id}/test` - 测试 MCP 服务器连接
+- `GET /api/mcp/servers/{id}/tools` - 获取 MCP 服务器工具列表
+- `GET /api/mcp/settings` - 获取 MCP 设置
+- `PUT /api/mcp/settings` - 更新 MCP 设置
+- `POST /api/mcp/settings/reset` - 重置为默认设置
+- `GET /api/mcp/config/default` - 获取默认配置
 
 ### WebSocket 端点
 - `WS /api/trading-agents/ws/{task_id}?token={access_token}` - 实时任务进度推送
@@ -559,19 +590,13 @@ StockAnalysis/
 - 前端展示预估成本
 - 支持输入/输出/总计 Token 统计
 
-**5. MCP 兼容性补丁 (重要)**
-- 修复了 MCP Python SDK 的已知问题
-- 修复 FinanceMCP 的非标错误格式响应
-- 位于 [`backend/modules/trading_agents/services/mcp_patch.py`](backend/modules/trading_agents/services/mcp_patch.py)
-- 在 `main.py` 启动时自动应用
-
-**6. WebSocket 实时推送**
+**5. WebSocket 实时推送**
 - 任务状态变更实时推送到前端
 - 支持多客户端连接同一任务
 - 心跳保活机制
 - 实现位于 [`backend/modules/trading_agents/websocket/manager.py`](backend/modules/trading_agents/websocket/manager.py)
 
-**7. 批量任务管理**
+**6. 批量任务管理**
 - 支持一次性分析多只股票（1-50只）
 - 自动创建批量任务和子任务
 - 批量任务状态聚合
@@ -619,22 +644,59 @@ TradingAgents 支持使用两个不同的 AI 模型：
 - 优先级2：用户模型偏好（用户设置中的默认模型）
 - 优先级3：系统默认模型
 
-## FinanceMCP 集成
+## MCP 模块
 
-项目支持集成 MCP (Model Context Protocol) 服务器作为数据源。
+MCP (Model Context Protocol) 模块是系统的独立模块，负责管理与 MCP 服务器的连接和工具调用。
 
-**可用工具示例**：
-- `stock_data`: 股票行情与技术指标 (MACD, RSI, KDJ 等)
-- `company_performance`: 财务报表数据
-- `fund_data`: 基金数据
-- `macro_econ`: 宏观经济指标
-- `finance_news`: 财经新闻
+### 模块架构
 
-**MCP 服务配置**：
-- 每个用户可以创建个人 MCP 服务器配置
-- 管理员可以创建公共 MCP 服务器配置
-- 支持 SSE 和 HTTP 两种传输协议
-- 自动健康检查和会话管理
+**目录结构**：
+- `api/` - API 层，提供 RESTful 接口
+- `pool/` - 连接池，管理服务器连接和队列
+- `service/` - 服务层，核心业务逻辑
+- `core/` - 核心层，适配器和会话管理
+- `config/` - 配置管理
+
+### 核心特性
+
+**1. 连接池管理**
+- 支持个人和公共连接池
+- 自动重连和错误恢复
+- 连接复用和资源优化
+
+**2. 传输协议支持**
+- stdio（本地进程）
+- http/streamable_http（推荐）
+- websocket
+- sse（已废弃）
+
+**3. 健康检查**
+- 自动检测服务器可用性
+- 定期健康检查任务
+- 失败自动重试机制
+
+**4. 会话管理**
+- 会话生命周期管理
+- 会话复用和缓存
+- 自动会话清理
+
+**5. 工具容错策略**
+- required: 失败阻止任务启动
+- optional: 失败跳过该服务器
+- 智能体级别的容错配置
+
+### 配置优先级
+
+1. 用户自定义配置（最高）
+2. 系统公共配置
+3. 默认 YAML 模板（最低）
+
+### 与 TradingAgents 集成
+
+TradingAgents 智能体通过 MCP 工具过滤器调用 MCP 服务器的工具：
+- 位于 [`backend/modules/trading_agents/tools/mcp_tool_filter.py`](backend/modules/trading_agents/tools/mcp_tool_filter.py)
+- 支持工具级别容错
+- 自动工具发现和注册
 
 ## 环境与安全配置
 
@@ -748,13 +810,7 @@ VITE_API_BASE_URL=/api
 
 **解决**: 自定义组件（非 Element Plus）必须在 `<script setup>` 中显式 import。
 
-### 3. MCP 协议兼容性
-
-**现象**: 连接某些 MCP 服务器时报错。
-
-**解决**: 确保 `mcp_patch.py` 已在 `main.py` 中正确加载。
-
-### 4. 并发控制队列位置
+### 3. 并发控制队列位置
 
 **现象**: 批量任务队列位置不准确。
 
@@ -912,7 +968,8 @@ npm run dev
 - Motor - 异步 MongoDB 驱动
 - Redis - 异步 Redis 客户端
 - LangGraph - 工作流编排
-- MCP SDK - MCP 协议支持
+- LangChain MCP Adapters - MCP 协议适配器
+- MCP SDK - MCP 协议支持 (>=1.9.2,<2.0.0)
 
 **前端**:
 - Vue 3 - 渐进式 JavaScript 框架
