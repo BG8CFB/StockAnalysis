@@ -92,34 +92,39 @@
             </el-table-column>
             <el-table-column
               label="操作"
-              width="200"
+              width="240"
               fixed="right"
             >
               <template #default="{ row }">
-                <el-button
-                  link
-                  type="primary"
-                  :icon="Connection"
-                  @click="handleTest(row)"
-                >
-                  测试
-                </el-button>
-                <el-button
-                  link
-                  type="primary"
-                  :icon="Edit"
-                  @click="handleEdit(row)"
-                >
-                  编辑
-                </el-button>
-                <el-button
-                  link
-                  type="danger"
-                  :icon="Delete"
-                  @click="handleDelete(row)"
-                >
-                  删除
-                </el-button>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <el-button
+                    link
+                    type="primary"
+                    :icon="Connection"
+                    size="small"
+                    @click="handleTest(row)"
+                  >
+                    测试
+                  </el-button>
+                  <el-button
+                    link
+                    type="primary"
+                    :icon="Edit"
+                    size="small"
+                    @click="handleEdit(row)"
+                  >
+                    编辑
+                  </el-button>
+                  <el-button
+                    link
+                    type="danger"
+                    :icon="Delete"
+                    size="small"
+                    @click="handleDelete(row)"
+                  >
+                    删除
+                  </el-button>
+                </div>
               </template>
             </el-table-column>
           </el-table>
@@ -180,39 +185,41 @@
             />
             <el-table-column
               label="操作"
-              width="250"
+              width="240"
             >
               <template #default="{ row }">
-                <el-button
-                  link
-                  type="primary"
-                  :icon="Connection"
-                  size="small"
-                  @click="handleTest(row)"
-                >
-                  测试
-                </el-button>
-                <!-- 编辑和删除按钮 - 仅管理员和超管可见 -->
-                <el-button
-                  v-if="canManageSystemModels"
-                  link
-                  type="primary"
-                  :icon="Edit"
-                  size="small"
-                  @click="handleEdit(row)"
-                >
-                  编辑
-                </el-button>
-                <el-button
-                  v-if="canManageSystemModels"
-                  link
-                  type="danger"
-                  :icon="Delete"
-                  size="small"
-                  @click="handleDelete(row)"
-                >
-                  删除
-                </el-button>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <el-button
+                    link
+                    type="primary"
+                    :icon="Connection"
+                    size="small"
+                    @click="handleTest(row)"
+                  >
+                    测试
+                  </el-button>
+                  <!-- 编辑和删除按钮 - 仅管理员和超管可见 -->
+                  <el-button
+                    v-if="canManageSystemModels"
+                    link
+                    type="primary"
+                    :icon="Edit"
+                    size="small"
+                    @click="handleEdit(row)"
+                  >
+                    编辑
+                  </el-button>
+                  <el-button
+                    v-if="canManageSystemModels"
+                    link
+                    type="danger"
+                    :icon="Delete"
+                    size="small"
+                    @click="handleDelete(row)"
+                  >
+                    删除
+                  </el-button>
+                </div>
               </template>
             </el-table-column>
           </el-table>
@@ -224,14 +231,16 @@
     <el-dialog
       v-model="showCreateDialog"
       :title="dialogTitle"
-      width="600px"
+      width="960px"
+      top="5vh"
+      destroy-on-close
       @close="handleDialogClose"
     >
       <el-alert
         type="info"
         :closable="false"
         show-icon
-        style="margin-bottom: 20px"
+        class="mb-4"
       >
         <template #title>
           {{ dialogDescription }}
@@ -242,314 +251,305 @@
         ref="formRef"
         :model="formData"
         :rules="formRules"
-        label-width="140px"
+        label-width="100px"
+        label-position="top"
+        class="model-form"
       >
-        <el-form-item
-          label="模型名称"
-          prop="name"
-        >
-          <el-input
-            v-model="formData.name"
-            placeholder="请输入模型名称"
-          />
-        </el-form-item>
-
-        <!-- 模型类型 - 仅管理员和超管可见且仅在创建时显示 -->
-        <el-form-item
-          v-if="canManageSystemModels && !isEdit"
-          label="模型类型"
-        >
-          <el-radio-group v-model="formData.is_system">
-            <el-radio :label="false">
-              <strong>个人模型</strong>
-              <span class="radio-desc">（仅自己可用）</span>
-            </el-radio>
-            <el-radio :label="true">
-              <strong>系统模型</strong>
-              <span class="radio-desc">（所有用户可用）</span>
-            </el-radio>
-          </el-radio-group>
-        </el-form-item>
-
-        <!-- 平台类型选择 -->
-        <el-form-item
-          label="平台类型"
-          prop="platform_type"
-        >
-          <el-radio-group
-            v-model="formData.platform_type"
-            @change="handlePlatformTypeChange"
-          >
-            <el-radio value="preset">
-              预设平台
-            </el-radio>
-            <el-radio value="custom">
-              自定义平台
-            </el-radio>
-          </el-radio-group>
-        </el-form-item>
-
-        <!-- 预设平台选择 -->
-        <el-form-item
-          v-if="formData.platform_type === 'preset'"
-          label="预设平台"
-          prop="platform_name"
-        >
-          <el-select
-            v-model="formData.platform_name"
-            placeholder="选择平台"
-            style="width: 100%"
-            @change="handlePresetPlatformChange"
-          >
-            <el-option
-              v-for="platform in presetPlatforms"
-              :key="platform.id"
-              :label="platform.name"
-              :value="platform.id"
-            >
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <el-icon><component :is="platform.icon" /></el-icon>
-                <span>{{ platform.name }}</span>
+        <el-row :gutter="24">
+          <!-- 左侧列：基础配置与连接 -->
+          <el-col :span="12">
+            <!-- 基础设置 -->
+            <div class="form-section">
+              <div class="section-title">
+                <el-icon><Setting /></el-icon>
+                <span>基础设置</span>
               </div>
-            </el-option>
-          </el-select>
-        </el-form-item>
+              
+              <el-row :gutter="20">
+                <el-col :span="12">
+                  <el-form-item label="模型名称" prop="name">
+                    <el-input
+                      v-model="formData.name"
+                      placeholder="给模型起个名字"
+                      clearable
+                    />
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12" v-if="canManageSystemModels && !isEdit">
+                  <el-form-item label="模型范围">
+                    <el-radio-group v-model="formData.is_system">
+                      <el-radio :label="false">个人私有</el-radio>
+                      <el-radio :label="true">系统共享</el-radio>
+                    </el-radio-group>
+                  </el-form-item>
+                </el-col>
+              </el-row>
 
-        <!-- API 地址 -->
-        <el-form-item
-          label="API 地址"
-          prop="api_base_url"
-        >
-          <el-input
-            v-model="formData.api_base_url"
-            placeholder="https://api.openai.com/v1"
-            :readonly="formData.platform_type === 'preset'"
-          />
-        </el-form-item>
-
-        <!-- API Key -->
-        <el-form-item
-          label="API Key"
-          prop="api_key"
-        >
-          <el-input
-            v-model="formData.api_key"
-            type="password"
-            show-password
-            placeholder="sk-..."
-          />
-        </el-form-item>
-
-        <!-- 模型选择/输入 -->
-        <!-- 预设平台且非手动输入 -->
-        <template v-if="formData.platform_type === 'preset' && !manualInputModel">
-          <el-form-item
-            label="模型"
-            prop="model_id"
-          >
-            <div style="display: flex; gap: 8px;">
-              <el-select
-                v-model="formData.model_id"
-                placeholder="选择或手动输入模型"
-                style="flex: 1"
-                filterable
-                allow-create
-                @change="handleModelChange"
-              >
-                <el-option
-                  v-for="model in availableModels"
-                  :key="model"
-                  :label="model"
-                  :value="model"
-                />
-              </el-select>
-              <el-button
-                :loading="loadingModels"
-                :disabled="!formData.api_key"
-                @click="fetchModels"
-              >
-                获取模型列表
-              </el-button>
+              <el-row :gutter="20">
+                <el-col :span="12">
+                  <el-form-item label="平台类型" prop="platform_type">
+                    <el-radio-group
+                      v-model="formData.platform_type"
+                      @change="handlePlatformTypeChange"
+                      class="w-full"
+                    >
+                      <el-radio-button value="preset">预设平台</el-radio-button>
+                      <el-radio-button value="custom">自定义</el-radio-button>
+                    </el-radio-group>
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item
+                    v-if="formData.platform_type === 'preset'"
+                    label="选择平台"
+                    prop="platform_name"
+                  >
+                    <el-select
+                      v-model="formData.platform_name"
+                      placeholder="请选择平台"
+                      class="w-full"
+                      @change="handlePresetPlatformChange"
+                    >
+                      <el-option
+                        v-for="platform in presetPlatforms"
+                        :key="platform.id"
+                        :label="platform.name"
+                        :value="platform.id"
+                      >
+                        <div class="flex items-center gap-2">
+                          <el-icon><component :is="platform.icon" /></el-icon>
+                          <span>{{ platform.name }}</span>
+                        </div>
+                      </el-option>
+                    </el-select>
+                  </el-form-item>
+                </el-col>
+              </el-row>
             </div>
-          </el-form-item>
-        </template>
 
-        <!-- 自定义平台或手动输入 -->
-        <el-form-item
-          v-else
-          label="模型 ID"
-          prop="model_id"
-        >
-          <el-input
-            v-model="formData.model_id"
-            placeholder="gpt-4o 或自定义模型 ID"
-          />
-        </el-form-item>
-
-        <!-- 预设平台可切换到手动输入 -->
-        <el-form-item v-if="formData.platform_type === 'preset'">
-          <el-checkbox v-model="manualInputModel">
-            手动输入模型 ID
-          </el-checkbox>
-        </el-form-item>
-
-        <!-- 自定义请求头 -->
-        <el-form-item label="自定义请求头">
-          <el-button
-            size="small"
-            @click="addCustomHeader"
-          >
-            添加请求头
-          </el-button>
-
-          <div
-            v-for="(value, key, index) in formData.custom_headers"
-            :key="index"
-            style="margin-top: 8px; display: flex; gap: 8px;"
-          >
-            <el-input
-              v-model="formData.custom_headers[key]"
-              placeholder="Header Value"
-              style="flex: 1"
-            />
-            <el-button
-              size="small"
-              type="danger"
-              @click="removeCustomHeader(key)"
-            >
-              删除
-            </el-button>
-          </div>
-        </el-form-item>
-
-        <el-form-item
-          label="模型最大并发数"
-          prop="max_concurrency"
-        >
-          <el-input-number
-            v-model="formData.max_concurrency"
-            :min="1"
-            :max="200"
-          />
-          <span class="form-tip">该模型在平台上的总并发能力</span>
-        </el-form-item>
-
-        <el-form-item
-          label="单任务并发数"
-          prop="task_concurrency"
-        >
-          <el-input-number
-            v-model="formData.task_concurrency"
-            :min="1"
-            :max="10"
-          />
-          <span class="form-tip">单个任务可同时运行的智能体数</span>
-        </el-form-item>
-
-        <el-form-item
-          label="批量任务并发数"
-          prop="batch_concurrency"
-        >
-          <el-input-number
-            v-model="formData.batch_concurrency"
-            :min="1"
-            :max="50"
-          />
-          <span class="form-tip">用户可同时运行的批量任务数（公共模型由管理员控制）</span>
-        </el-form-item>
-
-        <el-form-item
-          label="超时时间(秒)"
-          prop="timeout_seconds"
-        >
-          <el-input-number
-            v-model="formData.timeout_seconds"
-            :min="10"
-            :max="600"
-          />
-        </el-form-item>
-
-        <el-form-item
-          label="温度参数"
-          prop="temperature"
-        >
-          <el-input-number
-            v-model="formData.temperature"
-            :min="0"
-            :max="1"
-            :step="0.1"
-            :precision="1"
-            :controls="true"
-            placeholder="0.0 - 1.0"
-          />
-        </el-form-item>
-
-        <!-- 思考模式配置 -->
-        <el-divider style="margin: 16px 0;" />
-        <el-form-item>
-          <template #label>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span>思考模式</span>
-              <el-tooltip
-                content="启用后可增强AI推理能力，但会消耗更多token。不同模型支持不同模式。"
-                placement="top"
-              >
-                <el-icon><QuestionFilled /></el-icon>
-              </el-tooltip>
-            </div>
-          </template>
-          <div style="display: flex; flex-direction: column; gap: 12px;">
-            <el-switch
-              v-model="formData.thinking_enabled"
-              active-text="启用"
-              inactive-text="关闭"
-            />
-            <div v-if="formData.thinking_enabled" style="margin-top: 8px;">
-              <div style="margin-bottom: 8px; font-size: 13px; color: #606266;">思考模式类型:</div>
-              <el-radio-group v-model="formData.thinking_mode" style="display: flex; flex-direction: column; gap: 8px;">
-                <el-radio :value="ThinkingModeEnum.PRESERVED" style="margin-right: 0;">
-                  <div style="display: flex; flex-direction: column; gap: 4px;">
-                    <span style="font-weight: 500;">保留式思考 (GLM-4.7, Claude)</span>
-                    <span style="font-size: 12px; color: #909399;">适合长任务，保持多轮连贯性，思考内容会保留</span>
-                  </div>
-                </el-radio>
-                <el-radio :value="ThinkingModeEnum.CLEAR_ON_NEW" style="margin-right: 0;">
-                  <div style="display: flex; flex-direction: column; gap: 4px;">
-                    <span style="font-weight: 500;">新轮次清除 (DeepSeek)</span>
-                    <span style="font-size: 12px; color: #909399;">适合批量任务，每轮独立思考，新对话清除旧内容</span>
-                  </div>
-                </el-radio>
-                <el-radio :value="ThinkingModeEnum.AUTO" style="margin-right: 0;">
-                  <div style="display: flex; flex-direction: column; gap: 4px;">
-                    <span style="font-weight: 500;">自动处理 (OpenAI o1/o3)</span>
-                    <span style="font-size: 12px; color: #909399;">模型自动管理思考过程</span>
-                  </div>
-                </el-radio>
-              </el-radio-group>
-              <div style="margin-top: 8px; padding: 8px 12px; background: #f0f9ff; border-radius: 4px; font-size: 12px; color: #409eff;">
-                <el-icon><InfoFilled /></el-icon>
-                请根据模型类型选择合适的思考模式，否则可能无法生效
+            <!-- 连接配置 -->
+            <div class="form-section">
+              <div class="section-title">
+                <el-icon><Connection /></el-icon>
+                <span>连接配置</span>
               </div>
-            </div>
-          </div>
-        </el-form-item>
 
-        <el-form-item label="启用状态">
-          <el-switch v-model="formData.enabled" />
-        </el-form-item>
+              <el-row :gutter="20">
+                <el-col :span="24">
+                  <el-form-item label="API 地址" prop="api_base_url">
+                    <el-input
+                      v-model="formData.api_base_url"
+                      placeholder="例如: https://api.openai.com/v1"
+                      :readonly="formData.platform_type === 'preset'"
+                    >
+                      <template #prefix>
+                        <el-icon><Link /></el-icon>
+                      </template>
+                    </el-input>
+                  </el-form-item>
+                </el-col>
+                <el-col :span="24">
+                  <el-form-item label="API Key" prop="api_key">
+                    <el-input
+                      v-model="formData.api_key"
+                      type="password"
+                      show-password
+                      placeholder="sk-..."
+                    >
+                      <template #prefix>
+                        <el-icon><Key /></el-icon>
+                      </template>
+                    </el-input>
+                  </el-form-item>
+                </el-col>
+              </el-row>
+
+              <el-form-item
+                v-if="formData.platform_type === 'preset' && !manualInputModel"
+                label="模型 ID"
+                prop="model_id"
+              >
+                <div class="flex gap-2 w-full">
+                  <el-select
+                    v-model="formData.model_id"
+                    placeholder="选择或输入模型ID"
+                    class="flex-1"
+                    filterable
+                    allow-create
+                    @change="handleModelChange"
+                  >
+                    <el-option
+                      v-for="model in availableModels"
+                      :key="model"
+                      :label="model"
+                      :value="model"
+                    />
+                  </el-select>
+                  <el-button
+                    :loading="loadingModels"
+                    :disabled="!formData.api_key"
+                    @click="fetchModels"
+                  >
+                    获取列表
+                  </el-button>
+                </div>
+                <div class="mt-1">
+                  <el-link type="primary" :underline="false" @click="manualInputModel = true" style="font-size: 12px">
+                    切换到手动输入模式
+                  </el-link>
+                </div>
+              </el-form-item>
+
+              <el-form-item
+                v-else
+                label="模型 ID"
+                prop="model_id"
+              >
+                <div class="flex gap-2 w-full">
+                  <el-input
+                    v-model="formData.model_id"
+                    placeholder="例如: gpt-4o"
+                    class="flex-1"
+                  />
+                  <el-button
+                    v-if="formData.platform_type === 'preset'"
+                    link
+                    type="primary"
+                    @click="manualInputModel = false"
+                  >
+                    返回列表选择
+                  </el-button>
+                </div>
+              </el-form-item>
+            </div>
+          </el-col>
+
+          <!-- 右侧列：参数与高级 -->
+          <el-col :span="12">
+            <!-- 运行参数 (直接展开) -->
+            <div class="form-section">
+              <div class="section-title">
+                <div class="flex items-center gap-1">
+                  <el-icon><Operation /></el-icon>
+                  <span>运行参数</span>
+                </div>
+              </div>
+              
+              <el-row :gutter="20">
+                <el-col :span="12">
+                  <el-form-item label="最大并发" prop="max_concurrency">
+                    <el-input-number v-model="formData.max_concurrency" :min="1" :max="200" class="w-full" controls-position="right" />
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="任务并发" prop="task_concurrency">
+                    <el-input-number v-model="formData.task_concurrency" :min="1" :max="10" class="w-full" controls-position="right" />
+                  </el-form-item>
+                </el-col>
+              </el-row>
+
+              <el-row :gutter="20">
+                <el-col :span="12">
+                  <el-form-item label="批量并发" prop="batch_concurrency">
+                    <el-input-number v-model="formData.batch_concurrency" :min="1" :max="50" class="w-full" controls-position="right" />
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="超时(秒)" prop="timeout_seconds">
+                    <el-input-number v-model="formData.timeout_seconds" :min="10" :max="600" class="w-full" controls-position="right" />
+                  </el-form-item>
+                </el-col>
+              </el-row>
+
+              <el-row :gutter="20">
+                <el-col :span="12">
+                  <el-form-item label="温度 (Temperature)" prop="temperature">
+                    <el-input-number v-model="formData.temperature" :min="0" :max="2" :step="0.1" class="w-full" controls-position="right" />
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="启用状态">
+                    <el-switch
+                      v-model="formData.enabled"
+                      active-text="启用"
+                      inactive-text="停用"
+                      inline-prompt
+                    />
+                  </el-form-item>
+                </el-col>
+              </el-row>
+            </div>
+
+            <!-- 高级功能 -->
+            <div class="form-section">
+              <div class="section-title">
+                <el-icon><Cpu /></el-icon>
+                <span>高级功能</span>
+              </div>
+
+              <el-form-item>
+                <template #label>
+                  <div class="flex items-center gap-1">
+                    <span>思考模式 (Chain of Thought)</span>
+                    <el-tag v-if="formData.thinking_enabled" size="small" type="success" effect="plain">已启用</el-tag>
+                  </div>
+                </template>
+                <div class="thinking-mode-container">
+                  <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs text-gray-500">启用模型推理过程</span>
+                    <el-switch v-model="formData.thinking_enabled" />
+                  </div>
+                  
+                  <div v-if="formData.thinking_enabled" class="thinking-options">
+                    <div 
+                      v-for="mode in [
+                        { val: ThinkingModeEnum.PRESERVED, icon: Document, label: '保留式', desc: '对话保留思考', tags: ['Claude'] },
+                        { val: ThinkingModeEnum.CLEAR_ON_NEW, icon: Refresh, label: '轮次清除', desc: '新轮次清空', tags: ['DeepSeek'] },
+                        { val: ThinkingModeEnum.AUTO, icon: MagicStick, label: '自动托管', desc: '模型自主管理', tags: ['O1'] }
+                      ]"
+                      :key="mode.val"
+                      class="thinking-option-item"
+                      :class="{ active: formData.thinking_mode === mode.val }"
+                      @click="formData.thinking_mode = mode.val"
+                    >
+                      <div class="option-header">
+                        <el-icon><component :is="mode.icon" /></el-icon>
+                        <span class="font-medium">{{ mode.label }}</span>
+                      </div>
+                      <div class="option-desc">{{ mode.desc }}</div>
+                    </div>
+                  </div>
+                </div>
+              </el-form-item>
+
+              <el-form-item label="自定义请求头">
+                <div class="w-full">
+                  <div v-for="(value, key) in formData.custom_headers" :key="key" class="flex gap-2 mb-2">
+                    <el-input :model-value="key" readonly class="w-1/3" placeholder="Key" />
+                    <el-input v-model="formData.custom_headers[key]" class="flex-1" placeholder="Value" />
+                    <el-button type="danger" :icon="Delete" circle plain @click="removeCustomHeader(key as string)" />
+                  </div>
+                  <el-button type="primary" link :icon="Plus" @click="addCustomHeader" style="padding: 0;">添加 Header</el-button>
+                </div>
+              </el-form-item>
+            </div>
+          </el-col>
+        </el-row>
       </el-form>
 
       <template #footer>
-        <el-button @click="showCreateDialog = false">
-          取消
-        </el-button>
-        <el-button
-          type="primary"
-          :loading="submitting"
-          @click="handleSubmit"
-        >
-          {{ isEdit ? '保存' : '创建' }}
-        </el-button>
+        <div class="dialog-footer">
+          <el-button @click="showCreateDialog = false">
+            取消
+          </el-button>
+          <el-button
+            type="primary"
+            :loading="submitting"
+            @click="handleSubmit"
+          >
+            {{ isEdit ? '保存' : '创建' }}
+          </el-button>
+        </div>
       </template>
     </el-dialog>
 
@@ -588,7 +588,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Edit, Delete, Connection, QuestionFilled, InfoFilled } from '@element-plus/icons-vue'
+import { Plus, Edit, Delete, Connection, QuestionFilled, InfoFilled, Document, Refresh, MagicStick, Setting, Link, Key, Operation, ArrowDown, Cpu } from '@element-plus/icons-vue'
 import { useUserStore } from '@core/auth/store'
 import { useTradingAgentsStore } from '../store'
 import { PROVIDER_PRESETS, ModelProviderEnum, PlatformTypeEnum, PresetPlatformEnum, ThinkingModeEnum, type AIModelConfig, type AIModelConfigCreate } from '../types'
@@ -612,6 +612,7 @@ const showTestDialog = ref(false)
 const isEdit = ref(false)
 const editingId = ref<string | null>(null)
 const isCreatingSystemModel = ref(false) // 是否正在创建系统模型
+const showAdvancedParams = ref(false) // 是否显示高级参数
 
 // 对话框标题和描述
 const dialogTitle = computed(() => {
@@ -939,6 +940,102 @@ onMounted(() => {
 <style scoped>
 .model-management {
   padding: 20px;
+}
+
+/* Tailwind-like utility classes */
+.mb-4 { margin-bottom: 16px; }
+.mt-1 { margin-top: 4px; }
+.w-full { width: 100%; }
+.w-1\/3 { width: 33.33%; }
+.flex { display: flex; }
+.flex-1 { flex: 1; }
+.gap-2 { gap: 8px; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.rotate-180 { transform: rotate(180deg); transition: transform 0.3s; }
+
+/* Form Styling */
+.model-form {
+  padding: 0 10px;
+}
+
+.form-section {
+  margin-bottom: 24px;
+  background-color: #fcfcfc;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid #ebeef5;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.section-title .el-icon {
+  font-size: 18px;
+  color: #409eff;
+}
+
+/* Thinking Mode Styling */
+.thinking-mode-container {
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  padding: 12px;
+  background-color: #fff;
+}
+
+.thinking-options {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.thinking-option-item {
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  padding: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.thinking-option-item:hover {
+  border-color: #409eff;
+  background-color: #ecf5ff;
+}
+
+.thinking-option-item.active {
+  border-color: #409eff;
+  background-color: #ecf5ff;
+  box-shadow: 0 0 0 1px #409eff inset;
+}
+
+.option-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  color: #303133;
+}
+
+.option-desc {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.4;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
 }
 
 .page-header {
