@@ -83,27 +83,38 @@ class MCPToolFilter:
             from modules.trading_agents.schemas import MCPServerConfig
             enabled_server_configs = MCPServerConfig.from_list(enabled_server_configs)
 
-        # 提取服务器名称
-        enabled_server_names = set(config.name for config in enabled_server_configs)
+        # 提取服务器名称和必需性标记
+        enabled_server_names = set()
+        required_server_names = set()
 
-        # 提取必需的服务器名称
-        required_server_names = set(
-            config.name for config in enabled_server_configs
-            if config.required
-        )
+        if enabled_server_configs:
+            for config in enabled_server_configs:
+                if isinstance(config, str):
+                    enabled_server_names.add(config)
+                else:
+                    enabled_server_names.add(config.name)
+                    if config.required:
+                        required_server_names.add(config.name)
 
-        # 逻辑：如果智能体没有明确配置启用哪些服务器，则使用所有可用的服务器（默认全开）
-        if enabled_server_names:
-            # 明确配置了：只使用配置的服务器
+        # 区分三种情况（修复空配置处理）
+        if enabled_server_configs is None:
+            # 情况1：未配置（None），使用所有可用服务器（向后兼容）
+            valid_server_names = set(available_servers.keys())
+            logger.info(
+                f"智能体 {agent_config.slug} 未配置 MCP 服务器，"
+                f"使用所有可用服务器: {valid_server_names}"
+            )
+
+        elif len(enabled_server_names) == 0:
+            # 情况2：明确配置为空列表，不使用任何服务器
+            valid_server_names = set()
+            logger.info(f"智能体 {agent_config.slug} 明确配置不使用任何 MCP 服务器")
+
+        else:
+            # 情况3：明确配置了服务器列表
             valid_server_names = enabled_server_names & available_servers.keys()
             logger.info(
                 f"智能体 {agent_config.slug} 使用配置的 MCP 服务器: {valid_server_names}"
-            )
-        else:
-            # 没有配置：使用所有可用的服务器（默认全开）
-            valid_server_names = set(available_servers.keys())
-            logger.info(
-                f"智能体 {agent_config.slug} 未配置 MCP 服务器，使用所有可用服务器: {valid_server_names}"
             )
 
         # 检查必需服务器是否可用（必须在返回之前检查）
@@ -184,6 +195,8 @@ class MCPToolFilter:
         """
         获取或创建连接（带缓存）
 
+        连接生命周期：连接由任务管理，任务结束时统一释放。
+
         Args:
             task_id: 任务 ID
             server_id: 服务器 ID
@@ -200,7 +213,7 @@ class MCPToolFilter:
         # 检查缓存中是否已有连接
         if server_id in self._connection_cache[task_id]:
             connection = self._connection_cache[task_id][server_id]
-            # 增加引用计数
+            # 增加引用计数（跟踪任务内复用次数）
             self._connection_refs[task_id][server_id] += 1
             logger.debug(
                 f"复用 MCP 连接: task_id={task_id}, server_id={server_id}, "
@@ -230,6 +243,9 @@ class MCPToolFilter:
     async def release_connection_for_task(self, task_id: str) -> None:
         """
         释放任务的所有 MCP 连接
+
+        连接生命周期由任务管理，任务结束时统一释放所有连接。
+        引用计数用于跟踪任务内连接复用情况。
 
         Args:
             task_id: 任务 ID

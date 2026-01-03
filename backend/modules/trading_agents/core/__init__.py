@@ -4,7 +4,8 @@
 包含智能体执行引擎、任务管理器、并发控制器等核心组件。
 """
 
-from .state import (
+# 从 models 导入状态模型
+from ..models import (
     AgentState,
     InvestmentDebateState,
     RiskDebateState,
@@ -15,7 +16,9 @@ from .state import (
     should_continue_debate,
     should_execute_phase,
 )
-from .exceptions import (
+
+# 从模块根目录导入异常
+from ..exceptions import (
     TradingAgentsException,
     TaskNotFoundException,
     TaskAlreadyRunningException,
@@ -35,7 +38,17 @@ from .exceptions import (
     ToolLoopDetectedException,
     get_http_status_from_exception,
 )
-from .database import init_indexes, get_collection_stats, drop_collections
+
+# 从 infra 导入数据库和告警
+from ..infra import (
+    init_indexes,
+    get_collection_stats,
+    drop_collections,
+    AlertManager,
+    get_alert_manager,
+)
+
+# 本地导入
 from .concurrency import (
     ConcurrencyManager,
     QuotaInfo,
@@ -51,7 +64,7 @@ from .task_manager import (
 from .agent_engine import AgentWorkflowEngine
 
 __all__ = [
-    # State
+    # State (从 models)
     "AgentState",
     "InvestmentDebateState",
     "RiskDebateState",
@@ -61,7 +74,7 @@ __all__ = [
     "create_initial_state",
     "should_continue_debate",
     "should_execute_phase",
-    # Exceptions
+    # Exceptions (从模块根目录)
     "TradingAgentsException",
     "TaskNotFoundException",
     "TaskAlreadyRunningException",
@@ -80,20 +93,22 @@ __all__ = [
     "ToolCallTimeoutException",
     "ToolLoopDetectedException",
     "get_http_status_from_exception",
-    # Database
+    # Database & Alerts (从 infra)
     "init_indexes",
     "get_collection_stats",
     "drop_collections",
-    # Concurrency
+    "AlertManager",
+    "get_alert_manager",
+    # Concurrency (本地)
     "ConcurrencyManager",
     "QuotaInfo",
     "LockInfo",
     "concurrency_manager",
     "get_concurrency_manager",
-    # Task Manager
+    # Task Manager (本地)
     "TaskManager",
     "task_manager",
     "get_task_manager",
-    # Agent Engine
+    # Agent Engine (本地)
     "AgentWorkflowEngine",
 ]

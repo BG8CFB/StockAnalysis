@@ -9,11 +9,11 @@ import time
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List
 
-from modules.trading_agents.core.state import AgentState, AnalystOutput
+from modules.trading_agents.models import AgentState, AnalystOutput
 from core.ai.llm.provider import LLMProvider, Message, Tool
 from modules.trading_agents.tools.loop_detector import check_tool_loop, clear_agent_history
 from modules.trading_agents.tools.registry import ToolDefinition
-from modules.trading_agents.core.exceptions import ToolCallException, ToolLoopDetectedException
+from modules.trading_agents.exceptions import ToolCallException, ToolLoopDetectedException
 
 logger = logging.getLogger(__name__)
 

@@ -18,7 +18,7 @@ from modules.trading_agents.schemas import (
     Phase4Config,
     UserAgentConfigCreate,
 )
-from modules.trading_agents.core.exceptions import ConfigurationError
+from modules.trading_agents.exceptions import ConfigurationError
 
 logger = logging.getLogger(__name__)
 

@@ -16,7 +16,7 @@ from typing import Optional, Dict, Any
 from dataclasses import dataclass, field
 
 from core.db.redis import redis_manager
-from modules.trading_agents.core.exceptions import ConcurrencyLimitException, ModelQuotaExhaustedError
+from modules.trading_agents.exceptions import ConcurrencyLimitException, ModelQuotaExhaustedError
 
 logger = logging.getLogger(__name__)
 

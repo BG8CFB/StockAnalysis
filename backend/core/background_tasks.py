@@ -20,6 +20,80 @@ from modules.trading_agents.tools import get_tool_registry
 logger = logging.getLogger(__name__)
 
 
+async def _resolve_model_with_fallback(
+    model_service,
+    requested_model_id: Optional[str],
+    user_settings,
+    model_type: str,  # "data_collection" or "debate"
+    user_id: str
+):
+    """
+    解析模型（带回退机制）
+
+    回退顺序：
+    1. 任务参数指定的模型
+    2. 用户默认模型
+    3. 系统默认模型
+
+    Args:
+        model_service: 模型服务
+        requested_model_id: 任务参数指定的模型 ID
+        user_settings: 用户设置
+        model_type: 模型类型（用于日志）
+        user_id: 用户 ID
+
+    Returns:
+        可用的模型
+
+    Raises:
+        Exception: 所有模型都不可用时
+    """
+    model = None
+    source = None
+    user_model_id = None
+
+    # 优先级1：任务参数指定
+    if requested_model_id:
+        model = await model_service.get_model(requested_model_id, user_id, is_admin=False)
+        if model:
+            source = f"任务参数指定({model.name})"
+            logger.info(f"使用{model_type}模型: {source}")
+            return model
+        else:
+            logger.warning(f"任务参数指定的{model_type}模型不可用: {requested_model_id}")
+
+    # 优先级2：用户默认模型
+    if user_settings and user_settings.trading_agents_settings:
+        user_model_id = getattr(
+            user_settings.trading_agents_settings,
+            f"{model_type}_model_id",
+            None
+        )
+        if user_model_id:
+            model = await model_service.get_model(user_model_id, user_id, is_admin=False)
+            if model:
+                source = f"用户默认模型({model.name})"
+                logger.info(f"使用{model_type}模型: {source}")
+                return model
+            else:
+                logger.warning(f"用户默认的{model_type}模型不可用: {user_model_id}")
+
+    # 优先级3：系统默认模型
+    model = await model_service.get_default_model(user_id=user_id)
+    if model:
+        source = f"系统默认模型({model.name})"
+        logger.info(f"使用{model_type}模型: {source}")
+        return model
+
+    # 全部不可用
+    raise Exception(
+        f"无可用的{model_type}模型。"
+        f"任务参数指定: {requested_model_id}, "
+        f"用户默认: {user_model_id if user_settings else 'None'}, "
+        f"系统默认: 不可用"
+    )
+
+
 async def create_analysis_task_background(
     user_id: str,
     request: AnalysisTaskCreate,
@@ -93,60 +167,29 @@ async def execute_analysis_workflow(
         settings_service = get_user_settings_service()
         user_settings = await settings_service.get_user_settings(user_id)
 
-        # 3. 确定使用的两个 AI 模型
+        # 3. 确定使用的两个 AI 模型（带回退机制）
         model_service = get_model_service()
 
-        # 确定数据收集模型（第一阶段）
-        if request.data_collection_model:
-            # 优先级1：任务参数指定
-            data_collection_model = await model_service.get_model(
-                request.data_collection_model, user_id, is_admin=False
-            )
-            if not data_collection_model:
-                raise Exception(f"未找到指定的数据收集模型: {request.data_collection_model}")
-        elif user_settings and user_settings.trading_agents_settings:
-            # 优先级2：用户模型偏好
-            model_id = user_settings.trading_agents_settings.data_collection_model_id
-            if model_id:
-                data_collection_model = await model_service.get_model(model_id, user_id, is_admin=False)
-            else:
-                # 优先级3：系统默认
-                data_collection_model = await model_service.get_default_model(user_id=user_id)
-        else:
-            # 优先级3：系统默认
-            data_collection_model = await model_service.get_default_model(user_id=user_id)
+        # 确定数据收集模型（带回退）
+        data_collection_model = await _resolve_model_with_fallback(
+            model_service=model_service,
+            requested_model_id=request.data_collection_model,
+            user_settings=user_settings,
+            model_type="data_collection",
+            user_id=user_id
+        )
 
-        # 确定辩论模型（第二三四阶段）
-        if request.debate_model:
-            # 优先级1：任务参数指定
-            debate_model = await model_service.get_model(
-                request.debate_model, user_id, is_admin=False
-            )
-            if not debate_model:
-                raise Exception(f"未找到指定的辩论模型: {request.debate_model}")
-        elif user_settings and user_settings.trading_agents_settings:
-            # 优先级2：用户模型偏好
-            model_id = user_settings.trading_agents_settings.debate_model_id
-            if model_id:
-                debate_model = await model_service.get_model(model_id, user_id, is_admin=False)
-            else:
-                # 优先级3：系统默认
-                debate_model = await model_service.get_default_model(user_id=user_id)
-        else:
-            # 优先级3：系统默认
-            debate_model = await model_service.get_default_model(user_id=user_id)
-
-        if not data_collection_model or not debate_model:
-            raise Exception("未找到可用的 AI 模型配置")
+        # 确定辩论模型（带回退）
+        debate_model = await _resolve_model_with_fallback(
+            model_service=model_service,
+            requested_model_id=request.debate_model,
+            user_settings=user_settings,
+            model_type="debate",
+            user_id=user_id
+        )
 
         data_collection_model_id = str(data_collection_model.id)
         debate_model_id = str(debate_model.id)
-
-        logger.info(
-            f"任务 {task_id} 模型配置: "
-            f"数据收集={data_collection_model.name}({data_collection_model_id}), "
-            f"辩论={debate_model.name}({debate_model_id})"
-        )
 
         # 3. 请求并发控制（两个模型都需要获取槽位）
         from modules.trading_agents.core.concurrency_controller import get_concurrency_controller
@@ -365,3 +408,11 @@ async def execute_analysis_workflow(
                     )
         except Exception as e:
             logger.error(f"释放并发资源时发生错误: task_id={task_id}, error={e}")
+
+        # 释放 MCP 连接（确保 finally 块中执行，防止资源泄漏）
+        try:
+            from modules.trading_agents.tools.mcp_tool_filter import release_task_connections
+            await release_task_connections(task_id)
+            logger.info(f"已释放任务 {task_id} 的 MCP 连接")
+        except Exception as e:
+            logger.error(f"释放 MCP 连接失败: task_id={task_id}, error={e}")

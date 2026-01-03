@@ -254,9 +254,9 @@ import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Setting, Cpu, ChatLineSquare, Clock, Operation } from '@element-plus/icons-vue'
 import { useUserStore } from '@core/auth/store'
-import { useTradingAgentsStore } from '../store'
-import { settingsApi } from '../api'
-import { PROVIDER_PRESETS, type TradingAgentsSettings } from '../types'
+import { useTradingAgentsStore } from '../../store'
+import { settingsApi } from '../../api'
+import { PROVIDER_PRESETS, type TradingAgentsSettings } from '../../types'
 
 const userStore = useUserStore()
 const agentsStore = useTradingAgentsStore()

@@ -17,14 +17,15 @@ from core.db.mongodb import mongodb
 from modules.trading_agents.core.task_manager_restore import (
     restore_running_tasks_with_checkpoint,
 )
-from modules.trading_agents.core.state import AgentState, create_initial_state
+from modules.trading_agents.models import AgentState, create_initial_state
 from modules.trading_agents.schemas import (
     TaskStatusEnum,
     AnalysisTaskCreate,
     BatchTaskCreate,
     RecommendationEnum,
+    AnalysisStagesConfig,
 )
-from modules.trading_agents.core.exceptions import (
+from modules.trading_agents.exceptions import (
     TaskNotFoundException,
     TaskAlreadyRunningException,
     TaskCancelledException,
@@ -181,17 +182,27 @@ class TaskManager:
 
         # 启动第一批任务
         for task_id in result["initial_task_ids"]:
+            # 从数据库读取正确的任务信息
+            task_doc = await mongodb.database.analysis_tasks.find_one(
+                {"_id": ObjectId(task_id)}
+            )
+
+            if not task_doc:
+                logger.error(f"找不到新创建的任务: task_id={task_id}")
+                continue
+
+            # 使用数据库中的正确信息
             asyncio.create_task(
                 execute_analysis_workflow(
                     task_id=task_id,
                     user_id=user_id,
                     request=AnalysisTaskCreate(
-                        stock_code="",  # 已在创建时设置
-                        market=request.market,
-                        trade_date=request.trade_date,
-                        stages=request.stages,
-                        data_collection_model=request.data_collection_model,
-                        debate_model=request.debate_model,
+                        stock_code=task_doc.get("stock_code", ""),  # 从数据库读取
+                        market=task_doc.get("market", request.market),
+                        trade_date=task_doc.get("trade_date", request.trade_date),
+                        stages=AnalysisStagesConfig(**task_doc.get("stages", {})),
+                        data_collection_model=task_doc.get("data_collection_model"),
+                        debate_model=task_doc.get("debate_model"),
                     ),
                     _skip_model_loading=True,  # 跳过模型加载（已在后台任务中完成）
                 )
@@ -658,33 +669,30 @@ class TaskManager:
         if new_task_ids:
             logger.info(f"启动下一批任务: count={len(new_task_ids)}, batch_id={batch_id}")
 
-            # 获取批量任务上下文以获取请求信息
-            context = batch_manager._batch_contexts.get(batch_id)
-            if context:
-                for new_task_id in new_task_ids:
-                    # 获取新创建的任务信息
-                    task_doc = await mongodb.database.analysis_tasks.find_one(
-                        {"_id": ObjectId(new_task_id)}
-                    )
-                    if not task_doc:
-                        logger.error(f"找不到新创建的任务: task_id={new_task_id}")
-                        continue
+            for new_task_id in new_task_ids:
+                # 获取新创建的任务信息
+                task_doc = await mongodb.database.analysis_tasks.find_one(
+                    {"_id": ObjectId(new_task_id)}
+                )
+                if not task_doc:
+                    logger.error(f"找不到新创建的任务: task_id={new_task_id}")
+                    continue
 
-                    # 启动工作流
-                    asyncio.create_task(
-                        execute_analysis_workflow(
-                            task_id=new_task_id,
-                            user_id=user_id,
-                            request=AnalysisTaskCreate(
-                                stock_code=task_doc.get("stock_code", ""),
-                                market=context.request.market,
-                                trade_date=context.request.trade_date,
-                                stages=context.request.stages,
-                                data_collection_model=context.request.data_collection_model,
-                                debate_model=context.request.debate_model,
-                            ),
-                        )
+                # 从数据库读取所有字段，确保数据一致性
+                asyncio.create_task(
+                    execute_analysis_workflow(
+                        task_id=new_task_id,
+                        user_id=user_id,
+                        request=AnalysisTaskCreate(
+                            stock_code=task_doc.get("stock_code", ""),
+                            market=task_doc.get("market"),
+                            trade_date=task_doc.get("trade_date"),
+                            stages=AnalysisStagesConfig(**task_doc.get("stages", {})),
+                            data_collection_model=task_doc.get("data_collection_model"),
+                            debate_model=task_doc.get("debate_model"),
+                        ),
                     )
+                )
 
     async def fail_task(
         self,

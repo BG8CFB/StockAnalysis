@@ -182,10 +182,10 @@
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Download, Upload, RefreshLeft, RefreshRight } from '@element-plus/icons-vue'
-import { useTradingAgentsStore } from '../store'
+import { useTradingAgentsStore } from '../../store'
 import { useUserStore } from '@core/auth/store'
-import type { UserAgentConfig, UserAgentConfigUpdate } from '../types'
-import PhaseConfigPanel from '../components/PhaseConfigPanel.vue'
+import type { UserAgentConfig, UserAgentConfigUpdate } from '../../types'
+import PhaseConfigPanel from '../../components/settings/PhaseConfigPanel.vue'
 
 const store = useTradingAgentsStore()
 const userStore = useUserStore()
@@ -246,36 +246,44 @@ async function handleConfigModeChange() {
   }
 }
 
-// 保存阶段配置
+// 保存阶段配置（保存后重新获取配置，确保数据同步）
 async function handleSavePhase1(data: any) {
   if (isAdmin.value && configMode.value === 'public') {
     await store.updatePublicConfig({ phase1: data })
+    await store.fetchPublicConfig()
   } else {
     await store.updateAgentConfig({ phase1: data })
+    await store.fetchAgentConfig()
   }
 }
 
 async function handleSavePhase2(data: any) {
   if (isAdmin.value && configMode.value === 'public') {
     await store.updatePublicConfig({ phase2: data })
+    await store.fetchPublicConfig()
   } else {
     await store.updateAgentConfig({ phase2: data })
+    await store.fetchAgentConfig()
   }
 }
 
 async function handleSavePhase3(data: any) {
   if (isAdmin.value && configMode.value === 'public') {
     await store.updatePublicConfig({ phase3: data })
+    await store.fetchPublicConfig()
   } else {
     await store.updateAgentConfig({ phase3: data })
+    await store.fetchAgentConfig()
   }
 }
 
 async function handleSavePhase4(data: any) {
   if (isAdmin.value && configMode.value === 'public') {
     await store.updatePublicConfig({ phase4: data })
+    await store.fetchPublicConfig()
   } else {
     await store.updateAgentConfig({ phase4: data })
+    await store.fetchAgentConfig()
   }
 }
 

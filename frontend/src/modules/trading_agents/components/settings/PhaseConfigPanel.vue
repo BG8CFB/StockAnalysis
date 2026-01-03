@@ -260,15 +260,23 @@ const dialogTitle = computed(() => {
 
 // 本地配置
 const localConfig = reactive<Phase1Config | Phase2Config | Phase3Config | Phase4Config>(
-  props.config || getDefaultConfig()
+  getDefaultConfig()
 )
 
-// 监听配置变化
+// 监听配置变化（深拷贝确保数据同步）
 watch(() => props.config, (newConfig) => {
   if (newConfig) {
-    Object.assign(localConfig, newConfig)
+    // 使用深拷贝避免引用问题
+    localConfig.enabled = newConfig.enabled
+    localConfig.max_rounds = newConfig.max_rounds
+    // 深拷贝 agents 数组，确保引用变化时能触发更新
+    localConfig.agents = newConfig.agents.map(agent => ({ ...agent }))
+    // max_concurrency 是第一阶段特有的属性
+    if ('max_concurrency' in newConfig) {
+      (localConfig as any).max_concurrency = newConfig.max_concurrency
+    }
   }
-}, { deep: true })
+}, { deep: true, immediate: true })
 
 // 默认配置（模型选择已与智能体配置分离）
 function getDefaultConfig(): Phase1Config | Phase2Config | Phase3Config | Phase4Config {
@@ -323,12 +331,23 @@ function handleAddAgent() {
 }
 
 // 编辑智能体
-function handleEditAgent(agent: AgentConfig) {
+function handleEditAgent(agent: AgentConfig, index: number) {
   isEditAgent.value = true
+  editingAgentIndex.value = index  // 保存当前编辑的索引
   // 将 MCPServerConfig 对象转换为字符串列表（兼容后端返回的对象格式）
   const mcpServers = agent.enabled_mcp_servers.map((s: any) =>
     typeof s === 'string' ? s : s.name
   )
+  // 清空并重新赋值，确保响应式
+  Object.assign(agentForm, {
+    slug: '',
+    name: '',
+    role_definition: undefined,
+    when_to_use: '',
+    enabled_mcp_servers: [],
+    enabled_local_tools: [],
+    enabled: true,
+  })
   Object.assign(agentForm, {
     ...agent,
     enabled_mcp_servers: mcpServers,
@@ -360,7 +379,8 @@ async function handleSaveAgent() {
       }
 
       if (isEditAgent.value) {
-        localConfig.agents[editingAgentIndex.value] = agentData
+        // 使用 splice 替换数组元素，确保 Vue 响应式能够追踪变化
+        localConfig.agents.splice(editingAgentIndex.value, 1, agentData)
       } else {
         localConfig.agents.push(agentData)
       }
@@ -368,14 +388,17 @@ async function handleSaveAgent() {
       // 第二、三、四阶段：只保存 role_definition 和 enabled
       if (isEditAgent.value) {
         const existingAgent = localConfig.agents[editingAgentIndex.value]
-        existingAgent.role_definition = agentForm.role_definition
-        existingAgent.enabled = agentForm.enabled
+        // 使用 splice 触发响应式更新
+        localConfig.agents.splice(editingAgentIndex.value, 1, {
+          ...existingAgent,
+          role_definition: agentForm.role_definition,
+          enabled: agentForm.enabled
+        })
       }
     }
 
     // 直接保存到后端
     emit('save', { ...localConfig })
-    ElMessage.success('智能体已保存')
     showAgentDialog.value = false
   } finally {
     saving.value = false

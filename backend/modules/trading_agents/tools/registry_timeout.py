@@ -7,7 +7,7 @@ import asyncio
 import logging
 from typing import Dict, Any
 
-from modules.trading_agents.core.exceptions import ToolTimeoutException
+from modules.trading_agents.exceptions import ToolTimeoutException
 
 logger = logging.getLogger(__name__)
 

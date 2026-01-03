@@ -88,7 +88,7 @@ const moduleRoutes: RouteRecordRaw[] = [
   {
     path: '/settings/trading-agents/models',
     name: 'TradingAgentsModels',
-    component: () => import('@modules/trading_agents/views/ModelManagementView.vue'),
+    component: () => import('@modules/trading_agents/views/settings/ModelManagementView.vue'),
     meta: { requiresAuth: true, title: 'AI 模型管理' },
   },
   {
@@ -100,13 +100,13 @@ const moduleRoutes: RouteRecordRaw[] = [
   {
     path: '/settings/trading-agents/agent-config',
     name: 'TradingAgentsAgentConfig',
-    component: () => import('@modules/trading_agents/views/AgentConfigView.vue'),
+    component: () => import('@modules/trading_agents/views/settings/AgentConfigView.vue'),
     meta: { requiresAuth: true, title: '智能体配置' },
   },
   {
     path: '/settings/trading-agents/analysis',
     name: 'TradingAgentsAnalysis',
-    component: () => import('@modules/trading_agents/views/AnalysisSettingsView.vue'),
+    component: () => import('@modules/trading_agents/views/settings/AnalysisSettingsView.vue'),
     meta: { requiresAuth: true, title: '分析设置' },
   },
   // TradingAgents 管理员页面

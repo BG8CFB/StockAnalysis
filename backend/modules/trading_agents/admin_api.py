@@ -16,7 +16,7 @@ from core.ai.model import get_model_service
 from modules.trading_agents.core.task_manager import get_task_manager
 from modules.trading_agents.services.report_service import get_report_service
 from modules.trading_agents.core.batch_manager import get_batch_manager
-from modules.trading_agents.core.alerts import get_alert_manager, AlertEventType, AlertSeverity
+from modules.trading_agents.infra import get_alert_manager, AlertEventType, AlertSeverity
 
 logger = logging.getLogger(__name__)
 

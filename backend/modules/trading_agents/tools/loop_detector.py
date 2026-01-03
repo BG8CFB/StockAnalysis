@@ -9,7 +9,7 @@ import logging
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass, field
 
-from modules.trading_agents.core.exceptions import ToolLoopDetectedException
+from modules.trading_agents.exceptions import ToolLoopDetectedException
 
 logger = logging.getLogger(__name__)
 

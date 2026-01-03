@@ -115,9 +115,29 @@ StockAnalysis/
 │   │   └── exceptions.py              # 自定义异常
 │   ├── modules/                       # 业务功能模块（可插拔）
 │   │   ├── trading_agents/            # TradingAgents 智能体分析核心模块
-│   │   │   ├── api.py                 # TradingAgents API（用户端）
-│   │   │   ├── admin_api.py           # TradingAgents API（管理端）
-│   │   │   ├── schemas.py             # 数据模型
+│   │   │   ├── api/                   # API 路由层（拆分）
+│   │   │   │   ├── __init__.py        # 路由聚合注册
+│   │   │   │   ├── tasks.py           # 任务管理 API
+│   │   │   │   ├── reports.py         # 报告管理 API
+│   │   │   │   ├── config.py          # 智能体配置 API
+│   │   │   │   ├── settings.py        # 分析设置 API
+│   │   │   │   ├── websocket.py       # WebSocket 端点
+│   │   │   │   └── health.py          # 健康检查
+│   │   │   ├── admin_api.py           # 管理员 API 路由
+│   │   │   ├── schemas/               # 数据模型（按领域拆分）
+│   │   │   │   ├── __init__.py        # 模型导出
+│   │   │   │   ├── common.py          # 通用枚举和响应模型
+│   │   │   │   ├── task.py            # 任务相关模型
+│   │   │   │   ├── report.py          # 报告相关模型
+│   │   │   │   └── config.py          # 配置相关模型
+│   │   │   ├── models/                # 数据模型（状态模型）
+│   │   │   │   ├── __init__.py        # 模型导出
+│   │   │   │   └── state.py           # 工作流状态模型
+│   │   │   ├── infra/                 # 基础设施层
+│   │   │   │   ├── __init__.py        # 基础设施导出
+│   │   │   │   ├── database.py        # 数据库操作
+│   │   │   │   └── alerts.py          # 告警机制
+│   │   │   ├── exceptions.py          # 异常定义（模块级）
 │   │   │   ├── agents/                # 智能体定义
 │   │   │   │   ├── base.py            # 智能体基类
 │   │   │   │   ├── phase1/            # 第一阶段：分析师团队
@@ -137,22 +157,18 @@ StockAnalysis/
 │   │   │   │   └── templates/
 │   │   │   │       └── agents.yaml    # 默认智能体配置模板
 │   │   │   ├── core/                  # 核心引擎
+│   │   │   │   ├── __init__.py        # 核心模块导出
 │   │   │   │   ├── agent_engine.py    # 智能体工作流引擎
-│   │   │   │   ├── task_manager.py     # 任务管理器
+│   │   │   │   ├── task_manager.py    # 任务管理器
 │   │   │   │   ├── task_manager_restore.py  # 任务恢复
 │   │   │   │   ├── batch_manager.py   # 批量任务管理器
 │   │   │   │   ├── concurrency_controller.py # 并发控制器
 │   │   │   │   ├── concurrency.py     # 并发管理
 │   │   │   │   ├── task_queue.py      # 任务队列
-│   │   │   │   ├── task_expiry.py     # 任务过期处理
-│   │   │   │   ├── state.py           # 工作流状态
-│   │   │   │   ├── database.py        # 数据库操作
-│   │   │   │   ├── exceptions.py      # 异常定义
-│   │   │   │   └── alerts.py          # 告警机制
+│   │   │   │   └── task_expiry.py     # 任务过期处理
 │   │   │   ├── services/              # 服务层
 │   │   │   │   ├── agent_config_service.py  # 智能体配置服务
 │   │   │   │   ├── mcp_service.py     # MCP 服务器服务
-│   │   │   │   ├── mcp_patch.py       # MCP 兼容性补丁
 │   │   │   │   ├── mcp_health_checker.py    # MCP 健康检查
 │   │   │   │   ├── mcp_session_manager.py   # MCP 会话管理
 │   │   │   │   ├── settings_service.py     # 分析设置服务
@@ -271,13 +287,14 @@ StockAnalysis/
 │   │       │   │   │   └── TaskCenterView.vue
 │   │       │   │   ├── settings/      # 设置相关视图
 │   │       │   │   │   ├── ModelManagementView.vue
-│   │       │   │   │   ├── MCPServerManagementView.vue
 │   │       │   │   │   ├── AgentConfigView.vue
 │   │       │   │   │   └── AnalysisSettingsView.vue
 │   │       │   │   └── admin/         # 管理员视图
 │   │       │   │       ├── SystemModelView.vue
 │   │       │   │       └── AllTasksView.vue
 │   │       │   ├── components/        # 模块组件
+│   │       │   │   └── settings/      # 设置相关组件
+│   │       │   │       └── PhaseConfigPanel.vue
 │   │       │   ├── store.ts           # 状态管理
 │   │       │   └── api.ts             # API 调用
 │   │       ├── dashboard/             # 仪表板视图
@@ -335,6 +352,11 @@ StockAnalysis/
 └── 管理员 (admin)                    # [adminOnly]
     ├── 系统模型管理                  # /admin/system-models
     └── 所有任务管理                  # /admin/all-tasks
+
+组件位置说明：
+- TradingAgents 设置组件位于 @modules/trading_agents/views/settings/
+- MCP 服务器管理组件位于 @modules/settings/views/
+- 管理员组件位于 @modules/trading_agents/views/admin/
 ```
 
 ### 关键架构模式
@@ -412,12 +434,16 @@ StockAnalysis/
 | 安全服务 | [`backend/core/security/`](backend/core/security/) |
 | 数据库连接 | [`backend/core/db/`](backend/core/db/) |
 | 后台任务入口 | [`backend/background_tasks.py`](backend/background_tasks.py) |
-| TradingAgents API | [`backend/modules/trading_agents/api.py`](backend/modules/trading_agents/api.py) |
+| TradingAgents API（聚合） | [`backend/modules/trading_agents/api/__init__.py`](backend/modules/trading_agents/api/__init__.py) |
+| TradingAgents 任务 API | [`backend/modules/trading_agents/api/tasks.py`](backend/modules/trading_agents/api/tasks.py) |
+| TradingAgents 报告 API | [`backend/modules/trading_agents/api/reports.py`](backend/modules/trading_agents/api/reports.py) |
+| TradingAgents 配置 API | [`backend/modules/trading_agents/api/config.py`](backend/modules/trading_agents/api/config.py) |
 | TradingAgents 管理员 API | [`backend/modules/trading_agents/admin_api.py`](backend/modules/trading_agents/admin_api.py) |
 | 智能体引擎 | [`backend/modules/trading_agents/core/agent_engine.py`](backend/modules/trading_agents/core/agent_engine.py) |
 | 任务管理器 | [`backend/modules/trading_agents/core/task_manager.py`](backend/modules/trading_agents/core/task_manager.py) |
 | 并发控制器 | [`backend/modules/trading_agents/core/concurrency_controller.py`](backend/modules/trading_agents/core/concurrency_controller.py) |
-| MCP 工具过滤器 | [`backend/modules/trading_agents/tools/mcp_tool_filter.py`](backend/modules/trading_agents/tools/mcp_tool_filter.py) |
+| 数据模型（状态） | [`backend/modules/trading_agents/models/state.py`](backend/modules/trading_agents/models/state.py) |
+| 基础设施（数据库/告警） | [`backend/modules/trading_agents/infra/`](backend/modules/trading_agents/infra/) |
 | 智能体配置模板 | [`backend/modules/trading_agents/config/templates/agents.yaml`](backend/modules/trading_agents/config/templates/agents.yaml) |
 | MCP 模块 API | [`backend/modules/mcp/api/routes.py`](backend/modules/mcp/api/routes.py) |
 | MCP 连接池 | [`backend/modules/mcp/pool/pool.py`](backend/modules/mcp/pool/pool.py) |

@@ -34,14 +34,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-# 应用 MCP 兼容性补丁（修复自定义错误格式问题）
-try:
-    from modules.trading_agents.services.mcp_patch import apply_mcp_patches
-    apply_mcp_patches()
-except Exception as e:
-    logger.warning(f"MCP 补丁应用失败: {e}")
-
-
+# MCP 兼容性已由 MCP 模块内部处理，无需额外补丁
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
@@ -82,7 +75,7 @@ async def lifespan(app: FastAPI):
         logger.warning(f"TradingAgents 任务队列启动失败: {e}")
 
     # 初始化 TradingAgents 模块数据库索引
-    from modules.trading_agents.core.database import init_indexes
+    from modules.trading_agents.infra import init_indexes
     try:
         await init_indexes()
         logger.info("TradingAgents 数据库索引初始化成功")

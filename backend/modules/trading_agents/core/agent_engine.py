@@ -9,7 +9,7 @@ import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
-from modules.trading_agents.core.state import AgentState, create_initial_state
+from modules.trading_agents.models import AgentState, create_initial_state
 from modules.trading_agents.agents.base import BaseAgent, AnalystAgent
 from modules.trading_agents.agents.phase1.analysts import AnalystFactory
 from modules.trading_agents.agents.phase2 import create_phase2_agents

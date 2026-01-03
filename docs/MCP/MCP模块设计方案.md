@@ -150,13 +150,10 @@ backend/modules/mcp/              # MCP 独立模块
 backend/modules/trading_agents/tools/  # TradingAgents 模块
 │
 ├── mcp_tool_filter.py            # MCP 工具过滤（智能体配置相关）
+├── mcp_adapter.py                # MCP 工具适配器
+├── mcp_concurrency.py            # MCP 并发控制
 ├── registry.py                   # 工具注册表
 └── ...
-
-
-backend/modules/trading_agents/services/
-│
-└── mcp_patch.py                  # MCP兼容性补丁
 ```
 
 ---
@@ -1970,9 +1967,9 @@ else:
 │         TradingAgents 模块                                    │
 ├─────────────────────────────────────────────────────────────┤
 │  tools/mcp_tool_filter.py ← MCP 工具过滤                       │
-│  tools/registry.py      ← 工具注册表                          │
+│  tools/mcp_adapter.py    ← MCP 工具适配器                      │
+│  tools/registry.py       ← 工具注册表                          │
 │  core/agent_engine.py    ← 使用工具创建 Agent                  │
-│  services/mcp_patch.py   ← MCP兼容性补丁                       │
 └─────────────────────────────────────────────────────────────┘
                     │ LangChain Tools
                     ↓
@@ -2051,15 +2048,7 @@ async def lifespan(app: FastAPI):
     # 启动阶段
     logger.info("正在启动...")
 
-    # 1. 应用MCP补丁（修复自定义错误格式问题）
-    from modules.trading_agents.services.mcp_patch import apply_mcp_patches
-    try:
-        apply_mcp_patches()
-        logger.info("✅ MCP 补丁已应用")
-    except Exception as e:
-        logger.warning(f"⚠️ MCP 补丁应用失败: {e}")
-
-    # 2. 启动MCP健康检查器
+    # 1. 启动MCP健康检查器
     from modules.mcp.service.health_checker import get_mcp_health_checker
     try:
         health_checker = get_mcp_health_checker()
@@ -2068,7 +2057,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"⚠️ MCP 健康检查器启动失败: {e}")
 
-    # 3. 启动MCP会话管理器
+    # 2. 启动MCP会话管理器
     from modules.mcp.core.session import get_mcp_session_manager
     try:
         session_manager = get_mcp_session_manager()

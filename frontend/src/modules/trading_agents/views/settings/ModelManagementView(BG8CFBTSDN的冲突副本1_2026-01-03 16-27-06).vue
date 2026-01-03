@@ -703,10 +703,10 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit, Delete, Connection, QuestionFilled, InfoFilled, Document, Refresh, MagicStick, Setting, Link, Key, Operation, ArrowDown, Cpu } from '@element-plus/icons-vue'
 import { useUserStore } from '@core/auth/store'
-import { useTradingAgentsStore } from '../store'
-import { PROVIDER_PRESETS, ModelProviderEnum, PlatformTypeEnum, PresetPlatformEnum, ThinkingModeEnum, type AIModelConfig, type AIModelConfigCreate } from '../types'
+import { useTradingAgentsStore } from '../../store'
+import { PROVIDER_PRESETS, ModelProviderEnum, PlatformTypeEnum, PresetPlatformEnum, ThinkingModeEnum, type AIModelConfig, type AIModelConfigCreate } from '../../types'
 import { PRESET_PLATFORMS, getPresetPlatforms, type PlatformMetadata } from '@core/model/platforms'
-import { modelApi } from '../api'
+import { modelApi } from '../../api'
 
 const userStore = useUserStore()
 const store = useTradingAgentsStore()

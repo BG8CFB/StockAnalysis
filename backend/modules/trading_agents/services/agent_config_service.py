@@ -103,7 +103,7 @@ class AgentConfigService:
 
                     # 检查其他字段是否被修改
                     allowed_fields = {"slug", "name", "role_definition", "enabled"}
-                    new_agent_dict = new_agent.model_dump() if hasattr(new_agent, 'model_dump') else dict(new_agent)
+                    new_agent_dict = new_agent.model_dump(mode='json') if hasattr(new_agent, 'model_dump') else dict(new_agent)
 
                     for field in new_agent_dict:
                         if field not in allowed_fields:
@@ -183,19 +183,19 @@ class AgentConfigService:
         # 构建更新数据（保留用户的选择）
         update_data = {}
         if request.phase1 is not None:
-            phase1_data = request.phase1.model_dump()
+            phase1_data = request.phase1.model_dump(mode='json')
             # 保留用户选择的 enabled 状态
             update_data["phase1"] = phase1_data
         if request.phase2 is not None:
-            phase2_data = request.phase2.model_dump()
+            phase2_data = request.phase2.model_dump(mode='json')
             # 保留用户选择的 enabled 状态
             update_data["phase2"] = phase2_data
         if request.phase3 is not None:
-            phase3_data = request.phase3.model_dump()
+            phase3_data = request.phase3.model_dump(mode='json')
             # 保留用户选择的 enabled 状态
             update_data["phase3"] = phase3_data
         if request.phase4 is not None:
-            phase4_data = request.phase4.model_dump()
+            phase4_data = request.phase4.model_dump(mode='json')
             # 保留用户选择的 enabled 状态
             update_data["phase4"] = phase4_data
 
@@ -272,10 +272,10 @@ class AgentConfigService:
             "user_id": PUBLIC_USER_ID,
             "is_public": True,
             "is_customized": False,
-            "phase1": phase1.model_dump(),
-            "phase2": phase2.model_dump() if phase2 else None,
-            "phase3": phase3.model_dump() if phase3 else None,
-            "phase4": phase4.model_dump() if phase4 else None,
+            "phase1": phase1.model_dump(mode='json'),
+            "phase2": phase2.model_dump(mode='json') if phase2 else None,
+            "phase3": phase3.model_dump(mode='json') if phase3 else None,
+            "phase4": phase4.model_dump(mode='json') if phase4 else None,
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow(),
         }
@@ -335,10 +335,10 @@ class AgentConfigService:
             "user_id": PUBLIC_USER_ID,
             "is_public": True,
             "is_customized": False,
-            "phase1": phase1.model_dump(),
-            "phase2": phase2.model_dump() if phase2 else None,
-            "phase3": phase3.model_dump() if phase3 else None,
-            "phase4": phase4.model_dump() if phase4 else None,
+            "phase1": phase1.model_dump(mode='json'),
+            "phase2": phase2.model_dump(mode='json') if phase2 else None,
+            "phase3": phase3.model_dump(mode='json') if phase3 else None,
+            "phase4": phase4.model_dump(mode='json') if phase4 else None,
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow(),
         }
@@ -455,8 +455,17 @@ class AgentConfigService:
             if not phase_data or "agents" not in phase_data:
                 return phase_data
 
+            logger.debug(f"[CLEANUP] available_servers: {available_servers}")
+
             for agent in phase_data["agents"]:
-                if "enabled_mcp_servers" in agent and agent["enabled_mcp_servers"]:
+                if "enabled_mcp_servers" in agent:
+                    # 即使是空列表也要处理
+                    logger.debug(f"[CLEANUP] Agent {agent.get('slug')} enabled_mcp_servers before: {agent['enabled_mcp_servers']}")
+
+                    if not agent["enabled_mcp_servers"]:
+                        # 空列表直接跳过
+                        continue
+
                     filtered_servers = []
                     for server in agent["enabled_mcp_servers"]:
                         if isinstance(server, dict):
@@ -464,15 +473,18 @@ class AgentConfigService:
                         elif isinstance(server, str):
                             server_name = server
                         else:
+                            logger.debug(f"[CLEANUP] Unknown server type: {type(server)}")
                             continue
 
                         # 只保留存在的服务器
                         if server_name and server_name in available_servers:
                             filtered_servers.append(server)
+                            logger.debug(f"[CLEANUP] Kept server: {server_name}")
                         elif server_name:
-                            logger.debug(f"过滤掉不存在的 MCP 服务器: {server_name}")
+                            logger.debug(f"[CLEANUP] Filtered out server: {server_name}")
 
                     agent["enabled_mcp_servers"] = filtered_servers
+                    logger.debug(f"[CLEANUP] Agent {agent.get('slug')} enabled_mcp_servers after: {agent['enabled_mcp_servers']}")
 
             return phase_data
 
@@ -563,19 +575,19 @@ class AgentConfigService:
         # 构建更新数据（保留用户的选择）
         update_data = {}
         if request.phase1 is not None:
-            phase1_data = request.phase1.model_dump()
+            phase1_data = request.phase1.model_dump(mode='json')
             # 保留用户选择的 enabled 状态
             update_data["phase1"] = phase1_data
         if request.phase2 is not None:
-            phase2_data = request.phase2.model_dump()
+            phase2_data = request.phase2.model_dump(mode='json')
             # 保留用户选择的 enabled 状态
             update_data["phase2"] = phase2_data
         if request.phase3 is not None:
-            phase3_data = request.phase3.model_dump()
+            phase3_data = request.phase3.model_dump(mode='json')
             # 保留用户选择的 enabled 状态
             update_data["phase3"] = phase3_data
         if request.phase4 is not None:
-            phase4_data = request.phase4.model_dump()
+            phase4_data = request.phase4.model_dump(mode='json')
             # 保留用户选择的 enabled 状态
             update_data["phase4"] = phase4_data
 
@@ -591,6 +603,17 @@ class AgentConfigService:
 
         # 获取更新后的配置
         updated_doc = await collection.find_one({"user_id": user_id})
+
+        # 调试：打印保存的数据
+        if updated_doc and "phase1" in updated_doc:
+            logger.info(f"[DEBUG] Saved phase1 data: {updated_doc['phase1']}")
+            if 'agents' in updated_doc['phase1'] and updated_doc['phase1']['agents']:
+                first_agent = updated_doc['phase1']['agents'][0]
+                logger.info(f"[DEBUG] First agent enabled_mcp_servers: {first_agent.get('enabled_mcp_servers', 'MISSING')}")
+                logger.info(f"[DEBUG] Type of enabled_mcp_servers: {type(first_agent.get('enabled_mcp_servers'))}")
+
+        # 调试：打印 update_data
+        logger.info(f"[DEBUG] update_data phase1 agents: {update_data.get('phase1', {}).get('agents', [])}")
 
         logger.info(f"更新用户智能体配置: user_id={user_id}, is_customized=True")
 
@@ -654,10 +677,10 @@ class AgentConfigService:
             return None
 
         return {
-            "phase1": config.phase1.model_dump(),
-            "phase2": config.phase2.model_dump() if config.phase2 else None,
-            "phase3": config.phase3.model_dump() if config.phase3 else None,
-            "phase4": config.phase4.model_dump() if config.phase4 else None,
+            "phase1": config.phase1.model_dump(mode='json'),
+            "phase2": config.phase2.model_dump(mode='json') if config.phase2 else None,
+            "phase3": config.phase3.model_dump(mode='json') if config.phase3 else None,
+            "phase4": config.phase4.model_dump(mode='json') if config.phase4 else None,
         }
 
     async def import_config(
@@ -692,10 +715,10 @@ class AgentConfigService:
             "user_id": user_id,
             "is_public": False,
             "is_customized": True,
-            "phase1": phase1.model_dump(),
-            "phase2": phase2.model_dump() if phase2 else None,
-            "phase3": phase3.model_dump() if phase3 else None,
-            "phase4": phase4.model_dump() if phase4 else None,
+            "phase1": phase1.model_dump(mode='json'),
+            "phase2": phase2.model_dump(mode='json') if phase2 else None,
+            "phase3": phase3.model_dump(mode='json') if phase3 else None,
+            "phase4": phase4.model_dump(mode='json') if phase4 else None,
             "updated_at": datetime.utcnow(),
         }
 
@@ -769,10 +792,10 @@ class AgentConfigService:
             "user_id": user_id,
             "is_public": False,
             "is_customized": is_customized,
-            "phase1": phase1.model_dump(),
-            "phase2": phase2.model_dump() if phase2 else None,
-            "phase3": phase3.model_dump() if phase3 else None,
-            "phase4": phase4.model_dump() if phase4 else None,
+            "phase1": phase1.model_dump(mode='json'),
+            "phase2": phase2.model_dump(mode='json') if phase2 else None,
+            "phase3": phase3.model_dump(mode='json') if phase3 else None,
+            "phase4": phase4.model_dump(mode='json') if phase4 else None,
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow(),
         }
