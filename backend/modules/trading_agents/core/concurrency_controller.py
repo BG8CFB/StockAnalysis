@@ -6,8 +6,10 @@
 - 单任务并发数限制
 - 批量任务并发数限制
 - 任务排队机制（FIFO）
+- Redis Pub/Sub 事件驱动的自动唤醒
 """
 import asyncio
+import json
 import logging
 from typing import Dict, List, Optional, Any
 from datetime import datetime
@@ -21,18 +23,24 @@ logger = logging.getLogger(__name__)
 MODEL_ACTIVE_TASKS_KEY = "concurrency:model:{model_id}:active"  # Hash: {task_id: user_id}
 MODEL_WAITING_QUEUE_KEY = "concurrency:model:{model_id}:waiting"  # List: JSON
 USER_ACTIVE_BATCH_TASKS_KEY = "concurrency:user:{user_id}:batch_active"  # List: [batch_id]
+MODEL_WAKEUP_CHANNEL = "concurrency:wakeup:{model_id}"  # Pub/Sub 唤醒通道
 
 
 class ConcurrencyController:
     """
     并发控制器
 
-    管理模型级别的并发控制和任务排队
+    管理模型级别的并发控制和任务排队。
+    使用 Redis Pub/Sub 实现事件驱动的槽位释放通知。
     """
 
     def __init__(self):
         """初始化并发控制器"""
         self._lock = asyncio.Lock()
+        # Pub/Sub 订阅器缓存: {model_id: pubsub}
+        self._pubsub_cache: Dict[str, Any] = {}
+        # 事件缓存: {model_id: asyncio.Event}
+        self._event_cache: Dict[str, asyncio.Event] = {}
 
     async def request_execution(
         self,
@@ -69,7 +77,6 @@ class ConcurrencyController:
             active_count = await redis_client.hlen(active_tasks_key)
 
             # 计算可同时运行的任务数
-            # 理论最大同时运行任务数 = max_concurrency / task_concurrency
             max_running_tasks = max_concurrency // task_concurrency
 
             # 检查批量任务并发限制
@@ -130,6 +137,8 @@ class ConcurrencyController:
         """
         释放任务执行资源
 
+        使用 Redis Pub/Sub 通知等待中的任务。
+
         Args:
             model_id: 模型 ID
             task_id: 任务 ID
@@ -148,8 +157,8 @@ class ConcurrencyController:
                 user_batch_key = USER_ACTIVE_BATCH_TASKS_KEY.format(user_id=user_id)
                 await redis_client.lrem(user_batch_key, 1, batch_id)
 
-            # 尝试唤醒下一个等待任务
-            await self._wake_next_task(model_id, redis_client)
+            # 使用 Pub/Sub 通知等待任务（事件驱动）
+            await self._notify_waiting_tasks(model_id, redis_client)
 
     async def get_queue_position(
         self,
@@ -175,7 +184,6 @@ class ConcurrencyController:
         waiting_queue = await redis_client.lrange(waiting_queue_key, 0, -1)
 
         for i, task_json in enumerate(waiting_queue):
-            import json
             task_data = json.loads(task_json)
             if task_data.get("task_id") == task_id:
                 return {
@@ -210,31 +218,212 @@ class ConcurrencyController:
             "enqueued_at": datetime.utcnow().isoformat(),
         }
 
-        import json
         await redis_client.rpush(waiting_queue_key, json.dumps(task_data))
 
         # 返回队列位置
         queue_length = await redis_client.llen(waiting_queue_key)
         return queue_length
 
-    async def _wake_next_task(
+    async def wait_for_execution(
+        self,
+        model_id: str,
+        task_id: str,
+        user_id: str,
+        model_config: Dict[str, Any],
+        timeout: float = 300.0,
+    ) -> Dict[str, Any]:
+        """
+        等待任务可以执行（事件驱动，基于 Redis Pub/Sub）
+
+        使用 Redis Pub/Sub 通道监听槽位释放事件，避免轮询。
+
+        Args:
+            model_id: 模型 ID
+            task_id: 任务 ID
+            user_id: 用户 ID
+            model_config: 模型配置
+            timeout: 超时时间（秒），默认 5 分钟
+
+        Returns:
+            {
+                "success": bool,  # 是否成功获取执行权限
+                "reason": str,    # 失败原因（如果超时）
+            }
+
+        Raises:
+            asyncio.TimeoutError: 等待超时时抛出
+        """
+        start_time = datetime.utcnow()
+        wakeup_channel = MODEL_WAKEUP_CHANNEL.format(model_id=model_id)
+        redis_client = redis_manager.get_client()
+
+        # 获取或创建 Pub/Sub 订阅器
+        pubsub = self._pubsub_cache.get(model_id)
+        if not pubsub:
+            pubsub = redis_client.pubsub()
+            await pubsub.subscribe(wakeup_channel)
+            self._pubsub_cache[model_id] = pubsub
+            logger.debug(f"创建 Pub/Sub 订阅: {wakeup_channel}")
+
+        # 获取或创建事件
+        event = self._event_cache.get(model_id)
+        if not event:
+            event = asyncio.Event()
+            self._event_cache[model_id] = event
+
+        # 启动消息监听任务
+        listen_task = asyncio.create_task(
+            self._listen_for_wakeup(model_id, pubsub, event)
+        )
+
+        try:
+            while True:
+                # 检查是否超时
+                elapsed = (datetime.utcnow() - start_time).total_seconds()
+                if elapsed >= timeout:
+                    raise asyncio.TimeoutError(
+                        f"任务 {task_id} 等待执行超时（{timeout}秒），"
+                        f"模型 {model_id} 的并发槽位一直不可用"
+                    )
+
+                # 尝试请求执行
+                result = await self.request_execution(
+                    model_id=model_id,
+                    task_id=task_id,
+                    user_id=user_id,
+                    model_config=model_config,
+                )
+
+                if result["can_execute"]:
+                    logger.info(
+                        f"任务 {task_id} 获取到执行权限，等待时间: {elapsed:.2f}秒"
+                    )
+                    return {"success": True, "reason": None}
+
+                # 不能执行，等待唤醒事件
+                logger.debug(
+                    f"任务 {task_id} 等待执行: 原因={result['reason']}, "
+                    f"队列位置={result['queue_position']}, "
+                    f"等待数={result['waiting_count']}"
+                )
+
+                # 等待唤醒事件（带超时）
+                try:
+                    await asyncio.wait_for(
+                        event.wait(),
+                        timeout=min(5.0, timeout - elapsed)  # 每 5 秒检查一次超时
+                    )
+                    event.clear()  # 清除事件标志
+                except asyncio.TimeoutError:
+                    # 继续循环，重新检查
+                    continue
+
+        except asyncio.CancelledError:
+            # 任务被取消，从队列中移除
+            waiting_queue_key = MODEL_WAITING_QUEUE_KEY.format(model_id=model_id)
+            await self._remove_from_queue(waiting_queue_key, task_id, redis_client)
+            raise
+
+        finally:
+            # 取消监听任务（但不关闭订阅，复用连接）
+            if not listen_task.done():
+                listen_task.cancel()
+                try:
+                    await listen_task
+                except asyncio.CancelledError:
+                    pass
+
+    async def _listen_for_wakeup(
+        self,
+        model_id: str,
+        pubsub: Any,
+        event: asyncio.Event,
+    ) -> None:
+        """
+        监听唤醒消息
+
+        Args:
+            model_id: 模型 ID
+            pubsub: Redis Pub/Sub 订阅器
+            event: asyncio 事件对象
+        """
+        try:
+            async for message in pubsub.listen():
+                if message["type"] == "message":
+                    # 收到唤醒消息，设置事件
+                    event.set()
+                    logger.debug(f"收到唤醒信号: model_id={model_id}")
+        except asyncio.CancelledError:
+            # 任务被取消，正常退出
+            pass
+
+    async def _notify_waiting_tasks(
         self,
         model_id: str,
         redis_client: Any,
-    ):
+    ) -> None:
         """
-        唤醒下一个等待任务
+        通知等待中的任务（使用 Pub/Sub）
 
-        通过设置一个标志，让任务管理器检查队列
+        Args:
+            model_id: 模型 ID
+            redis_client: Redis 客户端
         """
-        waiting_queue_key = MODEL_WAITING_QUEUE_KEY.format(model_id=model_id)
+        wakeup_channel = MODEL_WAKEUP_CHANNEL.format(model_id=model_id)
 
         # 检查是否有等待任务
+        waiting_queue_key = MODEL_WAITING_QUEUE_KEY.format(model_id=model_id)
         queue_length = await redis_client.llen(waiting_queue_key)
+
         if queue_length > 0:
-            # 标记有任务可以唤醒
-            wakeup_key = f"concurrency:model:{model_id}:wakeup"
-            await redis_client.set(wakeup_key, "1", ex=5)
+            # 发布唤醒消息
+            await redis_client.publish(wakeup_channel, "1")
+            logger.debug(
+                f"发布唤醒信号: model_id={model_id}, "
+                f"等待任务数={queue_length}"
+            )
+
+    async def _remove_from_queue(
+        self,
+        queue_key: str,
+        task_id: str,
+        redis_client: Any,
+    ) -> bool:
+        """
+        从队列中移除任务
+
+        Args:
+            queue_key: 队列键
+            task_id: 任务 ID
+            redis_client: Redis 客户端
+
+        Returns:
+            是否成功移除
+        """
+        # 获取队列中所有任务
+        queue = await redis_client.lrange(queue_key, 0, -1)
+
+        # 找到并移除目标任务
+        for task_json in queue:
+            task_data = json.loads(task_json)
+            if task_data.get("task_id") == task_id:
+                await redis_client.lrem(queue_key, 1, task_json)
+                logger.info(f"从队列中移除任务: task_id={task_id}")
+                return True
+
+        return False
+
+    async def close(self):
+        """关闭所有 Pub/Sub 连接"""
+        for model_id, pubsub in self._pubsub_cache.items():
+            try:
+                await pubsub.close()
+                logger.debug(f"关闭 Pub/Sub 订阅: model_id={model_id}")
+            except Exception as e:
+                logger.warning(f"关闭 Pub/Sub 订阅失败: model_id={model_id}, error={e}")
+
+        self._pubsub_cache.clear()
+        self._event_cache.clear()
 
 
 # =============================================================================

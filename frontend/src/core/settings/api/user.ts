@@ -12,7 +12,7 @@ import type {
   TradingAgentsSettingsUpdate,
   SettingsExport,
   SettingsImport,
-} from '@/core/user/settings-types'
+} from '../types/user'
 
 // API 基础路径
 const BASE_PATH = '/settings'

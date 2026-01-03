@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { exportSettings, importSettings } from '@/core/user/settings-api'
-import type { SettingsImport } from '@/core/user/settings-types'
+import { exportSettings, importSettings } from '@/core/settings'
+import type { SettingsImport } from '@/core/settings'
 
 const emit = defineEmits(['imported'])
 

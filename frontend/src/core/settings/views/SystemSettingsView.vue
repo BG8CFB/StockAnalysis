@@ -122,11 +122,11 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
-import { useSettingsStore } from '@core/settings'
+import { useSystemSettingsStore } from '@core/settings'
 import { useUserStore } from '@core/auth/store'
 import type { SystemConfig, SystemStatus, SystemInfo } from '@core/settings'
 
-const settingsStore = useSettingsStore()
+const settingsStore = useSystemSettingsStore()
 const userStore = useUserStore()
 
 // 是否为超级管理员

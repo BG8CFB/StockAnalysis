@@ -145,6 +145,10 @@ class TaskManager:
         """
         创建批量分析任务
 
+        使用新的批量任务管理器：
+        - 只创建可立即执行的任务（基于模型配置的批量并发数）
+        - 任务完成后自动触发下一批任务创建
+
         Args:
             user_id: 用户 ID
             request: 批量任务请求
@@ -153,34 +157,86 @@ class TaskManager:
         Returns:
             批量任务 ID
         """
-        # 使用 ObjectId 作为批量任务 ID
-        batch_id = ObjectId()
+        from modules.trading_agents.core.batch_manager import get_batch_manager
 
-        # 为每个股票创建任务
-        for stock_code in request.stock_codes:
-            task_id = await self.create_task(
-                user_id=user_id,
-                request=AnalysisTaskCreate(
-                    stock_code=stock_code,
-                    market=request.market,
-                    trade_date=request.trade_date,
-                    stages=request.stages,
-                    # 传递用户选择的模型参数（空值时后台会使用默认模型）
-                    data_collection_model=request.data_collection_model,
-                    debate_model=request.debate_model,
-                ),
-                config=config,
+        # 获取模型配置中的批量并发数
+        batch_concurrency = await self._get_model_batch_concurrency(user_id, request)
+
+        # 使用批量任务管理器
+        batch_manager = get_batch_manager()
+
+        result = await batch_manager.create_batch(
+            user_id=user_id,
+            stock_codes=request.stock_codes,
+            request=AnalysisTaskCreate(
+                market=request.market,
+                trade_date=request.trade_date,
+                stages=request.stages,
+                data_collection_model=request.data_collection_model,
+                debate_model=request.debate_model,
+            ),
+            config=config,
+            max_concurrent=batch_concurrency,
+        )
+
+        # 启动第一批任务
+        for task_id in result["initial_task_ids"]:
+            asyncio.create_task(
+                execute_analysis_workflow(
+                    task_id=task_id,
+                    user_id=user_id,
+                    request=AnalysisTaskCreate(
+                        stock_code="",  # 已在创建时设置
+                        market=request.market,
+                        trade_date=request.trade_date,
+                        stages=request.stages,
+                        data_collection_model=request.data_collection_model,
+                        debate_model=request.debate_model,
+                    ),
+                    _skip_model_loading=True,  # 跳过模型加载（已在后台任务中完成）
+                )
             )
 
-            # 更新任务的 batch_id
-            await mongodb.database.analysis_tasks.update_one(
-                {"_id": ObjectId(task_id)},
-                {"$set": {"batch_id": str(batch_id)}}
-            )
+        logger.info(
+            f"创建批量任务: batch_id={result['batch_id']}, "
+            f"初始任务={len(result['initial_task_ids'])}, "
+            f"待处理={result['pending_count']}, "
+            f"总计={result['total_count']}, "
+            f"批量并发={batch_concurrency}"
+        )
 
-        logger.info(f"创建批量任务: batch_id={batch_id}, count={len(request.stock_codes)}, market={request.market}")
+        return result["batch_id"]
 
-        return str(batch_id)
+    async def _get_model_batch_concurrency(
+        self,
+        user_id: str,
+        request: BatchTaskCreate,
+    ) -> int:
+        """
+        获取模型配置中的批量并发数
+
+        Args:
+            user_id: 用户 ID
+            request: 批量任务请求
+
+        Returns:
+            批量并发数
+        """
+        from core.ai.model.service import get_model_service
+
+        model_service = get_model_service()
+
+        # 优先使用任务参数指定的模型
+        model_id = request.data_collection_model or request.debate_model
+
+        if model_id:
+            model = await model_service.get_model(model_id, user_id, is_admin=False)
+            if model:
+                return model.batch_concurrency
+
+        # 使用用户默认模型
+        default_model = await model_service.get_default_model(user_id=user_id)
+        return default_model.batch_concurrency if default_model else 1
 
     async def get_task_status(self, task_id: str) -> Dict[str, Any]:
         """
@@ -374,11 +430,14 @@ class TaskManager:
             )
         )
 
-        # 立即释放 MCP 连接（任务取消不需要延迟）
+        # 使用延迟释放 MCP 连接（而非立即释放）
+        # 原因：取消时智能体可能正在执行 LLM 调用或工具调用，
+        # 立即释放连接可能导致其他任务复用连接时出现混乱
+        # 使用失败级别的延迟（30秒），确保当前操作完成
         try:
-            await release_task_connections(task_id)
+            await fail_task_connections(task_id)
         except Exception as e:
-            logger.warning(f"MCP 连接释放失败: task_id={task_id}, error={e}")
+            logger.warning(f"MCP 连接延迟释放设置失败: task_id={task_id}, error={e}")
 
         logger.info(f"任务已取消: task_id={task_id}")
 
@@ -430,11 +489,12 @@ class TaskManager:
             )
         )
 
-        # 立即释放 MCP 连接（任务停止不需要延迟）
+        # 使用延迟释放 MCP 连接（而非立即释放）
+        # 原因同 cancel_task
         try:
-            await release_task_connections(task_id)
+            await fail_task_connections(task_id)
         except Exception as e:
-            logger.warning(f"MCP 连接释放失败: task_id={task_id}, error={e}")
+            logger.warning(f"MCP 连接延迟释放设置失败: task_id={task_id}, error={e}")
 
         logger.info(f"任务已停止: task_id={task_id}")
 
@@ -497,6 +557,8 @@ class TaskManager:
         """
         完成任务
 
+        如果是批量任务的一部分，触发下一批任务创建。
+
         Args:
             task_id: 任务 ID
             final_recommendation: 最终推荐结果
@@ -504,6 +566,13 @@ class TaskManager:
             sell_price: 卖出价格
             token_usage: Token 使用量
         """
+        # 获取任务信息（检查是否属于批量任务）
+        task_doc = await mongodb.database.analysis_tasks.find_one(
+            {"_id": ObjectId(task_id)}
+        )
+        batch_id = task_doc.get("batch_id") if task_doc else None
+        user_id = task_doc.get("user_id") if task_doc else None
+
         update_data = {
             "status": TaskStatusEnum.COMPLETED.value,
             "completed_at": datetime.utcnow(),
@@ -549,7 +618,73 @@ class TaskManager:
         except Exception as e:
             logger.warning(f"MCP 连接完成标记失败: task_id={task_id}, error={e}")
 
+        # 如果是批量任务，触发下一批任务创建
+        if batch_id:
+            await self._trigger_next_batch(task_id, batch_id, user_id)
+
         logger.info(f"任务已完成: task_id={task_id}, recommendation={final_recommendation}")
+
+    async def _trigger_next_batch(
+        self,
+        task_id: str,
+        batch_id: str,
+        user_id: str,
+    ) -> None:
+        """
+        触发下一批任务创建
+
+        Args:
+            task_id: 已完成的任务 ID
+            batch_id: 批量任务 ID
+            user_id: 用户 ID
+        """
+        from modules.trading_agents.core.batch_manager import get_batch_manager
+
+        batch_manager = get_batch_manager()
+
+        # 获取批量任务状态
+        batch_status = await batch_manager.get_batch_status(batch_id)
+        if not batch_status:
+            logger.debug(f"批量任务不存在或已完成: batch_id={batch_id}")
+            return
+
+        # 通知批量任务管理器任务完成，触发下一批创建
+        new_task_ids = await batch_manager.on_task_completed(
+            task_id=task_id,
+            batch_id=batch_id,
+        )
+
+        # 如果有新任务创建，启动它们
+        if new_task_ids:
+            logger.info(f"启动下一批任务: count={len(new_task_ids)}, batch_id={batch_id}")
+
+            # 获取批量任务上下文以获取请求信息
+            context = batch_manager._batch_contexts.get(batch_id)
+            if context:
+                for new_task_id in new_task_ids:
+                    # 获取新创建的任务信息
+                    task_doc = await mongodb.database.analysis_tasks.find_one(
+                        {"_id": ObjectId(new_task_id)}
+                    )
+                    if not task_doc:
+                        logger.error(f"找不到新创建的任务: task_id={new_task_id}")
+                        continue
+
+                    # 启动工作流
+                    asyncio.create_task(
+                        execute_analysis_workflow(
+                            task_id=new_task_id,
+                            user_id=user_id,
+                            request=AnalysisTaskCreate(
+                                stock_code=task_doc.get("stock_code", ""),
+                                market=context.request.market,
+                                trade_date=context.request.trade_date,
+                                stages=context.request.stages,
+                                data_collection_model=context.request.data_collection_model,
+                                debate_model=context.request.debate_model,
+                            ),
+                        )
+                    )
 
     async def fail_task(
         self,

@@ -76,17 +76,6 @@
           </template>
         </el-table-column>
       </el-table>
-
-      <!-- 保存按钮 -->
-      <div class="action-bar">
-        <el-button
-          type="primary"
-          :loading="saving"
-          @click="handleSave"
-        >
-          保存配置
-        </el-button>
-      </div>
     </div>
 
     <!-- 智能体编辑对话框 -->
@@ -152,7 +141,7 @@
             <el-select
               v-model="agentForm.enabled_mcp_servers"
               multiple
-              placeholder="选择 MCP 服务器"
+              placeholder="选择 MCP 服务器（未选择时使用所有已启用的服务器）"
               style="width: 100%"
             >
               <el-option
@@ -162,7 +151,7 @@
                 :value="server.name"
               />
             </el-select>
-            <span class="form-tip">该智能体可使用的 MCP 服务器（按名称存储）</span>
+            <span class="form-tip">该智能体可使用的 MCP 服务器。未选择时，可使用所有已启用的 MCP 服务器。</span>
           </el-form-item>
 
           <el-form-item label="启用状态">
@@ -221,9 +210,10 @@
         </el-button>
         <el-button
           type="primary"
+          :loading="saving"
           @click="handleSaveAgent"
         >
-          确定
+          保存
         </el-button>
       </template>
     </el-dialog>
@@ -335,7 +325,14 @@ function handleAddAgent() {
 // 编辑智能体
 function handleEditAgent(agent: AgentConfig) {
   isEditAgent.value = true
-  Object.assign(agentForm, agent)
+  // 将 MCPServerConfig 对象转换为字符串列表（兼容后端返回的对象格式）
+  const mcpServers = agent.enabled_mcp_servers.map((s: any) =>
+    typeof s === 'string' ? s : s.name
+  )
+  Object.assign(agentForm, {
+    ...agent,
+    enabled_mcp_servers: mcpServers,
+  })
   showAgentDialog.value = true
 }
 
@@ -344,58 +341,50 @@ function handleDeleteAgent(index: number) {
   localConfig.agents.splice(index, 1)
 }
 
-// 保存智能体
+// 保存智能体（直接保存到后端）
 async function handleSaveAgent() {
   await agentFormRef.value?.validate()
 
-  if (isPhase1.value) {
-    // 第一阶段：保存所有字段
-    const agentData: AgentConfig = {
-      slug: agentForm.slug,
-      name: agentForm.name,
-      role_definition: agentForm.role_definition,
-      when_to_use: agentForm.when_to_use,
-      enabled_mcp_servers: [...agentForm.enabled_mcp_servers],
-      enabled_local_tools: [],
-      enabled: agentForm.enabled,
-    }
+  saving.value = true
+  try {
+    if (isPhase1.value) {
+      // 第一阶段：保存所有字段
+      const agentData: AgentConfig = {
+        slug: agentForm.slug,
+        name: agentForm.name,
+        role_definition: agentForm.role_definition,
+        when_to_use: agentForm.when_to_use,
+        enabled_mcp_servers: [...agentForm.enabled_mcp_servers],
+        enabled_local_tools: [],
+        enabled: agentForm.enabled,
+      }
 
-    if (isEditAgent.value) {
-      localConfig.agents[editingAgentIndex.value] = agentData
+      if (isEditAgent.value) {
+        localConfig.agents[editingAgentIndex.value] = agentData
+      } else {
+        localConfig.agents.push(agentData)
+      }
     } else {
-      localConfig.agents.push(agentData)
+      // 第二、三、四阶段：只保存 role_definition 和 enabled
+      if (isEditAgent.value) {
+        const existingAgent = localConfig.agents[editingAgentIndex.value]
+        existingAgent.role_definition = agentForm.role_definition
+        existingAgent.enabled = agentForm.enabled
+      }
     }
-  } else {
-    // 第二、三、四阶段：只保存 role_definition 和 enabled
-    if (isEditAgent.value) {
-      const existingAgent = localConfig.agents[editingAgentIndex.value]
-      existingAgent.role_definition = agentForm.role_definition
-      existingAgent.enabled = agentForm.enabled
-    }
-  }
 
-  showAgentDialog.value = false
+    // 直接保存到后端
+    emit('save', { ...localConfig })
+    ElMessage.success('智能体已保存')
+    showAgentDialog.value = false
+  } finally {
+    saving.value = false
+  }
 }
 
 // 关闭智能体对话框
 function handleAgentDialogClose() {
   agentFormRef.value?.resetFields()
-}
-
-// 保存配置
-async function handleSave() {
-  if (localConfig.agents.length === 0) {
-    ElMessage.warning('请至少添加一个智能体')
-    return
-  }
-
-  saving.value = true
-  try {
-    emit('save', { ...localConfig })
-    ElMessage.success('配置已保存')
-  } finally {
-    saving.value = false
-  }
 }
 </script>
 
@@ -434,10 +423,5 @@ async function handleSave() {
   margin-left: 12px;
   color: #909399;
   font-size: 12px;
-}
-
-.action-bar {
-  margin-top: 24px;
-  text-align: right;
 }
 </style>

@@ -89,20 +89,25 @@ StockAnalysis/
 │   │   │   ├── ip_trust.py            # IP 信任机制
 │   │   │   ├── migration.py           # 数据迁移
 │   │   │   └── rate_limiter.py        # 限流器
-│   │   ├── settings/                  # 设置核心
-│   │   │   ├── api.py                 # 系统设置 API
-│   │   │   └── service.py             # 系统设置服务
+│   │   ├── settings/                  # 统一设置核心
+│   │   │   ├── api/                   # 设置 API 层
+│   │   │   │   ├── __init__.py        # 路由注册
+│   │   │   │   ├── system.py          # 系统设置 API
+│   │   │   │   └── user.py            # 用户设置 API
+│   │   │   ├── services/              # 设置服务层
+│   │   │   │   ├── __init__.py        # 服务导出
+│   │   │   │   ├── system_service.py  # 系统设置服务
+│   │   │   │   └── user_service.py    # 用户设置服务（含数据库索引）
+│   │   │   └── models/                # 设置数据模型
+│   │   │       ├── __init__.py        # 模型导出
+│   │   │       └── user.py            # 用户设置模型
 │   │   ├── system/                    # 系统初始化
 │   │   │   └── api.py                 # 系统初始化 API
 │   │   ├── user/                      # 用户核心
 │   │   │   ├── api.py                 # 用户 API
 │   │   │   ├── service.py             # 用户服务
 │   │   │   ├── dependencies.py        # 用户依赖注入
-│   │   │   ├── models.py              # 用户数据模型
-│   │   │   ├── settings_api.py         # 用户设置 API
-│   │   │   ├── settings_service.py    # 用户设置服务
-│   │   │   ├── settings_database.py   # 用户设置数据库
-│   │   │   └── settings_models.py     # 用户设置模型
+│   │   │   └── models.py              # 用户数据模型
 │   │   ├── background_tasks.py        # 后台任务管理
 │   │   ├── colored_formatter.py       # 彩色日志格式化器
 │   │   ├── config.py                  # Pydantic 全局配置
@@ -229,11 +234,16 @@ StockAnalysis/
 │   │   │   ├── router/                # Vue Router 配置
 │   │   │   │   ├── index.ts           # 路由实例
 │   │   │   │   └── module_loader.ts   # 模块路由加载器
-│   │   │   ├── settings/              # 设置模块
-│   │   │   │   ├── api.ts
-│   │   │   │   ├── index.ts
-│   │   │   │   ├── store.ts
-│   │   │   │   ├── types.ts
+│   │   │   ├── settings/              # 统一设置模块
+│   │   │   │   ├── api/               # 设置 API
+│   │   │   │   │   ├── system.ts      # 系统设置 API
+│   │   │   │   │   └── user.ts        # 用户设置 API
+│   │   │   │   ├── stores/            # 状态管理
+│   │   │   │   │   └── system.ts      # 系统设置 Store
+│   │   │   │   ├── types/             # 类型定义
+│   │   │   │   │   ├── system.ts      # 系统设置类型
+│   │   │   │   │   └── user.ts        # 用户设置类型
+│   │   │   │   ├── index.ts           # 模块导出
 │   │   │   │   └── views/
 │   │   │   │       └── SystemSettingsView.vue
 │   │   │   ├── system/                # 系统模块
@@ -244,8 +254,6 @@ StockAnalysis/
 │   │   │   ├── user/                  # 用户模块
 │   │   │   │   ├── api.ts
 │   │   │   │   ├── index.ts
-│   │   │   │   ├── settings-api.ts
-│   │   │   │   ├── settings-types.ts
 │   │   │   │   └── types.ts
 │   │   │   ├── shared/                # 共享工具
 │   │   │   │   ├── index.ts

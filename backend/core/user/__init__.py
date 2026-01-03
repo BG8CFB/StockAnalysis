@@ -42,11 +42,6 @@ from core.user.service import (
     UserService,
     user_service,
 )
-from core.user.settings_service import (
-    get_user_settings_service,
-    UserSettingsService,
-)
-from core.user.settings_api import router as settings_router
 
 __all__ = [
     # Models
@@ -73,10 +68,6 @@ __all__ = [
     # Service
     "UserService",
     "user_service",
-    # Settings
-    "UserSettingsService",
-    "get_user_settings_service",
-    "settings_router",
     # Exceptions
     "UserExistsError",
     "InvalidCredentialsError",

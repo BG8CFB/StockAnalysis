@@ -267,7 +267,10 @@
               
               <el-row :gutter="20">
                 <el-col :span="12">
-                  <el-form-item label="模型名称" prop="name">
+                  <el-form-item
+                    label="模型名称"
+                    prop="name"
+                  >
                     <el-input
                       v-model="formData.name"
                       placeholder="给模型起个名字"
@@ -275,11 +278,18 @@
                     />
                   </el-form-item>
                 </el-col>
-                <el-col :span="12" v-if="canManageSystemModels && !isEdit">
+                <el-col
+                  v-if="canManageSystemModels && !isEdit"
+                  :span="12"
+                >
                   <el-form-item label="模型范围">
                     <el-radio-group v-model="formData.is_system">
-                      <el-radio :label="false">个人私有</el-radio>
-                      <el-radio :label="true">系统共享</el-radio>
+                      <el-radio :label="false">
+                        个人私有
+                      </el-radio>
+                      <el-radio :label="true">
+                        系统共享
+                      </el-radio>
                     </el-radio-group>
                   </el-form-item>
                 </el-col>
@@ -287,14 +297,21 @@
 
               <el-row :gutter="20">
                 <el-col :span="12">
-                  <el-form-item label="平台类型" prop="platform_type">
+                  <el-form-item
+                    label="平台类型"
+                    prop="platform_type"
+                  >
                     <el-radio-group
                       v-model="formData.platform_type"
-                      @change="handlePlatformTypeChange"
                       class="w-full"
+                      @change="handlePlatformTypeChange"
                     >
-                      <el-radio-button value="preset">预设平台</el-radio-button>
-                      <el-radio-button value="custom">自定义</el-radio-button>
+                      <el-radio-button value="preset">
+                        预设平台
+                      </el-radio-button>
+                      <el-radio-button value="custom">
+                        自定义
+                      </el-radio-button>
                     </el-radio-group>
                   </el-form-item>
                 </el-col>
@@ -336,7 +353,10 @@
 
               <el-row :gutter="20">
                 <el-col :span="24">
-                  <el-form-item label="API 地址" prop="api_base_url">
+                  <el-form-item
+                    label="API 地址"
+                    prop="api_base_url"
+                  >
                     <el-input
                       v-model="formData.api_base_url"
                       placeholder="例如: https://api.openai.com/v1"
@@ -349,7 +369,10 @@
                   </el-form-item>
                 </el-col>
                 <el-col :span="24">
-                  <el-form-item label="API Key" prop="api_key">
+                  <el-form-item
+                    label="API Key"
+                    prop="api_key"
+                  >
                     <el-input
                       v-model="formData.api_key"
                       type="password"
@@ -394,7 +417,12 @@
                   </el-button>
                 </div>
                 <div class="mt-1">
-                  <el-link type="primary" :underline="false" @click="manualInputModel = true" style="font-size: 12px">
+                  <el-link
+                    type="primary"
+                    :underline="false"
+                    style="font-size: 12px"
+                    @click="manualInputModel = true"
+                  >
                     切换到手动输入模式
                   </el-link>
                 </div>
@@ -437,34 +465,80 @@
               
               <el-row :gutter="20">
                 <el-col :span="12">
-                  <el-form-item label="最大并发" prop="max_concurrency">
-                    <el-input-number v-model="formData.max_concurrency" :min="1" :max="200" class="w-full" controls-position="right" />
+                  <el-form-item
+                    label="最大并发"
+                    prop="max_concurrency"
+                  >
+                    <el-input-number
+                      v-model="formData.max_concurrency"
+                      :min="1"
+                      :max="200"
+                      class="w-full"
+                      controls-position="right"
+                    />
                   </el-form-item>
                 </el-col>
                 <el-col :span="12">
-                  <el-form-item label="任务并发" prop="task_concurrency">
-                    <el-input-number v-model="formData.task_concurrency" :min="1" :max="10" class="w-full" controls-position="right" />
+                  <el-form-item
+                    label="任务并发"
+                    prop="task_concurrency"
+                  >
+                    <el-input-number
+                      v-model="formData.task_concurrency"
+                      :min="1"
+                      :max="10"
+                      class="w-full"
+                      controls-position="right"
+                    />
                   </el-form-item>
                 </el-col>
               </el-row>
 
               <el-row :gutter="20">
                 <el-col :span="12">
-                  <el-form-item label="批量并发" prop="batch_concurrency">
-                    <el-input-number v-model="formData.batch_concurrency" :min="1" :max="50" class="w-full" controls-position="right" />
+                  <el-form-item
+                    label="批量并发"
+                    prop="batch_concurrency"
+                  >
+                    <el-input-number
+                      v-model="formData.batch_concurrency"
+                      :min="1"
+                      :max="50"
+                      class="w-full"
+                      controls-position="right"
+                    />
                   </el-form-item>
                 </el-col>
                 <el-col :span="12">
-                  <el-form-item label="超时(秒)" prop="timeout_seconds">
-                    <el-input-number v-model="formData.timeout_seconds" :min="10" :max="600" class="w-full" controls-position="right" />
+                  <el-form-item
+                    label="超时(秒)"
+                    prop="timeout_seconds"
+                  >
+                    <el-input-number
+                      v-model="formData.timeout_seconds"
+                      :min="10"
+                      :max="600"
+                      class="w-full"
+                      controls-position="right"
+                    />
                   </el-form-item>
                 </el-col>
               </el-row>
 
               <el-row :gutter="20">
                 <el-col :span="12">
-                  <el-form-item label="温度 (Temperature)" prop="temperature">
-                    <el-input-number v-model="formData.temperature" :min="0" :max="2" :step="0.1" class="w-full" controls-position="right" />
+                  <el-form-item
+                    label="温度 (Temperature)"
+                    prop="temperature"
+                  >
+                    <el-input-number
+                      v-model="formData.temperature"
+                      :min="0"
+                      :max="2"
+                      :step="0.1"
+                      class="w-full"
+                      controls-position="right"
+                    />
                   </el-form-item>
                 </el-col>
                 <el-col :span="12">
@@ -491,7 +565,14 @@
                 <template #label>
                   <div class="flex items-center gap-1">
                     <span>思考模式 (Chain of Thought)</span>
-                    <el-tag v-if="formData.thinking_enabled" size="small" type="success" effect="plain">已启用</el-tag>
+                    <el-tag
+                      v-if="formData.thinking_enabled"
+                      size="small"
+                      type="success"
+                      effect="plain"
+                    >
+                      已启用
+                    </el-tag>
                   </div>
                 </template>
                 <div class="thinking-mode-container">
@@ -500,7 +581,10 @@
                     <el-switch v-model="formData.thinking_enabled" />
                   </div>
                   
-                  <div v-if="formData.thinking_enabled" class="thinking-options">
+                  <div
+                    v-if="formData.thinking_enabled"
+                    class="thinking-options"
+                  >
                     <div 
                       v-for="mode in [
                         { val: ThinkingModeEnum.PRESERVED, icon: Document, label: '保留式', desc: '对话保留思考', tags: ['Claude'] },
@@ -516,7 +600,9 @@
                         <el-icon><component :is="mode.icon" /></el-icon>
                         <span class="font-medium">{{ mode.label }}</span>
                       </div>
-                      <div class="option-desc">{{ mode.desc }}</div>
+                      <div class="option-desc">
+                        {{ mode.desc }}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -524,12 +610,39 @@
 
               <el-form-item label="自定义请求头">
                 <div class="w-full">
-                  <div v-for="(value, key) in formData.custom_headers" :key="key" class="flex gap-2 mb-2">
-                    <el-input :model-value="key" readonly class="w-1/3" placeholder="Key" />
-                    <el-input v-model="formData.custom_headers[key]" class="flex-1" placeholder="Value" />
-                    <el-button type="danger" :icon="Delete" circle plain @click="removeCustomHeader(key as string)" />
+                  <div
+                    v-for="(value, key) in formData.custom_headers"
+                    :key="key"
+                    class="flex gap-2 mb-2"
+                  >
+                    <el-input
+                      :model-value="key"
+                      readonly
+                      class="w-1/3"
+                      placeholder="Key"
+                    />
+                    <el-input
+                      v-model="formData.custom_headers[key]"
+                      class="flex-1"
+                      placeholder="Value"
+                    />
+                    <el-button
+                      type="danger"
+                      :icon="Delete"
+                      circle
+                      plain
+                      @click="removeCustomHeader(key as string)"
+                    />
                   </div>
-                  <el-button type="primary" link :icon="Plus" @click="addCustomHeader" style="padding: 0;">添加 Header</el-button>
+                  <el-button
+                    type="primary"
+                    link
+                    :icon="Plus"
+                    style="padding: 0;"
+                    @click="addCustomHeader"
+                  >
+                    添加 Header
+                  </el-button>
                 </div>
               </el-form-item>
             </div>

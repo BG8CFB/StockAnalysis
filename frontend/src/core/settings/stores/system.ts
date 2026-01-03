@@ -3,10 +3,10 @@
  */
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { settingsApi } from '@core/settings'
-import type { SystemConfig, SystemStatus, SystemInfo } from './types'
+import { systemSettingsApi } from '../api/system'
+import type { SystemConfig, SystemStatus, SystemInfo } from '../types/system'
 
-export const useSettingsStore = defineStore('settings', () => {
+export const useSystemSettingsStore = defineStore('systemSettings', () => {
   // 状态
   const systemConfig = ref<SystemConfig | null>(null)
   const systemStatus = ref<SystemStatus | null>(null)
@@ -19,7 +19,7 @@ export const useSettingsStore = defineStore('settings', () => {
   async function fetchSystemStatus() {
     loading.value = true
     try {
-      const status = await settingsApi.getSystemStatus()
+      const status = await systemSettingsApi.getSystemStatus()
       systemStatus.value = status
       return status
     } catch (error: any) {
@@ -36,7 +36,7 @@ export const useSettingsStore = defineStore('settings', () => {
   async function fetchSystemConfig() {
     loading.value = true
     try {
-      const config = await settingsApi.getSystemConfig()
+      const config = await systemSettingsApi.getSystemConfig()
       systemConfig.value = config
       return config
     } catch (error: any) {
@@ -53,7 +53,7 @@ export const useSettingsStore = defineStore('settings', () => {
   async function updateConfig(configUpdates: Partial<SystemConfig>) {
     loading.value = true
     try {
-      const response = await settingsApi.updateSystemConfig(configUpdates)
+      const response = await systemSettingsApi.updateSystemConfig(configUpdates)
       // 更新本地状态
       if (systemConfig.value) {
         Object.assign(systemConfig.value, response.config)
@@ -73,7 +73,7 @@ export const useSettingsStore = defineStore('settings', () => {
   async function fetchSystemInfo() {
     loading.value = true
     try {
-      const info = await settingsApi.getSystemInfo()
+      const info = await systemSettingsApi.getSystemInfo()
       systemInfo.value = info
       return info
     } catch (error: any) {

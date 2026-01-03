@@ -74,7 +74,9 @@ async def execute_analysis_workflow(
     report_service = get_report_service()
 
     # 用于并发控制
-    batch_id = None
+    # 统一处理：单股任务使用 task_id 作为自己的 batch_id
+    # 这样可以确保单股任务和批量任务使用相同的资源管理逻辑
+    batch_id = task_id  # 默认值，单股任务使用 task_id 作为 batch_id
     data_collection_model_id = None
     debate_model_id = None
 
@@ -87,7 +89,7 @@ async def execute_analysis_workflow(
             raise Exception("无法加载用户智能体配置")
 
         # 2. 加载用户模型偏好
-        from core.user.settings_service import get_user_settings_service
+        from core.settings.services.user_service import get_user_settings_service
         settings_service = get_user_settings_service()
         user_settings = await settings_service.get_user_settings(user_id)
 
@@ -171,37 +173,35 @@ async def execute_analysis_workflow(
             "batch_concurrency": debate_model.batch_concurrency,
         }
 
-        debate_execution = await concurrency_controller.request_execution(
-            model_id=debate_model_id,
-            task_id=task_id,
-            user_id=user_id,
-            model_config=debate_config,
-        )
+        # 使用并发控制的等待机制（自动排队等待）
+        # 两个模型都需要获取到槽位才能继续
+        logger.info(f"任务 {task_id} 请求并发控制槽位...")
 
-        # 检查是否都能立即执行
-        if not data_collection_execution["can_execute"] or not debate_execution["can_execute"]:
-            logger.info(
-                f"任务 {task_id} 需要排队: "
-                f"数据收集模型队列={data_collection_execution['queue_position']}, "
-                f"辩论模型队列={debate_execution['queue_position']}"
-            )
-            # TODO: 实现排队等待逻辑
-            # 目前先等待一会儿再重试
-            await asyncio.sleep(5)
-
-            # 重新请求
-            data_collection_execution = await concurrency_controller.request_execution(
+        try:
+            # 等待数据收集模型槽位（超时 5 分钟）
+            await concurrency_controller.wait_for_execution(
                 model_id=data_collection_model_id,
                 task_id=task_id,
                 user_id=user_id,
                 model_config=data_collection_config,
+                timeout=300.0,
             )
-            debate_execution = await concurrency_controller.request_execution(
+            logger.info(f"任务 {task_id} 获取到数据收集模型槽位")
+
+            # 等待辩论模型槽位（超时 5 分钟）
+            await concurrency_controller.wait_for_execution(
                 model_id=debate_model_id,
                 task_id=task_id,
                 user_id=user_id,
                 model_config=debate_config,
+                timeout=300.0,
             )
+            logger.info(f"任务 {task_id} 获取到辩论模型槽位")
+
+        except asyncio.TimeoutError as e:
+            # 等待超时，标记任务失败
+            logger.error(f"任务 {task_id} 等待并发槽位超时: {e}")
+            raise Exception(f"任务等待执行超时，请稍后重试") from e
 
         # 4. 获取两个 LLM Provider 实例
         data_collection_llm = await model_service.get_llm_provider(

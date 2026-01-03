@@ -15,7 +15,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from core.config import settings
 from core.db.mongodb import mongodb
 from core.db.redis import UserRedisKey, get_redis
-from core.user.settings_models import (
+from core.settings.models.user import (
     UserSettings,
     CoreSettings,
     NotificationSettings,
@@ -125,7 +125,7 @@ class UserSettingsService:
         # 确保 user_id 以 ObjectId 形式存储
         if isinstance(doc.get("user_id"), str):
             doc["user_id"] = ObjectId(doc["user_id"])
-            
+
         result = await collection.insert_one(doc)
         doc["_id"] = result.inserted_id
 
@@ -453,6 +453,34 @@ class UserSettingsService:
         logger.info(f"导入用户配置: user_id={user_id}, strategy={import_data.merge_strategy}")
 
         return await self.get_user_settings(user_id)
+
+
+# =============================================================================
+# 数据库索引初始化（从 settings_database.py 合并）
+# =============================================================================
+
+async def init_user_settings_indexes() -> None:
+    """初始化用户配置集合的数据库索引"""
+    db: AsyncIOMotorDatabase = mongodb.database
+
+    # ========================================
+    # 用户配置集合
+    # ========================================
+    try:
+        await db.user_settings.create_index("user_id", name="idx_user_id", unique=True)
+    except Exception as e:
+        if "duplicate key error" in str(e) or "E11000" in str(e):
+            logger.warning(f"user_settings 索引已存在或存在重复数据，跳过创建: {e}")
+        else:
+            raise
+    await db.user_settings.create_index("created_at", name="idx_created_at")
+    await db.user_settings.create_index("updated_at", name="idx_updated_at")
+
+    # 配额信息索引（用于配额查询）
+    await db.user_settings.create_index("quota_info.tasks_used", name="idx_tasks_used")
+    await db.user_settings.create_index("quota_info.storage_used_mb", name="idx_storage_used")
+
+    logger.info("用户配置索引初始化成功")
 
 
 # =============================================================================

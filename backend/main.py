@@ -16,9 +16,9 @@ from core.db.mongodb import close_mongodb, connect_to_mongodb
 from core.db.redis import close_redis, connect_to_redis
 from core.exceptions import setup_exception_handlers
 from core.logging_config import setup_logging
-from core.settings.api import router as settings_router
+from core.settings.api.system import router as system_settings_router
 from core.user.api import router as user_router
-from core.user import settings_router as user_settings_router
+from core.settings.api.user import router as user_settings_router
 from core.system.api import router as system_router
 from core.ai.api import router as ai_core_router
 from modules.screener.api import router as screener_router
@@ -90,7 +90,7 @@ async def lifespan(app: FastAPI):
         logger.warning(f"TradingAgents 数据库索引初始化失败: {e}")
 
     # 初始化用户配置模块数据库索引
-    from core.user.settings_database import init_user_settings_indexes
+    from core.settings.services.user_service import init_user_settings_indexes
     try:
         await init_user_settings_indexes()
         logger.info("用户配置数据库索引初始化成功")
@@ -207,7 +207,7 @@ def create_app() -> FastAPI:
 
     # 注册路由（按优先级）
     # 核心路由（新架构）
-    app.include_router(settings_router, prefix=settings.API_V1_PREFIX)  # 系统设置
+    app.include_router(system_settings_router, prefix=settings.API_V1_PREFIX)  # 系统设置
     app.include_router(core_admin_router, prefix=settings.API_V1_PREFIX) # 核心管理员
     app.include_router(ai_core_router, prefix=settings.API_V1_PREFIX)    # AI 核心模块
 

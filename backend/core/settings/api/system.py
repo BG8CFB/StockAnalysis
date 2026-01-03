@@ -3,7 +3,7 @@
 """
 from fastapi import APIRouter, Depends
 
-from core.settings.service import settings_service
+from core.settings.services.system_service import settings_service
 from core.user.dependencies import get_current_admin_user, get_current_super_admin
 from core.user.models import UserModel
 

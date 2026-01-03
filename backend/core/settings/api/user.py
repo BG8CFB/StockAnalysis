@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from core.auth.dependencies import get_current_user, get_current_active_user
 from core.auth.rbac import Role, require_role
 from core.user.models import UserModel
-from core.user.settings_models import (
+from core.settings.models.user import (
     CoreSettingsUpdate,
     NotificationSettingsUpdate,
     TradingAgentsSettingsUpdate,
@@ -21,7 +21,7 @@ from core.user.settings_models import (
     SettingsExport,
     SettingsImport,
 )
-from core.user.settings_service import get_user_settings_service
+from core.settings.services.user_service import get_user_settings_service
 
 router = APIRouter(prefix="/settings", tags=["User Settings"])
 

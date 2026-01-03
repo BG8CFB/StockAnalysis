@@ -1,6 +1,6 @@
 """
 系统设置核心服务
-管理系统配置、用户偏好等
+管理系统配置
 """
 import json
 from datetime import datetime
@@ -149,7 +149,7 @@ class SettingsService:
             active_users = await self.db.users.count_documents({"status": "active"})
             pending_users = await self.db.users.count_documents({"status": "pending"})
             disabled_users = await self.db.users.count_documents({"status": "disabled"})
-            
+
             # 检查是否有管理员 (初始化状态)
             admin_count = await self.db.users.count_documents({
                 "role": {"$in": [Role.ADMIN.value, Role.SUPER_ADMIN.value]}
@@ -178,18 +178,18 @@ class SettingsService:
                 "pending": pending_users,
                 "disabled": disabled_users
             },
-            
+
             # SystemConfig 字段 (扁平化)
             "require_approval": config.get("REQUIRE_APPROVAL", True),
             "app_name": getattr(settings, "APP_NAME", "StockAnalysis"),
             "app_version": getattr(settings, "APP_VERSION", "1.0.0"),
             "debug": getattr(settings, "DEBUG", False),
             "registration_open": config.get("ENABLE_REGISTRATION", True),
-            
+
             # 其他信息
             "server_time": datetime.utcnow().isoformat(),
             "uptime": int((datetime.utcnow() - self.startup_time).total_seconds()),
-            
+
             # 兼容旧字段 (可选)
             "config": config,
         }

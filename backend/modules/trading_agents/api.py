@@ -183,7 +183,7 @@ async def create_tasks(
     Returns:
         统一任务响应（包含 task_id 或 batch_id）
     """
-    from core.user.settings_service import get_user_settings_service
+    from core.settings.services.user_service import get_user_settings_service
     from modules.trading_agents.core.task_manager import get_task_manager
 
     settings_service = get_user_settings_service()

@@ -7,7 +7,7 @@ TradingAgents 核心数据模型
 from datetime import datetime
 from enum import Enum
 from typing import Optional, List, Dict, Any, Union
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, field_serializer, model_validator
 
 
 # =============================================================================
@@ -77,6 +77,42 @@ class AgentConfig(BaseModel):
     enabled_local_tools: List[str] = Field(default_factory=list, description="启用的本地工具")
     enabled: bool = Field(default=True, description="是否启用")
 
+    @field_validator('enabled_mcp_servers', mode='before')
+    @classmethod
+    def convert_mcp_servers(cls, v):
+        """向后兼容：自动将字符串/字典列表转换为 MCPServerConfig 列表"""
+        if not v:
+            return []
+        # 如果已经是 MCPServerConfig 列表，直接返回
+        if isinstance(v, list) and len(v) > 0:
+            if isinstance(v[0], MCPServerConfig):
+                return v
+            # 如果是字符串列表，转换
+            if isinstance(v[0], str):
+                return MCPServerConfig.from_list(v)
+            # 如果是字典列表，尝试解析
+            if isinstance(v[0], dict):
+                try:
+                    return [MCPServerConfig(**item) for item in v]
+                except Exception:
+                    pass
+        return v
+
+    @field_serializer('enabled_mcp_servers')
+    def serialize_mcp_servers(self, value: List[MCPServerConfig]) -> List[str]:
+        """序列化时将 MCPServerConfig 对象转换为字符串列表（前端兼容）"""
+        if not value:
+            return []
+        result = []
+        for server in value:
+            if isinstance(server, MCPServerConfig):
+                result.append(server.name)
+            elif isinstance(server, str):
+                result.append(server)
+            elif isinstance(server, dict):
+                result.append(server.get('name', ''))
+        return result
+
 
 class AgentConfigSlim(BaseModel):
     """单个智能体配置（精简版，不含提示词）
@@ -93,6 +129,42 @@ class AgentConfigSlim(BaseModel):
     )
     enabled_local_tools: List[str] = Field(default_factory=list, description="启用的本地工具")
     enabled: bool = Field(default=True, description="是否启用")
+
+    @field_validator('enabled_mcp_servers', mode='before')
+    @classmethod
+    def convert_mcp_servers(cls, v):
+        """向后兼容：自动将字符串/字典列表转换为 MCPServerConfig 列表"""
+        if not v:
+            return []
+        # 如果已经是 MCPServerConfig 列表，直接返回
+        if isinstance(v, list) and len(v) > 0:
+            if isinstance(v[0], MCPServerConfig):
+                return v
+            # 如果是字符串列表，转换
+            if isinstance(v[0], str):
+                return MCPServerConfig.from_list(v)
+            # 如果是字典列表，尝试解析
+            if isinstance(v[0], dict):
+                try:
+                    return [MCPServerConfig(**item) for item in v]
+                except Exception:
+                    pass
+        return v
+
+    @field_serializer('enabled_mcp_servers')
+    def serialize_mcp_servers(self, value: List[MCPServerConfig]) -> List[str]:
+        """序列化时将 MCPServerConfig 对象转换为字符串列表（前端兼容）"""
+        if not value:
+            return []
+        result = []
+        for server in value:
+            if isinstance(server, MCPServerConfig):
+                result.append(server.name)
+            elif isinstance(server, str):
+                result.append(server)
+            elif isinstance(server, dict):
+                result.append(server.get('name', ''))
+        return result
 
 
 class PhaseConfigBase(BaseModel):
@@ -205,16 +277,40 @@ class UserAgentConfigResponse(BaseModel):
 
             return phase_class(**clean_data)
 
+        def convert_mcp_servers_to_strings(phase_config):
+            """将 MCPServerConfig 对象列表转换为字符串列表（前端兼容）"""
+            if not phase_config or not hasattr(phase_config, 'agents'):
+                return phase_config
+
+            for agent in phase_config.agents:
+                if hasattr(agent, 'enabled_mcp_servers') and agent.enabled_mcp_servers:
+                    # 将 MCPServerConfig 对象转换为字符串
+                    agent.enabled_mcp_servers = [
+                        server.name if isinstance(server, MCPServerConfig) else server
+                        for server in agent.enabled_mcp_servers
+                    ]
+
+            return phase_config
+
         # 解析phase1 (也使用parse_phase来过滤None值)
         phase1_data = data.get("phase1", {})
         logger.debug(f"Phase1 data from DB: {phase1_data}")
         phase1 = parse_phase(phase1_data, Phase1Config)
+        phase1 = convert_mcp_servers_to_strings(phase1)
 
         # 解析其他阶段
         phase2 = parse_phase(data.get("phase2", {}), Phase2Config) if data.get("phase2") else None
+        if phase2:
+            phase2 = convert_mcp_servers_to_strings(phase2)
+
         phase3 = parse_phase(data.get("phase3", {}), Phase3Config) if data.get("phase3") else None
+        if phase3:
+            phase3 = convert_mcp_servers_to_strings(phase3)
+
         phase4 = parse_phase(data.get("phase4", {}), Phase4Config) if data.get("phase4") else None
-        
+        if phase4:
+            phase4 = convert_mcp_servers_to_strings(phase4)
+
         return cls(
             id=str(data["_id"]),
             user_id=data["user_id"],

@@ -423,12 +423,69 @@ class AgentConfigService:
         Returns:
             配置响应对象
         """
-        # 如果需要包含提示词，使用原始的 from_db 方法
-        if include_prompts:
-            return UserAgentConfigResponse.from_db(doc)
+        import copy
 
-        # 否则，移除 role_definition 字段
-        doc_copy = dict(doc)
+        # 获取可用的 MCP 服务器名称列表
+        async def get_available_mcp_servers():
+            try:
+                from core.db.mongodb import mongodb
+                mcp_collection = mongodb.get_collection("mcp_servers")
+                cursor = mcp_collection.find({"enabled": True}, {"name": 1})
+                servers = []
+                async for s in cursor:
+                    servers.append(s["name"])
+                return set(servers)
+            except Exception as e:
+                logger.warning(f"获取 MCP 服务器列表失败: {e}")
+                return set()
+
+        # 由于这是同步方法，我们需要用 asyncio.run 来执行异步函数
+        try:
+            import asyncio
+            available_servers = asyncio.run(get_available_mcp_servers())
+        except Exception:
+            available_servers = set()
+            logger.warning("无法获取 MCP 服务器列表")
+
+        # 清理数据库原始数据中的无效 MCP 服务器
+        doc_copy = copy.deepcopy(doc)
+
+        def cleanup_phase_data(phase_data):
+            """清理阶段数据中的无效 MCP 服务器"""
+            if not phase_data or "agents" not in phase_data:
+                return phase_data
+
+            for agent in phase_data["agents"]:
+                if "enabled_mcp_servers" in agent and agent["enabled_mcp_servers"]:
+                    filtered_servers = []
+                    for server in agent["enabled_mcp_servers"]:
+                        if isinstance(server, dict):
+                            server_name = server.get("name")
+                        elif isinstance(server, str):
+                            server_name = server
+                        else:
+                            continue
+
+                        # 只保留存在的服务器
+                        if server_name and server_name in available_servers:
+                            filtered_servers.append(server)
+                        elif server_name:
+                            logger.debug(f"过滤掉不存在的 MCP 服务器: {server_name}")
+
+                    agent["enabled_mcp_servers"] = filtered_servers
+
+            return phase_data
+
+        # 清理所有阶段
+        for phase_key in ["phase1", "phase2", "phase3", "phase4"]:
+            if phase_key in doc_copy:
+                doc_copy[phase_key] = cleanup_phase_data(doc_copy[phase_key])
+
+        # 如果需要包含提示词，使用清理后的数据
+        if include_prompts:
+            return UserAgentConfigResponse.from_db(doc_copy)
+
+        # 否则，同时移除 role_definition 字段
         for phase_key in ["phase1", "phase2", "phase3", "phase4"]:
             phase_data = doc_copy.get(phase_key)
             if phase_data and "agents" in phase_data:
