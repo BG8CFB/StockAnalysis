@@ -117,11 +117,8 @@ class MCPConnection:
             self.state = ConnectionState.ACTIVE
             self.last_used_at = datetime.now(timezone.utc)
 
-            # 为工具添加 server_id 属性（用于过滤）
-            for tool in self._tools:
-                tool.mcp_server_id = self.server_id
-                tool.mcp_server_name = self.server_name
-                tool.mcp_connection_id = self.connection_id
+            # 注意：不再尝试为工具添加属性，因为 StructuredTool 是 Pydantic 模型，不允许动态添加字段
+            # 工具与 MCP 服务器的映射关系由 ToolDefinition 维护（通过 tool_def.mcp_server）
 
             logger.info(
                 f"[MCPConnection] 连接成功: {self.connection_id}, "

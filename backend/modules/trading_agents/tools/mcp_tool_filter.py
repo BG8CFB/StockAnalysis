@@ -120,9 +120,11 @@ class MCPToolFilter:
         # 检查必需服务器是否可用（必须在返回之前检查）
         missing_required = required_server_names - valid_server_names
         if missing_required:
-            raise RuntimeError(
-                f"智能体 {agent_config.slug} 的必需 MCP 服务器不可用: {missing_required}。"
-                f"可用的服务器: {valid_server_names}"
+            # 用户要求：如果管理员关闭了MCP，智能体应忽略该缺失，继续运行
+            # 原逻辑会抛出 RuntimeError，现改为记录警告并忽略
+            logger.warning(
+                f"智能体 {agent_config.slug} 的部分必需 MCP 服务器全局不可用（已忽略）: {missing_required}。"
+                f"将仅使用可用的服务器: {valid_server_names}"
             )
 
         if not valid_server_names:

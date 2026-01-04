@@ -21,6 +21,7 @@ from modules.trading_agents.schemas import (
     AnalysisTaskCreate,
     UserAgentConfigResponse,
     RecommendationEnum,
+    AgentConfig,
 )
 from modules.trading_agents.websocket import get_ws_manager
 from modules.trading_agents.core.concurrency import get_concurrency_manager

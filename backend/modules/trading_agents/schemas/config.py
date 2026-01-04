@@ -254,39 +254,17 @@ class UserAgentConfigResponse(BaseModel):
 
             return phase_class(**clean_data)
 
-        def convert_mcp_servers_to_strings(phase_config):
-            """将 MCPServerConfig 对象列表转换为字符串列表（前端兼容）"""
-            if not phase_config or not hasattr(phase_config, 'agents'):
-                return phase_config
-
-            for agent in phase_config.agents:
-                if hasattr(agent, 'enabled_mcp_servers') and agent.enabled_mcp_servers:
-                    # 将 MCPServerConfig 对象转换为字符串
-                    agent.enabled_mcp_servers = [
-                        server.name if isinstance(server, MCPServerConfig) else server
-                        for server in agent.enabled_mcp_servers
-                    ]
-
-            return phase_config
-
         # 解析phase1 (也使用parse_phase来过滤None值)
         phase1_data = data.get("phase1", {})
         logger.debug(f"Phase1 data from DB: {phase1_data}")
         phase1 = parse_phase(phase1_data, Phase1Config)
-        phase1 = convert_mcp_servers_to_strings(phase1)
+        # 注意：不再手动转换，保留 MCPServerConfig 对象供内部使用
+        # API 响应时会通过 field_serializer 自动转换为字符串列表
 
         # 解析其他阶段
         phase2 = parse_phase(data.get("phase2", {}), Phase2Config) if data.get("phase2") else None
-        if phase2:
-            phase2 = convert_mcp_servers_to_strings(phase2)
-
         phase3 = parse_phase(data.get("phase3", {}), Phase3Config) if data.get("phase3") else None
-        if phase3:
-            phase3 = convert_mcp_servers_to_strings(phase3)
-
         phase4 = parse_phase(data.get("phase4", {}), Phase4Config) if data.get("phase4") else None
-        if phase4:
-            phase4 = convert_mcp_servers_to_strings(phase4)
 
         return cls(
             id=str(data["_id"]),
