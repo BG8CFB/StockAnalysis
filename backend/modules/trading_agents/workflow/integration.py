@@ -45,16 +45,19 @@ async def execute_analysis_workflow_langgraph(
 
     try:
         # 获取 LangGraph 适配器
+        logger.info(f"[LangGraph] 获取适配器...")
         adapter = get_langgraph_adapter()
+        logger.info(f"[LangGraph] 适配器获取成功")
 
         # 执行任务
+        logger.info(f"[LangGraph] 🚀 调用 adapter.execute_task()...")
         result = await adapter.execute_task(
             task_id=task_id,
             user_id=user_id,
             request=request,
             config=config
         )
-
+        logger.info(f"[LangGraph] ✅ adapter.execute_task() 完成")
         logger.info(f"[LangGraph] 任务执行完成: task_id={task_id}, status={result.get('status')}")
 
         # 更新数据库状态

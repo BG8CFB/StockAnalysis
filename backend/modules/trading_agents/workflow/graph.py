@@ -9,6 +9,10 @@ LangGraph 工作流图定义
 - 使用 compile 编译图并配置 checkpointer
 
 官方文档: https://docs.langchain.com/oss/python/langgraph/graph-api/
+
+**重要设计原则**：
+- Phase 1 节点完全动态化，从用户配置动态创建
+- Phase 2, 3, 4 节点结构固定，但提示词从配置加载
 """
 
 import logging
@@ -29,23 +33,21 @@ from .state import (
     TradingAgentOutputState,
     TaskStatus
 )
+from modules.trading_agents.schemas import UserAgentConfigResponse
 from .nodes import (
-    # Phase 1
-    technical_analyst_node,
-    fundamental_analyst_node,
-    sentiment_analyst_node,
-    news_analyst_node,
-    # Phase 2
+    # 节点工厂函数（Phase 1 动态创建）
+    create_phase1_node_factory,
+    # Phase 2（结构固定）
     bull_debater_node,
     bear_debater_node,
     research_manager_node,
     trade_planner_node,
-    # Phase 3
+    # Phase 3（结构固定）
     aggressive_risk_analyst_node,
     conservative_risk_analyst_node,
     neutral_risk_analyst_node,
     chief_risk_officer_node,
-    # Phase 4
+    # Phase 4（结构固定）
     final_summarizer_node
 )
 
@@ -161,6 +163,17 @@ def check_phase1_completion(state: TradingAgentState) -> Literal["phase1_complet
     return "phase1_incomplete"
 
 
+def phase1_checkpoint_node(state: TradingAgentState) -> Dict[str, Any]:
+    """
+    Phase 1 汇聚节点（用于等待所有并行分析师完成）
+
+    这个节点本身不做任何工作，只是作为一个汇聚点，
+    所有 Phase 1 分析师节点完成后都会路由到这里。
+    """
+    logger.debug(f"[Phase 1 检查点] 已完成分析师: {state.get('completed_analysts', 0)}")
+    return {}  # 不修改状态
+
+
 def check_phase3_completion(state: TradingAgentState) -> Literal["phase3_complete", "phase3_incomplete"]:
     """
     检查 Phase 3 是否完成
@@ -188,7 +201,8 @@ def check_phase3_completion(state: TradingAgentState) -> Literal["phase3_complet
 
 def create_trading_agent_graph(
     checkpointer_path: str = "data/trading_agents_checkpoints.db",
-    use_redis_checkpointer: bool = True
+    use_redis_checkpointer: bool = True,
+    agent_config: Optional[UserAgentConfigResponse] = None
 ) -> StateGraph:
     """
     创建 TradingAgents 工作流图
@@ -200,16 +214,28 @@ def create_trading_agent_graph(
     4. 使用 add_conditional_edges 添加条件边（基于状态的路由）
     5. 使用 compile 编译并指定 checkpointer（持久化）
 
+    **重要特性**：
+    - Phase 1 节点完全动态化，从 agent_config 动态创建
+    - 支持用户自定义 Phase 1 智能体（添加/删除/修改）
+    - Phase 2, 3, 4 结构固定但提示词可配置
+
     官方文档: https://docs.langchain.com/oss/python/langgraph/graph-api/#compiling-your-graph
 
     Args:
         checkpointer_path: 检查点数据库路径（未使用，保留兼容性）
         use_redis_checkpointer: 是否使用 Redis checkpointer（默认 True）
+        agent_config: 智能体配置（从 AgentConfigService 加载）
 
     Returns:
         编译后的 StateGraph
     """
     logger.info("[工作流图] 开始构建 TradingAgents 工作流图")
+
+    # 加载默认配置（如果未提供）
+    if agent_config is None:
+        from modules.trading_agents.config.loader import load_default_config
+        agent_config = load_default_config()
+        logger.info("[工作流图] 使用默认智能体配置")
 
     # 创建检查点保存器（优先使用 Redis）
     if use_redis_checkpointer and REDIS_CHECKPOINTER_AVAILABLE:
@@ -236,15 +262,43 @@ def create_trading_agent_graph(
         output_schema=TradingAgentOutputState
     )
 
-    # ===== 添加所有节点 =====
-    # 官方模式：使用 add_node(name, func)
-    logger.info("[工作流图] 添加节点")
+    # ===== 添加 Phase 1: 动态分析师节点 =====
+    # **核心修改**: 完全动态化，不再有任何硬编码
+    # agent_config 是 Pydantic 对象，不是字典
+    phase1_agents = agent_config.phase1.agents if agent_config.phase1 else []
 
-    # Phase 1: 分析师（并行执行）
-    builder.add_node("technical_analyst", technical_analyst_node)
-    builder.add_node("fundamental_analyst", fundamental_analyst_node)
-    builder.add_node("sentiment_analyst", sentiment_analyst_node)
-    builder.add_node("news_analyst", news_analyst_node)
+    # 过滤启用的智能体
+    enabled_phase1_agents = [agent for agent in phase1_agents if agent.enabled]
+
+    logger.info(f"[工作流图] 动态创建 Phase 1 节点: {len(enabled_phase1_agents)} 个分析师")
+
+    phase1_node_names = []  # 记录节点名称，用于后续连接边
+
+    for agent in enabled_phase1_agents:
+        # agent 是 Pydantic 对象，不是字典
+        agent_slug = agent.slug
+        agent_name = agent.name
+        role_definition = agent.role_definition or ""
+        enabled_mcp_servers = agent.enabled_mcp_servers or []
+        enabled_local_tools = agent.enabled_local_tools or []
+
+        # 使用工厂函数动态创建节点
+        node_func = create_phase1_node_factory(
+            agent_slug=agent_slug,
+            agent_name=agent_name,
+            role_definition=role_definition,
+            enabled_mcp_servers=enabled_mcp_servers,
+            enabled_local_tools=enabled_local_tools
+        )
+
+        # 动态添加节点到图
+        builder.add_node(agent_slug, node_func)
+        phase1_node_names.append(agent_slug)
+
+        logger.info(f"[工作流图] 添加 Phase 1 节点: {agent_slug} ({agent_name})")
+
+    # ===== 添加 Phase 2, 3, 4: 固定结构节点 =====
+    logger.info("[工作流图] 添加 Phase 2, 3, 4 节点")
 
     # Phase 2: 辩论
     builder.add_node("bull_debater", bull_debater_node)
@@ -252,7 +306,7 @@ def create_trading_agent_graph(
     builder.add_node("research_manager", research_manager_node)
     builder.add_node("trade_planner", trade_planner_node)
 
-    # Phase 3: 风险评估（并行执行）
+    # Phase 3: 风险评估
     builder.add_node("aggressive_risk_analyst", aggressive_risk_analyst_node)
     builder.add_node("conservative_risk_analyst", conservative_risk_analyst_node)
     builder.add_node("neutral_risk_analyst", neutral_risk_analyst_node)
@@ -268,47 +322,29 @@ def create_trading_agent_graph(
 
     logger.info("[工作流图] 定义边")
 
-    # ===== Phase 1: 并行分析师 =====
-    # 官方模式：从 START 连接到多个节点实现并行执行
+    # ===== Phase 1: 动态并行分析师 =====
+    # 官方模式：从 START 连接到所有 Phase 1 节点实现并行执行
     # 参考: https://docs.langchain.com/oss/python/langgraph/graph-api/#edges
-    builder.add_edge(START, "technical_analyst")
-    builder.add_edge(START, "fundamental_analyst")
-    builder.add_edge(START, "sentiment_analyst")
-    builder.add_edge(START, "news_analyst")
 
-    # Phase 1 完成检查 -> Phase 2
-    # 使用条件边检查是否所有分析师都完成
+    # 添加 Phase 1 汇聚节点
+    builder.add_node("phase1_checkpoint", phase1_checkpoint_node)
+
+    for node_name in phase1_node_names:
+        builder.add_edge(START, node_name)
+        logger.debug(f"[工作流图] 连接 START -> {node_name}")
+
+    # 所有 Phase 1 节点完成后路由到汇聚节点
+    for node_name in phase1_node_names:
+        builder.add_edge(node_name, "phase1_checkpoint")
+        logger.debug(f"[工作流图] 连接 {node_name} -> phase1_checkpoint")
+
+    # 汇聚节点检查是否所有分析师都完成
     builder.add_conditional_edges(
-        "technical_analyst",
+        "phase1_checkpoint",
         check_phase1_completion,
         {
             "phase1_complete": "bull_debater",  # 进入 Phase 2
-            "phase1_incomplete": "technical_analyst"  # 继续等待（实际不会再次执行）
-        }
-    )
-    # 对其他分析师也添加相同的检查...
-    builder.add_conditional_edges(
-        "fundamental_analyst",
-        check_phase1_completion,
-        {
-            "phase1_complete": "bull_debater",
-            "phase1_incomplete": "fundamental_analyst"
-        }
-    )
-    builder.add_conditional_edges(
-        "sentiment_analyst",
-        check_phase1_completion,
-        {
-            "phase1_complete": "bull_debater",
-            "phase1_incomplete": "sentiment_analyst"
-        }
-    )
-    builder.add_conditional_edges(
-        "news_analyst",
-        check_phase1_completion,
-        {
-            "phase1_complete": "bull_debater",
-            "phase1_incomplete": "news_analyst"
+            "phase1_incomplete": END  # 等待其他节点完成（LangGraph 会自动等待所有并行路径）
         }
     )
 
@@ -396,7 +432,7 @@ def create_trading_agent_graph(
         debug=False,  # 生产环境关闭 debug
     )
 
-    logger.info("[工作流图] 工作流图构建完成")
+    logger.info(f"[工作流图] 工作流图构建完成，Phase 1 包含 {len(phase1_node_names)} 个动态分析师")
 
     return graph
 

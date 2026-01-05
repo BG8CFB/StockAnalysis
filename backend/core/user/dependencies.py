@@ -87,6 +87,11 @@ async def get_current_user(
         # 兼容旧数据：如果没有 status 字段，根据 is_active 设置默认值
         if "status" not in user:
             user["status"] = UserStatus.ACTIVE if user.get("is_active", True) else UserStatus.DISABLED
+
+        # 显式将 _id 转换为 id 字符串（修复 alias 映射问题）
+        if "_id" in user and "id" not in user:
+            user["id"] = str(user["_id"])
+
         return UserModel(**user)
     except Exception as e:
         if isinstance(e, HTTPException):

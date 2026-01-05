@@ -16,7 +16,8 @@ from core.user.dependencies import get_current_admin_user
 from core.user.models import UserModel
 from core.auth.rbac import Role
 from core.db.mongodb import mongodb
-from core.background_tasks import create_analysis_task_background
+# 修复循环导入：从本地模块导入
+from modules.trading_agents.core.background_tasks_local import create_analysis_task_background
 from core.settings.services.user_service import get_user_settings_service
 from core.admin.audit_logger import get_audit_logger
 
@@ -72,9 +73,15 @@ async def create_tasks(
     stock_codes = request.stock_codes
     stock_count = len(stock_codes)
 
+    # 调试日志
+    logger.info(f"创建任务请求: current_user.id={current_user.id}, type={type(current_user.id)}, stock_count={stock_count}")
+
     # 配额检查（所有任务）
-    for _ in range(stock_count):
-        allowed, error_msg = await settings_service.check_task_quota(str(current_user.id))
+    for i in range(stock_count):
+        user_id_str = str(current_user.id) if current_user.id is not None else "None"
+        logger.info(f"配额检查 #{i+1}: user_id={user_id_str}")
+        allowed, error_msg = await settings_service.check_task_quota(user_id_str)
+        logger.info(f"配额检查结果: allowed={allowed}, error={error_msg}")
         if not allowed:
             raise HTTPException(
                 status_code=429,
@@ -90,6 +97,8 @@ async def create_tasks(
     try:
         if is_single:
             # 单股分析：创建单个任务
+            logger.info(f"[API] 准备创建单股分析任务: stock={stock_codes[0]}")
+
             task_create_task = asyncio.create_task(
                 create_analysis_task_background(
                     user_id=str(current_user.id),
@@ -105,7 +114,15 @@ async def create_tasks(
                     config=config
                 )
             )
-            task_id = await asyncio.wait_for(task_create_task, timeout=5.0)
+            logger.info(f"[API] 后台任务已创建，等待 task_id...")
+
+            try:
+                task_id = await asyncio.wait_for(task_create_task, timeout=10.0)
+                logger.info(f"[API] ✅ 获得 task_id: {task_id}")
+            except asyncio.TimeoutError:
+                logger.error(f"[API] ❌ 等待 task_id 超时（10秒）")
+                raise HTTPException(status_code=500, detail="任务创建超时")
+
             await settings_service.increment_task_usage(str(current_user.id))
 
             return UnifiedTaskResponse.for_single_task(task_id, stock_codes[0])
@@ -133,9 +150,9 @@ async def create_tasks(
             return UnifiedTaskResponse.for_batch_task(batch_id, stock_codes)
 
     except Exception as e:
-        # 任务创建失败，回滚配额计数
+        # 任务创建失败，回滚并发计数
         for _ in range(stock_count):
-            await settings_service.decrement_task_usage(str(current_user.id))
+            await settings_service.decrement_concurrent_tasks(str(current_user.id))
         raise HTTPException(status_code=500, detail=f"任务创建失败: {str(e)}")
 
 
@@ -280,6 +297,18 @@ async def get_task(
         # 验证任务所有权
         if task_info["user_id"] != str(current_user.id):
             raise HTTPException(status_code=403, detail="无权访问此任务")
+
+        # 数据清洗：处理空字符串和None值
+        if not task_info.get("status"):
+            task_info["status"] = "pending"
+
+        # 确保 reports 字段存在且 final_report 不为 None
+        if "reports" not in task_info or task_info["reports"] is None:
+            task_info["reports"] = {}
+
+        reports = task_info["reports"]
+        if reports.get("final_report") is None:
+            reports["final_report"] = ""  # 设置为空字符串而不是 None
 
         return AnalysisTaskResponse(**task_info)
 

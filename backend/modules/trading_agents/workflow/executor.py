@@ -42,12 +42,14 @@ class TradingAgentWorkflow:
     - 使用 thread_id 标识任务
     - 使用 stream 实现实时进度推送
     - 支持从检查点恢复执行
+    - **重要**: 支持动态加载用户配置创建 Phase 1 节点
     """
 
     def __init__(
         self,
         checkpointer_path: str = "data/trading_agents_checkpoints.db",
-        websocket_manager = None
+        websocket_manager = None,
+        use_redis_checkpointer: bool = True
     ):
         """
         初始化工作流执行器
@@ -55,12 +57,57 @@ class TradingAgentWorkflow:
         Args:
             checkpointer_path: 检查点数据库路径
             websocket_manager: WebSocket 管理器（用于实时推送）
+            use_redis_checkpointer: 是否使用 Redis checkpointer
         """
         logger.info("[执行器] 初始化工作流执行器")
 
-        # 创建工作流图
-        self.graph = create_trading_agent_graph(checkpointer_path)
+        self.checkpointer_path = checkpointer_path
         self.websocket_manager = websocket_manager
+        self.use_redis_checkpointer = use_redis_checkpointer
+
+        # 图缓存: {config_key: graph}
+        # 避免为每个用户都重新创建图
+        self._graph_cache: Dict[str, StateGraph] = {}
+
+    def _get_graph(self, agent_config: Optional[Dict[str, Any]] = None) -> StateGraph:
+        """
+        获取或创建工作流图
+
+        **重要修改**: 根据 agent_config 动态创建图，支持用户自定义 Phase 1 智能体
+
+        Args:
+            agent_config: 智能体配置（从用户配置加载）
+
+        Returns:
+            StateGraph 实例
+        """
+        # 如果没有配置，使用默认配置
+        if agent_config is None:
+            from modules.trading_agents.config.loader import load_default_config
+            agent_config = load_default_config()
+
+        # 生成配置缓存键（基于 phase1 agents 的 slug 列表）
+        # agent_config 是 Pydantic 对象，不是字典
+        phase1_agents = agent_config.phase1.agents if agent_config else []
+        config_key = ":".join(sorted([a.slug for a in phase1_agents if a.enabled]))
+
+        # 检查缓存
+        if config_key in self._graph_cache:
+            logger.debug(f"[执行器] 使用缓存的图: {config_key}")
+            return self._graph_cache[config_key]
+
+        # 创建新图
+        logger.info(f"[执行器] 创建新图: {config_key}")
+        graph = create_trading_agent_graph(
+            checkpointer_path=self.checkpointer_path,
+            use_redis_checkpointer=self.use_redis_checkpointer,
+            agent_config=agent_config
+        )
+
+        # 缓存图
+        self._graph_cache[config_key] = graph
+
+        return graph
 
     async def run(
         self,
@@ -74,11 +121,12 @@ class TradingAgentWorkflow:
         - 使用 ainvoke 执行异步工作流
         - 使用 config["configurable"]["thread_id"] 标识任务
         - 使用 astream 实现实时进度推送
+        - **重要**: 根据用户配置动态创建图
 
         官方文档: https://docs.langchain.com/oss/python/langgraph/graph-api/#invoking-the-graph
 
         Args:
-            input_state: 输入状态
+            input_state: 输入状态（包含 agent_config）
             config: 额外配置
 
         Returns:
@@ -86,6 +134,12 @@ class TradingAgentWorkflow:
         """
         task_id = input_state.get("task_id", "unknown")
         logger.info(f"[执行器] 开始运行任务: {task_id}")
+
+        # **关键修改**: 从 input_state 中获取 agent_config
+        agent_config = input_state.get("agent_config")
+
+        # 获取或创建工作流图（根据用户配置）
+        graph = self._get_graph(agent_config)
 
         # 准备运行时配置（官方模式）
         # thread_id 用于标识会话，支持持久化和恢复
@@ -113,7 +167,7 @@ class TradingAgentWorkflow:
                 logger.debug(f"[执行器] 启用实时进度推送: {task_id}")
 
                 final_state = None
-                async for event in self.graph.astream(initial_state, runnable_config):
+                async for event in graph.astream(initial_state, runnable_config):
                     # event 格式: {node_name: state_update}
                     logger.debug(f"[执行器] 事件: {list(event.keys())}")
 
@@ -129,22 +183,34 @@ class TradingAgentWorkflow:
                     output_state = self._extract_output_from_state(final_state)
                 else:
                     # 如果没有 final_state，重新获取
-                    final_state = await self.graph.aget_state(runnable_config)
+                    final_state = await graph.aget_state(runnable_config)
                     output_state = self._extract_output_from_state(final_state)
 
             else:
                 # 不使用 stream，直接 invoke（更简单）
                 logger.debug(f"[执行器] 直接 invoke（无进度推送）: {task_id}")
+                logger.debug(f"[执行器] initial_state 类型: {type(initial_state)}")
+                logger.debug(f"[执行器] initial_state keys: {initial_state.keys() if isinstance(initial_state, dict) else 'N/A'}")
+                logger.debug(f"[执行器] runnable_config: {runnable_config}")
 
-                final_state = await self.graph.ainvoke(initial_state, runnable_config)
+                logger.info(f"[执行器] 🚀 调用 graph.ainvoke() 开始...")
+                final_state = await graph.ainvoke(initial_state, runnable_config)
+                logger.info(f"[执行器] ✅ graph.ainvoke() 完成，返回状态类型: {type(final_state)}")
+
+                logger.info(f"[执行器] 🔄 提取输出状态...")
                 output_state = self._extract_output_from_state(final_state)
+                logger.info(f"[执行器] ✅ 输出状态提取完成: {list(output_state.keys())}")
 
             logger.info(f"[执行器] 任务完成: {task_id}, 状态: {output_state.get('status')}")
 
             return output_state
 
         except Exception as e:
-            logger.error(f"[执行器] 任务执行失败: {task_id}, 错误: {e}")
+            logger.error(f"[执行器] ❌ 任务执行失败: {task_id}")
+            logger.error(f"[执行器] 错误类型: {type(e).__name__}")
+            logger.error(f"[执行器] 错误信息: {str(e)}")
+            import traceback
+            logger.error(f"[执行器] 堆栈跟踪:\n{traceback.format_exc()}")
             raise
 
     async def stream(

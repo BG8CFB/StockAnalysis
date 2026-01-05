@@ -562,16 +562,16 @@ class UserAgentConfigResponse(BaseModel):
                 if value is not None:
                     clean_data[key] = value
 
-            # Debug log
-            logger.debug(f"Parsing phase with class {phase_class.__name__}")
-            logger.debug(f"Phase data: {phase_data}")
-            logger.debug(f"Clean data: {clean_data}")
+            # Debug log (临时关闭以避免日志过多)
+            # logger.debug(f"Parsing phase with class {phase_class.__name__}")
+            # logger.debug(f"Phase data: {phase_data}")
+            # logger.debug(f"Clean data: {clean_data}")
 
             return phase_class(**clean_data)
 
         # 解析phase1 (也使用parse_phase来过滤None值)
         phase1_data = data.get("phase1", {})
-        logger.debug(f"Phase1 data from DB: {phase1_data}")
+        # logger.debug(f"Phase1 data from DB: {phase1_data}")  # 临时关闭
         phase1 = parse_phase(phase1_data, Phase1Config)
         # 注意：不再手动转换，保留 MCPServerConfig 对象供内部使用
         # API 响应时会通过 field_serializer 自动转换为字符串列表

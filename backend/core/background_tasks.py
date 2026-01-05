@@ -104,30 +104,82 @@ async def create_analysis_task_background(
 
     此函数会在后台异步执行，避免阻塞 HTTP 响应。
     """
-    task_manager = get_task_manager()
-    ws_manager = await get_ws_manager()
+    # 🔍 立即添加入口日志，确认函数被调用
+    logger.info("="*60)
+    logger.info(f"🔍 [DEBUG] create_analysis_task_background 被调用")
+    logger.info(f"  user_id: {user_id}")
+    logger.info(f"  stock_code: {request.stock_code}")
+    logger.info(f"  trade_date: {request.trade_date}")
+    logger.info("="*60)
 
-    # 1. 创建任务记录
-    task_id = await task_manager.create_task(
-        user_id=user_id,
-        request=request,
-        config=config
-    )
-    logger.info(f"Background task created: task_id={task_id}")
+    try:
+        print(f"[PRINT] [DEBUG] 步骤1: 获取 task_manager...", flush=True)
+        logger.info(f"[DEBUG] 步骤1: 获取 task_manager...")
+        task_manager = get_task_manager()
+        print(f"[PRINT] [DEBUG] ✅ task_manager 获取成功", flush=True)
+        logger.info(f"[DEBUG] ✅ task_manager 获取成功")
 
-    # 2. 标记任务为运行中
-    await task_manager.mark_task_running(task_id)
+        print(f"[PRINT] [DEBUG] 步骤2: 获取 ws_manager...", flush=True)
+        logger.info(f"[DEBUG] 步骤2: 获取 ws_manager...")
+        ws_manager = await get_ws_manager()
+        print(f"[PRINT] [DEBUG] ✅ ws_manager 获取成功", flush=True)
+        logger.info(f"[DEBUG] ✅ ws_manager 获取成功")
 
-    # 3. 在后台异步执行工作流（不阻塞响应）
-    asyncio.create_task(
-        execute_analysis_workflow(
-            task_id=task_id,
+        # 1. 创建任务记录
+        print(f"[PRINT] [DEBUG] 步骤3: 准备创建任务记录...", flush=True)
+        logger.info(f"[DEBUG] 步骤3: 准备创建任务记录...")
+        task_id = await task_manager.create_task(
             user_id=user_id,
-            request=request
+            request=request,
+            config=config
         )
-    )
+        print(f"[PRINT] [DEBUG] ✅ 任务记录创建成功: task_id={task_id}", flush=True)
+        logger.info(f"[DEBUG] ✅ 任务记录创建成功: task_id={task_id}")
 
-    return task_id
+        # 2. 标记任务为运行中
+        print(f"[PRINT] [DEBUG] 步骤4: 准备标记任务为运行中: task_id={task_id}", flush=True)
+        logger.info(f"[DEBUG] 步骤4: 准备标记任务为运行中: task_id={task_id}")
+        await task_manager.mark_task_running(task_id)
+        print(f"[PRINT] [DEBUG] ✅ 任务已标记为运行中: task_id={task_id}", flush=True)
+        logger.info(f"[DEBUG] ✅ 任务已标记为运行中: task_id={task_id}")
+
+        # 3. 在后台异步执行工作流（不阻塞响应）
+        # 注意：必须保存 Task 对象的引用，否则会被垃圾回收
+        print(f"[PRINT] [DEBUG] 步骤5: 准备创建后台工作流任务: task_id={task_id}", flush=True)
+        logger.info(f"[DEBUG] 步骤5: 准备创建后台工作流任务: task_id={task_id}")
+
+        # 使用 asyncio.create_task 创建后台任务
+        task = asyncio.create_task(
+            execute_analysis_workflow(
+                task_id=task_id,
+                user_id=user_id,
+                request=request
+            ),
+            name=f"workflow-{task_id}"  # 给任务命名，方便调试
+        )
+        print(f"[PRINT] [DEBUG] ✅ 后台工作流任务创建成功: task_id={task_id}, task_obj={id(task)}, done={task.done()}", flush=True)
+        logger.info(f"[DEBUG] ✅ 后台工作流任务创建成功: task_id={task_id}, task_obj={id(task)}, done={task.done()}")
+
+        # 添加回调来追踪任务状态
+        def task_callback(t):
+            print(f"[PRINT] [DEBUG] 📞 任务完成回调: task_id={task_id}, done={t.done()}, cancelled={t.cancelled()}", flush=True)
+            logger.info(f"[DEBUG] 📞 任务完成回调: task_id={task_id}, done={t.done()}, cancelled={t.cancelled()}")
+
+        task.add_done_callback(task_callback)
+        print(f"[PRINT] [DEBUG] ✅ 任务回调已注册", flush=True)
+        logger.info(f"[DEBUG] ✅ 任务回调已注册")
+
+        print(f"[PRINT] [DEBUG] 🎯 准备返回 task_id: {task_id}", flush=True)
+        logger.info(f"[DEBUG] 🎯 准备返回 task_id: {task_id}")
+        return task_id
+
+    except Exception as e:
+        print(f"[PRINT] [DEBUG] ❌ create_analysis_task_background 发生异常: {e}", flush=True)
+        import traceback
+        print(f"[PRINT] traceback:", flush=True)
+        traceback.print_exc()
+        logger.error(f"[DEBUG] ❌ create_analysis_task_background 发生异常: {e}", exc_info=True)
+        raise
 
 
 async def execute_analysis_workflow(
@@ -136,13 +188,17 @@ async def execute_analysis_workflow(
     request: AnalysisTaskCreate
 ) -> None:
     """
-    执行分析工作流（使用 LangGraph）
+    执行分析工作流
 
     Args:
         task_id: 任务 ID
         user_id: 用户 ID
         request: 分析任务请求
     """
+    logger.info(f"="*60)
+    logger.info(f"execute_analysis_workflow 开始: task_id={task_id}, user_id={user_id}")
+    logger.info(f"="*60)
+
     task_manager = get_task_manager()
     report_service = get_report_service()
 
@@ -153,21 +209,27 @@ async def execute_analysis_workflow(
 
     try:
         # 1. 加载用户智能体配置
+        logger.info(f"[{task_id}] 步骤1: 加载用户智能体配置...")
         config_service = get_agent_config_service()
         agent_config = await config_service.get_user_config(user_id, create_if_missing=True)
 
         if not agent_config:
             raise Exception("无法加载用户智能体配置")
+        logger.info(f"[{task_id}] ✅ 用户智能体配置加载成功")
 
         # 2. 加载用户模型偏好
+        logger.info(f"[{task_id}] 步骤2: 加载用户模型偏好...")
         from core.settings.services.user_service import get_user_settings_service
         settings_service = get_user_settings_service()
         user_settings = await settings_service.get_user_settings(user_id)
+        logger.info(f"[{task_id}] ✅ 用户模型偏好加载成功")
 
         # 3. 确定使用的两个 AI 模型（带回退机制）
+        logger.info(f"[{task_id}] 步骤3: 解析AI模型...")
         model_service = get_model_service()
 
         # 确定数据收集模型（带回退）
+        logger.info(f"[{task_id}] 3.1 解析数据收集模型...")
         data_collection_model = await _resolve_model_with_fallback(
             model_service=model_service,
             requested_model_id=request.data_collection_model,
@@ -175,8 +237,10 @@ async def execute_analysis_workflow(
             model_type="data_collection",
             user_id=user_id
         )
+        logger.info(f"[{task_id}] ✅ 数据收集模型解析成功")
 
         # 确定辩论模型（带回退）
+        logger.info(f"[{task_id}] 3.2 解析辩论模型...")
         debate_model = await _resolve_model_with_fallback(
             model_service=model_service,
             requested_model_id=request.debate_model,
@@ -184,9 +248,12 @@ async def execute_analysis_workflow(
             model_type="debate",
             user_id=user_id
         )
+        logger.info(f"[{task_id}] ✅ 辩论模型解析成功")
 
         data_collection_model_id = str(data_collection_model.id)
         debate_model_id = str(debate_model.id)
+
+        logger.info(f"任务 {task_id} 模型解析完成: data_collection={data_collection_model_id}, debate={debate_model_id}")
 
         # 4. 请求并发控制
         from modules.trading_agents.core.concurrency_controller import get_concurrency_controller
@@ -330,6 +397,15 @@ async def execute_analysis_workflow(
                     )
         except Exception as e:
             logger.error(f"释放并发资源时发生错误: task_id={task_id}, error={e}")
+
+        # 减少用户的并发任务计数
+        try:
+            from core.settings.services.user_service import get_user_settings_service
+            settings_service = get_user_settings_service()
+            await settings_service.decrement_concurrent_tasks(user_id)
+            logger.info(f"已减少用户 {user_id} 的并发任务计数")
+        except Exception as e:
+            logger.error(f"减少并发任务计数失败: task_id={task_id}, user_id={user_id}, error={e}")
 
         # 释放 MCP 连接
         try:

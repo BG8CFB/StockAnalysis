@@ -75,22 +75,28 @@ class LangGraphWorkflowAdapter:
 
         try:
             # 转换请求格式：现有格式 -> LangGraph 格式
+            logger.info(f"[适配器] 转换请求格式...")
             input_state = self._convert_request_to_input_state(
                 task_id=task_id,
                 user_id=user_id,
                 request=request,
                 config=config
             )
+            logger.info(f"[适配器] 请求格式转换完成: {list(input_state.keys())}")
 
             # 执行 LangGraph 工作流
+            logger.info(f"[适配器] 🚀 调用 executor.run()...")
             output_state = await self.executor.run(input_state)
+            logger.info(f"[适配器] ✅ executor.run() 完成")
 
             # 转换输出格式：LangGraph 格式 -> 现有格式
+            logger.info(f"[适配器] 转换输出格式...")
             result = self._convert_output_to_result(
                 task_id=task_id,
                 output_state=output_state,
                 request=request
             )
+            logger.info(f"[适配器] 输出格式转换完成")
 
             logger.info(f"[适配器] 任务完成: task_id={task_id}, status={result.get('status')}")
 
@@ -210,17 +216,20 @@ class LangGraphWorkflowAdapter:
         Returns:
             LangGraph 输入状态
         """
-        # 从 stages 配置中提取各阶段开关
-        stages = request.stages or {}
-        phase1_enabled = stages.get("phase1", {}).get("enabled", True)
-        phase2_enabled = stages.get("phase2", {}).get("enabled", True)
-        phase3_enabled = stages.get("phase3", {}).get("enabled", True)
-        phase4_enabled = stages.get("phase4", {}).get("enabled", True)
+        # 从 stages 配置中提取各阶段开关（stages 是 Pydantic 对象，不是字典）
+        stages = request.stages
+        phase1_enabled = stages.stage1.enabled if stages else True
+        phase2_enabled = stages.stage2.enabled if stages else True
+        phase3_enabled = stages.stage3.enabled if stages else True
+        phase4_enabled = stages.stage4.enabled if stages else True
 
-        # 构建模型配置
+        # 构建模型配置（使用已解析的模型ID）
+        data_collection_model_config = config.get("data_collection_model", {})
+        debate_model_config = config.get("debate_model", {})
+
         model_config = {
-            "data_collection_model": request.data_collection_model,
-            "debate_model": request.debate_model,
+            "data_collection_model": data_collection_model_config.get("name"),  # 使用name（实际的model_id）
+            "debate_model": debate_model_config.get("name"),  # 使用name（实际的model_id）
         }
 
         # 构建智能体配置
@@ -231,7 +240,7 @@ class LangGraphWorkflowAdapter:
             "stock_code": request.stock_code,
             "trade_date": request.trade_date,
             "task_id": task_id,
-            "max_debate_rounds": stages.get("phase2", {}).get("max_rounds", 2),
+            "max_debate_rounds": stages.stage2.debate.rounds if stages else 2,
             "enable_phase1": phase1_enabled,
             "enable_phase2": phase2_enabled,
             "enable_phase3": phase3_enabled,

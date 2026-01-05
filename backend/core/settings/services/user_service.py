@@ -267,6 +267,8 @@ class UserSettingsService:
             (是否允许创建, 错误消息)
         """
         quota = await self.get_quota_info(user_id)
+        logger.info(f"[配额检查] user_id={user_id}, quota={quota}")
+
         if not quota:
             return True, ""
 
@@ -282,6 +284,7 @@ class UserSettingsService:
             return False, f"已达到本月任务限制（{quota.tasks_limit}）"
 
         # 检查并发限制
+        logger.info(f"[配额检查] 并发检查: {quota.concurrent_tasks} >= {quota.concurrent_limit} = {quota.concurrent_tasks >= quota.concurrent_limit}")
         if quota.concurrent_tasks >= quota.concurrent_limit:
             # 记录配额超限审计日志
             audit_logger = get_audit_logger()

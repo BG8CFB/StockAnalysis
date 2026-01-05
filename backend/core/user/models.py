@@ -25,7 +25,7 @@ class UserStatus(str, Enum):
 class UserModel(BaseModel):
     """用户模型（数据库）- 完整版本"""
 
-    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    id: Optional[PyObjectId] = Field(alias="_id", default=None, serialization_alias="id")
     email: EmailStr
     username: str
     hashed_password: Optional[str] = None  # 永远不在响应中返回；改为可选以兼容历史数据
@@ -45,7 +45,11 @@ class UserModel(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
-    model_config = {"populate_by_name": True, "arbitrary_types_allowed": True}
+    model_config = {
+        "populate_by_name": True,
+        "arbitrary_types_allowed": True,
+        "by_alias": True  # 序列化时使用 serialization_alias
+    }
 
 
 class UserPreferences(BaseModel):

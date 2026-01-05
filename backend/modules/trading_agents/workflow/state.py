@@ -14,6 +14,13 @@ from datetime import datetime
 from enum import Enum
 import operator
 
+from modules.trading_agents.schemas import UserAgentConfigResponse
+
+
+def max_reducer(left: int, right: int) -> int:
+    """取最大值的reducer，用于处理并发计数更新"""
+    return max(left, right)
+
 
 # =============================================================================
 # 辅助类型定义
@@ -101,14 +108,16 @@ class TradingAgentState(TypedDict):
     enable_phase2: bool
     enable_phase3: bool
     enable_phase4: bool
+    model_config: Dict[str, Any]  # **AI 模型配置（data_collection_model, debate_model）**
+    agent_config: Dict[str, Any]  # **智能体配置（Phase 1 动态节点）**
 
     # ===== Phase 1: 分析师报告（累积模式） =====
     # 使用 operator.add reducer：每个节点的输出会自动追加到列表
     analyst_reports: Annotated[List[Dict[str, Any]], operator.add]
 
-    # Phase 1 完成计数
+    # Phase 1 完成计数（使用 max_reducer 处理并发更新）
     expected_analysts: int  # 预期的分析师数量
-    completed_analysts: int  # 已完成的分析师数量
+    completed_analysts: Annotated[int, max_reducer]  # 已完成的分析师数量（并发安全）
 
     # ===== Phase 2: 辩论记录（累积模式） =====
     debate_turns: Annotated[List[Dict[str, Any]], operator.add]  # 辩论轮次记录
@@ -164,12 +173,14 @@ def create_initial_state(
     enable_phase3: bool = True,
     enable_phase4: bool = True,
     model_config: Optional[Dict[str, Any]] = None,
-    agent_config: Optional[Dict[str, Any]] = None,
+    agent_config: Optional[UserAgentConfigResponse] = None,
 ) -> TradingAgentState:
     """
     创建初始工作流状态
 
     遵循官方最佳实践：提供辅助函数创建初始状态
+
+    **重要修改**: 根据 agent_config 动态计算 expected_analysts
 
     Args:
         task_id: 任务 ID
@@ -182,11 +193,20 @@ def create_initial_state(
         enable_phase3: 启用第三阶段
         enable_phase4: 启用第四阶段
         model_config: 模型配置
-        agent_config: 智能体配置
+        agent_config: 智能体配置（用于动态计算 expected_analysts）
 
     Returns:
         初始化的 TradingAgentState
     """
+    # **关键修改**: 根据 agent_config 动态计算 expected_analysts
+    expected_analysts = 4  # 默认值
+    if agent_config:
+        # agent_config 是 Pydantic 对象，不是字典
+        phase1_agents = agent_config.phase1.agents if agent_config.phase1 else []
+        # 计算启用的分析师数量
+        enabled_agents = [a for a in phase1_agents if a.enabled]
+        expected_analysts = len(enabled_agents) if enabled_agents else 4
+
     return {
         # 基础信息
         "user_id": user_id,
@@ -204,10 +224,12 @@ def create_initial_state(
         "enable_phase2": enable_phase2,
         "enable_phase3": enable_phase3,
         "enable_phase4": enable_phase4,
+        "model_config": model_config or {},  # **新增：保存模型配置到状态**
+        "agent_config": agent_config or {},  # **新增：保存智能体配置到状态**
 
-        # Phase 1
+        # Phase 1（动态数量）
         "analyst_reports": [],
-        "expected_analysts": 4,  # 默认 4 个分析师
+        "expected_analysts": expected_analysts,  # **根据配置动态设置**
         "completed_analysts": 0,
 
         # Phase 2
