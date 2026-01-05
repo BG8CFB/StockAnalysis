@@ -233,9 +233,9 @@ class ConcurrencyController:
         timeout: float = 300.0,
     ) -> Dict[str, Any]:
         """
-        等待任务可以执行（事件驱动，基于 Redis Pub/Sub）
+        等待任务可以执行（使用轮询机制）
 
-        使用 Redis Pub/Sub 通道监听槽位释放事件，避免轮询。
+        定期检查并发槽位是否可用，简单可靠。
 
         Args:
             model_id: 模型 ID
@@ -254,27 +254,8 @@ class ConcurrencyController:
             asyncio.TimeoutError: 等待超时时抛出
         """
         start_time = datetime.utcnow()
-        wakeup_channel = MODEL_WAKEUP_CHANNEL.format(model_id=model_id)
         redis_client = redis_manager.get_client()
-
-        # 获取或创建 Pub/Sub 订阅器
-        pubsub = self._pubsub_cache.get(model_id)
-        if not pubsub:
-            pubsub = redis_client.pubsub()
-            await pubsub.subscribe(wakeup_channel)
-            self._pubsub_cache[model_id] = pubsub
-            logger.debug(f"创建 Pub/Sub 订阅: {wakeup_channel}")
-
-        # 获取或创建事件
-        event = self._event_cache.get(model_id)
-        if not event:
-            event = asyncio.Event()
-            self._event_cache[model_id] = event
-
-        # 启动消息监听任务
-        listen_task = asyncio.create_task(
-            self._listen_for_wakeup(model_id, pubsub, event)
-        )
+        check_interval = 2.0  # 每 2 秒检查一次
 
         try:
             while True:
@@ -300,38 +281,22 @@ class ConcurrencyController:
                     )
                     return {"success": True, "reason": None}
 
-                # 不能执行，等待唤醒事件
+                # 不能执行，记录日志并等待后重试
                 logger.debug(
                     f"任务 {task_id} 等待执行: 原因={result['reason']}, "
                     f"队列位置={result['queue_position']}, "
-                    f"等待数={result['waiting_count']}"
+                    f"等待数={result['waiting_count']}, "
+                    f"已等待={elapsed:.1f}秒"
                 )
 
-                # 等待唤醒事件（带超时）
-                try:
-                    await asyncio.wait_for(
-                        event.wait(),
-                        timeout=min(5.0, timeout - elapsed)  # 每 5 秒检查一次超时
-                    )
-                    event.clear()  # 清除事件标志
-                except asyncio.TimeoutError:
-                    # 继续循环，重新检查
-                    continue
+                # 等待一段时间后重新检查
+                await asyncio.sleep(check_interval)
 
         except asyncio.CancelledError:
             # 任务被取消，从队列中移除
             waiting_queue_key = MODEL_WAITING_QUEUE_KEY.format(model_id=model_id)
             await self._remove_from_queue(waiting_queue_key, task_id, redis_client)
             raise
-
-        finally:
-            # 取消监听任务（但不关闭订阅，复用连接）
-            if not listen_task.done():
-                listen_task.cancel()
-                try:
-                    await listen_task
-                except asyncio.CancelledError:
-                    pass
 
     async def _listen_for_wakeup(
         self,
@@ -342,20 +307,40 @@ class ConcurrencyController:
         """
         监听唤醒消息
 
+        使用轮询方式（get_message）替代 async for listen()，
+        避免 redis-py 在某些环境下的事件循环问题。
+
         Args:
             model_id: 模型 ID
             pubsub: Redis Pub/Sub 订阅器
             event: asyncio 事件对象
         """
         try:
-            async for message in pubsub.listen():
-                if message["type"] == "message":
-                    # 收到唤醒消息，设置事件
-                    event.set()
-                    logger.debug(f"收到唤醒信号: model_id={model_id}")
+            while True:
+                try:
+                    # 使用 get_message 替代 listen()，避免异步迭代器问题
+                    message = await pubsub.get_message(timeout=None)
+                    if message and message.get("type") == "message":
+                        # 收到唤醒消息，设置事件
+                        event.set()
+                        logger.debug(f"收到唤醒信号: model_id={model_id}")
+                except asyncio.CancelledError:
+                    # 任务被取消，正常退出
+                    logger.debug(f"监听任务被取消: model_id={model_id}")
+                    break
+                except Exception as e:
+                    # 捕获单个消息处理的异常，继续监听
+                    logger.warning(f"处理 Pub/Sub 消息时发生异常: model_id={model_id}, error={e}")
+                    # 短暂休眠后继续
+                    await asyncio.sleep(0.1)
+
         except asyncio.CancelledError:
             # 任务被取消，正常退出
+            logger.debug(f"监听任务被取消: model_id={model_id}")
             pass
+        except Exception as e:
+            # 捕获所有异常，防止任务崩溃
+            logger.error(f"监听唤醒消息时发生异常: model_id={model_id}, error={e}", exc_info=True)
 
     async def _notify_waiting_tasks(
         self,
@@ -363,25 +348,17 @@ class ConcurrencyController:
         redis_client: Any,
     ) -> None:
         """
-        通知等待中的任务（使用 Pub/Sub）
+        通知等待中的任务（使用轮询机制时此方法为空操作）
+
+        由于现在使用轮询机制，等待任务会自动检测槽位释放，
+        不需要主动通知。保留此方法以保持接口兼容性。
 
         Args:
             model_id: 模型 ID
             redis_client: Redis 客户端
         """
-        wakeup_channel = MODEL_WAKEUP_CHANNEL.format(model_id=model_id)
-
-        # 检查是否有等待任务
-        waiting_queue_key = MODEL_WAITING_QUEUE_KEY.format(model_id=model_id)
-        queue_length = await redis_client.llen(waiting_queue_key)
-
-        if queue_length > 0:
-            # 发布唤醒消息
-            await redis_client.publish(wakeup_channel, "1")
-            logger.debug(
-                f"发布唤醒信号: model_id={model_id}, "
-                f"等待任务数={queue_length}"
-            )
+        # 使用轮询机制，无需主动通知
+        pass
 
     async def _remove_from_queue(
         self,

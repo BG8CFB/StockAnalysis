@@ -12,7 +12,7 @@ from modules.trading_agents.core.task_manager import get_task_manager
 from modules.trading_agents.schemas import AnalysisTaskCreate
 from modules.trading_agents.services.agent_config_service import get_agent_config_service
 from core.ai.model import get_model_service
-from modules.trading_agents.core.agent_engine import AgentWorkflowEngine
+# from modules.trading_agents.core.agent_engine import AgentWorkflowEngine  # 已删除，使用 LangGraph workflow
 from modules.trading_agents.services.report_service import get_report_service
 from modules.trading_agents.websocket import get_ws_manager
 from modules.trading_agents.tools import get_tool_registry
@@ -105,7 +105,7 @@ async def create_analysis_task_background(
     此函数会在后台异步执行，避免阻塞 HTTP 响应。
     """
     task_manager = get_task_manager()
-    ws_manager = get_ws_manager()
+    ws_manager = await get_ws_manager()
 
     # 1. 创建任务记录
     task_id = await task_manager.create_task(
@@ -136,7 +136,7 @@ async def execute_analysis_workflow(
     request: AnalysisTaskCreate
 ) -> None:
     """
-    执行分析工作流
+    执行分析工作流（使用 LangGraph）
 
     Args:
         task_id: 任务 ID
@@ -144,18 +144,15 @@ async def execute_analysis_workflow(
         request: 分析任务请求
     """
     task_manager = get_task_manager()
-    ws_manager = await get_ws_manager()
     report_service = get_report_service()
 
     # 用于并发控制
-    # 统一处理：单股任务使用 task_id 作为自己的 batch_id
-    # 这样可以确保单股任务和批量任务使用相同的资源管理逻辑
-    batch_id = task_id  # 默认值，单股任务使用 task_id 作为 batch_id
+    batch_id = task_id
     data_collection_model_id = None
     debate_model_id = None
 
     try:
-        # 1. 加载用户智能体配置（用于提示词、工具等）
+        # 1. 加载用户智能体配置
         config_service = get_agent_config_service()
         agent_config = await config_service.get_user_config(user_id, create_if_missing=True)
 
@@ -191,7 +188,7 @@ async def execute_analysis_workflow(
         data_collection_model_id = str(data_collection_model.id)
         debate_model_id = str(debate_model.id)
 
-        # 3. 请求并发控制（两个模型都需要获取槽位）
+        # 4. 请求并发控制
         from modules.trading_agents.core.concurrency_controller import get_concurrency_controller
         concurrency_controller = get_concurrency_controller()
 
@@ -202,13 +199,6 @@ async def execute_analysis_workflow(
             "batch_concurrency": data_collection_model.batch_concurrency,
         }
 
-        data_collection_execution = await concurrency_controller.request_execution(
-            model_id=data_collection_model_id,
-            task_id=task_id,
-            user_id=user_id,
-            model_config=data_collection_config,
-        )
-
         # 为辩论模型请求并发
         debate_config = {
             "max_concurrency": debate_model.max_concurrency,
@@ -216,12 +206,11 @@ async def execute_analysis_workflow(
             "batch_concurrency": debate_model.batch_concurrency,
         }
 
-        # 使用并发控制的等待机制（自动排队等待）
-        # 两个模型都需要获取到槽位才能继续
         logger.info(f"任务 {task_id} 请求并发控制槽位...")
 
         try:
             # 等待数据收集模型槽位（超时 5 分钟）
+            logger.info(f"任务 {task_id} 等待数据收集模型槽位...")
             await concurrency_controller.wait_for_execution(
                 model_id=data_collection_model_id,
                 task_id=task_id,
@@ -232,6 +221,7 @@ async def execute_analysis_workflow(
             logger.info(f"任务 {task_id} 获取到数据收集模型槽位")
 
             # 等待辩论模型槽位（超时 5 分钟）
+            logger.info(f"任务 {task_id} 等待辩论模型槽位...")
             await concurrency_controller.wait_for_execution(
                 model_id=debate_model_id,
                 task_id=task_id,
@@ -242,127 +232,59 @@ async def execute_analysis_workflow(
             logger.info(f"任务 {task_id} 获取到辩论模型槽位")
 
         except asyncio.TimeoutError as e:
-            # 等待超时，标记任务失败
             logger.error(f"任务 {task_id} 等待并发槽位超时: {e}")
             raise Exception(f"任务等待执行超时，请稍后重试") from e
-
-        # 4. 获取两个 LLM Provider 实例
-        data_collection_llm = await model_service.get_llm_provider(
-            model_id=data_collection_model_id,
-            user_id=user_id,
-            is_admin=False
-        )
-
-        debate_llm = await model_service.get_llm_provider(
-            model_id=debate_model_id,
-            user_id=user_id,
-            is_admin=False
-        )
-
-        if not data_collection_llm or not debate_llm:
-            raise Exception("无法创建 LLM Provider 实例")
-
-        # 5. 获取可用工具列表
-        tool_registry = get_tool_registry()
-        available_tools = tool_registry.list_available_tools()
-        logger.info(f"可用工具数量: {len(available_tools)}")
-
-        # 6. 准备思考配置（从模型配置中读取）
-        data_collection_thinking_config = {
-            "thinking_enabled": data_collection_model.thinking_enabled,
-            "thinking_mode": data_collection_model.thinking_mode,
-        }
-
-        debate_thinking_config = {
-            "thinking_enabled": debate_model.thinking_enabled,
-            "thinking_mode": debate_model.thinking_mode,
-        }
-
-        if data_collection_model.thinking_enabled or debate_model.thinking_enabled:
-            logger.info(
-                f"任务 {task_id} 使用思考模式: "
-                f"数据收集模型(thinking_enabled={data_collection_model.thinking_enabled}, mode={data_collection_model.thinking_mode}), "
-                f"辩论模型(thinking_enabled={debate_model.thinking_enabled}, mode={debate_model.thinking_mode})"
-            )
-
-        # 7. 创建工作流引擎
-        # 注意：引擎会在 execute_workflow 时动态初始化智能体（包括 MCP 连接）
-        workflow = AgentWorkflowEngine(
-            llm=debate_llm,  # 主引擎使用辩论模型
-            config=agent_config,
-            ws_manager=ws_manager,
-            data_collection_llm=data_collection_llm,  # 第一阶段使用数据收集模型
-            data_collection_model_config=data_collection_thinking_config,
-            debate_model_config=debate_thinking_config,
-        )
-
-        # 8. 执行工作流（智能体会在 execute_workflow 内部动态初始化）
-        result = await workflow.execute_workflow(
-            task_id=task_id,
-            user_id=user_id,
-            request=request
-        )
-
-        # 9. 从结果中提取推荐和价格信息
-        final_recommendation = None
-        buy_price = None
-        sell_price = None
-
-        # 尝试从 trade_plan 中提取信息
-        if result.get("trade_plan"):
-            trade_plan = result["trade_plan"]
-            # 简单的解析逻辑（可根据实际格式调整）
-            if "买入" in trade_plan or "BUY" in trade_plan.upper():
-                from modules.trading_agents.schemas import RecommendationEnum
-                final_recommendation = RecommendationEnum.BUY
-
-        # 10. 完成任务
-        await task_manager.complete_task(
-            task_id=task_id,
-            final_recommendation=final_recommendation,
-            buy_price=buy_price,
-            sell_price=sell_price,
-            token_usage=result.get("token_usage"),
-        )
-
-        # 11. 创建分析报告
-        try:
-            from modules.trading_agents.schemas import RecommendationEnum, RiskLevelEnum
-
-            # 解析风险等级（从风险评估报告中）
-            risk_level = RiskLevelEnum.MEDIUM
-            if result.get("risk_assessment"):
-                risk_text = result["risk_assessment"].lower()
-                if "高" in risk_text or "high" in risk_text:
-                    risk_level = RiskLevelEnum.HIGH
-                elif "低" in risk_text or "low" in risk_text:
-                    risk_level = RiskLevelEnum.LOW
-
-            # 注意：create_report 从任务中获取 stock_code 和 trade_date
-            await report_service.create_report(
-                user_id=user_id,
-                task_id=task_id,
-                final_report=result.get("final_report", ""),
-                recommendation=final_recommendation or RecommendationEnum.HOLD,
-                risk_level=risk_level,
-                buy_price=buy_price,
-                sell_price=sell_price,
-                token_usage=result.get("token_usage", {}),
-            )
         except Exception as e:
-            logger.error(f"创建分析报告失败: task_id={task_id}, error={e}")
-            # 报告创建失败不影响任务完成状态
+            logger.error(f"任务 {task_id} 等待并发槽位时发生异常: {e}", exc_info=True)
+            raise Exception(f"任务等待并发槽位失败: {e}") from e
+
+        # 5. 使用 LangGraph 执行工作流
+        logger.info(f"任务 {task_id} 开始执行 LangGraph 工作流...")
+
+        # 准备配置参数
+        config = {
+            "agent_config": agent_config,
+            "data_collection_model": {
+                "id": data_collection_model_id,
+                "name": data_collection_model.name,
+                "thinking_enabled": data_collection_model.thinking_enabled,
+                "thinking_mode": data_collection_model.thinking_mode,
+            },
+            "debate_model": {
+                "id": debate_model_id,
+                "name": debate_model.name,
+                "thinking_enabled": debate_model.thinking_enabled,
+                "thinking_mode": debate_model.thinking_mode,
+            },
+        }
+
+        try:
+            # 使用 LangGraph 工作流执行
+            from modules.trading_agents.workflow.integration import execute_analysis_workflow_langgraph
+            await execute_analysis_workflow_langgraph(
+                task_id=task_id,
+                user_id=user_id,
+                request=request,
+                config=config
+            )
+            logger.info(f"任务 {task_id} LangGraph 工作流执行完成")
+
+        except Exception as e:
+            logger.error(f"任务 {task_id} LangGraph 工作流执行失败: {e}", exc_info=True)
+            raise
 
         logger.info(f"分析任务执行成功: task_id={task_id}")
 
     except Exception as e:
-        logger.error(f"分析任务执行失败: task_id={task_id}, error={e}")
+        import traceback
+        error_trace = traceback.format_exc()
+        logger.error(f"分析任务执行失败: task_id={task_id}, error={e}\n{error_trace}")
 
         # 标记任务失败
         await task_manager.fail_task(
             task_id=task_id,
             error_message=str(e),
-            error_details={"type": type(e).__name__}
+            error_details={"type": type(e).__name__, "traceback": error_trace}
         )
 
     finally:
@@ -409,7 +331,7 @@ async def execute_analysis_workflow(
         except Exception as e:
             logger.error(f"释放并发资源时发生错误: task_id={task_id}, error={e}")
 
-        # 释放 MCP 连接（确保 finally 块中执行，防止资源泄漏）
+        # 释放 MCP 连接
         try:
             from modules.trading_agents.tools.mcp_tool_filter import release_task_connections
             await release_task_connections(task_id)

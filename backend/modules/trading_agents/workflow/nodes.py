@@ -1,0 +1,1106 @@
+"""
+LangGraph 节点函数
+
+遵循 LangGraph 官方最佳实践：
+- 节点是 Python 函数（sync 或 async）
+- 接收 state 作为参数，可选接收 config 和 runtime
+- 返回状态更新的字典（不是完整状态）
+- 使用 operator.add reducer 自动累积状态
+
+官方文档: https://docs.langchain.com/oss/python/langgraph/graph-api/#nodes
+"""
+
+import logging
+import os
+from typing import Dict, Any, Optional
+from datetime import datetime
+
+from langchain_core.runnables import RunnableConfig
+
+from .state import TradingAgentState, TaskStatus
+
+logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# 辅助函数
+# =============================================================================
+
+def _get_llm_for_agent(state: TradingAgentState, agent_slug: str):
+    """
+    获取智能体的 LLM Provider
+
+    Args:
+        state: 工作流状态
+        agent_slug: 智能体标识符
+
+    Returns:
+        LLMProvider 实例
+    """
+    from core.ai.llm.openai_compat import LLMProviderFactory
+
+    # 从环境变量读取配置
+    api_key = os.getenv("ZHIPU_API_KEY")
+    api_base = os.getenv("ZHIPU_API_BASE", "https://open.bigmodel.cn/api/paas/v4")
+    model_id = os.getenv("ZHIPU_MODEL", "glm-4-plus")
+
+    if not api_key:
+        raise ValueError("未配置 ZHIPU_API_KEY 环境变量")
+
+    # 创建 LLM Provider
+    llm = LLMProviderFactory.create_provider(
+        provider_type="zhipu",
+        api_base_url=api_base,
+        api_key=api_key,
+        model_id=model_id,
+        temperature=0.7,
+        timeout_seconds=120,
+    )
+
+    logger.info(f"[LLM] 创建 LLM Provider: model={model_id}, agent={agent_slug}")
+
+    return llm
+
+
+def _get_tools_for_agent(state: TradingAgentState, agent_slug: str) -> list:
+    """
+    获取智能体的工具列表
+
+    Args:
+        state: 工作流状态
+        agent_slug: 智能体标识符
+
+    Returns:
+        工具列表
+    """
+    # TODO: 从 ToolRegistry 获取实际工具
+    # 暂时返回空列表
+    logger.debug(f"[Tools] 获取工具列表: agent={agent_slug}, count=0")
+    return []
+
+
+def _build_prompt_template(agent_slug: str, state: TradingAgentState) -> str:
+    """
+    构建智能体的提示词模板
+
+    Args:
+        agent_slug: 智能体标识符
+        state: 工作流状态
+
+    Returns:
+        提示词字符串
+    """
+    # 基础信息
+    base_info = f"""
+## 股票信息
+- 股票代码：{state['stock_code']}
+- 交易日期：{state['trade_date']}
+- 任务 ID：{state['task_id']}
+"""
+
+    # 根据智能体类型添加特定的上下文
+    if agent_slug == "technical_analyst":
+        return f"""你是一位专业的技术分析师。
+
+请从技术分析角度评估该股票，包括但不限于：
+- K线形态分析
+- 技术指标分析（MACD、KDJ、RSI、BOLL等）
+- 成交量分析
+- 趋势判断
+- 支撑位和阻力位
+
+{base_info}
+
+请生成专业的技术分析报告（Markdown 格式）。
+"""
+
+    elif agent_slug == "fundamental_analyst":
+        return f"""你是一位专业的基本面分析师。
+
+请从基本面角度评估该股票，包括但不限于：
+- 财务报表分析
+- 估值分析（PE、PB、PS等）
+- 行业地位和竞争力
+- 成长性分析
+- 风险因素
+
+{base_info}
+
+请生成专业的基本面分析报告（Markdown 格式）。
+"""
+
+    elif agent_slug == "sentiment_analyst":
+        return f"""你是一位专业的市场情绪分析师。
+
+请从市场情绪角度评估该股票，包括但不限于：
+- 市场情绪指标
+- 资金流向分析
+- 投资者情绪
+- 市场热点和题材
+
+{base_info}
+
+请生成专业的市场情绪分析报告（Markdown 格式）。
+"""
+
+    elif agent_slug == "news_analyst":
+        return f"""你是一位专业的新闻分析师。
+
+请从新闻角度评估该股票，包括但不限于：
+- 公司公告解读
+- 行业新闻分析
+- 政策影响评估
+- 重大事件分析
+
+{base_info}
+
+请生成专业的新闻分析报告（Markdown 格式）。
+"""
+
+    else:
+        return f"""你是一位专业的投资分析师。
+
+{base_info}
+
+请生成专业的分析报告（Markdown 格式）。
+"""
+
+
+def _build_debate_prompt(
+    state: TradingAgentState,
+    agent_type: str,  # "bull" or "bear"
+    round_idx: int
+) -> str:
+    """
+    构建辩论提示词
+
+    Args:
+        state: 工作流状态
+        agent_type: 智能体类型（bull 或 bear）
+        round_idx: 当前轮次
+
+    Returns:
+        提示词字符串
+    """
+    base_info = f"""
+## 股票信息
+- 股票代码：{state['stock_code']}
+- 交易日期：{state['trade_date']}
+- 任务 ID：{state['task_id']}
+"""
+
+    # 添加分析师报告
+    if state['analyst_reports']:
+        base_info += "\n## 分析师报告摘要\n"
+        for report in state['analyst_reports']:
+            base_info += f"\n### {report.get('agent_name', '分析师')}\n"
+            base_info += f"{report.get('content', '')}\n"
+
+    # 添加对手观点（如果是反驳轮次）
+    if round_idx > 0 and state['debate_turns']:
+        last_turn = state['debate_turns'][-1]
+        if agent_type == "bull":
+            opponent_view = last_turn.get('bear_argument', '')
+            role = "看跌研究员"
+        else:
+            opponent_view = last_turn.get('bull_argument', '')
+            role = "看涨研究员"
+
+        if opponent_view:
+            base_info += f"""
+
+## 对手观点（上一轮{role}的观点）
+
+<opponent_view>
+{opponent_view}
+</opponent_view>
+
+请针对以上观点进行反驳。
+"""
+
+    if agent_type == "bull":
+        return f"""你是一位经验丰富的看涨研究员。
+
+你的任务是在投资辩论中代表看涨观点，论证股票的投资价值。
+
+请：
+1. 基于分析师报告中的看涨论据
+2. 针对看跌研究员的观点进行反驳（如果有）
+3. 提出更有力的看涨证据
+4. 给出明确的看涨建议
+
+{base_info}
+
+输出格式：
+- 首先总结你的核心看涨论点
+- 然后逐条反驳对手的观点（如果有）
+- 最后给出强有力的看涨结论
+"""
+
+    else:  # bear
+        return f"""你是一位经验丰富的看跌研究员。
+
+你的任务是在投资辩论中代表看跌观点，提示投资风险。
+
+请：
+1. 基于分析师报告中的看跌论据
+2. 针对看涨研究员的观点进行反驳（如果有）
+3. 提出更有力的风险证据
+4. 给出明确的看跌建议
+
+{base_info}
+
+输出格式：
+- 首先总结你的核心看跌论点
+- 然后逐条反驳对手的观点（如果有）
+- 最后给出强有力的看跌结论
+"""
+
+
+# =============================================================================
+# Phase 1: 分析师节点
+# =============================================================================
+
+async def technical_analyst_node(
+    state: TradingAgentState,
+    config: RunnableConfig
+) -> Dict[str, Any]:
+    """
+    技术分析师节点
+
+    遵循官方最佳实践：
+    - 接收 state 和 config
+    - 返回状态更新的字典（不是完整状态）
+    - 使用累积器自动合并
+
+    Args:
+        state: 当前工作流状态
+        config: 运行时配置
+
+    Returns:
+        状态更新字典
+    """
+    logger.info(f"[技术分析师] 开始分析股票: {state['stock_code']}")
+
+    try:
+        # 获取 LLM 和工具
+        llm = _get_llm_for_agent(state, "technical_analyst")
+        tools = _get_tools_for_agent(state, "technical_analyst")
+
+        # 构建提示词
+        prompt = _build_prompt_template("technical_analyst", state)
+
+        # 调用 LLM
+        from core.ai.llm.provider import Message
+        messages = [
+            Message(role="system", content="你是一位专业的技术分析师。"),
+            Message(role="user", content=prompt)
+        ]
+
+        response = await llm.chat_completion(
+            messages=messages,
+            tools=tools
+        )
+
+        # 返回状态更新（官方模式：只返回需要更新的字段）
+        return {
+            "analyst_reports": [{
+                "agent_slug": "technical_analyst",
+                "agent_name": "技术分析师",
+                "role": "技术分析",
+                "content": response.content,
+                "timestamp": datetime.now().isoformat(),
+                "token_usage": response.usage if response.usage else {}
+            }],
+            "token_usage": [{
+                "phase": "phase1",
+                "agent": "technical_analyst",
+                "tokens": response.usage if response.usage else {}
+            }],
+            "completed_analysts": state.get("completed_analysts", 0) + 1,
+            "current_phase": "phase1"
+        }
+
+    except Exception as e:
+        logger.error(f"[技术分析师] 分析失败: {e}")
+        return {
+            "errors": [{
+                "phase": "phase1",
+                "agent": "technical_analyst",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }]
+        }
+
+
+async def fundamental_analyst_node(
+    state: TradingAgentState,
+    config: RunnableConfig
+) -> Dict[str, Any]:
+    """基本面分析师节点"""
+    logger.info(f"[基本面分析师] 开始分析股票: {state['stock_code']}")
+
+    try:
+        llm = _get_llm_for_agent(state, "fundamental_analyst")
+        tools = _get_tools_for_agent(state, "fundamental_analyst")
+
+        prompt = _build_prompt_template("fundamental_analyst", state)
+
+        from core.ai.llm.provider import Message
+        messages = [
+            Message(role="system", content="你是一位专业的基本面分析师。"),
+            Message(role="user", content=prompt)
+        ]
+
+        response = await llm.chat_completion(messages=messages, tools=tools)
+
+        return {
+            "analyst_reports": [{
+                "agent_slug": "fundamental_analyst",
+                "agent_name": "基本面分析师",
+                "role": "基本面分析",
+                "content": response.content,
+                "timestamp": datetime.now().isoformat(),
+                "token_usage": response.usage if response.usage else {}
+            }],
+            "token_usage": [{
+                "phase": "phase1",
+                "agent": "fundamental_analyst",
+                "tokens": response.usage if response.usage else {}
+            }],
+            "completed_analysts": state.get("completed_analysts", 0) + 1,
+        }
+
+    except Exception as e:
+        logger.error(f"[基本面分析师] 分析失败: {e}")
+        return {
+            "errors": [{
+                "phase": "phase1",
+                "agent": "fundamental_analyst",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }]
+        }
+
+
+async def sentiment_analyst_node(
+    state: TradingAgentState,
+    config: RunnableConfig
+) -> Dict[str, Any]:
+    """情绪分析师节点"""
+    logger.info(f"[情绪分析师] 开始分析股票: {state['stock_code']}")
+
+    try:
+        llm = _get_llm_for_agent(state, "sentiment_analyst")
+        tools = _get_tools_for_agent(state, "sentiment_analyst")
+
+        prompt = _build_prompt_template("sentiment_analyst", state)
+
+        from core.ai.llm.provider import Message
+        messages = [
+            Message(role="system", content="你是一位专业的市场情绪分析师。"),
+            Message(role="user", content=prompt)
+        ]
+
+        response = await llm.chat_completion(messages=messages, tools=tools)
+
+        return {
+            "analyst_reports": [{
+                "agent_slug": "sentiment_analyst",
+                "agent_name": "情绪分析师",
+                "role": "市场情绪分析",
+                "content": response.content,
+                "timestamp": datetime.now().isoformat(),
+                "token_usage": response.usage if response.usage else {}
+            }],
+            "token_usage": [{
+                "phase": "phase1",
+                "agent": "sentiment_analyst",
+                "tokens": response.usage if response.usage else {}
+            }],
+            "completed_analysts": state.get("completed_analysts", 0) + 1,
+        }
+
+    except Exception as e:
+        logger.error(f"[情绪分析师] 分析失败: {e}")
+        return {
+            "errors": [{
+                "phase": "phase1",
+                "agent": "sentiment_analyst",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }]
+        }
+
+
+async def news_analyst_node(
+    state: TradingAgentState,
+    config: RunnableConfig
+) -> Dict[str, Any]:
+    """新闻分析师节点"""
+    logger.info(f"[新闻分析师] 开始分析股票: {state['stock_code']}")
+
+    try:
+        llm = _get_llm_for_agent(state, "news_analyst")
+        tools = _get_tools_for_agent(state, "news_analyst")
+
+        prompt = _build_prompt_template("news_analyst", state)
+
+        from core.ai.llm.provider import Message
+        messages = [
+            Message(role="system", content="你是一位专业的新闻分析师。"),
+            Message(role="user", content=prompt)
+        ]
+
+        response = await llm.chat_completion(messages=messages, tools=tools)
+
+        return {
+            "analyst_reports": [{
+                "agent_slug": "news_analyst",
+                "agent_name": "新闻分析师",
+                "role": "新闻分析",
+                "content": response.content,
+                "timestamp": datetime.now().isoformat(),
+                "token_usage": response.usage if response.usage else {}
+            }],
+            "token_usage": [{
+                "phase": "phase1",
+                "agent": "news_analyst",
+                "tokens": response.usage if response.usage else {}
+            }],
+            "completed_analysts": state.get("completed_analysts", 0) + 1,
+        }
+
+    except Exception as e:
+        logger.error(f"[新闻分析师] 分析失败: {e}")
+        return {
+            "errors": [{
+                "phase": "phase1",
+                "agent": "news_analyst",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }]
+        }
+
+
+# =============================================================================
+# Phase 2: 辩论节点
+# =============================================================================
+
+async def bull_debater_node(
+    state: TradingAgentState,
+    config: RunnableConfig
+) -> Dict[str, Any]:
+    """
+    看涨辩手节点
+
+    从累积的 debate_turns 中读取历史记录
+    """
+    logger.info(f"[看涨辩手] 开始辩论，轮次: {len(state.get('debate_turns', []))}")
+
+    try:
+        llm = _get_llm_for_agent(state, "bull_debater")
+        tools = _get_tools_for_agent(state, "bull_debater")
+
+        # 构建提示词（包含历史记录）
+        round_idx = len(state.get("debate_turns", []))
+        prompt = _build_debate_prompt(state, "bull", round_idx)
+
+        from core.ai.llm.provider import Message
+        messages = [
+            Message(role="system", content="你是一位经验丰富的看涨研究员。"),
+            Message(role="user", content=prompt)
+        ]
+
+        response = await llm.chat_completion(messages=messages, tools=tools)
+
+        # 返回状态更新（自动累积）
+        return {
+            "debate_turns": [{
+                "round": round_idx,
+                "bull_argument": response.content,
+                "timestamp": datetime.now().isoformat()
+            }],
+            "token_usage": [{
+                "phase": "phase2",
+                "agent": "bull_debater",
+                "tokens": response.usage if response.usage else {}
+            }],
+            "current_phase": "phase2"
+        }
+
+    except Exception as e:
+        logger.error(f"[看涨辩手] 辩论失败: {e}")
+        return {
+            "errors": [{
+                "phase": "phase2",
+                "agent": "bull_debater",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }]
+        }
+
+
+async def bear_debater_node(
+    state: TradingAgentState,
+    config: RunnableConfig
+) -> Dict[str, Any]:
+    """看跌辩手节点"""
+    logger.info(f"[看跌辩手] 开始辩论，轮次: {len(state.get('debate_turns', []))}")
+
+    try:
+        llm = _get_llm_for_agent(state, "bear_debater")
+        tools = _get_tools_for_agent(state, "bear_debater")
+
+        round_idx = len(state.get("debate_turns", []))
+        prompt = _build_debate_prompt(state, "bear", round_idx)
+
+        from core.ai.llm.provider import Message
+        messages = [
+            Message(role="system", content="你是一位经验丰富的看跌研究员。"),
+            Message(role="user", content=prompt)
+        ]
+
+        response = await llm.chat_completion(messages=messages, tools=tools)
+
+        # 获取上一轮的看涨观点（如果存在）
+        last_turn = state.get("debate_turns", [])[-1] if state.get("debate_turns") else None
+        bull_argument = last_turn.get("bull_argument", "") if last_turn else ""
+
+        return {
+            # 更新上一轮的 bear_argument
+            "debate_turns": [{
+                "round": round_idx,
+                "bull_argument": bull_argument,  # 保留上一轮的看涨观点
+                "bear_argument": response.content,
+                "timestamp": datetime.now().isoformat()
+            }],
+            "token_usage": [{
+                "phase": "phase2",
+                "agent": "bear_debater",
+                "tokens": response.usage if response.usage else {}
+            }]
+        }
+
+    except Exception as e:
+        logger.error(f"[看跌辩手] 辩论失败: {e}")
+        return {
+            "errors": [{
+                "phase": "phase2",
+                "agent": "bear_debater",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }]
+        }
+
+
+async def research_manager_node(
+    state: TradingAgentState,
+    config: RunnableConfig
+) -> Dict[str, Any]:
+    """研究经理节点（裁决辩论）"""
+    logger.info(f"[研究经理] 开始裁决辩论")
+
+    try:
+        llm = _get_llm_for_agent(state, "research_manager")
+
+        # 汇总辩论记录
+        debate_summary = "\n\n".join([
+            f"第{turn.get('round', 0)}轮:\n"
+            f"看涨方: {turn.get('bull_argument', '')}\n"
+            f"看跌方: {turn.get('bear_argument', '')}"
+            for turn in state.get("debate_turns", [])
+        ])
+
+        prompt = f"""你是一位经验丰富的研究经理。
+
+你的任务是评估辩论双方的论据，并给出裁决。
+
+## 股票信息
+- 股票代码：{state['stock_code']}
+- 交易日期：{state['trade_date']}
+
+## 辩论记录
+{debate_summary}
+
+## 你的任务
+请评估双方的论据，并给出你的裁决：
+1. 哪一方的论据更有说服力？
+2. 核心观点是什么？
+3. 是否存在明显的风险或机会？
+
+请给出明确的裁决结论。
+"""
+
+        from core.ai.llm.provider import Message
+        messages = [
+            Message(role="system", content="你是一位经验丰富的研究经理。"),
+            Message(role="user", content=prompt)
+        ]
+
+        response = await llm.chat_completion(messages=messages)
+
+        return {
+            "manager_decision": [{
+                "content": response.content,
+                "timestamp": datetime.now().isoformat()
+            }],
+            "token_usage": [{
+                "phase": "phase2",
+                "agent": "research_manager",
+                "tokens": response.usage if response.usage else {}
+            }]
+        }
+
+    except Exception as e:
+        logger.error(f"[研究经理] 裁决失败: {e}")
+        return {
+            "errors": [{
+                "phase": "phase2",
+                "agent": "research_manager",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }]
+        }
+
+
+async def trade_planner_node(
+    state: TradingAgentState,
+    config: RunnableConfig
+) -> Dict[str, Any]:
+    """交易计划节点"""
+    logger.info(f"[交易计划] 开始制定交易计划")
+
+    try:
+        llm = _get_llm_for_agent(state, "trade_planner")
+
+        # 汇总所有信息
+        manager_decision = state.get("manager_decision", [])[-1].get("content", "") if state.get("manager_decision") else ""
+
+        prompt = f"""你是一位专业的交易计划制定者。
+
+基于研究经理的裁决，制定具体的交易计划。
+
+## 股票信息
+- 股票代码：{state['stock_code']}
+- 交易日期：{state['trade_date']}
+
+## 研究经理的裁决
+{manager_decision}
+
+## 你的任务
+请制定详细的交易计划，包括：
+1. 操作建议（买入/卖出/持有）
+2. 建议价格区间
+3. 仓位配置建议
+4. 止损止盈位
+5. 风险控制措施
+
+请给出清晰、可执行的交易计划。
+"""
+
+        from core.ai.llm.provider import Message
+        messages = [
+            Message(role="system", content="你是一位专业的交易计划制定者。"),
+            Message(role="user", content=prompt)
+        ]
+
+        response = await llm.chat_completion(messages=messages)
+
+        return {
+            "trade_plan": [{
+                "content": response.content,
+                "timestamp": datetime.now().isoformat()
+            }],
+            "token_usage": [{
+                "phase": "phase2",
+                "agent": "trade_planner",
+                "tokens": response.usage if response.usage else {}
+            }]
+        }
+
+    except Exception as e:
+        logger.error(f"[交易计划] 制定失败: {e}")
+        return {
+            "errors": [{
+                "phase": "phase2",
+                "agent": "trade_planner",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }]
+        }
+
+
+# =============================================================================
+# Phase 3: 风险评估节点
+# =============================================================================
+
+async def aggressive_risk_analyst_node(
+    state: TradingAgentState,
+    config: RunnableConfig
+) -> Dict[str, Any]:
+    """激进派风险分析师节点"""
+    logger.info(f"[激进派风险分析师] 开始评估")
+
+    try:
+        llm = _get_llm_for_agent(state, "aggressive_risk_analyst")
+
+        prompt = f"""你是一位激进派风险分析师，倾向于追求高收益。
+
+## 股票信息
+- 股票代码：{state['stock_code']}
+- 交易日期：{state['trade_date']}
+
+## 交易计划
+{state.get('trade_plan', [])[-1].get('content', '') if state.get('trade_plan') else ''}
+
+请从激进派角度评估风险，给出你的建议。
+"""
+
+        from core.ai.llm.provider import Message
+        messages = [
+            Message(role="system", content="你是一位激进派风险分析师。"),
+            Message(role="user", content=prompt)
+        ]
+
+        response = await llm.chat_completion(messages=messages)
+
+        return {
+            "risk_assessments": [{
+                "analyst": "aggressive",
+                "content": response.content,
+                "timestamp": datetime.now().isoformat()
+            }],
+            "token_usage": [{
+                "phase": "phase3",
+                "agent": "aggressive_risk_analyst",
+                "tokens": response.usage if response.usage else {}
+            }],
+            "current_phase": "phase3"
+        }
+
+    except Exception as e:
+        logger.error(f"[激进派风险分析师] 评估失败: {e}")
+        return {
+            "errors": [{
+                "phase": "phase3",
+                "agent": "aggressive_risk_analyst",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }]
+        }
+
+
+async def conservative_risk_analyst_node(
+    state: TradingAgentState,
+    config: RunnableConfig
+) -> Dict[str, Any]:
+    """保守派风险分析师节点"""
+    logger.info(f"[保守派风险分析师] 开始评估")
+
+    try:
+        llm = _get_llm_for_agent(state, "conservative_risk_analyst")
+
+        prompt = f"""你是一位保守派风险分析师，注重本金安全。
+
+## 股票信息
+- 股票代码：{state['stock_code']}
+- 交易日期：{state['trade_date']}
+
+## 交易计划
+{state.get('trade_plan', [])[-1].get('content', '') if state.get('trade_plan') else ''}
+
+请从保守派角度评估风险，给出你的建议。
+"""
+
+        from core.ai.llm.provider import Message
+        messages = [
+            Message(role="system", content="你是一位保守派风险分析师。"),
+            Message(role="user", content=prompt)
+        ]
+
+        response = await llm.chat_completion(messages=messages)
+
+        return {
+            "risk_assessments": [{
+                "analyst": "conservative",
+                "content": response.content,
+                "timestamp": datetime.now().isoformat()
+            }],
+            "token_usage": [{
+                "phase": "phase3",
+                "agent": "conservative_risk_analyst",
+                "tokens": response.usage if response.usage else {}
+            }]
+        }
+
+    except Exception as e:
+        logger.error(f"[保守派风险分析师] 评估失败: {e}")
+        return {
+            "errors": [{
+                "phase": "phase3",
+                "agent": "conservative_risk_analyst",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }]
+        }
+
+
+async def neutral_risk_analyst_node(
+    state: TradingAgentState,
+    config: RunnableConfig
+) -> Dict[str, Any]:
+    """中性派风险分析师节点"""
+    logger.info(f"[中性派风险分析师] 开始评估")
+
+    try:
+        llm = _get_llm_for_agent(state, "neutral_risk_analyst")
+
+        prompt = f"""你是一位中性派风险分析师，追求风险和收益的平衡。
+
+## 股票信息
+- 股票代码：{state['stock_code']}
+- 交易日期：{state['trade_date']}
+
+## 交易计划
+{state.get('trade_plan', [])[-1].get('content', '') if state.get('trade_plan') else ''}
+
+请从中性派角度评估风险，给出你的建议。
+"""
+
+        from core.ai.llm.provider import Message
+        messages = [
+            Message(role="system", content="你是一位中性派风险分析师。"),
+            Message(role="user", content=prompt)
+        ]
+
+        response = await llm.chat_completion(messages=messages)
+
+        return {
+            "risk_assessments": [{
+                "analyst": "neutral",
+                "content": response.content,
+                "timestamp": datetime.now().isoformat()
+            }],
+            "token_usage": [{
+                "phase": "phase3",
+                "agent": "neutral_risk_analyst",
+                "tokens": response.usage if response.usage else {}
+            }]
+        }
+
+    except Exception as e:
+        logger.error(f"[中性派风险分析师] 评估失败: {e}")
+        return {
+            "errors": [{
+                "phase": "phase3",
+                "agent": "neutral_risk_analyst",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }]
+        }
+
+
+async def chief_risk_officer_node(
+    state: TradingAgentState,
+    config: RunnableConfig
+) -> Dict[str, Any]:
+    """首席风控官节点（总结风险评估）"""
+    logger.info(f"[首席风控官] 开始总结风险评估")
+
+    try:
+        llm = _get_llm_for_agent(state, "chief_risk_officer")
+
+        # 汇总三派评估
+        assessments_summary = "\n\n".join([
+            f"{assessment.get('analyst', '').title()}派: {assessment.get('content', '')}"
+            for assessment in state.get("risk_assessments", [])
+        ])
+
+        prompt = f"""你是一位首席风控官（CRO）。
+
+请综合三派的风险评估意见，给出最终的风险评估结论。
+
+## 股票信息
+- 股票代码：{state['stock_code']}
+- 交易日期：{state['trade_date']}
+
+## 三派评估
+{assessments_summary}
+
+## 你的任务
+请综合三派意见，给出：
+1. 风险等级（高/中/低）
+2. 风险评分（0-100分）
+3. 核心风险点
+4. 风险控制建议
+
+请给出清晰的风险评估结论。
+"""
+
+        from core.ai.llm.provider import Message
+        messages = [
+            Message(role="system", content="你是一位首席风控官。"),
+            Message(role="user", content=prompt)
+        ]
+
+        response = await llm.chat_completion(messages=messages)
+
+        return {
+            "cro_summary": [{
+                "content": response.content,
+                "timestamp": datetime.now().isoformat()
+            }],
+            "token_usage": [{
+                "phase": "phase3",
+                "agent": "chief_risk_officer",
+                "tokens": response.usage if response.usage else {}
+            }]
+        }
+
+    except Exception as e:
+        logger.error(f"[首席风控官] 总结失败: {e}")
+        return {
+            "errors": [{
+                "phase": "phase3",
+                "agent": "chief_risk_officer",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }]
+        }
+
+
+# =============================================================================
+# Phase 4: 总结节点
+# =============================================================================
+
+async def final_summarizer_node(
+    state: TradingAgentState,
+    config: RunnableConfig
+) -> Dict[str, Any]:
+    """
+    最终总结节点
+
+    汇总所有阶段的信息，生成最终报告
+    """
+    logger.info(f"[最终总结] 开始生成最终报告")
+
+    try:
+        llm = _get_llm_for_agent(state, "final_summarizer")
+
+        # 汇总所有信息
+        all_reports = "\n\n".join([
+            f"## {report.get('agent_name', '分析师')}\n{report.get('content', '')}"
+            for report in state.get("analyst_reports", [])
+        ])
+
+        debate_summary = "\n\n".join([
+            f"第{turn.get('round', 0)}轮:\n看涨: {turn.get('bull_argument', '')}\n看跌: {turn.get('bear_argument', '')}"
+            for turn in state.get("debate_turns", [])
+        ])
+
+        manager_decision = state.get("manager_decision", [])[-1].get("content", "") if state.get("manager_decision") else ""
+        trade_plan = state.get("trade_plan", [])[-1].get("content", "") if state.get("trade_plan") else ""
+        cro_summary = state.get("cro_summary", [])[-1].get("content", "") if state.get("cro_summary") else ""
+
+        prompt = f"""你是一位首席投资顾问。
+
+请汇总所有分析阶段的信息，生成最终的投资分析报告。
+
+## 股票信息
+- 股票代码：{state['stock_code']}
+- 交易日期：{state['trade_date']}
+
+## 第一阶段：分析师团队报告
+{all_reports}
+
+## 第二阶段：辩论与交易计划
+### 辩论记录
+{debate_summary}
+
+### 研究经理裁决
+{manager_decision}
+
+### 交易计划
+{trade_plan}
+
+## 第三阶段：风险评估
+{cro_summary}
+
+## 你的任务
+请综合以上所有信息，生成最终的投资分析报告，包括：
+1. 投资建议（强烈买入/买入/持有/卖出/强烈卖出）
+2. 核心观点总结
+3. 关键风险提示
+4. 具体操作建议
+
+请生成清晰、专业的最终报告（Markdown 格式）。
+"""
+
+        from core.ai.llm.provider import Message
+        messages = [
+            Message(role="system", content="你是一位首席投资顾问。"),
+            Message(role="user", content=prompt)
+        ]
+
+        response = await llm.chat_completion(messages=messages)
+
+        # 提取投资建议
+        recommendation = _extract_recommendation(response.content)
+
+        return {
+            "final_report": {
+                "content": response.content,
+                "recommendation": recommendation,
+                "timestamp": datetime.now().isoformat()
+            },
+            "token_usage": [{
+                "phase": "phase4",
+                "agent": "final_summarizer",
+                "tokens": response.usage if response.usage else {}
+            }],
+            "current_phase": "phase4",
+            "status": TaskStatus.COMPLETED.value,
+            "end_time": datetime.now().isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"[最终总结] 生成失败: {e}")
+        return {
+            "errors": [{
+                "phase": "phase4",
+                "agent": "final_summarizer",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }],
+            "status": TaskStatus.FAILED.value,
+            "end_time": datetime.now().isoformat()
+        }
+
+
+# =============================================================================
+# 辅助函数
+# =============================================================================
+
+def _extract_recommendation(content: str) -> str:
+    """
+    从最终报告内容中提取投资建议
+
+    Args:
+        content: 报告内容
+
+    Returns:
+        投资建议（STRONG_BUY/BUY/HOLD/SELL/STRONG_SELL）
+    """
+    content_lower = content.lower()
+
+    if "强烈买入" in content or "strong buy" in content_lower:
+        return "STRONG_BUY"
+    elif "强烈卖出" in content or "strong sell" in content_lower:
+        return "STRONG_SELL"
+    elif "买入" in content or "buy" in content_lower:
+        return "BUY"
+    elif "卖出" in content or "sell" in content_lower:
+        return "SELL"
+    else:
+        return "HOLD"

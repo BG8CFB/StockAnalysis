@@ -21,9 +21,15 @@
       "mcp__milk_tea_server__*",
       "mcp__zai-mcp-server__*",
       "Bash(cd:*)",
-      "Bash(npm:*)"
+      "Bash(npm:*)",
+      "Bash(setx:*)",
+      "Bash(echo:*)",
+      "Bash(python:*)",
+      "Bash(timeout:*)",
+      "Bash(rm:*)"
     ],
     "deny": [],
     "ask": []
-  }
+  },
+  "includeCoAuthoredBy": false
 }

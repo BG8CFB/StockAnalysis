@@ -1,6 +1,6 @@
 # 股票分析平台
 
-一个模块化的股票数据分析平台，支持多用户登录注册，每个用户的配置和数据完全隔离。
+一个基于 **LangGraph** 多智能体工作流的股票分析平台，支持多用户登录注册，每个用户的配置和数据完全隔离。
 
 ## 技术栈
 
@@ -11,6 +11,9 @@
 | 状态管理 | Pinia |
 | 路由 | Vue Router |
 | 后端框架 | FastAPI + Python |
+| 工作流引擎 | **LangGraph** (StateGraph) |
+| LLM 接入 | 智谱 AI (glm-4.6) |
+| 工具协议 | MCP (Model Context Protocol) |
 | 数据库 | MongoDB + Redis |
 | 认证 | JWT Token |
 | 容器化 | Docker + Docker Compose |
@@ -134,6 +137,16 @@ docker-compose -f docker-compose.dev.yml logs frontend  # 前端日志
 
 ### 已实现
 
+**核心功能：**
+- **TradingAgents 智能分析系统**（基于 LangGraph）
+  - 四阶段工作流：分析师团队 → 观点辩论 → 风险评估 → 总结报告
+  - 多智能体协作：技术分析、基本面分析、情绪分析、新闻分析
+  - MCP 工具集成：实时数据获取和外部工具调用
+  - 并发控制：双模型并发槽位管理
+  - 实时进度：WebSocket 推送任务进度
+  - Token 追踪：成本预估和实际消耗统计
+
+**用户系统：**
 - 用户注册/登录（带图形验证码）
 - JWT 认证
 - 基于角色的访问控制（RBAC）：GUEST、USER、ADMIN、SUPER_ADMIN
@@ -143,8 +156,13 @@ docker-compose -f docker-compose.dev.yml logs frontend  # 前端日志
   - IP 限流（防暴力破解）
   - IP 信任机制（常用 IP 无感登录）
   - 渐进式防护策略
+
+**技术特性：**
 - 响应式布局（PC + 移动端）
-- 模块化架构
+- 模块化单体架构
+- 异步任务处理
+- WebSocket 实时通信
+- Docker 容器化部署
 
 ### 预留扩展
 

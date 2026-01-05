@@ -61,7 +61,7 @@ from .task_manager import (
     task_manager,
     get_task_manager,
 )
-from .agent_engine import AgentWorkflowEngine
+# from .agent_engine import AgentWorkflowEngine  # 已删除，使用 LangGraph workflow
 
 __all__ = [
     # State (从 models)
@@ -109,6 +109,6 @@ __all__ = [
     "TaskManager",
     "task_manager",
     "get_task_manager",
-    # Agent Engine (本地)
-    "AgentWorkflowEngine",
+    # Agent Engine (本地) - 已删除，使用 LangGraph workflow
+    # "AgentWorkflowEngine",
 ]
