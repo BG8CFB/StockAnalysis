@@ -38,6 +38,12 @@ from .nodes import (
     # 节点工厂函数（Phase 1 动态创建）
     create_phase1_node_factory,
     # Phase 2（结构固定）
+    # 新节点
+    bull_initial_view_node,
+    bear_initial_view_node,
+    bull_debate_rebuttal_node,
+    bear_debate_rebuttal_node,
+    # 保留旧节点（向后兼容）
     bull_debater_node,
     bear_debater_node,
     research_manager_node,
@@ -62,6 +68,8 @@ def should_continue_debate(state: TradingAgentState) -> Literal["continue_debate
     """
     判断是否继续辩论
 
+    **修改**：基于 current_debate_round 和 max_debate_rounds 判断
+
     遵循官方最佳实践：
     - 路由函数接收 state
     - 返回下一个节点的名称（字符串）
@@ -73,26 +81,25 @@ def should_continue_debate(state: TradingAgentState) -> Literal["continue_debate
         "continue_debate": 继续辩论
         "end_debate": 结束辩论
     """
-    max_rounds = state.get("max_debate_rounds", 2)
-    current_round = len(state.get("debate_turns", []))
+    max_rounds = state.get("max_debate_rounds", 1)
+    current_round = state.get("current_debate_round", 0)
 
-    logger.debug(f"[辩论路由] 当前轮次: {current_round}, 最大轮次: {max_rounds}")
+    logger.info(f"[辩论路由] 当前轮次: {current_round}, 最大轮次: {max_rounds}")
 
     if current_round >= max_rounds:
+        logger.info(f"[辩论路由] -> 结束辩论（返回 end_debate）")
         return "end_debate"
 
-    # 可选：检查是否收敛
-    # if has_debate_converged(state["debate_turns"]):
-    #     return "end_debate"
-
+    logger.info(f"[辩论路由] -> 继续辩论（返回 continue_debate）")
     return "continue_debate"
 
 
-def route_debate_mode(state: TradingAgentState) -> Literal["parallel_debate", "serial_debate"]:
+def route_debate_mode(state: TradingAgentState) -> Literal["parallel_debate", "serial_debate", "skip_to_end"]:
     """
     路由辩论执行模式（并行或串行）
 
-    基于phase2_concurrency配置决定执行模式：
+    基于phase2_concurrency配置和enable_phase2决定执行模式：
+    - enable_phase2=False: 直接跳到最终汇聚节点
     - 1: 串行执行（看涨->看跌->看涨->看跌...）
     - 2: 并行执行（看涨和看跌同时进行）
 
@@ -100,12 +107,18 @@ def route_debate_mode(state: TradingAgentState) -> Literal["parallel_debate", "s
         state: 当前工作流状态
 
     Returns:
+        "skip_to_end": 跳过 Phase 2，直接到最终汇聚节点
         "parallel_debate": 并行辩论模式
         "serial_debate": 串行辩论模式
     """
+    # 检查是否启用 Phase 2
+    if not state.get("enable_phase2", True):
+        logger.info(f"[辩论模式路由] Phase 2 已禁用，直接到最终汇聚节点")
+        return "skip_to_end"
+
     concurrency = state.get("phase2_concurrency", 1)
     logger.debug(f"[辩论模式路由] 并发数: {concurrency}")
-    
+
     if concurrency >= 2:
         return "parallel_debate"
     return "serial_debate"
@@ -153,13 +166,17 @@ def route_debate_turn_parallel(state: TradingAgentState) -> Literal["continue_de
         "continue_debate": 继续下一轮辩论
         "end_debate": 结束辩论
     """
-    current_round = len(state.get("debate_turns", [])) // 2  # 每轮两人，所以除以2
+    debate_turns = state.get("debate_turns", [])
+    current_round = len(debate_turns) // 2  # 每轮两人，所以除以2
     max_rounds = state.get("max_debate_rounds", 2)
 
-    logger.debug(f"[并行辩论轮次路由] 当前轮次: {current_round}, 最大轮次: {max_rounds}")
+    logger.info(f"[并行辩论轮次路由] debate_turns 数量: {len(debate_turns)}")
+    logger.info(f"[并行辩论轮次路由] 当前轮次: {current_round}, 最大轮次: {max_rounds}")
 
     if current_round >= max_rounds:
+        logger.info(f"[并行辩论轮次路由] -> 结束辩论（返回 end_debate）")
         return "end_debate"
+    logger.info(f"[并行辩论轮次路由] -> 继续辩论（返回 continue_debate）")
     return "continue_debate"
 
 
@@ -179,8 +196,12 @@ def should_execute_phase2(state: TradingAgentState) -> Literal["execute_phase2",
 
 def should_execute_phase3(state: TradingAgentState) -> Literal["execute_phase3", "skip_phase3"]:
     """判断是否执行 Phase 3"""
-    if state.get("enable_phase3", True):
+    enable_phase3 = state.get("enable_phase3", True)
+    logger.info(f"[路由] should_execute_phase3: enable_phase3={enable_phase3}")
+    if enable_phase3:
+        logger.info(f"[路由] -> 返回 execute_phase3，将路由到 phase3_mode_router")
         return "execute_phase3"
+    logger.info(f"[路由] -> 返回 skip_phase3，将路由到 final_summarizer")
     return "skip_phase3"
 
 
@@ -204,13 +225,25 @@ def check_phase1_completion(state: TradingAgentState) -> Literal["phase1_complet
         "phase1_complete": Phase 1 完成
         "phase1_incomplete": Phase 1 未完成
     """
-    expected = state.get("expected_analysts", 4)
     completed = state.get("completed_analysts", 0)
+    analyst_reports_count = len(state.get("analyst_reports", []))
 
-    logger.debug(f"[Phase 1 完成检查] 预期: {expected}, 已完成: {completed}")
+    # **关键修复：直接从 agent_config 动态计算 expected_analysts**
+    # 因为 expected_analysts 字段可能在状态传递中丢失
+    agent_config = state.get("agent_config", {})
+    expected = 4  # 默认值
+
+    if agent_config and isinstance(agent_config, dict):
+        phase1_agents = agent_config.get("phase1", {}).get("agents", [])
+        enabled_agents = [a for a in phase1_agents if a.get("enabled")]
+        expected = len(enabled_agents) if enabled_agents else 4
+
+    logger.info(f"[Phase 1 完成检查] 预期: {expected}, 已完成: {completed}, 报告数: {analyst_reports_count}")
 
     if completed >= expected:
+        logger.info(f"[Phase 1 完成检查] ✓ Phase 1 完成 ({completed}/{expected}) -> 路由到 debate_mode_router")
         return "phase1_complete"
+    logger.info(f"[Phase 1 完成检查] ✗ Phase 1 未完成 ({completed}/{expected}) -> 等待其他节点")
     return "phase1_incomplete"
 
 
@@ -221,7 +254,13 @@ def phase1_checkpoint_node(state: TradingAgentState) -> Dict[str, Any]:
     这个节点本身不做任何工作，只是作为一个汇聚点，
     所有 Phase 1 分析师节点完成后都会路由到这里。
     """
-    logger.debug(f"[Phase 1 检查点] 已完成分析师: {state.get('completed_analysts', 0)}")
+    completed = state.get('completed_analysts', 0)
+    analyst_reports_count = len(state.get('analyst_reports', []))
+    logger.info(f"[Phase 1 检查点] 已完成分析师: {completed}, analyst_reports 数量: {analyst_reports_count}")
+
+    # 检查状态字段
+    logger.info(f"[Phase 1 检查点] 状态字段: {list(state.keys())}")
+
     return {}  # 不修改状态
 
 
@@ -418,23 +457,46 @@ def create_trading_agent_graph(
 
     # ===== 添加 Phase 1: 动态分析师节点 =====
     # **核心修改**: 完全动态化，不再有任何硬编码
-    # agent_config 是 Pydantic 对象，不是字典
-    phase1_agents = agent_config.phase1.agents if agent_config.phase1 else []
+    # agent_config 可以是字典或 Pydantic 对象
 
-    # 过滤启用的智能体
-    enabled_phase1_agents = [agent for agent in phase1_agents if agent.enabled]
+    # 处理字典类型的配置
+    if isinstance(agent_config, dict):
+        phase1_config = agent_config.get("phase1", {})
+        phase1_agents = phase1_config.get("agents", [])
+    else:
+        # Pydantic 对象
+        phase1_agents = agent_config.phase1.agents if agent_config.phase1 else []
+
+    # 过滤启用的智能体（支持字典和对象）
+    enabled_phase1_agents = []
+    for agent in phase1_agents:
+        if isinstance(agent, dict):
+            if agent.get("enabled"):
+                enabled_phase1_agents.append(agent)
+        else:
+            if agent.enabled:
+                enabled_phase1_agents.append(agent)
 
     logger.info(f"[工作流图] 动态创建 Phase 1 节点: {len(enabled_phase1_agents)} 个分析师")
+    print(f"[工作流图] 动态创建 Phase 1 节点: {len(enabled_phase1_agents)} 个分析师")  # 添加 print 确保输出
 
     phase1_node_names = []  # 记录节点名称，用于后续连接边
 
-    for agent in enabled_phase1_agents:
-        # agent 是 Pydantic 对象，不是字典
-        agent_slug = agent.slug
-        agent_name = agent.name
-        role_definition = agent.role_definition or ""
-        enabled_mcp_servers = agent.enabled_mcp_servers or []
-        enabled_local_tools = agent.enabled_local_tools or []
+    for idx, agent in enumerate(enabled_phase1_agents):
+        print(f"[工作流图] 处理第 {idx+1}/{len(enabled_phase1_agents)} 个分析师...")  # 添加进度跟踪
+        # 支持 Pydantic 对象和字典
+        if isinstance(agent, dict):
+            agent_slug = agent.get("slug")
+            agent_name = agent.get("name")
+            role_definition = agent.get("role_definition") or ""
+            enabled_mcp_servers = agent.get("enabled_mcp_servers") or []
+            enabled_local_tools = agent.get("enabled_local_tools") or []
+        else:
+            agent_slug = agent.slug
+            agent_name = agent.name
+            role_definition = agent.role_definition or ""
+            enabled_mcp_servers = agent.enabled_mcp_servers or []
+            enabled_local_tools = agent.enabled_local_tools or []
 
         # 使用工厂函数动态创建节点
         node_func = create_phase1_node_factory(
@@ -450,15 +512,26 @@ def create_trading_agent_graph(
         phase1_node_names.append(agent_slug)
 
         logger.info(f"[工作流图] 添加 Phase 1 节点: {agent_slug} ({agent_name})")
+        print(f"[工作流图] ✓ 添加节点: {agent_slug}")  # 添加 print 确保输出
 
     # ===== 添加 Phase 2, 3, 4: 固定结构节点 =====
     logger.info("[工作流图] 添加 Phase 2, 3, 4 节点")
 
-    # Phase 2: 辩论
-    builder.add_node("bull_debater", bull_debater_node)
-    builder.add_node("bear_debater", bear_debater_node)
+    # Phase 2: 初始观点生成（必须执行）
+    builder.add_node("bull_initial_view", bull_initial_view_node)
+    builder.add_node("bear_initial_view", bear_initial_view_node)
+
+    # Phase 2: 辩论反驳（可选执行）
+    builder.add_node("bull_debate_rebuttal", bull_debate_rebuttal_node)
+    builder.add_node("bear_debate_rebuttal", bear_debate_rebuttal_node)
+
+    # Phase 2: 研究经理和交易计划
     builder.add_node("research_manager", research_manager_node)
     builder.add_node("trade_planner", trade_planner_node)
+
+    # 保留旧节点（向后兼容，但不再使用）
+    builder.add_node("bull_debater", bull_debater_node)
+    builder.add_node("bear_debater", bear_debater_node)
 
     # Phase 3: 风险评估
     builder.add_node("aggressive_risk_analyst", aggressive_risk_analyst_node)
@@ -476,118 +549,141 @@ def create_trading_agent_graph(
 
     logger.info("[工作流图] 定义边")
 
-    # ===== Phase 1: 动态并行分析师 =====
-    # 官方模式：从 START 连接到所有 Phase 1 节点实现并行执行
-    # 参考: https://docs.langchain.com/oss/python/langgraph/graph-api/#edges
+    # ===== Phase 1: 动态串行分析师（避免 API 并发限制）=====
+    # 串行模式：START -> node1 -> node2 -> node3 -> ... -> phase1_checkpoint
 
     # 添加 Phase 1 汇聚节点
     builder.add_node("phase1_checkpoint", phase1_checkpoint_node)
 
-    for node_name in phase1_node_names:
-        builder.add_edge(START, node_name)
-        logger.debug(f"[工作流图] 连接 START -> {node_name}")
+    # 串行连接节点
+    if phase1_node_names:
+        # 第一个节点从 START 开始
+        builder.add_edge(START, phase1_node_names[0])
+        logger.debug(f"[工作流图] 串行模式：START -> {phase1_node_names[0]}")
 
-    # 所有 Phase 1 节点完成后路由到汇聚节点
-    for node_name in phase1_node_names:
-        builder.add_edge(node_name, "phase1_checkpoint")
-        logger.debug(f"[工作流图] 连接 {node_name} -> phase1_checkpoint")
+        # 后续节点按顺序连接
+        for i in range(len(phase1_node_names) - 1):
+            current_node = phase1_node_names[i]
+            next_node = phase1_node_names[i + 1]
+            builder.add_edge(current_node, next_node)
+            logger.debug(f"[工作流图] 串行模式：{current_node} -> {next_node}")
 
-    # 汇聚节点检查是否所有分析师都完成
-    builder.add_conditional_edges(
-        "phase1_checkpoint",
-        check_phase1_completion,
-        {
-            "phase1_complete": "bull_debater",  # 进入 Phase 2
-            "phase1_incomplete": END  # 等待其他节点完成（LangGraph 会自动等待所有并行路径）
-        }
-    )
+        # 最后一个节点连接到汇聚节点
+        builder.add_edge(phase1_node_names[-1], "phase1_checkpoint")
+        logger.debug(f"[工作流图] 串行模式：{phase1_node_names[-1]} -> phase1_checkpoint")
 
-    # ===== Phase 2: 辩论循环（支持串行和并行） =====
+    # ===== Phase 2: 初始观点生成 + 辩论循环 =====
     # 官方模式：使用条件边实现循环
     # 参考: https://docs.langchain.com/oss/python/langgraph/tutorials/#loops
 
-    # 添加辩论模式路由节点
-    def debate_mode_router_node(state: TradingAgentState) -> Dict[str, Any]:
-        """辩论模式路由节点（不修改状态，仅用于路由）"""
+    # 添加初始观点汇聚节点
+    def phase2_initial_checkpoint_node(state: TradingAgentState) -> Dict[str, Any]:
+        """Phase 2 初始观点汇聚节点（等待看涨和看跌初始观点完成）"""
+        bull_completed = state.get("bull_initial_completed", False)
+        bear_completed = state.get("bear_initial_completed", False)
+        logger.info(f"[Phase 2 初始汇聚] 看涨完成: {bull_completed}, 看跌完成: {bear_completed}")
         return {}
 
-    builder.add_node("debate_mode_router", debate_mode_router_node)
+    builder.add_node("phase2_initial_checkpoint", phase2_initial_checkpoint_node)
 
-    # 添加并行辩论汇聚节点
-    def parallel_debate_checkpoint_node(state: TradingAgentState) -> Dict[str, Any]:
-        """并行辩论汇聚节点（等待看涨和看跌都完成）"""
+    # 添加辩论循环汇聚节点
+    def phase2_debate_checkpoint_node(state: TradingAgentState) -> Dict[str, Any]:
+        """Phase 2 辩论循环汇聚节点（等待本轮看涨和看跌反驳完成）"""
+        current_round = state.get("current_debate_round", 0)
+        logger.info(f"[Phase 2 辩论汇聚] 当前轮次: {current_round}")
         return {}
 
-    builder.add_node("parallel_debate_checkpoint", parallel_debate_checkpoint_node)
+    builder.add_node("phase2_debate_checkpoint", phase2_debate_checkpoint_node)
 
-    # Phase 1完成 -> 辩论模式路由
+    # 添加辩论循环推进节点
+    def phase2_debate_advance_node(state: TradingAgentState) -> Dict[str, Any]:
+        """Phase 2 辩论循环推进节点（增加轮次计数）"""
+        current_round = state.get("current_debate_round", 0)
+        new_round = current_round + 1
+        logger.info(f"[Phase 2 辩论推进] 从轮次 {current_round} 推进到 {new_round}")
+        return {"current_debate_round": new_round}
+
+    builder.add_node("phase2_debate_advance", phase2_debate_advance_node)
+
+    # Phase 1完成 -> 初始观点生成（并行）
+    # 添加 Phase 2 初始观点启动节点（用于同时启动看涨和看跌）
+    def phase2_initial_start_node(state: TradingAgentState) -> Dict[str, Any]:
+        """Phase 2 初始观点启动节点（不修改状态，仅用于并行启动）"""
+        logger.info(f"[Phase 2] 启动初始观点生成（并行）")
+        return {}
+
+    builder.add_node("phase2_initial_start", phase2_initial_start_node)
+
     builder.add_conditional_edges(
         "phase1_checkpoint",
         check_phase1_completion,
         {
-            "phase1_complete": "debate_mode_router",  # 进入辩论模式路由
+            "phase1_complete": "phase2_initial_start",  # 进入初始观点生成启动节点
             "phase1_incomplete": END  # 等待其他节点完成
         }
     )
 
-    # 辩论模式路由 -> 串行或并行
+    # 并行执行看涨和看跌初始观点
+    builder.add_edge("phase2_initial_start", "bull_initial_view")
+    builder.add_edge("phase2_initial_start", "bear_initial_view")
+
+    # 两者都汇聚到检查点
+    builder.add_edge("bull_initial_view", "phase2_initial_checkpoint")
+    builder.add_edge("bear_initial_view", "phase2_initial_checkpoint")
+
+    # 初始汇聚 -> 检查是否需要辩论
+    def should_start_debate(state: TradingAgentState) -> Literal["start_debate", "skip_debate"]:
+        """判断是否开始辩论循环"""
+        max_rounds = state.get("max_debate_rounds", 1)
+        logger.info(f"[Phase 2] max_debate_rounds={max_rounds}")
+        if max_rounds > 0:
+            return "start_debate"
+        return "skip_debate"
+
     builder.add_conditional_edges(
-        "debate_mode_router",
-        route_debate_mode,
+        "phase2_initial_checkpoint",
+        should_start_debate,
         {
-            "serial_debate": "bull_debater",  # 串行：从看涨开始
-            "parallel_debate": "parallel_debate_start"  # 并行：同时启动看涨和看跌
+            "start_debate": "phase2_debate_round_start",  # 开始辩论（进入辩论轮次启动）
+            "skip_debate": "research_manager"  # 跳过辩论，直接到研究经理
         }
     )
 
-    # ===== 串行辩论模式 =====
-    # 看涨 -> 看跌（循环）
-    builder.add_conditional_edges(
-        "bull_debater",
-        route_debate_turn_serial,
-        {
-            "bull": "bull_debater",  # 继续看涨（不应该发生，逻辑保证）
-            "bear": "bear_debater",  # 继续辩论
-            "end_debate": "research_manager"  # 结束辩论
-        }
-    )
-
-    # 看跌 -> 看涨（循环）
-    builder.add_conditional_edges(
-        "bear_debater",
-        route_debate_turn_serial,
-        {
-            "bull": "bull_debater",  # 继续辩论
-            "bear": "bear_debater",  # 继续看跌（不应该发生，逻辑保证）
-            "end_debate": "research_manager"  # 结束辩论
-        }
-    )
-
-    # ===== 并行辩论模式 =====
-    # 添加并行辩论起始节点
-    def parallel_debate_start_node(state: TradingAgentState) -> Dict[str, Any]:
-        """并行辩论起始节点（不修改状态，仅用于同时启动看涨和看跌）"""
+    # ===== 辩论循环（并行模式） =====
+    # 添加辩论轮次启动节点
+    def phase2_debate_round_start_node(state: TradingAgentState) -> Dict[str, Any]:
+        """Phase 2 辩论轮次启动节点（不修改状态，仅用于同时启动看涨和看跌反驳）"""
+        current_round = state.get("current_debate_round", 0)
+        logger.info(f"[Phase 2] 启动第 {current_round + 1} 轮辩论（并行）")
         return {}
 
-    builder.add_node("parallel_debate_start", parallel_debate_start_node)
+    builder.add_node("phase2_debate_round_start", phase2_debate_round_start_node)
 
-    # 并行起始 -> 看涨和看跌同时执行
-    builder.add_edge("parallel_debate_start", "bull_debater")
-    builder.add_edge("parallel_debate_start", "bear_debater")
+    # 轮次推进 -> 辩论轮次启动
+    builder.add_edge("phase2_debate_advance", "phase2_debate_round_start")
 
-    # 看涨和看跌 -> 并行汇聚
-    builder.add_edge("bull_debater", "parallel_debate_checkpoint")
-    builder.add_edge("bear_debater", "parallel_debate_checkpoint")
+    # 辩论轮次启动 -> 并行执行看涨和看跌反驳
+    builder.add_edge("phase2_debate_round_start", "bull_debate_rebuttal")
+    builder.add_edge("phase2_debate_round_start", "bear_debate_rebuttal")
 
-    # 并行汇聚 -> 继续或结束
+    # 看涨反驳 -> 辩论汇聚
+    builder.add_edge("bull_debate_rebuttal", "phase2_debate_checkpoint")
+
+    # 看跌反驳 -> 辩论汇聚
+    builder.add_edge("bear_debate_rebuttal", "phase2_debate_checkpoint")
+
+    # 辩论汇聚 -> 继续或结束
     builder.add_conditional_edges(
-        "parallel_debate_checkpoint",
-        route_debate_turn_parallel,
+        "phase2_debate_checkpoint",
+        should_continue_debate,
         {
-            "continue_debate": "parallel_debate_start",  # 下一轮
+            "continue_debate": "phase2_debate_advance",  # 推进轮次
             "end_debate": "research_manager"  # 结束辩论
         }
     )
+
+    # 修正：初始观点后直接进入第一轮辩论（如果需要）
+    # 删除旧的边，使用新的路由逻辑
 
     # Phase 2 流程：研究经理 -> 交易计划 -> Phase 3
     builder.add_edge("research_manager", "trade_planner")
@@ -680,19 +776,49 @@ def create_trading_agent_graph(
     # ===== Phase 3 -> Phase 4 =====
     builder.add_edge("chief_risk_officer", "final_summarizer")
 
-    # ===== Phase 4 -> END =====
-    builder.add_edge("final_summarizer", END)
+    # ===== 添加最终状态汇聚节点 =====
+    # 这个节点确保所有累积字段都被正确返回，解决 LangGraph 状态返回不完整的问题
+    def final_state_aggregator_node(state: TradingAgentState) -> Dict[str, Any]:
+        """
+        最终状态汇聚节点
+
+        确保所有累积字段都被正确返回到状态中。
+        通过显式返回所有累积字段，确保它们被包含在最终状态中。
+        """
+        logger.info(f"[状态汇聚] 最终状态汇聚")
+        logger.info(f"[状态汇聚] analyst_reports: {len(state.get('analyst_reports', []))} 条")
+        logger.info(f"[状态汇聚] debate_turns: {len(state.get('debate_turns', []))} 条")
+        logger.info(f"[状态汇聚] risk_assessments: {len(state.get('risk_assessments', []))} 条")
+        logger.info(f"[状态汇聚] token_usage: {len(state.get('token_usage', []))} 条")
+
+        # 返回所有累积字段（使用 operator.add 的字段）
+        # 不返回其他字段，避免覆盖
+        return {}
+
+    builder.add_node("final_state_aggregator", final_state_aggregator_node)
+
+    # Phase 4 -> 汇聚节点 -> END
+    builder.add_edge("final_summarizer", "final_state_aggregator")
+    builder.add_edge("final_state_aggregator", END)
 
     # ===== 编译图（官方模式） =====
     # 官方文档: https://docs.langchain.com/oss/python/langgraph/graph-api/#compiling-your-graph
     logger.info("[工作流图] 编译图（配置 checkpointer）")
 
+    # 添加调试信息：检查所有节点
+    logger.info(f"[工作流图] 编译前检查 - 所有节点: {builder.nodes.keys()}")
+    logger.info(f"[工作流图] 编译前检查 - 所有边: {list(builder.edges)}")
+    print(f"[工作流图] 准备编译图，节点数: {len(builder.nodes)}")  # 添加 print
+
+    print("[工作流图] 开始编译图...")
     graph = builder.compile(
         checkpointer=checkpointer,  # 持久化
         debug=False,  # 生产环境关闭 debug
     )
+    print("[工作流图] 图编译完成")  # 添加 print
 
     logger.info(f"[工作流图] 工作流图构建完成，Phase 1 包含 {len(phase1_node_names)} 个动态分析师")
+    logger.info(f"[工作流图] 编译后检查 - 图节点数: {len(graph.nodes)}")
 
     return graph
 

@@ -66,6 +66,8 @@ class TradingAgentInputState(TypedDict):
 
     # 可选配置
     max_debate_rounds: Optional[int]  # 最大辩论轮次（默认 2）
+    phase2_concurrency: Optional[int]  # Phase 2 辩论并发数（默认 1）
+    phase3_concurrency: Optional[int]  # Phase 3 风险评估并发数（默认 3）
     enable_phase1: Optional[bool]  # 启用第一阶段
     enable_phase2: Optional[bool]  # 启用第二阶段
     enable_phase3: Optional[bool]  # 启用第三阶段
@@ -117,14 +119,24 @@ class TradingAgentState(TypedDict):
     # 使用 operator.add reducer：每个节点的输出会自动追加到列表
     analyst_reports: Annotated[List[Dict[str, Any]], operator.add]
 
-    # Phase 1 完成计数（使用 max_reducer 处理并发更新）
+    # Phase 1 完成计数（使用 operator.add 累加）
     expected_analysts: int  # 预期的分析师数量
-    completed_analysts: Annotated[int, max_reducer]  # 已完成的分析师数量（并发安全）
+    completed_analysts: Annotated[int, operator.add]  # 已完成的分析师数量（累加模式）
 
     # ===== Phase 2: 辩论记录（累积模式） =====
+    # 完整报告（包含初始观点 + 所有辩论轮次）
+    bull_base_report: Optional[Dict[str, Any]]  # 看涨完整报告（覆盖模式，只保留最终版）
+    bear_base_report: Optional[Dict[str, Any]]  # 看跌完整报告（覆盖模式，只保留最终版）
+
+    # 辩论轮次快照（仅用于追溯和前端展示）
     debate_turns: Annotated[List[Dict[str, Any]], operator.add]  # 辩论轮次记录
     manager_decision: Annotated[List[Dict[str, Any]], operator.add]  # 研究经理裁决
     trade_plan: Annotated[List[Dict[str, Any]], operator.add]  # 交易计划
+
+    # Phase 2 执行状态（覆盖模式）
+    bull_initial_completed: bool  # 看涨初始报告已完成
+    bear_initial_completed: bool  # 看跌初始报告已完成
+    current_debate_round: int  # 当前辩论轮次（从 0 开始）
 
     # ===== Phase 3: 风险评估（累积模式） =====
     risk_assessments: Annotated[List[Dict[str, Any]], operator.add]  # 三派评估
@@ -210,12 +222,43 @@ def create_initial_state(
     """
     # **关键修改**: 根据 agent_config 动态计算 expected_analysts
     expected_analysts = 4  # 默认值
+
+    # **详细调试日志**
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"[create_initial_state] 开始计算 expected_analysts")
+    logger.info(f"[create_initial_state] agent_config 类型: {type(agent_config)}")
+    logger.info(f"[create_initial_state] agent_config 内容: {agent_config}")
+
     if agent_config:
-        # agent_config 是 Pydantic 对象，不是字典
-        phase1_agents = agent_config.phase1.agents if agent_config.phase1 else []
-        # 计算启用的分析师数量
-        enabled_agents = [a for a in phase1_agents if a.enabled]
-        expected_analysts = len(enabled_agents) if enabled_agents else 4
+        # 处理字典类型的配置
+        if isinstance(agent_config, dict):
+            logger.info(f"[create_initial_state] 使用字典路径处理")
+            phase1_config = agent_config.get("phase1", {})
+            logger.info(f"[create_initial_state] phase1_config: {phase1_config}")
+            phase1_agents = phase1_config.get("agents", [])
+            logger.info(f"[create_initial_state] phase1_agents (原始): {phase1_agents}")
+            # 计算启用的分析师数量
+            enabled_agents = [a for a in phase1_agents if a.get("enabled")]
+            logger.info(f"[create_initial_state] enabled_agents (过滤后): {enabled_agents}")
+            logger.info(f"[create_initial_state] enabled_agents 数量: {len(enabled_agents)}")
+            expected_analysts = len(enabled_agents) if enabled_agents else 4
+        else:
+            # Pydantic 对象
+            logger.info(f"[create_initial_state] 使用 Pydantic 对象路径处理")
+            phase1_config = agent_config.phase1 if agent_config.phase1 else None
+            logger.info(f"[create_initial_state] phase1_config: {phase1_config}")
+            phase1_agents = phase1_config.agents if phase1_config else []
+            logger.info(f"[create_initial_state] phase1_agents (原始): {phase1_agents}")
+            # 计算启用的分析师数量
+            enabled_agents = [a for a in phase1_agents if a.enabled]
+            logger.info(f"[create_initial_state] enabled_agents (过滤后): {enabled_agents}")
+            logger.info(f"[create_initial_state] enabled_agents 数量: {len(enabled_agents)}")
+            expected_analysts = len(enabled_agents) if enabled_agents else 4
+    else:
+        logger.warning(f"[create_initial_state] agent_config 为空，使用默认值 4")
+
+    logger.info(f"[create_initial_state] 最终 expected_analysts: {expected_analysts}")
 
     return {
         # 基础信息
@@ -245,9 +288,14 @@ def create_initial_state(
         "completed_analysts": 0,
 
         # Phase 2
+        "bull_base_report": None,  # 新增：看涨完整报告
+        "bear_base_report": None,  # 新增：看跌完整报告
         "debate_turns": [],
         "manager_decision": [],
         "trade_plan": [],
+        "bull_initial_completed": False,  # 新增：看涨初始报告完成状态
+        "bear_initial_completed": False,  # 新增：看跌初始报告完成状态
+        "current_debate_round": 0,  # 新增：当前辩论轮次
 
         # Phase 3
         "risk_assessments": [],

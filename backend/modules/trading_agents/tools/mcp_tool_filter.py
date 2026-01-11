@@ -333,21 +333,25 @@ class MCPToolFilter:
         Returns:
             {server_name: server_id} 字典
         """
-        is_admin = False  # TODO: 从上下文获取用户角色
-        servers_response = await self._mcp_service.list_servers(user_id, is_admin)
+        try:
+            is_admin = False  # TODO: 从上下文获取用户角色
+            servers_response = await self._mcp_service.list_servers(user_id, is_admin)
 
-        available_servers = {}
+            available_servers = {}
 
-        # 系统级服务器 + 用户自己的服务器
-        for server in servers_response.get("system", []):
-            if server.enabled and server.status.value == "available":
-                available_servers[server.name] = server.id
+            # 系统级服务器 + 用户自己的服务器
+            for server in servers_response.get("system", []):
+                if server.enabled and server.status.value == "available":
+                    available_servers[server.name] = server.id
 
-        for server in servers_response.get("user", []):
-            if server.enabled and server.status.value == "available":
-                available_servers[server.name] = server.id
+            for server in servers_response.get("user", []):
+                if server.enabled and server.status.value == "available":
+                    available_servers[server.name] = server.id
 
-        return available_servers
+            return available_servers
+        except Exception as e:
+            logger.warning(f"获取 MCP 服务器列表失败: {e}，返回空列表")
+            return {}
 
     def _find_tool_definition(
         self,

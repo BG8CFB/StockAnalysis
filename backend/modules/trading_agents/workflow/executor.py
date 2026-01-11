@@ -10,6 +10,7 @@ LangGraph 工作流执行器
 官方文档: https://docs.langchain.com/oss/python/langgraph/graph-api/#invoking-the-graph
 """
 
+import asyncio
 import logging
 from typing import Dict, Any, Optional, AsyncGenerator
 from datetime import datetime
@@ -22,7 +23,7 @@ from .state import (
     TradingAgentInputState,
     TradingAgentOutputState,
     create_initial_state,
-    TaskStatus
+    TaskStatus,
 )
 from .graph import create_trading_agent_graph
 
@@ -32,6 +33,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # 工作流执行器
 # =============================================================================
+
 
 class TradingAgentWorkflow:
     """
@@ -48,8 +50,8 @@ class TradingAgentWorkflow:
     def __init__(
         self,
         checkpointer_path: str = "data/trading_agents_checkpoints.db",
-        websocket_manager = None,
-        use_redis_checkpointer: bool = True
+        websocket_manager=None,
+        use_redis_checkpointer: bool = True,
     ):
         """
         初始化工作流执行器
@@ -69,6 +71,10 @@ class TradingAgentWorkflow:
         # 避免为每个用户都重新创建图
         self._graph_cache: Dict[str, StateGraph] = {}
 
+        # 保存最后一次使用的配置（用于 get_state）
+        self._last_agent_config = None
+        self._last_task_id = None
+
     def _get_graph(self, agent_config: Optional[Dict[str, Any]] = None) -> StateGraph:
         """
         获取或创建工作流图
@@ -76,7 +82,7 @@ class TradingAgentWorkflow:
         **重要修改**: 根据 agent_config 动态创建图，支持用户自定义 Phase 1 智能体
 
         Args:
-            agent_config: 智能体配置（从用户配置加载）
+            agent_config: 智能体配置（从用户配置加载，可以是字典或 Pydantic 对象）
 
         Returns:
             StateGraph 实例
@@ -84,12 +90,26 @@ class TradingAgentWorkflow:
         # 如果没有配置，使用默认配置
         if agent_config is None:
             from modules.trading_agents.config.loader import load_default_config
+
             agent_config = load_default_config()
 
+        # 处理字典类型的配置
+        if isinstance(agent_config, dict):
+            phase1_agents = agent_config.get("phase1", {}).get("agents", [])
+        else:
+            # Pydantic 对象
+            phase1_agents = agent_config.phase1.agents if agent_config else []
+
         # 生成配置缓存键（基于 phase1 agents 的 slug 列表）
-        # agent_config 是 Pydantic 对象，不是字典
-        phase1_agents = agent_config.phase1.agents if agent_config else []
-        config_key = ":".join(sorted([a.slug for a in phase1_agents if a.enabled]))
+        enabled_slugs = []
+        for a in phase1_agents:
+            if isinstance(a, dict):
+                if a.get("enabled"):
+                    enabled_slugs.append(a.get("slug"))
+            else:
+                if a.enabled:
+                    enabled_slugs.append(a.slug)
+        config_key = ":".join(sorted(enabled_slugs))
 
         # 检查缓存
         if config_key in self._graph_cache:
@@ -101,7 +121,7 @@ class TradingAgentWorkflow:
         graph = create_trading_agent_graph(
             checkpointer_path=self.checkpointer_path,
             use_redis_checkpointer=self.use_redis_checkpointer,
-            agent_config=agent_config
+            agent_config=agent_config,
         )
 
         # 缓存图
@@ -110,9 +130,7 @@ class TradingAgentWorkflow:
         return graph
 
     async def run(
-        self,
-        input_state: TradingAgentInputState,
-        config: Optional[Dict[str, Any]] = None
+        self, input_state: TradingAgentInputState, config: Optional[Dict[str, Any]] = None
     ) -> TradingAgentOutputState:
         """
         运行工作流
@@ -138,6 +156,10 @@ class TradingAgentWorkflow:
         # **关键修改**: 从 input_state 中获取 agent_config
         agent_config = input_state.get("agent_config")
 
+        # 保存配置供 get_state 使用
+        self._last_agent_config = agent_config
+        self._last_task_id = task_id
+
         # 获取或创建工作流图（根据用户配置）
         graph = self._get_graph(agent_config)
 
@@ -150,8 +172,8 @@ class TradingAgentWorkflow:
             "metadata": {
                 "task_id": task_id,
                 "user_id": input_state.get("user_id"),
-                "stock_code": input_state.get("stock_code")
-            }
+                "stock_code": input_state.get("stock_code"),
+            },
         }
 
         if config:
@@ -190,18 +212,51 @@ class TradingAgentWorkflow:
                 # 不使用 stream，直接 invoke（更简单）
                 logger.debug(f"[执行器] 直接 invoke（无进度推送）: {task_id}")
                 logger.debug(f"[执行器] initial_state 类型: {type(initial_state)}")
-                logger.debug(f"[执行器] initial_state keys: {initial_state.keys() if isinstance(initial_state, dict) else 'N/A'}")
+                logger.debug(
+                    f"[执行器] initial_state keys: {initial_state.keys() if isinstance(initial_state, dict) else 'N/A'}"
+                )
                 logger.debug(f"[执行器] runnable_config: {runnable_config}")
 
                 logger.info(f"[执行器] 🚀 调用 graph.ainvoke() 开始...")
-                final_state = await graph.ainvoke(initial_state, runnable_config)
-                logger.info(f"[执行器] ✅ graph.ainvoke() 完成，返回状态类型: {type(final_state)}")
+                try:
+                    final_state = await asyncio.wait_for(
+                        graph.ainvoke(initial_state, runnable_config),
+                        timeout=1800  # 30分钟超时
+                    )
+                    logger.info(f"[执行器] ✅ graph.ainvoke() 完成，返回状态类型: {type(final_state)}")
+                except asyncio.TimeoutError:
+                    logger.error(f"[执行器] ❌ graph.ainvoke() 超时（10分钟）")
+                    raise TimeoutError("工作流执行超时")
 
-                logger.info(f"[执行器] 🔄 提取输出状态...")
-                output_state = self._extract_output_from_state(final_state)
-                logger.info(f"[执行器] ✅ 输出状态提取完成: {list(output_state.keys())}")
+                # 详细日志：检查所有状态字段
+                logger.info(f"[执行器] ===== 完整状态检查 =====")
+                logger.info(f"[执行器] final_state 所有字段: {list(final_state.keys()) if isinstance(final_state, dict) else 'Not a dict'}")
 
-            logger.info(f"[执行器] 任务完成: {task_id}, 状态: {output_state.get('status')}")
+                # **关键修复**：ainvoke 返回的状态不完整，需要使用 aget_state 获取完整状态
+                logger.info(f"[执行器] 使用 aget_state 获取完整状态...")
+                state_snapshot = await graph.aget_state(runnable_config)
+
+                if state_snapshot and hasattr(state_snapshot, 'values'):
+                    # StateSnapshot.values 是一个属性
+                    output_state = state_snapshot.values if isinstance(state_snapshot.values, dict) else dict(state_snapshot.values)
+                    logger.info(f"[执行器] 从 StateSnapshot 提取状态，字段数: {len(output_state)}")
+                else:
+                    logger.warning(f"[执行器] aget_state 返回 None 或无 values，使用 ainvoke 返回值")
+                    output_state = final_state
+
+                logger.info(f"[执行器] 最终状态字段: {list(output_state.keys())}")
+
+                # 检查关键累积字段
+                for field in ['analyst_reports', 'token_usage', 'completed_analysts', 'debate_turns', 'risk_assessments']:
+                    value = output_state.get(field, 'MISSING')
+                    if isinstance(value, list):
+                        logger.info(f"[执行器] {field}: {len(value)} 条")
+                    else:
+                        logger.info(f"[执行器] {field}: {value}")
+
+                logger.info(f"[执行器] ===== 状态检查结束 =====")
+
+            logger.info(f"[执行器] 任务完成: {task_id}")
 
             return output_state
 
@@ -210,13 +265,12 @@ class TradingAgentWorkflow:
             logger.error(f"[执行器] 错误类型: {type(e).__name__}")
             logger.error(f"[执行器] 错误信息: {str(e)}")
             import traceback
+
             logger.error(f"[执行器] 堆栈跟踪:\n{traceback.format_exc()}")
             raise
 
     async def stream(
-        self,
-        input_state: TradingAgentInputState,
-        config: Optional[Dict[str, Any]] = None
+        self, input_state: TradingAgentInputState, config: Optional[Dict[str, Any]] = None
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         流式执行工作流（生成器模式）
@@ -235,14 +289,12 @@ class TradingAgentWorkflow:
 
         # 准备运行时配置
         runnable_config = {
-            "configurable": {
-                "thread_id": task_id
-            },
+            "configurable": {"thread_id": task_id},
             "metadata": {
                 "task_id": task_id,
                 "user_id": input_state.get("user_id"),
-                "stock_code": input_state.get("stock_code")
-            }
+                "stock_code": input_state.get("stock_code"),
+            },
         }
 
         if config:
@@ -263,9 +315,7 @@ class TradingAgentWorkflow:
             raise
 
     async def resume(
-        self,
-        task_id: str,
-        config: Optional[Dict[str, Any]] = None
+        self, task_id: str, config: Optional[Dict[str, Any]] = None
     ) -> TradingAgentOutputState:
         """
         从检查点恢复执行（官方模式）
@@ -286,11 +336,7 @@ class TradingAgentWorkflow:
         logger.info(f"[执行器] 从检查点恢复任务: {task_id}")
 
         # 准备运行时配置
-        runnable_config = {
-            "configurable": {
-                "thread_id": task_id
-            }
-        }
+        runnable_config = {"configurable": {"thread_id": task_id}}
 
         if config:
             runnable_config.update(config)
@@ -310,9 +356,7 @@ class TradingAgentWorkflow:
             raise
 
     async def get_state(
-        self,
-        task_id: str,
-        config: Optional[Dict[str, Any]] = None
+        self, task_id: str, config: Optional[Dict[str, Any]] = None
     ) -> Optional[TradingAgentState]:
         """
         获取任务的当前状态（不从检查点恢复，只查询）
@@ -326,28 +370,23 @@ class TradingAgentWorkflow:
         """
         logger.debug(f"[执行器] 查询任务状态: {task_id}")
 
-        runnable_config = {
-            "configurable": {
-                "thread_id": task_id
-            }
-        }
+        # 使用最后一次使用的 agent_config 获取 graph
+        graph = self._get_graph(self._last_agent_config)
+
+        runnable_config = {"configurable": {"thread_id": task_id}}
 
         if config:
             runnable_config.update(config)
 
         try:
-            state_snapshot = await self.graph.aget_state(runnable_config)
+            state_snapshot = await graph.aget_state(runnable_config)
             return state_snapshot.values if state_snapshot else None
 
         except Exception as e:
             logger.warning(f"[执行器] 查询任务状态失败: {task_id}, 错误: {e}")
             return None
 
-    async def cancel(
-        self,
-        task_id: str,
-        config: Optional[Dict[str, Any]] = None
-    ) -> bool:
+    async def cancel(self, task_id: str, config: Optional[Dict[str, Any]] = None) -> bool:
         """
         取消正在运行的任务
 
@@ -365,11 +404,7 @@ class TradingAgentWorkflow:
         # 这里我们通过更新状态来实现
 
         try:
-            runnable_config = {
-                "configurable": {
-                    "thread_id": task_id
-                }
-            }
+            runnable_config = {"configurable": {"thread_id": task_id}}
 
             if config:
                 runnable_config.update(config)
@@ -404,8 +439,7 @@ class TradingAgentWorkflow:
     # =============================================================================
 
     def _convert_input_to_internal_state(
-        self,
-        input_state: TradingAgentInputState
+        self, input_state: TradingAgentInputState
     ) -> TradingAgentState:
         """
         转换输入状态为内部状态
@@ -423,6 +457,8 @@ class TradingAgentWorkflow:
             stock_code=input_state.get("stock_code", ""),
             trade_date=input_state.get("trade_date", ""),
             max_debate_rounds=input_state.get("max_debate_rounds", 2),
+            phase2_concurrency=input_state.get("phase2_concurrency", 1),
+            phase3_concurrency=input_state.get("phase3_concurrency", 3),
             enable_phase1=input_state.get("enable_phase1", True),
             enable_phase2=input_state.get("enable_phase2", True),
             enable_phase3=input_state.get("enable_phase3", True),
@@ -431,10 +467,7 @@ class TradingAgentWorkflow:
             agent_config=input_state.get("agent_config"),
         )
 
-    def _extract_output_from_state(
-        self,
-        state: TradingAgentState
-    ) -> TradingAgentOutputState:
+    def _extract_output_from_state(self, state: TradingAgentState) -> TradingAgentOutputState:
         """
         从内部状态提取输出状态
 
@@ -468,10 +501,7 @@ class TradingAgentWorkflow:
         }
 
     async def _broadcast_progress(
-        self,
-        task_id: str,
-        node_name: str,
-        state_update: Dict[str, Any]
+        self, task_id: str, node_name: str, state_update: Dict[str, Any]
     ) -> None:
         """
         广播进度到 WebSocket
@@ -496,13 +526,23 @@ class TradingAgentWorkflow:
 
             # 添加特定节点的信息
             if "analyst_reports" in state_update:
-                progress_data["analyst_reports_count"] = len(state_update.get("analyst_reports", []))
+                progress_data["analyst_reports_count"] = len(
+                    state_update.get("analyst_reports", [])
+                )
             if "debate_turns" in state_update:
                 progress_data["debate_round"] = len(state_update.get("debate_turns", []))
             if "risk_assessments" in state_update:
-                progress_data["risk_assessments_count"] = len(state_update.get("risk_assessments", []))
+                progress_data["risk_assessments_count"] = len(
+                    state_update.get("risk_assessments", [])
+                )
             if "final_report" in state_update:
                 progress_data["final_report_ready"] = True
+
+            # ===== 新增：推送 agent_messages =====
+            # 从 state_update 中获取 agent_messages
+            agent_messages = state_update.get("agent_messages", [])
+            if agent_messages:
+                progress_data["agent_messages"] = agent_messages[-5:]  # 只推送最近 5 条消息
 
             # 广播到前端
             await self.websocket_manager.broadcast(progress_data)
@@ -517,9 +557,9 @@ class TradingAgentWorkflow:
 # 工厂函数
 # =============================================================================
 
+
 def create_workflow_executor(
-    checkpointer_path: str = "data/trading_agents_checkpoints.db",
-    websocket_manager = None
+    checkpointer_path: str = "data/trading_agents_checkpoints.db", websocket_manager=None
 ) -> TradingAgentWorkflow:
     """
     创建工作流执行器
@@ -532,6 +572,5 @@ def create_workflow_executor(
         TradingAgentWorkflow 实例
     """
     return TradingAgentWorkflow(
-        checkpointer_path=checkpointer_path,
-        websocket_manager=websocket_manager
+        checkpointer_path=checkpointer_path, websocket_manager=websocket_manager
     )
