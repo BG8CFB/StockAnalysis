@@ -1,5 +1,9 @@
 {
-  "includeCoAuthoredBy": false,
+  "enabledPlugins": {
+    "glm-plan-usage@zai-coding-plugins": true,
+    "glm-plan-bug@zai-coding-plugins": true
+  },
+  "alwaysThinkingEnabled": true,
   "permissions": {
     "allow": [
       "Bash",
@@ -16,7 +20,6 @@
       "mcp__zread__*",
       "mcp__milk_tea_server__*",
       "mcp__zai-mcp-server__*",
-      "Web Search",
       "Bash(cd:*)",
       "Bash(npm:*)",
       "Bash(setx:*)",
@@ -25,14 +28,12 @@
       "Bash(timeout:*)",
       "Bash(rm:*)",
       "Bash(ls:*)",
-      "SlashCommand(/commit)"
+      "SlashCommand(/commit)",
+      "Bash(git:*)",
+      "Bash(mkdir:*)"
     ],
     "deny": [],
     "ask": []
   },
-  "enabledPlugins": {
-    "glm-plan-usage@zai-coding-plugins": true,
-    "glm-plan-bug@zai-coding-plugins": true
-  },
-  "alwaysThinkingEnabled": true
+  "includeCoAuthoredBy": false
 }

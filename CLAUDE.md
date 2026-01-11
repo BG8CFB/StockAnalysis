@@ -223,6 +223,142 @@ TradingAgents 智能体通过调用工具模块获取市场数据：
 
 ---
 
+## 市场数据模块
+
+A股市场数据接入模块，支持从多个数据源获取并存储股票相关数据。
+
+### 数据源支持
+
+| 数据源 | 类型 | 特点 | 主要数据类型 |
+|--------|------|------|--------------|
+| TuShare | API Token | 数据全面、官方接口稳定 | 股票列表、行情、财务、公司信息、宏观经济 |
+| AkShare | 免费API | 无需Token、数据丰富 | 股票列表、行情、财务、SHIBOR、PMI |
+
+### 模块架构
+
+```
+modules/market_data/
+├── api.py                    # API 路由接口
+├── models/                   # 数据模型
+│   ├── __init__.py          # 统一导出
+│   ├── datasource.py         # 数据源相关模型
+│   ├── sync_task.py         # 同步任务模型
+│   └── watchlist.py         # 自选股模型
+├── repositories/             # 数据存储层
+│   ├── base.py             # Repository 基类
+│   ├── datasource.py        # 数据源配置和状态
+│   ├── stock_info.py       # 股票信息
+│   ├── stock_quotes.py      # 行情数据
+│   ├── stock_financial.py  # 财务数据和指标
+│   ├── stock_company.py    # 公司信息
+│   └── macro_economic.py  # 宏观经济数据
+├── services/               # 业务服务层
+│   ├── data_sync_service.py      # 数据同步服务
+│   └── source_monitor_service.py # 数据源状态监控
+├── sources/               # 数据源适配器
+│   └── a_stock/
+│       ├── base.py       # 适配器基类
+│       ├── tushare_adapter.py     # TuShare 适配器
+│       └── akshare_adapter.py     # AkShare 适配器
+├── tools/                 # 工具类
+│   ├── field_mapper.py     # 字段映射转换工具
+│   └── __init__.py
+└── managers/              # 管理器
+    └── source_router.py    # 数据源路由器
+```
+
+### 核心功能
+
+**1. 数据同步服务**
+- 支持同步股票列表、日线行情、分钟K线、财务数据、公司信息、宏观经济数据
+- 双通道数据流：直接返回 + 限速数据库写入
+- 自动失败处理和数据源状态更新
+
+**2. 数据源状态监控**
+- 健康状态：healthy（健康）、degraded（降级）、unavailable（不可用）、standby（待命）
+- 自动健康检查和状态变更记录
+- 失败计数和自动降级机制
+- 历史事件查询和错误统计
+
+**3. 字段映射系统**
+- `FieldMapper` 基类：通用字段标准化工具
+- `TuShareFieldMapper`：TuShare 字段到统一字段映射
+- `AkShareFieldMapper`：AkShare 字段到统一字段映射
+
+### API 接口
+
+**数据同步接口**：
+- POST `/api/market-data/sync/stock-list` - 同步股票列表
+- POST `/api/market-data/sync/daily-quotes` - 同步日线行情
+- POST `/api/market-data/sync/minute-quotes` - 同步分钟K线
+- POST `/api/market-data/sync/financials` - 同步财务数据
+- POST `/api/market-data/sync/company-info` - 同步公司信息
+- POST `/api/market-data/sync/macro-economic` - 同步宏观经济数据
+
+**健康检查接口**：
+- POST `/api/market-data/health/check` - 检查单个数据源健康状态
+- POST `/api/market-data/health/check-all` - 检查所有数据源健康状态
+
+**状态监控接口**：
+- GET `/api/market-data/monitor/status-summary` - 获取状态汇总
+- GET `/api/market-data/monitor/source-status/{source_id}` - 获取指定数据源状态
+- GET `/api/market-data/monitor/recent-events` - 获取最近事件
+- GET `/api/market-data/monitor/source-history/{source_id}` - 获取数据源历史
+- GET `/api/market-data/monitor/error-statistics` - 获取错误统计
+
+**数据源配置接口**：
+- GET `/api/market-data/sources/configs` - 获取数据源配置列表
+- GET `/api/market-data/sources/config/{source_id}` - 获取单个数据源配置
+
+### 数据库表结构
+
+| 表名 | 用途 | 主要字段 |
+|------|------|---------|
+| stock_info | 股票基础信息 | symbol, market, name, industry, listing_date |
+| stock_quotes | 日线行情数据 | symbol, trade_date, open, high, low, close, volume |
+| stock_financials | 财务报表数据 | symbol, report_date, income_statement, balance_sheet |
+| stock_financial_indicators | 财务指标数据 | symbol, report_date, roe, roa, eps |
+| stock_companies | 公司详细信息 | symbol, company_name, business, contact |
+| macro_economic | 宏观经济数据 | indicator, period, value, yoy |
+| system_data_sources | 系统数据源配置 | source_id, market, config, enabled |
+| user_data_sources | 用户数据源配置 | user_id, source_id, market, config |
+| data_source_status | 数据源健康状态 | market, data_type, source_id, status |
+| data_source_status_history | 状态变更历史 | source_id, event_type, from_status, to_status |
+
+### 测试脚本
+
+完整的测试脚本位于 [`backend/test_market_data_comprehensive.py`](backend/test_market_data_comprehensive.py)，包含：
+- 数据源配置 Repository 测试
+- 数据源状态 Repository 测试
+- 股票信息 Repository 测试
+- 股票行情 Repository 测试
+- 财务数据 Repository 测试
+- 公司信息 Repository 测试
+- 宏观经济数据 Repository 测试
+- 数据同步服务测试
+- 数据源状态监控服务测试
+
+运行测试：
+```bash
+cd backend
+python test_market_data_comprehensive.py
+```
+
+### 配置说明
+
+数据源配置需要在 `system_data_sources` 表中创建：
+- TuShare 需要配置 `api_token`
+- AkShare 无需配置 Token
+
+### 注意事项
+
+1. **数据保留策略**：自选股的日线和分钟数据保留1周
+2. **限流机制**：Token 限流、并发控制、失败重试
+3. **数据源优先级**：按配置的 priority 顺序使用，自动降级到备用源
+4. **字段标准化**：所有数据源数据经过 field_mapper 统一转换
+
+---
+
 ## MCP 模块
 
 MCP (Model Context Protocol) 模块负责管理与 MCP 服务器的连接和工具调用。
