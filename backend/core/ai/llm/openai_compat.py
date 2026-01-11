@@ -64,7 +64,12 @@ class OpenAICompatProvider(LLMProvider):
             self._client = httpx.AsyncClient(
                 base_url=self.api_base_url,
                 headers=headers,
-                timeout=self.timeout_seconds,
+                timeout=httpx.Timeout(
+                    connect=30.0,
+                    read=300.0,  # 5分钟读超时
+                    write=30.0,
+                    pool=30.0,
+                ),
             )
         return self._client
 

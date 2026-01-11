@@ -1,130 +1,125 @@
 """
-核心配置管理
-使用 Pydantic Settings 进行类型安全的配置管理
+应用配置
+
+从环境变量加载配置
 """
-from functools import lru_cache
-from typing import Literal
+import os
+from pathlib import Path
+from typing import Optional
 
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+# 加载 .env 文件
+from dotenv import load_dotenv
+load_dotenv()
 
+# 项目根目录
+BASE_DIR = Path(__file__).resolve().parent.parent
 
-class Settings(BaseSettings):
-    """应用配置"""
+# 数据库配置
+MONGODB_URL: str = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+DATABASE_NAME: str = os.getenv("DATABASE_NAME", "stock_analysis")
+MONGODB_DATABASE: str = DATABASE_NAME  # 别名
+MONGODB_MAX_POOL_SIZE: int = int(os.getenv("MONGODB_MAX_POOL_SIZE", "100"))
+MONGODB_MIN_POOL_SIZE: int = int(os.getenv("MONGODB_MIN_POOL_SIZE", "10"))
+MONGODB_SERVER_SELECTION_TIMEOUT_MS: int = int(os.getenv("MONGODB_SERVER_SELECTION_TIMEOUT_MS", "30000"))
+MONGODB_SOCKET_TIMEOUT_MS: int = int(os.getenv("MONGODB_SOCKET_TIMEOUT_MS", "60000"))
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="ignore",
-    )
+# Redis配置
+REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
-    # 应用基础配置
-    APP_NAME: str = "股票分析平台"
-    APP_VERSION: str = "0.1.0"
-    DEBUG: bool = False
-    ENVIRONMENT: Literal["development", "production", "testing"] = "development"
+# JWT配置
+SECRET_KEY: str = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
+ALGORITHM: str = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 
-    # API 配置
-    API_V1_PREFIX: str = "/api"
-    HOST: str = "0.0.0.0"
-    PORT: int = 8000
+# 密码安全
+PASSWORD_MIN_LENGTH: int = int(os.getenv("PASSWORD_MIN_LENGTH", "8"))
+BCRYPT_ROUNDS: int = int(os.getenv("BCRYPT_ROUNDS", "12"))
 
-    # CORS 配置 - 接受字符串或列表类型
-    CORS_ORIGINS: str | list[str] = "http://localhost:5173,http://localhost:3000"
-    CORS_ALLOW_CREDENTIALS: bool = True
-    CORS_ALLOW_METHODS: list[str] = ["*"]
-    CORS_ALLOW_HEADERS: list[str] = ["*"]
+# CORS配置
+CORS_ORIGINS: list = os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
 
-    # JWT 配置
-    SECRET_KEY: str = Field(
-        default="your-super-secret-key-change-in-production-min-32-chars"
-    )
-    ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+# API配置
+API_ENCRYPTION_KEY: Optional[str] = os.getenv("API_ENCRYPTION_KEY")
 
-    # MongoDB 配置
-    MONGODB_URL: str = "mongodb://localhost:27017"
-    MONGODB_DATABASE: str = "stock_analysis"
-    MONGODB_MAX_POOL_SIZE: int = 10
-    MONGODB_MIN_POOL_SIZE: int = 1
-    MONGODB_MAX_IDLE_TIME_MS: int = 10000
-    MONGODB_SERVER_SELECTION_TIMEOUT_MS: int = 30000  # 增加到 30 秒
-    MONGODB_SOCKET_TIMEOUT_MS: int = 60000  # 增加到 60 秒
+# 市场数据源配置
+TUSHARE_TOKEN: Optional[str] = os.getenv("TUSHARE_TOKEN")
 
-    # Redis 配置
-    REDIS_URL: str = "redis://localhost:6379/0"
-    REDIS_MAX_CONNECTIONS: int = 50  # 增加连接池大小
-    REDIS_SOCKET_TIMEOUT: int = 10  # 增加超时时间到 10 秒
-    REDIS_SOCKET_CONNECT_TIMEOUT: int = 10  # 增加连接超时到 10 秒
+# 用户审批
+REQUIRE_APPROVAL: bool = os.getenv("REQUIRE_APPROVAL", "false").lower() == "true"
 
-    # 安全配置
-    PASSWORD_MIN_LENGTH: int = 8
-    BCRYPT_ROUNDS: int = 12
+# 日志配置
+LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 
-    # 限流配置
-    RATE_LIMIT_ENABLED: bool = True
-    RATE_LIMIT_REQUESTS: int = 100
-    RATE_LIMIT_PERIOD_SECONDS: int = 60
+# 测试配置
+TESTING: bool = os.getenv("TESTING", "false").lower() == "true"
 
-    # 登录安全配置
-    LOGIN_MAX_ATTEMPTS: int = 5  # 最大失败次数
-    LOGIN_BLOCK_DURATION: int = 1800  # 封禁时长（秒）30分钟
-    LOGIN_FAIL_WINDOW: int = 300  # 失败计数窗口（秒）5分钟
+# 应用配置
+APP_NAME: str = os.getenv("APP_NAME", "StockAnalysis")
+APP_VERSION: str = os.getenv("APP_VERSION", "0.1.0")
+DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
+HOST: str = os.getenv("HOST", "0.0.0.0")
+PORT: int = int(os.getenv("PORT", "8000"))
 
-    # IP 信任配置
-    IP_TRUST_THRESHOLD: int = 5  # 成功登录次数阈值
-    IP_TRUST_EXPIRE_DAYS: int = 30  # 信任记录过期天数
-
-    # 图形验证码配置
-    CAPTCHA_ENABLED: bool = True
-    CAPTCHA_EXPIRE_SECONDS: int = 300  # 验证码过期时间（秒）
-    CAPTCHA_TOLERANCE: int = 5  # 滑动误差范围（像素）
-    CAPTCHA_RATE_LIMIT: int = 10  # 生成频率限制（次/分钟）
-
-    # 邮箱验证码配置
-    EMAIL_CODE_ENABLED: bool = False  # 是否启用邮箱验证
-    EMAIL_CODE_LENGTH: int = 6  # 验证码长度
-    EMAIL_CODE_EXPIRE_SECONDS: int = 300  # 验证码过期时间（秒）
-    EMAIL_CODE_COOLDOWN: int = 60  # 发送冷却时间（秒）
-    EMAIL_CODE_RATE_LIMIT: int = 1  # 发送频率限制（次/分钟）
-
-    # 注册安全配置
-    REGISTER_MAX_ATTEMPTS: int = 3  # 每小时最大注册次数（按IP）
-    REGISTER_WINDOW_SECONDS: int = 3600  # 注册计数窗口（秒）
-
-    # 用户审核配置
-    REQUIRE_APPROVAL: bool = True  # 是否需要管理员审核新注册用户
-
-    @property
-    def cors_origins_list(self) -> list[str]:
-        """获取 CORS origins 列表"""
-        if isinstance(self.CORS_ORIGINS, str):
-            return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
-        return self.CORS_ORIGINS
-
-    @property
-    def is_development(self) -> bool:
-        """是否为开发环境"""
-        return self.ENVIRONMENT == "development"
-
-    @property
-    def is_production(self) -> bool:
-        """是否为生产环境"""
-        return self.ENVIRONMENT == "production"
-
-    @property
-    def is_testing(self) -> bool:
-        """是否为测试环境"""
-        return self.ENVIRONMENT == "testing"
+# CORS 详细配置
+CORS_ALLOW_CREDENTIALS: bool = os.getenv("CORS_ALLOW_CREDENTIALS", "true").lower() == "true"
+CORS_ALLOW_METHODS: list = os.getenv("CORS_ALLOW_METHODS", "[\"*\"]").split(",") if os.getenv("CORS_ALLOW_METHODS") else ["*"]
+CORS_ALLOW_HEADERS: list = os.getenv("CORS_ALLOW_HEADERS", "[\"*\"]").split(",") if os.getenv("CORS_ALLOW_HEADERS") else ["*"]
 
 
-@lru_cache()
-def get_settings() -> Settings:
-    """获取配置单例"""
-    return Settings()
+class Settings:
+    """设置类（兼容旧代码）"""
+
+    # 密码
+    PASSWORD_MIN_LENGTH: int = PASSWORD_MIN_LENGTH
+    BCRYPT_ROUNDS: int = BCRYPT_ROUNDS
+
+    # JWT
+    SECRET_KEY: str = SECRET_KEY
+    ALGORITHM: str = ALGORITHM
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = ACCESS_TOKEN_EXPIRE_MINUTES
+
+    # 数据库
+    MONGODB_URL: str = MONGODB_URL
+    DATABASE_NAME: str = DATABASE_NAME
+    MONGODB_DATABASE: str = MONGODB_DATABASE
+    MONGODB_MAX_POOL_SIZE: int = MONGODB_MAX_POOL_SIZE
+    MONGODB_MIN_POOL_SIZE: int = MONGODB_MIN_POOL_SIZE
+    MONGODB_SERVER_SELECTION_TIMEOUT_MS: int = MONGODB_SERVER_SELECTION_TIMEOUT_MS
+    MONGODB_SOCKET_TIMEOUT_MS: int = MONGODB_SOCKET_TIMEOUT_MS
+
+    # Redis
+    REDIS_URL: str = REDIS_URL
+
+    # CORS
+    CORS_ORIGINS: list = CORS_ORIGINS
+
+    # API
+    API_ENCRYPTION_KEY: Optional[str] = API_ENCRYPTION_KEY
+
+    # 市场数据源
+    TUSHARE_TOKEN: Optional[str] = TUSHARE_TOKEN
+
+    # 用户审批
+    REQUIRE_APPROVAL: bool = REQUIRE_APPROVAL
+
+    # 日志
+    LOG_LEVEL: str = LOG_LEVEL
+
+    # 测试
+    TESTING: bool = TESTING
+
+    # 应用配置
+    APP_NAME: str = APP_NAME
+    APP_VERSION: str = APP_VERSION
+    DEBUG: bool = DEBUG
+    HOST: str = HOST
+    PORT: int = PORT
+
+    # CORS 详细配置
+    CORS_ALLOW_CREDENTIALS: bool = CORS_ALLOW_CREDENTIALS
+    CORS_ALLOW_METHODS: list = CORS_ALLOW_METHODS
+    CORS_ALLOW_HEADERS: list = CORS_ALLOW_HEADERS
 
 
-# 全局配置实例
-settings = get_settings()
+# 全局设置实例
+settings = Settings()

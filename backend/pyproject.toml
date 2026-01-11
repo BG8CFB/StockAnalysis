@@ -30,6 +30,10 @@ langgraph = "^0.2.0"
 langchain-mcp-adapters = {git = "https://github.com/langchain-ai/langchain-mcp-adapters.git", branch = "master"}
 # MCP SDK 最新版本
 mcp = ">=1.9.2,<2.0.0"
+# 市场数据源
+tushare = "^1.2.60"
+akshare = "^1.12.0"
+pandas = "^2.0.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.0"

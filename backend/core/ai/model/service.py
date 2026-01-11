@@ -39,7 +39,7 @@ class AIModelService:
     提供模型的创建、更新、删除、查询和测试功能。
     """
 
-    COLLECTION_NAME = "ai_models"
+    COLLECTION_NAME = "ai_model_configs"
 
     def __init__(self):
         """初始化服务"""
@@ -148,9 +148,8 @@ class AIModelService:
             return None
 
         # 权限检查
-        if not is_admin and doc.get("is_system") and doc.get("owner_id") != user_id:
-            return None
-
+        # 系统模型对所有用户可见（is_system=True 的模型）
+        # 用户私有模型只能被所有者访问
         if not is_admin and not doc.get("is_system") and doc.get("owner_id") != user_id:
             return None
 
