@@ -46,6 +46,25 @@ const moduleRoutes: RouteRecordRaw[] = [
     component: () => import('@modules/ask_stock/views/AskStockView.vue'),
     meta: { requiresAuth: true, title: 'AI 问股' },
   },
+  // 市场数据模块
+  {
+    path: '/market-data/stocks',
+    name: 'MarketDataStocks',
+    component: () => import('@modules/market_data/views/StockListView.vue'),
+    meta: { requiresAuth: true, title: '股票列表' },
+  },
+  {
+    path: '/market-data/quotes',
+    name: 'MarketDataQuotes',
+    component: () => import('@modules/market_data/views/QuoteDetailView.vue'),
+    meta: { requiresAuth: true, title: '行情数据' },
+  },
+  {
+    path: '/market-data/health',
+    name: 'MarketDataHealth',
+    component: () => import('@modules/market_data/views/DataSourceHealthView.vue'),
+    meta: { requiresAuth: true, title: '数据源监控' },
+  },
   // TradingAgents 分析模块
   {
     path: '/trading-agents/analysis/single',
