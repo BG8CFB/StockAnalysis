@@ -17,7 +17,7 @@ from core.user.models import UserModel
 from core.auth.rbac import Role
 from core.db.mongodb import mongodb
 # 修复循环导入：从本地模块导入
-from modules.trading_agents.core.background_tasks_local import create_analysis_task_background
+from core.background_tasks import create_analysis_task_background
 from core.settings.services.user_service import get_user_settings_service
 from core.admin.audit_logger import get_audit_logger
 

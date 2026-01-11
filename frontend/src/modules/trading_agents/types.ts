@@ -337,6 +337,7 @@ export interface Stage1Config {
 export interface DebateConfig {
   enabled: boolean
   rounds: number  // 辩论轮数 1-10
+  concurrency: number  // 并发数（1=串行，2=并行）
 }
 
 // 第二阶段配置
@@ -349,6 +350,7 @@ export interface Stage2Config {
 export interface Stage3Config {
   enabled: boolean
   debate: DebateConfig
+  concurrency: number  // 风险评估并发数（1=串行，2=激进和保守一起，3=全部一起）
 }
 
 // 第四阶段配置（强制启用）

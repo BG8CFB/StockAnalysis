@@ -16,6 +16,7 @@
       "mcp__zread__*",
       "mcp__milk_tea_server__*",
       "mcp__zai-mcp-server__*",
+      "Web Search",
       "Bash(cd:*)",
       "Bash(npm:*)",
       "Bash(setx:*)",

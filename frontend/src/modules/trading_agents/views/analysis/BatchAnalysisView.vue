@@ -746,6 +746,7 @@ const stagesConfig = reactive<AnalysisStagesConfig>({
     debate: {
       enabled: true,
       rounds: 3, // 默认 3 轮，稍后会被覆盖
+      concurrency: 1, // 默认串行
     },
   },
   stage3: {
@@ -753,7 +754,9 @@ const stagesConfig = reactive<AnalysisStagesConfig>({
     debate: {
       enabled: false,
       rounds: 3, // 默认 3 轮，稍后会被覆盖
+      concurrency: 1, // 默认串行
     },
+    concurrency: 3, // 默认全部一起
   },
   stage4: {
     enabled: true, // 强制启用

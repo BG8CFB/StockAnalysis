@@ -32,11 +32,17 @@ class EventType(str, Enum):
     # 阶段相关
     PHASE_STARTED = "phase_started"
     PHASE_COMPLETED = "phase_completed"
+    PHASE_AGENTS = "phase_agents"  # 阶段智能体列表
+
+    # 并发组相关
+    CONCURRENT_GROUP_STARTED = "concurrent_group_started"
+    CONCURRENT_GROUP_COMPLETED = "concurrent_group_completed"
 
     # 智能体相关
     AGENT_STARTED = "agent_started"
     AGENT_COMPLETED = "agent_completed"
     AGENT_FAILED = "agent_failed"
+    AGENT_MESSAGE = "agent_message"  # 智能体消息（思考过程）
 
     # 工具相关
     TOOL_CALLED = "tool_called"
@@ -94,6 +100,64 @@ class PhaseStartedEvent(TaskEvent):
 
 
 @dataclass
+class PhaseAgentsEvent(TaskEvent):
+    """阶段智能体列表事件"""
+    phase: int = 0
+    phase_name: str = ""
+    execution_mode: str = "serial"  # "serial" 或 "concurrent"
+    max_concurrency: int = 1
+    concurrent_group: str = ""
+    agents: List[Dict[str, Any]] = field(default_factory=list)
+
+    def __post_init__(self):
+        self.event_type = EventType.PHASE_AGENTS
+        self.data = {
+            "phase": self.phase,
+            "phase_name": self.phase_name,
+            "execution_mode": self.execution_mode,
+            "max_concurrency": self.max_concurrency,
+            "concurrent_group": self.concurrent_group,
+            "agents": self.agents,
+        }
+
+
+@dataclass
+class ConcurrentGroupStartedEvent(TaskEvent):
+    """并发组开始事件"""
+    group_id: str = ""
+    phase: int = 0
+    agents: List[str] = field(default_factory=list)
+    max_concurrency: int = 1
+    estimated_duration_sec: int = 0
+
+    def __post_init__(self):
+        self.event_type = EventType.CONCURRENT_GROUP_STARTED
+        self.data = {
+            "group_id": self.group_id,
+            "phase": self.phase,
+            "agents": self.agents,
+            "max_concurrency": self.max_concurrency,
+            "estimated_duration_sec": self.estimated_duration_sec,
+        }
+
+
+@dataclass
+class ConcurrentGroupCompletedEvent(TaskEvent):
+    """并发组完成事件"""
+    group_id: str = ""
+    phase: int = 0
+    total_agents: int = 0
+
+    def __post_init__(self):
+        self.event_type = EventType.CONCURRENT_GROUP_COMPLETED
+        self.data = {
+            "group_id": self.group_id,
+            "phase": self.phase,
+            "total_agents": self.total_agents,
+        }
+
+
+@dataclass
 class AgentStartedEvent(TaskEvent):
     """智能体开始事件"""
     agent_slug: str = ""
@@ -122,6 +186,24 @@ class AgentCompletedEvent(TaskEvent):
             "token_usage": self.token_usage,
         }
 
+@dataclass
+class AgentMessageEvent(TaskEvent):
+    """智能体消息事件（思考过程）"""
+    agent_slug: str = ""
+    agent_name: str = ""
+    message_type: str = "thinking"  # thinking, reasoning, final
+    content: str = ""
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self):
+        self.event_type = EventType.AGENT_MESSAGE
+        self.data = {
+            "agent_slug": self.agent_slug,
+            "agent_name": self.agent_name,
+            "message_type": self.message_type,
+            "content": self.content,
+            "metadata": self.metadata,
+        }
 
 @dataclass
 class ToolCalledEvent(TaskEvent):
@@ -295,6 +377,61 @@ def create_phase_started_event(
     )
 
 
+def create_phase_agents_event(
+    task_id: str,
+    phase: int,
+    phase_name: str,
+    execution_mode: str,
+    max_concurrency: int,
+    concurrent_group: str = "",
+    agents: Optional[List[Dict[str, Any]]] = None
+) -> PhaseAgentsEvent:
+    """创建阶段智能体列表事件"""
+    return PhaseAgentsEvent(
+        task_id=task_id,
+        phase=phase,
+        phase_name=phase_name,
+        execution_mode=execution_mode,
+        max_concurrency=max_concurrency,
+        concurrent_group=concurrent_group,
+        agents=agents or []
+    )
+
+
+def create_concurrent_group_started_event(
+    task_id: str,
+    group_id: str,
+    phase: int,
+    agents: List[str],
+    max_concurrency: int,
+    estimated_duration_sec: int = 0
+) -> ConcurrentGroupStartedEvent:
+    """创建并发组开始事件"""
+    return ConcurrentGroupStartedEvent(
+        task_id=task_id,
+        group_id=group_id,
+        phase=phase,
+        agents=agents,
+        max_concurrency=max_concurrency,
+        estimated_duration_sec=estimated_duration_sec
+    )
+
+
+def create_concurrent_group_completed_event(
+    task_id: str,
+    group_id: str,
+    phase: int,
+    total_agents: int
+) -> ConcurrentGroupCompletedEvent:
+    """创建并发组完成事件"""
+    return ConcurrentGroupCompletedEvent(
+        task_id=task_id,
+        group_id=group_id,
+        phase=phase,
+        total_agents=total_agents
+    )
+
+
 def create_agent_started_event(
     task_id: str,
     agent_slug: str,
@@ -320,6 +457,25 @@ def create_agent_completed_event(
         agent_slug=agent_slug,
         agent_name=agent_name,
         token_usage=token_usage
+    )
+
+
+def create_agent_message_event(
+    task_id: str,
+    agent_slug: str,
+    agent_name: str,
+    message_type: str = "thinking",
+    content: str = "",
+    metadata: Optional[Dict[str, Any]] = None
+) -> AgentMessageEvent:
+    """创建智能体消息事件（思考过程）"""
+    return AgentMessageEvent(
+        task_id=task_id,
+        agent_slug=agent_slug,
+        agent_name=agent_name,
+        message_type=message_type,
+        content=content,
+        metadata=metadata or {}
     )
 
 

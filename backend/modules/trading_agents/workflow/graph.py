@@ -88,11 +88,34 @@ def should_continue_debate(state: TradingAgentState) -> Literal["continue_debate
     return "continue_debate"
 
 
-def route_debate_turn(state: TradingAgentState) -> Literal["bull", "bear"]:
+def route_debate_mode(state: TradingAgentState) -> Literal["parallel_debate", "serial_debate"]:
     """
-    路由到看涨或看跌辩手
+    路由辩论执行模式（并行或串行）
 
-    基于轮次交替执行
+    基于phase2_concurrency配置决定执行模式：
+    - 1: 串行执行（看涨->看跌->看涨->看跌...）
+    - 2: 并行执行（看涨和看跌同时进行）
+
+    Args:
+        state: 当前工作流状态
+
+    Returns:
+        "parallel_debate": 并行辩论模式
+        "serial_debate": 串行辩论模式
+    """
+    concurrency = state.get("phase2_concurrency", 1)
+    logger.debug(f"[辩论模式路由] 并发数: {concurrency}")
+    
+    if concurrency >= 2:
+        return "parallel_debate"
+    return "serial_debate"
+
+
+def route_debate_turn_serial(state: TradingAgentState) -> Literal["bull", "bear", "end_debate"]:
+    """
+    串行辩论轮次路由
+
+    交替执行看涨和看跌辩手
 
     Args:
         state: 当前工作流状态
@@ -100,16 +123,44 @@ def route_debate_turn(state: TradingAgentState) -> Literal["bull", "bear"]:
     Returns:
         "bull": 看涨辩手
         "bear": 看跌辩手
+        "end_debate": 结束辩论
     """
     current_round = len(state.get("debate_turns", []))
+    max_rounds = state.get("max_debate_rounds", 2)
 
-    logger.debug(f"[辩论轮次路由] 当前轮次: {current_round}")
+    logger.debug(f"[串行辩论轮次路由] 当前轮次: {current_round}, 最大轮次: {max_rounds}")
 
-    # 偶数轮：看涨先发言，奇数轮：看跌先发言
+    if current_round >= max_rounds * 2:
+        return "end_debate"
+
+    # 偶数轮次：看涨先发言，奇数轮次：看跌先发言
     if current_round % 2 == 0:
         return "bull"
     else:
         return "bear"
+
+
+def route_debate_turn_parallel(state: TradingAgentState) -> Literal["continue_debate", "end_debate"]:
+    """
+    并行辩论轮次路由
+
+    看涨和看跌同时进行，每轮都一起生成报告
+
+    Args:
+        state: 当前工作流状态
+
+    Returns:
+        "continue_debate": 继续下一轮辩论
+        "end_debate": 结束辩论
+    """
+    current_round = len(state.get("debate_turns", [])) // 2  # 每轮两人，所以除以2
+    max_rounds = state.get("max_debate_rounds", 2)
+
+    logger.debug(f"[并行辩论轮次路由] 当前轮次: {current_round}, 最大轮次: {max_rounds}")
+
+    if current_round >= max_rounds:
+        return "end_debate"
+    return "continue_debate"
 
 
 def should_execute_phase1(state: TradingAgentState) -> Literal["execute_phase1", "skip_phase1"]:
@@ -172,6 +223,109 @@ def phase1_checkpoint_node(state: TradingAgentState) -> Dict[str, Any]:
     """
     logger.debug(f"[Phase 1 检查点] 已完成分析师: {state.get('completed_analysts', 0)}")
     return {}  # 不修改状态
+
+
+def route_phase3_mode(state: TradingAgentState) -> Literal["phase3_serial", "phase3_parallel"]:
+    """
+    路由Phase 3执行模式
+
+    基于phase3_concurrency配置决定执行模式：
+    - 1: 串行执行（激进->保守->中性）
+    - 2+: 并行执行（激进和保守一起 -> 中性 或 全部一起）
+
+    Args:
+        state: 当前工作流状态
+
+    Returns:
+        "phase3_serial": 串行模式
+        "phase3_parallel": 并行模式
+    """
+    concurrency = state.get("phase3_concurrency", 3)
+    logger.debug(f"[Phase 3 模式路由] 并发数: {concurrency}")
+    
+    if concurrency >= 2:
+        return "phase3_parallel"
+    return "phase3_serial"
+
+
+def route_from_aggressive(state: TradingAgentState) -> Literal["conservative", "phase3_group2_checkpoint", "chief_risk_officer"]:
+    """
+    从激进风险分析师的路由
+
+    根据并发数决定下一个节点：
+    - concurrency=1: 串行 -> 保守
+    - concurrency=2: 2并发 -> 组2汇聚
+    - concurrency>=3: 3+并发 -> CRO汇聚
+
+    Args:
+        state: 当前工作流状态
+
+    Returns:
+        "conservative": 保守分析师
+        "phase3_group2_checkpoint": 组2汇聚
+        "chief_risk_officer": CRO
+    """
+    concurrency = state.get("phase3_concurrency", 3)
+    
+    if concurrency >= 3:
+        return "chief_risk_officer"
+    elif concurrency >= 2:
+        return "phase3_group2_checkpoint"
+    return "conservative"
+
+
+def route_from_conservative(state: TradingAgentState) -> Literal["neutral", "phase3_group2_checkpoint", "chief_risk_officer"]:
+    """
+    从保守风险分析师的路由
+
+    根据并发数决定下一个节点：
+    - concurrency=1: 串行 -> 中性
+    - concurrency=2: 2并发 -> 组2汇聚
+    - concurrency>=3: 3+并发 -> CRO汇聚
+
+    Args:
+        state: 当前工作流状态
+
+    Returns:
+        "neutral": 中性分析师
+        "phase3_group2_checkpoint": 组2汇聚
+        "chief_risk_officer": CRO
+    """
+    concurrency = state.get("phase3_concurrency", 3)
+    
+    if concurrency >= 3:
+        return "chief_risk_officer"
+    elif concurrency >= 2:
+        return "phase3_group2_checkpoint"
+    return "neutral"
+
+
+def route_from_group2_checkpoint(state: TradingAgentState) -> Literal["neutral"]:
+    """
+    从组2汇聚节点路由
+
+    激进和保守都完成后，执行中性分析师
+
+    Args:
+        state: 当前工作流状态
+
+    Returns:
+        "neutral": 中性分析师
+    """
+    return "neutral"
+
+
+def route_from_neutral(state: TradingAgentState) -> Literal["chief_risk_officer"]:
+    """
+    从中性风险分析师的路由
+
+    Args:
+        state: 当前工作流状态
+
+    Returns:
+        "chief_risk_officer": CRO
+    """
+    return "chief_risk_officer"
 
 
 def check_phase3_completion(state: TradingAgentState) -> Literal["phase3_complete", "phase3_incomplete"]:
@@ -348,27 +502,90 @@ def create_trading_agent_graph(
         }
     )
 
-    # ===== Phase 2: 辩论循环 =====
+    # ===== Phase 2: 辩论循环（支持串行和并行） =====
     # 官方模式：使用条件边实现循环
     # 参考: https://docs.langchain.com/oss/python/langgraph/tutorials/#loops
 
+    # 添加辩论模式路由节点
+    def debate_mode_router_node(state: TradingAgentState) -> Dict[str, Any]:
+        """辩论模式路由节点（不修改状态，仅用于路由）"""
+        return {}
+
+    builder.add_node("debate_mode_router", debate_mode_router_node)
+
+    # 添加并行辩论汇聚节点
+    def parallel_debate_checkpoint_node(state: TradingAgentState) -> Dict[str, Any]:
+        """并行辩论汇聚节点（等待看涨和看跌都完成）"""
+        return {}
+
+    builder.add_node("parallel_debate_checkpoint", parallel_debate_checkpoint_node)
+
+    # Phase 1完成 -> 辩论模式路由
+    builder.add_conditional_edges(
+        "phase1_checkpoint",
+        check_phase1_completion,
+        {
+            "phase1_complete": "debate_mode_router",  # 进入辩论模式路由
+            "phase1_incomplete": END  # 等待其他节点完成
+        }
+    )
+
+    # 辩论模式路由 -> 串行或并行
+    builder.add_conditional_edges(
+        "debate_mode_router",
+        route_debate_mode,
+        {
+            "serial_debate": "bull_debater",  # 串行：从看涨开始
+            "parallel_debate": "parallel_debate_start"  # 并行：同时启动看涨和看跌
+        }
+    )
+
+    # ===== 串行辩论模式 =====
     # 看涨 -> 看跌（循环）
     builder.add_conditional_edges(
         "bull_debater",
-        should_continue_debate,
+        route_debate_turn_serial,
         {
-            "continue_debate": "bear_debater",  # 继续辩论
-            "end_debate": "research_manager"  # 结束辩论，进入研究经理
+            "bull": "bull_debater",  # 继续看涨（不应该发生，逻辑保证）
+            "bear": "bear_debater",  # 继续辩论
+            "end_debate": "research_manager"  # 结束辩论
         }
     )
 
     # 看跌 -> 看涨（循环）
     builder.add_conditional_edges(
         "bear_debater",
-        should_continue_debate,
+        route_debate_turn_serial,
         {
-            "continue_debate": "bull_debater",
-            "end_debate": "research_manager"
+            "bull": "bull_debater",  # 继续辩论
+            "bear": "bear_debater",  # 继续看跌（不应该发生，逻辑保证）
+            "end_debate": "research_manager"  # 结束辩论
+        }
+    )
+
+    # ===== 并行辩论模式 =====
+    # 添加并行辩论起始节点
+    def parallel_debate_start_node(state: TradingAgentState) -> Dict[str, Any]:
+        """并行辩论起始节点（不修改状态，仅用于同时启动看涨和看跌）"""
+        return {}
+
+    builder.add_node("parallel_debate_start", parallel_debate_start_node)
+
+    # 并行起始 -> 看涨和看跌同时执行
+    builder.add_edge("parallel_debate_start", "bull_debater")
+    builder.add_edge("parallel_debate_start", "bear_debater")
+
+    # 看涨和看跌 -> 并行汇聚
+    builder.add_edge("bull_debater", "parallel_debate_checkpoint")
+    builder.add_edge("bear_debater", "parallel_debate_checkpoint")
+
+    # 并行汇聚 -> 继续或结束
+    builder.add_conditional_edges(
+        "parallel_debate_checkpoint",
+        route_debate_turn_parallel,
+        {
+            "continue_debate": "parallel_debate_start",  # 下一轮
+            "end_debate": "research_manager"  # 结束辩论
         }
     )
 
@@ -381,39 +598,82 @@ def create_trading_agent_graph(
         "trade_planner",
         should_execute_phase3,
         {
-            "execute_phase3": "aggressive_risk_analyst",  # 执行 Phase 3
+            "execute_phase3": "phase3_mode_router",  # 执行 Phase 3（先路由模式）
             "skip_phase3": "final_summarizer"  # 跳过 Phase 3
         }
     )
 
-    # ===== Phase 3: 并行风险评估 =====
-    # 交易计划 -> 三派并行
-    builder.add_edge("trade_planner", "conservative_risk_analyst")
-    builder.add_edge("trade_planner", "neutral_risk_analyst")
+    # ===== Phase 3: 支持串行和并行的风险评估 =====
+    
+    # 添加Phase 3模式路由节点
+    def phase3_mode_router_node(state: TradingAgentState) -> Dict[str, Any]:
+        """Phase 3模式路由节点（不修改状态，仅用于路由）"""
+        return {}
 
-    # Phase 3 完成检查 -> CRO
+    builder.add_node("phase3_mode_router", phase3_mode_router_node)
+
+    # 添加Phase 3并发组2汇聚节点
+    def phase3_group2_checkpoint_node(state: TradingAgentState) -> Dict[str, Any]:
+        """Phase 3并发组2汇聚节点（等待激进和保守都完成）"""
+        return {}
+
+    builder.add_node("phase3_group2_checkpoint", phase3_group2_checkpoint_node)
+
+    # 添加Phase 3并发组2起始节点
+    def phase3_group2_start_node(state: TradingAgentState) -> Dict[str, Any]:
+        """Phase 3组2起始节点（不修改状态，仅用于同时启动激进和保守）"""
+        return {}
+
+    builder.add_node("phase3_group2_start", phase3_group2_start_node)
+
+    # Phase 3模式路由 -> 串行或并行
+    builder.add_conditional_edges(
+        "phase3_mode_router",
+        route_phase3_mode,
+        {
+            "phase3_serial": "aggressive_risk_analyst",  # 串行：从激进开始
+            "phase3_parallel": "phase3_group2_start"  # 并行：激进和保守一起
+        }
+    )
+
+    # ===== 根据并发数动态路由 =====
+    # 激进分析师 -> 根据并发数路由
     builder.add_conditional_edges(
         "aggressive_risk_analyst",
-        check_phase3_completion,
+        route_from_aggressive,
         {
-            "phase3_complete": "chief_risk_officer",
-            "phase3_incomplete": "aggressive_risk_analyst"
+            "conservative": "conservative_risk_analyst",  # 串行
+            "phase3_group2_checkpoint": "phase3_group2_checkpoint",  # 2并发
+            "chief_risk_officer": "chief_risk_officer"  # 3+并发
         }
     )
+
+    # 保守分析师 -> 根据并发数路由
     builder.add_conditional_edges(
         "conservative_risk_analyst",
-        check_phase3_completion,
+        route_from_conservative,
         {
-            "phase3_complete": "chief_risk_officer",
-            "phase3_incomplete": "conservative_risk_analyst"
+            "neutral": "neutral_risk_analyst",  # 串行
+            "phase3_group2_checkpoint": "phase3_group2_checkpoint",  # 2并发
+            "chief_risk_officer": "chief_risk_officer"  # 3+并发
         }
     )
+
+    # 组2汇聚 -> 中性分析师（2并发模式）
+    builder.add_conditional_edges(
+        "phase3_group2_checkpoint",
+        route_from_group2_checkpoint,
+        {
+            "neutral": "neutral_risk_analyst"
+        }
+    )
+
+    # 中性分析师 -> CRO
     builder.add_conditional_edges(
         "neutral_risk_analyst",
-        check_phase3_completion,
+        route_from_neutral,
         {
-            "phase3_complete": "chief_risk_officer",
-            "phase3_incomplete": "neutral_risk_analyst"
+            "chief_risk_officer": "chief_risk_officer"
         }
     )
 

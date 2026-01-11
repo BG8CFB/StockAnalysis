@@ -104,6 +104,8 @@ class TradingAgentState(TypedDict):
 
     # ===== 配置信息（覆盖） =====
     max_debate_rounds: int  # 最大辩论轮次
+    phase2_concurrency: int  # Phase 2 辩论并发数（1=串行，2=并发）
+    phase3_concurrency: int  # Phase 3 风险评估并发数（1/2/3+）
     enable_phase1: bool
     enable_phase2: bool
     enable_phase3: bool
@@ -135,6 +137,12 @@ class TradingAgentState(TypedDict):
     token_usage: Annotated[List[Dict[str, Any]], operator.add]  # Token 使用追踪
     errors: Annotated[List[Dict[str, Any]], operator.add]  # 错误记录
     tool_calls: Annotated[List[Dict[str, Any]], operator.add]  # 工具调用记录
+
+    # ===== 统计和追踪（新增字段） =====
+    tool_stats: Dict[str, Any]  # 工具调用统计（覆盖模式）
+    phase_executions: Dict[str, Any]  # 各阶段执行统计（覆盖模式）
+    concurrency_groups: Dict[str, Any]  # 并发组信息（覆盖模式）
+    agent_messages: Annotated[List[Dict[str, Any]], operator.add]  # 智能体消息流（累积模式）
 
 
 # =============================================================================
@@ -168,6 +176,8 @@ def create_initial_state(
     stock_code: str,
     trade_date: str,
     max_debate_rounds: int = 2,
+    phase2_concurrency: int = 1,
+    phase3_concurrency: int = 3,
     enable_phase1: bool = True,
     enable_phase2: bool = True,
     enable_phase3: bool = True,
@@ -220,6 +230,8 @@ def create_initial_state(
 
         # 配置
         "max_debate_rounds": max_debate_rounds,
+        "phase2_concurrency": phase2_concurrency,
+        "phase3_concurrency": phase3_concurrency,
         "enable_phase1": enable_phase1,
         "enable_phase2": enable_phase2,
         "enable_phase3": enable_phase3,
@@ -248,4 +260,10 @@ def create_initial_state(
         "token_usage": [],
         "errors": [],
         "tool_calls": [],
+
+        # 统计和追踪
+        "tool_stats": {},
+        "phase_executions": {},
+        "concurrency_groups": {},
+        "agent_messages": [],
     }

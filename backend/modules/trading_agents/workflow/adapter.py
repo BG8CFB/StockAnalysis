@@ -241,6 +241,8 @@ class LangGraphWorkflowAdapter:
             "trade_date": request.trade_date,
             "task_id": task_id,
             "max_debate_rounds": stages.stage2.debate.rounds if stages else 2,
+            "phase2_concurrency": stages.stage2.debate.concurrency if stages else 1,
+            "phase3_concurrency": stages.stage3.concurrency if stages else 3,
             "enable_phase1": phase1_enabled,
             "enable_phase2": phase2_enabled,
             "enable_phase3": phase3_enabled,

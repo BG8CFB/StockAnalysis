@@ -49,18 +49,24 @@ class TaskStatusEnum(str, Enum):
 class EventTypeEnum(str, Enum):
     """WebSocket 事件类型枚举"""
     TASK_STARTED = "task_started"
-    PHASE_STARTED = "phase_started"
-    PHASE_COMPLETED = "phase_completed"
-    AGENT_STARTED = "agent_started"
-    AGENT_COMPLETED = "agent_completed"
-    TOOL_CALLED = "tool_called"
-    TOOL_RESULT = "tool_result"
-    TOOL_DISABLED = "tool_disabled"
-    REPORT_GENERATED = "report_generated"
     TASK_COMPLETED = "task_completed"
     TASK_FAILED = "task_failed"
     TASK_CANCELLED = "task_cancelled"
     TASK_STOPPED = "task_stopped"
+    PHASE_STARTED = "phase_started"
+    PHASE_COMPLETED = "phase_completed"
+    PHASE_AGENTS = "phase_agents"
+    CONCURRENT_GROUP_STARTED = "concurrent_group_started"
+    CONCURRENT_GROUP_COMPLETED = "concurrent_group_completed"
+    AGENT_STARTED = "agent_started"
+    AGENT_COMPLETED = "agent_completed"
+    AGENT_FAILED = "agent_failed"
+    AGENT_MESSAGE = "agent_message"
+    TOOL_CALLED = "tool_called"
+    TOOL_RESULT = "tool_result"
+    TOOL_DISABLED = "tool_disabled"
+    REPORT_GENERATED = "report_generated"
+    AGENT_TRACES = "agent_traces"
 
 
 # =============================================================================
@@ -123,6 +129,7 @@ class DebateConfig(BaseModel):
     """辩论配置"""
     enabled: bool = Field(default=True, description="是否启用辩论")
     rounds: int = Field(default=3, ge=0, le=10, description="辩论轮次")
+    concurrency: int = Field(default=1, ge=1, le=2, description="辩论并发数（1=串行，2=并行）")
 
 
 class Stage2Config(BaseModel):
@@ -135,6 +142,7 @@ class Stage3Config(BaseModel):
     """第三阶段配置"""
     enabled: bool = Field(default=True, description="是否启用第三阶段")
     debate: DebateConfig = Field(default_factory=DebateConfig, description="辩论配置")
+    concurrency: int = Field(default=3, ge=1, le=3, description="风险评估并发数（1=串行，2=激进和保守一起，3=全部一起）")
 
 
 class Stage4Config(BaseModel):
