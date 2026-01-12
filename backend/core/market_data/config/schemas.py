@@ -105,6 +105,82 @@ class DataSourceHealthResponse(BaseModel):
     error: Optional[str] = None
 
 
+class CurrentSourceResponse(BaseModel):
+    """当前数据源信息"""
+    source_type: str
+    source_id: str
+    source_name: str
+    status: str
+    last_check: str
+    last_check_relative: str
+
+
+class MarketDataTypeResponse(BaseModel):
+    """市场数据类型响应"""
+    data_type: str
+    data_type_name: str
+    current_source: CurrentSourceResponse
+    is_fallback: bool
+    can_retry: bool
+    fallback_reason: Optional[str] = None
+
+
+class MarketDetailResponse(BaseModel):
+    """市场详细状态响应"""
+    market: str
+    market_name: str
+    data_types: List[MarketDataTypeResponse]
+
+
+class MarketOverviewItem(BaseModel):
+    """市场概览单项"""
+    status: str
+    last_update: str
+    last_update_relative: str
+    reason: Optional[str] = None
+
+
+class DashboardOverviewResponse(BaseModel):
+    """数据源状态监控仪表板概览响应"""
+    a_stock: Optional[MarketOverviewItem] = None
+    us_stock: Optional[MarketOverviewItem] = None
+    hk_stock: Optional[MarketOverviewItem] = None
+
+
+class SourceDetailResponse(BaseModel):
+    """数据源详细信息"""
+    source_type: str
+    source_id: str
+    source_name: str
+    status: str
+    priority: int
+    last_check: str
+    response_time_ms: Optional[int] = None
+    avg_response_time_ms: Optional[int] = None
+    failure_count: int = 0
+
+
+class DataSourceEventResponse(BaseModel):
+    """数据源事件响应"""
+    timestamp: str
+    event_type: str
+    description: str
+    from_status: Optional[str] = None
+    to_status: Optional[str] = None
+    from_source: Optional[str] = None
+    to_source: Optional[str] = None
+    source_id: Optional[str] = None
+
+
+class DataTypeDetailResponse(BaseModel):
+    """数据类型详细信息响应"""
+    market: str
+    data_type: str
+    data_type_name: str
+    sources: List[SourceDetailResponse]
+    recent_events: List[DataSourceEventResponse]
+
+
 class DataSyncResponse(BaseModel):
     """数据同步响应"""
     success: bool

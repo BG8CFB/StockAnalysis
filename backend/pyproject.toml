@@ -27,7 +27,7 @@ langchain-core = "^0.3.37"
 # LangGraph: 有状态多智能体工作流编排框架
 langgraph = "^0.2.0"
 # 从 GitHub 源码安装最新版本（支持所有传输协议）
-langchain-mcp-adapters = {git = "https://github.com/langchain-ai/langchain-mcp-adapters.git", branch = "master"}
+# langchain-mcp-adapters = {git = "https://github.com/langchain-ai/langchain-mcp-adapters.git", branch = "main"}
 # MCP SDK 最新版本
 mcp = ">=1.9.2,<2.0.0"
 # 市场数据源

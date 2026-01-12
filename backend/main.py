@@ -155,6 +155,7 @@ def create_app() -> FastAPI:
 
     # 系统路由
     from core.system.api import router as system_router
+    from core.system.data_source_status import router as data_source_status_router
 
     # 用户路由
     from core.user.api import router as user_router
@@ -172,6 +173,7 @@ def create_app() -> FastAPI:
     app.include_router(core_admin_router, prefix="/api")
     app.include_router(ai_core_router, prefix="/api")
     app.include_router(system_router, prefix="/api")
+    app.include_router(data_source_status_router, prefix="/api")
     app.include_router(user_router, prefix="/api")
     app.include_router(user_settings_router, prefix="/api")
     app.include_router(screener_router, prefix="/api")

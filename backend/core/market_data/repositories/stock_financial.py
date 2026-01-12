@@ -22,7 +22,7 @@ class StockFinancialRepository(BaseRepository):
     def __init__(self):
         super().__init__("stock_financials")
 
-    async def create_indexes(self):
+    async def init_indexes(self):
         """创建索引"""
         await self.create_index(
             [("symbol", 1), ("report_date", 1), ("report_type", 1)],
@@ -299,7 +299,7 @@ class StockFinancialIndicatorRepository(BaseRepository):
     def __init__(self):
         super().__init__("stock_financial_indicators")
 
-    async def create_indexes(self):
+    async def init_indexes(self):
         """创建索引"""
         await self.create_index(
             [("symbol", 1), ("report_date", 1)],

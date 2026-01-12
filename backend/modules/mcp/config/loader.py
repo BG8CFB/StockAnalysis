@@ -32,6 +32,7 @@ def load_db_config_sync() -> Dict[str, Any]:
     从数据库加载配置（同步版本）
 
     尝试从 MongoDB 读取系统配置，如果失败则返回空字典。
+    注意：由于 MongoDB 使用 motor（异步），此函数在没有初始化时会返回空配置。
 
     Returns:
         数据库配置字典
@@ -40,15 +41,26 @@ def load_db_config_sync() -> Dict[str, Any]:
         # 动态导入避免循环依赖
         from core.db.mongodb import mongodb
 
+        # 检查数据库是否已初始化
+        if mongodb._database is None:
+            logger.debug("数据库未初始化，跳过数据库配置加载")
+            return {}
+
         collection = mongodb.get_collection("mcp_settings")
+        # 注意：find_one 在未初始化时会抛出异常，由 except 捕获
         doc = collection.find_one({"_id": "system"})
 
         if doc:
             doc.pop("_id", None)
             logger.info("从数据库加载 MCP 系统配置")
             return _convert_db_config_to_yaml_format(doc)
+    except RuntimeError as e:
+        # 明确捕获 MongoDB 未初始化错误，并不做处理，视为正常情况
+        if "Call connect() first" in str(e):
+            return {}
+        logger.warning(f"从数据库加载配置出现运行时错误: {e}")
     except Exception as e:
-        logger.warning(f"从数据库加载配置失败: {e}")
+        logger.debug(f"从数据库加载配置失败（正常，数据库可能未初始化）: {e}")
 
     return {}
 

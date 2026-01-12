@@ -369,7 +369,7 @@ class AgentConfig(BaseModel):
     slug: str = Field(..., min_length=1, max_length=50, description="唯一标识符")
     name: str = Field(..., min_length=1, max_length=100, description="显示名称")
     role_definition: Optional[str] = Field(None, min_length=1, max_length=10000, description="角色定义（系统提示词）")
-    when_to_use: str = Field(..., max_length=500, description="使用场景说明")
+    when_to_use: Optional[str] = Field(default="", max_length=500, description="使用场景说明")
     enabled_mcp_servers: List[MCPServerConfig] = Field(
         default_factory=list,
         description="启用的 MCP 服务器（支持配置必需性）"
@@ -422,7 +422,7 @@ class AgentConfigSlim(BaseModel):
     """
     slug: str = Field(..., min_length=1, max_length=50, description="唯一标识符")
     name: str = Field(..., min_length=1, max_length=100, description="显示名称")
-    when_to_use: str = Field(..., max_length=500, description="使用场景说明")
+    when_to_use: Optional[str] = Field(default="", max_length=500, description="使用场景说明")
     enabled_mcp_servers: List[MCPServerConfig] = Field(
         default_factory=list,
         description="启用的 MCP 服务器（支持配置必需性）"

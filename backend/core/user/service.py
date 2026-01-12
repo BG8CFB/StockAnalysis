@@ -499,6 +499,9 @@ class UserService:
         except Exception:
             raise ValueError("无效的 refresh_token")
 
+        if not token_data:
+            raise ValueError("无效的 refresh_token")
+
         user_id = token_data.get("sub")
         if not user_id:
             raise ValueError("无效的 refresh_token")
