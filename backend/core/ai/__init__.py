@@ -1,11 +1,26 @@
 """
-核心 AI 配置模块
+核心 AI 模块
 
-提供 AI 模型配置管理和 LLM Provider 抽象层，作为项目的公共基础设施。
+提供基于 LangChain 的统一 AI 调用接口。
+支持聊天补全、流式输出、思考能力等功能。
 """
 
-from core.ai.model import get_model_service
-from core.ai.model.schemas import (
+# 新架构：基于 LangChain 的统一服务
+from .service import AIService, get_ai_service, set_ai_service
+from .types import (
+    AIMessage,
+    AITool,
+    AIResponse,
+    AIStreamChunk,
+    create_message,
+    create_tool,
+)
+from .langchain.adapter import LangChainAdapter
+from .concurrency import ConcurrencyManager, ConcurrencyConfig
+
+# 模型配置（保留兼容）
+from .model import get_model_service
+from .model.schemas import (
     ModelProviderEnum,
     AIModelConfigBase,
     AIModelConfigCreate,
@@ -13,22 +28,27 @@ from core.ai.model.schemas import (
     AIModelConfigResponse,
     AIModelTestRequest,
     ConnectionTestResponse,
-)
-from core.ai.llm.provider import (
-    LLMProvider,
-    Message,
-    Tool,
-    ToolCall,
-    ToolResponse,
-    ChatResponse,
-    create_message,
-    create_tool,
+    ThinkingModeEnum,
 )
 
 __all__ = [
-    # Service
+    # 新架构：AI 统一服务
+    "AIService",
+    "get_ai_service",
+    "set_ai_service",
+    # 新架构：统一数据类型
+    "AIMessage",
+    "AITool",
+    "AIResponse",
+    "AIStreamChunk",
+    "create_message",
+    "create_tool",
+    # 新架构：适配器和并发管理
+    "LangChainAdapter",
+    "ConcurrencyManager",
+    "ConcurrencyConfig",
+    # 模型配置
     "get_model_service",
-    # Schemas
     "ModelProviderEnum",
     "AIModelConfigBase",
     "AIModelConfigCreate",
@@ -36,13 +56,20 @@ __all__ = [
     "AIModelConfigResponse",
     "AIModelTestRequest",
     "ConnectionTestResponse",
-    # LLM Provider
-    "LLMProvider",
-    "Message",
-    "Tool",
-    "ToolCall",
-    "ToolResponse",
-    "ChatResponse",
-    "create_message",
-    "create_tool",
+    "ThinkingModeEnum",
 ]
+
+
+# =============================================================================
+# 版本说明
+# =============================================================================
+# v4.0 - 全面采用 LangChain 统一架构
+#   - 使用 AIService 作为统一调用入口
+#   - AIMessage/AITool/AIResponse 统一数据格式
+#   - LangChainAdapter 负责模型创建
+#   - ConcurrencyManager 负责并发控制
+#
+# 旧版本兼容（将逐步废弃）：
+#   - LLMProvider 及相关类型保留向后兼容
+#   - 建议新代码使用 AIService
+# =============================================================================

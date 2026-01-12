@@ -11,23 +11,47 @@ docs/market_data/
 ├── README.md                        # 本文件
 ├── 设计方案.md                      # 模块整体设计方案
 ├── 数据库设计.md                    # 数据库设计文档
-├── 数据源状态监控设计.md            # 状态监控功能设计
+├── 数据源状态监控设计.md            # 数据源监控功能详细设计
 ├── A股数据源/
 │   ├── tushare接口文档.md           # Tushare 接口文档
 │   └── akshare接口文档.md           # AkShare 接口文档
+│   └── A股数据统一存储方案.md      # A股数据存储方案
 ├── 美股数据源/
 │   ├── yahoo_finance接口文档.md     # Yahoo Finance 接口文档
 │   ├── akshare接口文档.md           # AkShare（美股）接口文档
-│   └── alphavantage接口文档.md      # Alpha Vantage 接口文档
+│   ├── alpha_vantage接口文档.md     # Alpha Vantage 接口文档
+│   ├── tushare接口文档.md          # Tushare（美股）接口文档
+│   ├── itick接口文档.md            # iTick 接口文档
+│   └── 美股数据统一存储方案.md     # 美股数据存储方案
 └── 港股数据源/
     ├── yahoo_finance接口文档.md     # Yahoo Finance 接口文档
     ├── akshare接口文档.md           # AkShare（港股）接口文档
-    └── itick接口文档.md             # iTick 接口文档
+    ├── tushare接口文档.md          # Tushare（港股）接口文档
+    └── 港股数据统一存储方案.md     # 港股数据存储方案
 ```
 
 ---
 
 ## 📖 文档说明
+
+### 前端模块说明
+
+**注意**：前端市场数据模块仅包含数据源状态监控功能，不包含股票列表和行情数据查询页面。
+
+**前端页面**：
+- **数据源监控页面** (`/market-data/health`) - 实时监控市场数据源的健康状态和响应时间
+
+**前端文件结构**：
+```
+frontend/src/modules/market_data/
+├── api/
+│   └── marketDataApi.ts          # 数据源监控 API 客户端
+├── types.ts                      # 类型定义
+└── views/
+    └── DataSourceHealthView.vue   # 数据源监控页面
+```
+
+### 后端文档说明
 
 ### 设计方案.md
 - **内容**：数据源模块的整体架构设计
@@ -67,13 +91,18 @@ docs/market_data/
   - 索引设计
 
 ### 数据源状态监控设计.md ⭐
-- **内容**：数据源状态监控功能的详细设计
+- **内容**：数据源状态监控功能的完整设计文档（包含前端页面设计）
 - **包含**：
   - 功能概述与设计原则
-  - 页面设计（仪表板概览、详情页、错误对话框）
-  - API 设计（状态查询、错误详情、手动重试、历史记录）
+  - 页面设计（仪表板概览、详情页、错误对话框、时间范围选择）
+  - API 设计（状态查询、错误详情、手动重试、历史记录、刷新状态）
   - 前端路由设计
   - 测试方案（单元测试、集成测试、用户验收测试）
+
+**前端实现说明**：
+- 前端仅实现"数据源监控"页面，不包含股票列表和行情数据查询页面
+- 前端页面路径：`/market-data/health`
+- 前端文件：`frontend/src/modules/market_data/views/DataSourceHealthView.vue`
 
 ### 数据源接口文档
 各数据源的接口文档应包含：

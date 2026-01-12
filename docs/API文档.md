@@ -440,19 +440,66 @@ GET /api/ai/models
 **返回**：
 ```json
 {
-  "models": [
+  "system": [
     {
       "id": "model_id",
       "name": "GPT-4",
-      "provider": "openai",
-      "api_base": "https://api.openai.com/v1",
-      "model_name": "gpt-4",
-      "is_default": true,
-      "enabled": true
+      "platform_type": "preset",
+      "platform_name": "openai",
+      "api_base_url": "https://api.openai.com/v1",
+      "model_id": "gpt-4",
+      "masked_api_key": "sk-****xxxx",
+      "max_concurrency": 40,
+      "task_concurrency": 2,
+      "batch_concurrency": 1,
+      "timeout_seconds": 60,
+      "temperature": 0.5,
+      "enabled": true,
+      "thinking_enabled": false,
+      "thinking_mode": null,
+      "custom_input_price": null,
+      "custom_output_price": null,
+      "custom_thinking_price": null,
+      "is_system": true,
+      "owner_id": null,
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z"
+    }
+  ],
+  "user": [
+    {
+      "id": "model_id_2",
+      "name": "GLM-4 Plus",
+      "platform_type": "preset",
+      "platform_name": "zhipu",
+      "api_base_url": "https://open.bigmodel.cn/api/paas/v4",
+      "model_id": "glm-4-plus",
+      "masked_api_key": "****xxxx.****",
+      "max_concurrency": 40,
+      "task_concurrency": 2,
+      "batch_concurrency": 1,
+      "timeout_seconds": 60,
+      "temperature": 0.5,
+      "enabled": true,
+      "thinking_enabled": true,
+      "thinking_mode": "preserved",
+      "custom_input_price": 5.0,
+      "custom_output_price": 15.0,
+      "custom_thinking_price": 15.0,
+      "is_system": false,
+      "owner_id": "user_id",
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z"
     }
   ]
 }
 ```
+
+**字段说明**：
+- `system`: 系统模型列表（所有用户可见）
+- `user`: 当前用户的个人模型列表
+- `masked_api_key`: 脱敏后的 API Key
+- `custom_input_price/custom_output_price/custom_thinking_price`: 自定义价格（null 表示使用内置价格）
 
 ### 3.2 创建模型
 
@@ -465,13 +512,46 @@ POST /api/ai/models
 ```json
 {
   "name": "Claude 3.5",
-  "provider": "anthropic",
-  "api_base": "https://api.anthropic.com/v1",
+  "platform_type": "preset",
+  "platform_name": "anthropic",
+  "api_base_url": "https://api.anthropic.com/v1",
   "api_key": "sk-ant-...",
-  "model_name": "claude-3-5-sonnet-20241022",
-  "is_default": false
+  "model_id": "claude-3-5-sonnet-20241022",
+  "max_concurrency": 40,
+  "task_concurrency": 2,
+  "batch_concurrency": 1,
+  "timeout_seconds": 60,
+  "temperature": 0.5,
+  "enabled": true,
+  "thinking_enabled": true,
+  "thinking_mode": "preserved",
+  "custom_input_price": 3.0,
+  "custom_output_price": 15.0,
+  "custom_thinking_price": 15.0,
+  "is_system": false
 }
 ```
+
+**字段说明**：
+- `name`: 模型显示名称
+- `platform_type`: 平台类型（preset=预设平台，custom=自定义）
+- `platform_name`: 预设平台名称（platform_type=preset 时必填）
+  - 可选值：openai, anthropic, azure_openai, baidu, alibaba, tencent, deepseek, moonshot, zhipu, zhipu_coding
+- `api_base_url`: API 基础 URL
+- `api_key`: API Key
+- `model_id`: 模型 ID（如 gpt-4, glm-4-plus 等）
+- `max_concurrency`: 最大并发数（1-200）
+- `task_concurrency`: 单任务并发数（1-10）
+- `batch_concurrency`: 批量任务并发数（1-50）
+- `timeout_seconds`: 超时时间（秒，10-600）
+- `temperature`: 温度参数（0.0-2.0）
+- `enabled`: 是否启用
+- `thinking_enabled`: 是否启用思考模式
+- `thinking_mode`: 思考模式类型（preserved/clear_on_new/auto）
+- `custom_input_price`: 自定义输入价格（元/百万tokens，留空使用内置价格）
+- `custom_output_price`: 自定义输出价格（元/百万tokens，留空使用内置价格）
+- `custom_thinking_price`: 自定义思考价格（元/百万tokens，留空使用内置价格）
+- `is_system`: 是否为系统模型（仅管理员可创建系统模型）
 
 ### 3.3 获取模型详情
 
@@ -485,12 +565,26 @@ GET /api/ai/models/{id}
 {
   "id": "model_id",
   "name": "GPT-4",
-  "provider": "openai",
-  "api_base": "https://api.openai.com/v1",
-  "model_name": "gpt-4",
-  "is_default": true,
+  "platform_type": "preset",
+  "platform_name": "openai",
+  "api_base_url": "https://api.openai.com/v1",
+  "model_id": "gpt-4",
+  "masked_api_key": "sk-****xxxx",
+  "max_concurrency": 40,
+  "task_concurrency": 2,
+  "batch_concurrency": 1,
+  "timeout_seconds": 60,
+  "temperature": 0.5,
   "enabled": true,
-  "created_at": "2024-01-01T00:00:00Z"
+  "thinking_enabled": false,
+  "thinking_mode": null,
+  "custom_input_price": null,
+  "custom_output_price": null,
+  "custom_thinking_price": null,
+  "is_system": false,
+  "owner_id": "user_id",
+  "created_at": "2024-01-01T00:00:00Z",
+  "updated_at": "2024-01-01T00:00:00Z"
 }
 ```
 
@@ -505,9 +599,17 @@ PUT /api/ai/models/{id}
 ```json
 {
   "name": "GPT-4 Turbo",
-  "api_key": "new_api_key"
+  "api_key": "new_api_key",
+  "enabled": true,
+  "thinking_enabled": true,
+  "thinking_mode": "auto",
+  "custom_input_price": 2.5,
+  "custom_output_price": 10.0,
+  "custom_thinking_price": null
 }
 ```
+
+**说明**：所有字段均为可选，仅更新提供的字段
 
 ### 3.5 删除模型
 

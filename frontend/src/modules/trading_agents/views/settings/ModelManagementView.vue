@@ -580,12 +580,12 @@
                     <span class="text-xs text-gray-500">启用模型推理过程</span>
                     <el-switch v-model="formData.thinking_enabled" />
                   </div>
-                  
+
                   <div
                     v-if="formData.thinking_enabled"
                     class="thinking-options"
                   >
-                    <div 
+                    <div
                       v-for="mode in [
                         { val: ThinkingModeEnum.PRESERVED, icon: Document, label: '保留式', desc: '对话保留思考', tags: ['Claude'] },
                         { val: ThinkingModeEnum.CLEAR_ON_NEW, icon: Refresh, label: '轮次清除', desc: '新轮次清空', tags: ['DeepSeek'] },
@@ -646,6 +646,79 @@
                 </div>
               </el-form-item>
             </div>
+
+            <!-- 价格配置 -->
+            <div class="form-section">
+              <div class="section-title">
+                <el-icon><PriceTag /></el-icon>
+                <span>价格配置</span>
+              </div>
+
+              <el-alert
+                type="info"
+                :closable="false"
+                show-icon
+                class="mb-3"
+                style="font-size: 12px;"
+              >
+                <template #default>
+                  <div>留空使用内置价格（元/百万tokens），自定义价格将覆盖内置价格</div>
+                  <div v-if="currentModelPrice" class="mt-1">
+                    <span class="font-medium">当前模型内置价格：</span>
+                    <span class="text-primary">输入 {{ currentModelPrice.input_price }} 元/百万</span>
+                    <span class="mx-1">|</span>
+                    <span class="text-success">输出 {{ currentModelPrice.output_price }} 元/百万</span>
+                    <span v-if="currentModelPrice.thinking_price" class="mx-1">|</span>
+                    <span v-if="currentModelPrice.thinking_price" class="text-warning">思考 {{ currentModelPrice.thinking_price }} 元/百万</span>
+                  </div>
+                </template>
+              </el-alert>
+
+              <el-row :gutter="20">
+                <el-col :span="8">
+                  <el-form-item label="输入价格">
+                    <el-input-number
+                      v-model="formData.custom_input_price"
+                      :min="0"
+                      :precision="4"
+                      :step="0.1"
+                      :controls="false"
+                      class="w-full"
+                      placeholder="留空使用内置"
+                    />
+                    <div class="form-tip">元/百万tokens</div>
+                  </el-form-item>
+                </el-col>
+                <el-col :span="8">
+                  <el-form-item label="输出价格">
+                    <el-input-number
+                      v-model="formData.custom_output_price"
+                      :min="0"
+                      :precision="4"
+                      :step="0.1"
+                      :controls="false"
+                      class="w-full"
+                      placeholder="留空使用内置"
+                    />
+                    <div class="form-tip">元/百万tokens</div>
+                  </el-form-item>
+                </el-col>
+                <el-col :span="8">
+                  <el-form-item label="思考价格">
+                    <el-input-number
+                      v-model="formData.custom_thinking_price"
+                      :min="0"
+                      :precision="4"
+                      :step="0.1"
+                      :controls="false"
+                      class="w-full"
+                      placeholder="留空使用内置"
+                    />
+                    <div class="form-tip">元/百万tokens（选填）</div>
+                  </el-form-item>
+                </el-col>
+              </el-row>
+            </div>
           </el-col>
         </el-row>
       </el-form>
@@ -701,7 +774,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Edit, Delete, Connection, QuestionFilled, InfoFilled, Document, Refresh, MagicStick, Setting, Link, Key, Operation, ArrowDown, Cpu } from '@element-plus/icons-vue'
+import { Plus, Edit, Delete, Connection, QuestionFilled, InfoFilled, Document, Refresh, MagicStick, Setting, Link, Key, Operation, ArrowDown, Cpu, PriceTag } from '@element-plus/icons-vue'
 import { useUserStore } from '@core/auth/store'
 import { useTradingAgentsStore } from '../../store'
 import { PROVIDER_PRESETS, ModelProviderEnum, PlatformTypeEnum, PresetPlatformEnum, ThinkingModeEnum, type AIModelConfig, type AIModelConfigCreate } from '../../types'
@@ -771,6 +844,10 @@ const formData = reactive<AIModelConfigCreate>({
   enabled: true,
   thinking_enabled: false,  // 是否启用思考模式
   thinking_mode: null,  // 思考模式类型
+  // 自定义价格配置（元/百万tokens）
+  custom_input_price: null,
+  custom_output_price: null,
+  custom_thinking_price: null,
   is_system: false,
 })
 
@@ -789,6 +866,50 @@ const currentPresetPlatform = computed(() => {
 const availableModels = ref<string[]>([])
 const loadingModels = ref(false)
 const manualInputModel = ref(false)
+
+// 内置模型价格（与后端 pricing.py 保持一致）
+const BUILTIN_MODEL_PRICES: Record<string, { input_price: number; output_price: number; thinking_price?: number }> = {
+  // 智谱 AI - 2025年4月降价后
+  'glm-4-plus': { input_price: 5, output_price: 15 },
+  'glm-4-plus-coder': { input_price: 5, output_price: 15 },
+  'glm-4-air': { input_price: 1, output_price: 2 },
+  'glm-4-flash': { input_price: 0.1, output_price: 0.2 },
+  'glm-4.7': { input_price: 5, output_price: 15, thinking_price: 15 },
+  'glm-4.6': { input_price: 5, output_price: 15 },
+  'glm-4': { input_price: 5, output_price: 15 },
+  'glm-4-turbo': { input_price: 1, output_price: 2 },
+
+  // DeepSeek - 2025年9月价格
+  'deepseek-chat': { input_price: 1.89, output_price: 7.7 },
+  'deepseek-coder': { input_price: 1.89, output_price: 7.7 },
+  'deepseek-reasoner': { input_price: 5.5, output_price: 21 },
+
+  // 通义千问
+  'qwen-max': { input_price: 40, output_price: 120 },
+  'qwen-plus': { input_price: 4, output_price: 12 },
+  'qwen-turbo': { input_price: 0.8, output_price: 2 },
+
+  // OpenAI - GPT-5 系列
+  'gpt-5': { input_price: 2.5, output_price: 10 },
+  'gpt-5-mini': { input_price: 0.25, output_price: 2 },
+  'gpt-5-pro': { input_price: 1.75, output_price: 14 },
+  'gpt-4o': { input_price: 2.5, output_price: 10 },
+  'gpt-4o-mini': { input_price: 0.15, output_price: 0.6 },
+  'o1': { input_price: 15, output_price: 7.5 },
+
+  // Anthropic Claude
+  'claude-sonnet-4-5-20250514': { input_price: 3, output_price: 15, thinking_price: 15 },
+  'claude-opus-4-20250514': { input_price: 15, output_price: 75, thinking_price: 75 },
+  'claude-3-5-haiku-20241022': { input_price: 0.8, output_price: 4 },
+}
+
+// 当前选中模型的内置价格
+const currentModelPrice = computed(() => {
+  if (formData.model_id && formData.model_id in BUILTIN_MODEL_PRICES) {
+    return BUILTIN_MODEL_PRICES[formData.model_id]
+  }
+  return null
+})
 
 // 表单验证规则
 const formRules = {
@@ -955,6 +1076,12 @@ function openAddModelDialog() {
     timeout_seconds: 60,
     temperature: 0.5,
     enabled: true,
+    thinking_enabled: false,
+    thinking_mode: null,
+    // 自定义价格配置
+    custom_input_price: null,
+    custom_output_price: null,
+    custom_thinking_price: null,
     is_system: false, // 普通用户默认创建个人模型
   })
 
@@ -987,6 +1114,10 @@ function handleEdit(model: AIModelConfig) {
     enabled: model.enabled,
     thinking_enabled: model.thinking_enabled || false,
     thinking_mode: model.thinking_mode || null,
+    // 自定义价格配置
+    custom_input_price: model.custom_input_price || null,
+    custom_output_price: model.custom_output_price || null,
+    custom_thinking_price: model.custom_thinking_price || null,
     is_system: model.is_system,
   })
   showCreateDialog.value = true
@@ -1056,16 +1187,23 @@ onMounted(() => {
 }
 
 /* Tailwind-like utility classes */
+.mb-3 { margin-bottom: 12px; }
 .mb-4 { margin-bottom: 16px; }
 .mt-1 { margin-top: 4px; }
 .w-full { width: 100%; }
 .w-1\/3 { width: 33.33%; }
 .flex { display: flex; }
 .flex-1 { flex: 1; }
+.gap-1 { gap: 4px; }
 .gap-2 { gap: 8px; }
 .items-center { align-items: center; }
 .justify-between { justify-content: space-between; }
 .rotate-180 { transform: rotate(180deg); transition: transform 0.3s; }
+.mx-1 { margin-left: 4px; margin-right: 4px; }
+.font-medium { font-weight: 500; }
+.text-primary { color: #409eff; }
+.text-success { color: #67c23a; }
+.text-warning { color: #e6a23c; }
 
 /* Form Styling */
 .model-form {

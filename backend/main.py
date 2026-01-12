@@ -2,21 +2,37 @@
 股票分析平台 - FastAPI 主应用入口
 
 """
-
+import io
+import locale
 import logging
+import sys
+
+# ==================== Windows UTF-8 编码修复 ====================
+# 在 Windows 系统上，默认控制台编码为 GBK，无法正确显示 emoji 字符
+# 这里强制使用 UTF-8 编码，避免 'gbk' codec can't encode character 错误
+if sys.platform == 'win32':
+    # 设置标准输出流为 UTF-8
+    if hasattr(sys.stdout, 'buffer'):
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    # 设置默认编码为 UTF-8
+    if hasattr(locale, 'getencoding'):
+        locale.getencoding = lambda: 'utf-8'
+# ================================================================
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from core.config import settings
-from core.db.mongodb import mongodb
-from core.db.redis import redis_manager
+from core.db.mongodb import mongodb, connect_to_mongodb, close_mongodb
+from core.db.redis import redis_manager, connect_to_redis, close_redis
 from core.colored_formatter import ColoredFormatter
-from core.admin.tasks import scheduler
-from modules.market_data.repositories.stock_info import StockInfoRepository
-from modules.market_data.repositories.stock_quotes import StockQuoteRepository
-from modules.market_data.repositories.financials import (
+from core.admin.tasks import init_scheduler, shutdown_scheduler
+from core.market_data.repositories.stock_info import StockInfoRepository
+from core.market_data.repositories.stock_quotes import StockQuoteRepository
+from core.market_data.repositories.stock_financial import (
     StockFinancialRepository,
     StockFinancialIndicatorRepository,
 )
@@ -41,12 +57,12 @@ async def lifespan(app: FastAPI):
     try:
         # 1. 初始化 MongoDB
         logger.info("📦 初始化 MongoDB...")
-        await mongodb.connect()
+        await connect_to_mongodb()
         logger.info("✅ MongoDB 连接成功")
 
         # 2. 初始化 Redis
         logger.info("📦 初始化 Redis...")
-        await redis_manager.connect()
+        await connect_to_redis()
         logger.info("✅ Redis 连接成功")
 
         # 3. 初始化数据库索引
@@ -56,7 +72,7 @@ async def lifespan(app: FastAPI):
 
         # 4. 启动定时任务调度器
         logger.info("📦 启动定时任务调度器...")
-        scheduler.start()
+        init_scheduler()
         logger.info("✅ 定时任务调度器启动成功")
 
         logger.info("=" * 60)
@@ -77,17 +93,17 @@ async def lifespan(app: FastAPI):
     try:
         # 1. 关闭定时任务调度器
         logger.info("📦 关闭定时任务调度器...")
-        scheduler.shutdown()
+        shutdown_scheduler()
         logger.info("✅ 定时任务调度器已关闭")
 
         # 2. 关闭 Redis 连接
         logger.info("📦 关闭 Redis 连接...")
-        await redis_manager.close()
+        await close_redis()
         logger.info("✅ Redis 连接已关闭")
 
         # 3. 关闭 MongoDB 连接
         logger.info("📦 关闭 MongoDB 连接...")
-        await mongodb.close()
+        await close_mongodb()
         logger.info("✅ MongoDB 连接已关闭")
 
         logger.info("=" * 60)
@@ -149,7 +165,7 @@ def create_app() -> FastAPI:
     from modules.mcp.api.routes import router as mcp_router
     from modules.trading_agents.api import router as trading_agents_router
     from modules.trading_agents.admin_api import router as trading_agents_admin_router
-    from modules.market_data.api import router as market_data_router
+    from core.market_data.admin_api import router as market_data_router
 
     # 注册所有路由（按优先级顺序）
     app.include_router(system_settings_router, prefix="/api")

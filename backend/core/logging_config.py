@@ -61,8 +61,19 @@ def setup_logging(
     # 获取彩色格式器
     formatter = get_formatter(debug_mode=settings.DEBUG)
 
-    # 控制台处理器
-    console_handler = logging.StreamHandler(sys.stdout)
+    # 控制台处理器 - 使用 UTF-8 编码以支持 emoji 字符
+    # 在 Windows 上避免 GBK 编码错误: 'gbk' codec can't encode character
+    try:
+        # Python 3.9+ 支持 encoding 参数
+        console_handler = logging.StreamHandler(sys.stdout, encoding='utf-8')
+    except TypeError:
+        # Python 3.8 及以下版本不支持 encoding 参数
+        # 需要重新配置 stdout 的编码
+        import io
+        if hasattr(sys.stdout, 'buffer'):
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        console_handler = logging.StreamHandler(sys.stdout)
+
     console_handler.setFormatter(formatter)
     console_handler.setLevel(level)
 

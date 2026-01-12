@@ -1,0 +1,191 @@
+# 数据源清单
+# 定义所有支持的数据源及其配置信息
+
+# A股数据源
+a_stock:
+  - source_id: tushare
+    name: TuShare Pro
+    name_cn: 通联数据
+    description: A股数据最全面，官方接口稳定
+    type: api
+    auth_required: true
+    auth_type: token
+    priority: 1
+    supported_data_types:
+      - daily_quote
+      - minute_quote
+      - financials
+      - indicators
+      - company_info
+      - news
+      - calendar
+    config_fields:
+      - field: api_token
+        label: API Token
+        type: string
+        required: true
+        description: TuShare Pro API Token
+    rate_limits:
+      max_requests_per_minute: 200
+      max_requests_per_day: 2000
+    documentation: https://tushare.pro/document/2
+
+  - source_id: akshare
+    name: AkShare
+    name_cn: AkShare
+    description: 完全免费开源，无需Token，数据覆盖全面
+    type: api
+    auth_required: false
+    priority: 2
+    supported_data_types:
+      - daily_quote
+      - minute_quote
+      - financials
+      - company_info
+      - calendar
+      - sector
+    rate_limits:
+      max_requests_per_minute: 100
+    documentation: https://akshare.akfamily.xyz
+
+# 美股数据源
+us_stock:
+  - source_id: yahoo_finance
+    name: Yahoo Finance
+    name_cn: 雅虎财经
+    description: 免费接口，最常用，数据权威
+    type: api
+    auth_required: false
+    priority: 1
+    supported_data_types:
+      - daily_quote
+      - minute_quote
+      - financials
+      - company_info
+      - dividends
+      - options
+    rate_limits:
+      max_requests_per_minute: 2000
+    documentation: https://finance.yahoo.com
+
+  - source_id: akshare
+    name: AkShare (US)
+    name_cn: AkShare（美股）
+    description: 内部封装 Yahoo Finance，使用更简单
+    type: api
+    auth_required: false
+    priority: 2
+    supported_data_types:
+      - daily_quote
+      - company_info
+    rate_limits:
+      max_requests_per_minute: 100
+    documentation: https://akshare.akfamily.xyz
+
+  - source_id: alpha_vantage
+    name: Alpha Vantage
+    name_cn: Alpha Vantage
+    description: 需要API Key，限制较多，但提供20+技术指标
+    type: api
+    auth_required: true
+    auth_type: api_key
+    priority: 3
+    supported_data_types:
+      - daily_quote
+      - minute_quote
+      - technical_indicators
+    config_fields:
+      - field: api_key
+        label: API Key
+        type: string
+        required: true
+        description: Alpha Vantage API Key
+    rate_limits:
+      max_requests_per_minute: 5
+      max_requests_per_day: 500
+    documentation: https://www.alphavantage.co/documentation
+
+  - source_id: tushare
+    name: TuShare Pro (US)
+    name_cn: 通联数据（美股）
+    description: 美股数据需要较高积分
+    type: api
+    auth_required: true
+    auth_type: token
+    priority: 4
+    supported_data_types:
+      - daily_quote
+      - financials
+    config_fields:
+      - field: api_token
+        label: API Token
+        type: string
+        required: true
+        description: TuShare Pro API Token（需要15000+积分）
+    rate_limits:
+      max_requests_per_minute: 200
+    documentation: https://tushare.pro/document/2
+
+# 港股数据源
+hk_stock:
+  - source_id: yahoo_finance
+    name: Yahoo Finance
+    name_cn: 雅虎财经
+    description: 免费接口，稳定性高
+    type: api
+    auth_required: false
+    priority: 1
+    supported_data_types:
+      - daily_quote
+      - minute_quote
+      - financials
+      - company_info
+    rate_limits:
+      max_requests_per_minute: 2000
+    documentation: https://finance.yahoo.com
+
+  - source_id: akshare
+    name: AkShare (HK)
+    name_cn: AkShare（港股）
+    description: 港股数据覆盖好，完全免费
+    type: api
+    auth_required: false
+    priority: 2
+    supported_data_types:
+      - daily_quote
+      - minute_quote
+      - company_info
+    rate_limits:
+      max_requests_per_minute: 100
+    documentation: https://akshare.akfamily.xyz
+
+  - source_id: itick
+    name: iTick
+    name_cn: iTick
+    description: 专业付费数据源，港股付费首选
+    type: api
+    auth_required: true
+    auth_type: token
+    priority: 3
+    supported_data_types:
+      - daily_quote
+      - minute_quote
+      - realtime_quote
+    config_fields:
+      - field: api_token
+        label: API Token
+        type: string
+        required: true
+        description: iTick API Token
+    rate_limits:
+      max_requests_per_minute: 100
+    documentation: https://docs.itick.org
+    note: 暂不实现
+
+# 适配器类路径映射
+adapter_classes:
+  tushare: core.market_data.sources.a_stock.tushare_adapter.TuShareAdapter
+  akshare: core.market_data.sources.a_stock.akshare_adapter.AkShareAdapter
+  yahoo_finance: core.market_data.sources.us_stock.yahoo_adapter.YahooFinanceAdapter  # 待实现
+  alpha_vantage: core.market_data.sources.us_stock.alpha_vantage_adapter.AlphaVantageAdapter  # 待实现
+  itick: core.market_data.sources.hk_stock.itick_adapter.ITickAdapter  # 暂不实现

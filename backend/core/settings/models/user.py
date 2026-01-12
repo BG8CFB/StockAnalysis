@@ -184,14 +184,33 @@ class UserSettingsResponse(BaseModel):
 
     @classmethod
     def from_db(cls, data: Dict[str, Any]) -> "UserSettingsResponse":
-        """从数据库数据创建响应对象"""
+        """
+        从数据库数据创建响应对象
+
+        处理可能存在的无效数据：
+        - 确保 concurrent_tasks >= 0（修复历史负数问题）
+        - 确保其他数值字段 >= 0
+        """
+        # 获取并清理 quota_info 数据
+        quota_data = data.get("quota_info", {})
+
+        # 修复可能存在的负数值（确保 >= 0）
+        if "concurrent_tasks" in quota_data and quota_data["concurrent_tasks"] < 0:
+            quota_data["concurrent_tasks"] = 0
+        if "tasks_used" in quota_data and quota_data["tasks_used"] < 0:
+            quota_data["tasks_used"] = 0
+        if "reports_count" in quota_data and quota_data["reports_count"] < 0:
+            quota_data["reports_count"] = 0
+        if "storage_used_mb" in quota_data and quota_data["storage_used_mb"] < 0:
+            quota_data["storage_used_mb"] = 0.0
+
         return cls(
             id=str(data["_id"]),
             user_id=str(data["user_id"]),
             core_settings=CoreSettings(**data.get("core_settings", {})),
             notification_settings=NotificationSettings(**data.get("notification_settings", {})),
             trading_agents_settings=TradingAgentsSettings(**data.get("trading_agents_settings", {})),
-            quota_info=UserQuotaInfo(**data.get("quota_info", {})),
+            quota_info=UserQuotaInfo(**quota_data),
             created_at=data["created_at"],
             updated_at=data["updated_at"],
         )

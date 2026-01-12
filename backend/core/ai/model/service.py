@@ -13,8 +13,6 @@ from typing import List, Optional, Dict
 from bson import ObjectId
 
 from core.db.mongodb import mongodb
-from core.ai.llm.openai_compat import OpenAICompatProvider
-from core.ai.llm.provider import LLMProvider
 from core.ai.model.schemas import (
     AIModelConfigCreate,
     AIModelConfigUpdate,
@@ -44,7 +42,7 @@ class AIModelService:
     def __init__(self):
         """初始化服务"""
         self._db = None
-        self._model_cache: Dict[str, LLMProvider] = {}
+        self._model_cache: Dict[str, any] = {}  # 改为 any 类型，不再缓存 LLMProvider
 
     async def _get_collection(self):
         """获取数据库集合"""
@@ -389,7 +387,7 @@ class AIModelService:
         request: AIModelTestRequest
     ) -> ConnectionTestResponse:
         """
-        测试 AI 模型连接
+        测试 AI 模型连接（使用新的 AIService）
 
         Args:
             request: 测试请求
@@ -400,25 +398,36 @@ class AIModelService:
         start_time = time.time()
 
         try:
-            # 创建 LLM Provider
-            provider = OpenAICompatProvider(
-                api_base_url=request.api_base_url,
-                api_key=request.api_key,
+            # 使用新的 AIService 进行测试
+            from core.ai import get_ai_service, AIMessage
+
+            ai_service = get_ai_service()
+
+            # 创建测试消息
+            test_messages = [
+                AIMessage(role="user", content="Hi")
+            ]
+
+            # 创建临时配置（不使用配置服务，直接传递配置）
+            # 注意：这里需要临时设置模型配置到 AIService
+            # 为了简单起见，我们直接使用 LangChain 适配器创建模型并测试
+
+            from core.ai.langchain.adapter import LangChainAdapter
+
+            chat_model = LangChainAdapter.create_chat_model(
                 model_id=request.model_id,
+                api_key=request.api_key,
+                platform="custom",  # 自定义平台，使用提供的 API 端点
+                api_base_url=request.api_base_url,
+                temperature=0.1,
                 timeout_seconds=request.timeout_seconds,
             )
 
-            # 发送测试请求
-            from core.ai.llm.provider import Message
-            test_messages = [
-                Message(role="user", content="Hi")
-            ]
+            # 转换消息为 LangChain 格式
+            lc_messages = [msg.to_langchain() for msg in test_messages]
 
-            await provider.chat_completion(
-                messages=test_messages,
-                temperature=0.1,
-                max_tokens=5,
-            )
+            # 调用模型
+            await chat_model.ainvoke(lc_messages)
 
             latency_ms = int((time.time() - start_time) * 1000)
 
@@ -598,50 +607,6 @@ class AIModelService:
             is_from_api=False,
             fallback_used=False
         )
-
-    # ========================================================================
-    # LLM Provider 获取
-    # ========================================================================
-
-    async def get_llm_provider(
-        self,
-        model_id: str,
-        user_id: str,
-        is_admin: bool = False
-    ) -> Optional[LLMProvider]:
-        """
-        获取 LLM Provider 实例
-
-        Args:
-            model_id: 模型配置 ID
-            user_id: 用户 ID
-            is_admin: 是否为管理员
-
-        Returns:
-            LLM Provider 实例或 None
-        """
-        # 检查缓存
-        if model_id in self._model_cache:
-            return self._model_cache[model_id]
-
-        # 获取模型配置
-        model_config = await self.get_model(model_id, user_id, is_admin)
-        if not model_config:
-            return None
-
-        # 创建 Provider
-        provider = OpenAICompatProvider(
-            api_base_url=model_config.api_base_url,
-            api_key=model_config.api_key,
-            model_id=model_config.model_id,
-            timeout_seconds=model_config.timeout_seconds,
-            temperature=model_config.temperature,
-        )
-
-        # 缓存
-        self._model_cache[model_id] = provider
-
-        return provider
 
 
 # =============================================================================

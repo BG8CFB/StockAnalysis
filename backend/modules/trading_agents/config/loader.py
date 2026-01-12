@@ -2,22 +2,17 @@
 配置加载器
 
 负责加载、验证和合并智能体配置。
+
+新架构支持：
+- 从 phases/*/agents/*.yaml 目录结构加载配置
+- 保持向后兼容，支持从 templates/agents.yaml 加载
 """
 
 import logging
 import yaml
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
-from pydantic import ValidationError
-
-from modules.trading_agents.schemas import (
-    Phase1Config,
-    Phase2Config,
-    Phase3Config,
-    Phase4Config,
-    UserAgentConfigCreate,
-)
 from modules.trading_agents.exceptions import ConfigurationError
 
 logger = logging.getLogger(__name__)
@@ -28,27 +23,47 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 class ConfigLoader:
-    """配置加载器"""
+    """
+    配置加载器
 
-    def __init__(self, config_dir: Optional[Path] = None):
+    新架构：从 phases/*/agents/*.yaml 目录结构加载配置
+    - Phase 1: phases/phase1/agents/*.yaml (动态数量)
+    - Phase 2: phases/phase2/agents/*.yaml (固定 4 个)
+    - Phase 3: phases/phase3/agents/*.yaml (固定 4 个)
+    - Phase 4: phases/phase4/agents/*.yaml (固定 1 个)
+    """
+
+    def __init__(self, base_dir: Optional[Path] = None):
         """
         初始化配置加载器
 
         Args:
-            config_dir: 配置文件目录，默认为 templates/ 目录
+            base_dir: phases/ 目录的路径
         """
-        if config_dir is None:
-            config_dir = Path(__file__).parent / "templates"
+        if base_dir is None:
+            # 默认指向 modules/trading_agents/phases/
+            base_dir = Path(__file__).parent.parent / "phases"
 
-        self.config_dir = Path(config_dir)
+        self.base_dir = Path(base_dir)
         self._default_config: Optional[Dict[str, Any]] = None
+
+        # 向后兼容：旧模板目录
+        self.templates_dir = Path(__file__).parent / "templates"
 
     def load_default_config(self) -> Dict[str, Any]:
         """
-        加载默认配置
+        加载默认配置（新架构）
+
+        从 phases/*/agents/*.yaml 目录结构加载所有智能体配置。
 
         Returns:
-            配置字典
+            配置字典，格式：
+            {
+                "phase1": {"agents": [...]},
+                "phase2": {"agents": [...]},
+                "phase3": {"agents": [...]},
+                "phase4": {"agents": [...]}
+            }
 
         Raises:
             ConfigurationError: 配置加载失败
@@ -56,7 +71,66 @@ class ConfigLoader:
         if self._default_config is not None:
             return self._default_config
 
-        config_file = self.config_dir / "agents.yaml"
+        config = {
+            "phase1": {"agents": self._load_phase_agents("phase1")},
+            "phase2": {"agents": self._load_phase_agents("phase2")},
+            "phase3": {"agents": self._load_phase_agents("phase3")},
+            "phase4": {"agents": self._load_phase_agents("phase4")},
+        }
+
+        self._default_config = config
+        logger.info(f"加载默认配置成功: phase1={len(config['phase1']['agents'])} 个智能体")
+        return config
+
+    def _load_phase_agents(self, phase_name: str) -> List[Dict[str, Any]]:
+        """
+        加载指定阶段的智能体配置
+
+        Args:
+            phase_name: 阶段名称（如 "phase1", "phase2"）
+
+        Returns:
+            智能体配置列表
+        """
+        agents_dir = self.base_dir / phase_name / "agents"
+
+        if not agents_dir.exists():
+            logger.warning(f"智能体目录不存在: {agents_dir}")
+            return []
+
+        agents = []
+        for yaml_file in sorted(agents_dir.glob("*.yaml")):
+            try:
+                with open(yaml_file, "r", encoding="utf-8") as f:
+                    agent_config = yaml.safe_load(f)
+
+                # 验证必需字段
+                if not agent_config.get("slug"):
+                    logger.warning(f"智能体配置缺少 slug: {yaml_file}")
+                    continue
+
+                agents.append(agent_config)
+                logger.debug(f"加载智能体配置: {agent_config.get('slug')} from {yaml_file.name}")
+
+            except Exception as e:
+                logger.warning(f"加载智能体配置失败: {yaml_file}, error={e}")
+
+        logger.info(f"[{phase_name}] 加载 {len(agents)} 个智能体配置")
+        return agents
+
+    def load_default_config_legacy(self) -> Dict[str, Any]:
+        """
+        加载默认配置（旧版，向后兼容）
+
+        从 templates/agents.yaml 加载配置。
+
+        Returns:
+            配置字典
+
+        Raises:
+            ConfigurationError: 配置加载失败
+        """
+        config_file = self.templates_dir / "agents.yaml"
 
         if not config_file.exists():
             raise ConfigurationError(
@@ -66,10 +140,10 @@ class ConfigLoader:
 
         try:
             with open(config_file, "r", encoding="utf-8") as f:
-                self._default_config = yaml.safe_load(f)
+                config = yaml.safe_load(f)
 
-            logger.info(f"加载默认配置成功: {config_file}")
-            return self._default_config
+            logger.info(f"加载默认配置成功（旧版）: {config_file}")
+            return config
 
         except yaml.YAMLError as e:
             raise ConfigurationError(
@@ -262,7 +336,7 @@ def load_default_config() -> Dict[str, Any]:
     return config_loader.load_default_config()
 
 
-def get_phase1_config(config: Optional[Dict[str, Any]] = None) -> Phase1Config:
+def get_phase1_config(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
     获取第一阶段配置
 
@@ -275,11 +349,10 @@ def get_phase1_config(config: Optional[Dict[str, Any]] = None) -> Phase1Config:
     if config is None:
         config = load_default_config()
 
-    phase1_data = config.get("phase1", {})
-    return Phase1Config(**phase1_data)
+    return config.get("phase1", {})
 
 
-def get_phase2_config(config: Optional[Dict[str, Any]] = None) -> Optional[Phase2Config]:
+def get_phase2_config(config: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
     """
     获取第二阶段配置
 
@@ -292,14 +365,10 @@ def get_phase2_config(config: Optional[Dict[str, Any]] = None) -> Optional[Phase
     if config is None:
         config = load_default_config()
 
-    phase2_data = config.get("phase2")
-    if not phase2_data or not phase2_data.get("enabled"):
-        return None
-
-    return Phase2Config(**phase2_data)
+    return config.get("phase2")
 
 
-def get_phase3_config(config: Optional[Dict[str, Any]] = None) -> Optional[Phase3Config]:
+def get_phase3_config(config: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
     """
     获取第三阶段配置
 
@@ -312,14 +381,10 @@ def get_phase3_config(config: Optional[Dict[str, Any]] = None) -> Optional[Phase
     if config is None:
         config = load_default_config()
 
-    phase3_data = config.get("phase3")
-    if not phase3_data or not phase3_data.get("enabled"):
-        return None
-
-    return Phase3Config(**phase3_data)
+    return config.get("phase3")
 
 
-def get_phase4_config(config: Optional[Dict[str, Any]] = None) -> Optional[Phase4Config]:
+def get_phase4_config(config: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
     """
     获取第四阶段配置
 
@@ -332,21 +397,4 @@ def get_phase4_config(config: Optional[Dict[str, Any]] = None) -> Optional[Phase
     if config is None:
         config = load_default_config()
 
-    phase4_data = config.get("phase4")
-    if not phase4_data or not phase4_data.get("enabled"):
-        return None
-
-    return Phase4Config(**phase4_data)
-
-
-def validate_agent_config(config: Dict[str, Any]) -> UserAgentConfigCreate:
-    """
-    验证完整的智能体配置
-
-    Args:
-        config: 配置字典
-
-    Returns:
-        验证后的配置对象
-    """
-    return UserAgentConfigCreate(**config)
+    return config.get("phase4")

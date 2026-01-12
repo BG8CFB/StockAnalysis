@@ -15,7 +15,7 @@ from core.user.models import UserModel
 
 from modules.trading_agents.services.report_service import get_report_service, ReportService
 from modules.trading_agents.services.settings_service import get_trading_agents_settings_service
-from modules.trading_agents.websocket import get_ws_manager, WebSocketManager
+from modules.trading_agents.pusher import get_ws_manager, WebSocketManager
 from modules.trading_agents.schemas import (
     ReportSummaryResponse,
     MessageResponse,

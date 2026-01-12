@@ -1,12 +1,15 @@
 """
 核心 AI 模块 API 路由
 
-提供统一的 AI 模型配置管理接口，作为项目的公共基础设施。
+提供统一的 AI 模型配置管理接口和聊天补全接口。
 """
 
+import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 
 from core.auth.dependencies import get_current_active_user
 from core.user.models import UserModel
@@ -21,11 +24,39 @@ from core.ai.model.schemas import (
     ListModelsRequest,
     ListModelsResponse,
 )
+from core.ai import get_ai_service, AIMessage
 
 logger = logging.getLogger(__name__)
 
 # 创建路由器
 router = APIRouter(prefix="/ai", tags=["AI Core"])
+
+
+# =============================================================================
+# 请求/响应模型
+# =============================================================================
+
+class ChatMessageRequest(BaseModel):
+    """聊天消息请求"""
+    role: str = Field(..., description="消息角色: system, user, assistant, tool")
+    content: str = Field(..., description="消息内容")
+
+
+class ChatCompletionRequest(BaseModel):
+    """聊天补全请求"""
+    model_id: str = Field(..., description="模型 ID")
+    messages: list[ChatMessageRequest] = Field(..., description="消息列表")
+    temperature: float = Field(None, ge=0, le=2, description="温度参数")
+    max_tokens: int = Field(None, gt=0, description="最大 token 数")
+    stream: bool = Field(False, description="是否使用流式输出")
+
+
+class ChatCompletionResponse(BaseModel):
+    """聊天补全响应"""
+    content: str = Field(..., description="回复内容")
+    reasoning_content: str = Field(None, description="思考内容")
+    thinking_tokens: int = Field(None, description="思考 token 数")
+    usage: dict = Field(None, description="token 使用情况")
 
 
 # =============================================================================
@@ -37,20 +68,7 @@ async def create_model(
     request: AIModelConfigCreate,
     current_user: UserModel = Depends(get_current_active_user),
 ):
-    """
-    创建 AI 模型配置
-
-    Args:
-        request: 模型配置请求
-        current_user: 当前用户
-
-    Returns:
-        创建的模型配置
-
-    Note:
-        - is_system=True: 只有管理员可以创建系统模型
-        - is_system=False: 任何用户都可以创建个人模型
-    """
+    """创建 AI 模型配置"""
     is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
     service = get_model_service()
     return await service.create_model(str(current_user.id), request, is_admin)
@@ -60,15 +78,7 @@ async def create_model(
 async def list_models(
     current_user: UserModel = Depends(get_current_active_user),
 ):
-    """
-    列出 AI 模型配置
-
-    Args:
-        current_user: 当前用户
-
-    Returns:
-        模型配置列表 {"system": [...], "user": [...]}
-    """
+    """列出 AI 模型配置"""
     is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
     service = get_model_service()
     return await service.list_models(str(current_user.id), is_admin)
@@ -79,16 +89,7 @@ async def get_model(
     model_id: str,
     current_user: UserModel = Depends(get_current_active_user),
 ):
-    """
-    获取单个 AI 模型配置
-
-    Args:
-        model_id: 模型 ID
-        current_user: 当前用户
-
-    Returns:
-        模型配置
-    """
+    """获取单个 AI 模型配置"""
     is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
     service = get_model_service()
     model = await service.get_model(model_id, str(current_user.id), is_admin)
@@ -105,17 +106,7 @@ async def update_model(
     request: AIModelConfigUpdate,
     current_user: UserModel = Depends(get_current_active_user),
 ):
-    """
-    更新 AI 模型配置
-
-    Args:
-        model_id: 模型 ID
-        request: 更新请求
-        current_user: 当前用户
-
-    Returns:
-        更新后的模型配置
-    """
+    """更新 AI 模型配置"""
     is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
     service = get_model_service()
     model = await service.update_model(model_id, str(current_user.id), request, is_admin)
@@ -131,16 +122,7 @@ async def delete_model(
     model_id: str,
     current_user: UserModel = Depends(get_current_active_user),
 ):
-    """
-    删除 AI 模型配置
-
-    Args:
-        model_id: 模型 ID
-        current_user: 当前用户
-
-    Returns:
-        操作结果
-    """
+    """删除 AI 模型配置"""
     is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
     service = get_model_service()
     success = await service.delete_model(model_id, str(current_user.id), is_admin)
@@ -156,25 +138,14 @@ async def test_model(
     model_id: str,
     current_user: UserModel = Depends(get_current_active_user),
 ):
-    """
-    测试 AI 模型连接
-
-    Args:
-        model_id: 模型 ID
-        current_user: 当前用户
-
-    Returns:
-        测试结果
-    """
+    """测试 AI 模型连接"""
     is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
     service = get_model_service()
 
-    # 获取模型配置
     model = await service.get_model(model_id, str(current_user.id), is_admin)
     if not model:
         raise HTTPException(status_code=404, detail="模型配置不存在")
 
-    # 构建测试请求
     test_request = AIModelTestRequest(
         api_base_url=model.api_base_url,
         api_key=model.api_key,
@@ -190,16 +161,7 @@ async def test_model_connection(
     request: AIModelTestRequest,
     current_user: UserModel = Depends(get_current_active_user),
 ):
-    """
-    测试 AI 模型连接（通用接口）
-
-    Args:
-        request: 测试请求
-        current_user: 当前用户
-
-    Returns:
-        测试结果
-    """
+    """测试 AI 模型连接（通用接口）"""
     service = get_model_service()
     return await service.test_model_connection(request)
 
@@ -209,18 +171,86 @@ async def list_available_models(
     request: ListModelsRequest,
     current_user: UserModel = Depends(get_current_active_user),
 ):
-    """
-    获取可用的模型列表
-
-    Args:
-        request: 获取模型列表请求
-        current_user: 当前用户
-
-    Returns:
-        模型列表响应
-    """
+    """获取可用的模型列表"""
     service = get_model_service()
     return await service.list_available_models(request)
+
+
+# =============================================================================
+# 聊天补全端点
+# =============================================================================
+
+@router.post("/chat/completions")
+async def chat_completion(
+    request: ChatCompletionRequest,
+    current_user: UserModel = Depends(get_current_active_user),
+):
+    """
+    聊天补全接口
+
+    支持流式输出和非流式输出。
+    """
+    ai_service = get_ai_service()
+
+    # 设置配置服务
+    from core.ai import AIService
+    AIService.set_config_service(get_model_service())
+
+    # 转换消息格式
+    messages = [
+        AIMessage(
+            role=msg.role,
+            content=msg.content,
+        )
+        for msg in request.messages
+    ]
+
+    # 流式输出
+    if request.stream:
+        async def generate():
+            try:
+                async for chunk in ai_service.stream_completion(
+                    user_id=str(current_user.id),
+                    messages=messages,
+                    model_id=request.model_id,
+                ):
+                    # SSE 格式输出
+                    data = {
+                        "content": chunk.content,
+                        "is_complete": chunk.is_complete,
+                    }
+                    yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+            except Exception as e:
+                logger.error(f"流式输出错误: {e}")
+                error_data = {"error": str(e), "is_complete": True}
+                yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
+
+        return StreamingResponse(
+            generate(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            }
+        )
+
+    # 非流式输出
+    else:
+        response = await ai_service.chat_completion(
+            user_id=str(current_user.id),
+            messages=messages,
+            model_id=request.model_id,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
+        )
+
+        return ChatCompletionResponse(
+            content=response.content,
+            reasoning_content=response.reasoning_content,
+            thinking_tokens=response.thinking_tokens,
+            usage=response.usage,
+        )
 
 
 # =============================================================================
@@ -229,13 +259,21 @@ async def list_available_models(
 
 @router.get("/health")
 async def health_check():
-    """
-    健康检查端点
-
-    Returns:
-        健康状态
-    """
+    """健康检查端点"""
     return {
         "status": "healthy",
         "module": "AI Core",
     }
+
+
+@router.get("/concurrency/stats")
+async def concurrency_stats(
+    current_user: UserModel = Depends(get_current_active_user),
+):
+    """获取并发统计信息"""
+    is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="仅管理员可访问")
+
+    ai_service = get_ai_service()
+    return ai_service.get_concurrency_stats()

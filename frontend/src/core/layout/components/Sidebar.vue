@@ -63,37 +63,6 @@
           </template>
         </el-menu-item>
 
-        <!-- Section: Market Data -->
-        <div
-          v-if="!collapsed"
-          class="menu-label mt-4"
-        >
-          市场数据
-        </div>
-
-        <el-sub-menu
-          index="market-data"
-          popper-class="custom-popper"
-        >
-          <template #title>
-            <el-icon><TrendCharts /></el-icon>
-            <span>数据查询</span>
-          </template>
-
-          <el-menu-item index="/market-data/stocks">
-            <span class="sub-dot" />
-            <span>股票列表</span>
-          </el-menu-item>
-          <el-menu-item index="/market-data/quotes">
-            <span class="sub-dot" />
-            <span>行情数据</span>
-          </el-menu-item>
-          <el-menu-item index="/market-data/health">
-            <span class="sub-dot" />
-            <span>数据源监控</span>
-          </el-menu-item>
-        </el-sub-menu>
-
         <!-- Section: Analysis Tools -->
         <div
           v-if="!collapsed"
@@ -132,6 +101,21 @@
         >
           系统管理
         </div>
+
+        <el-sub-menu
+          index="system-monitor"
+          popper-class="custom-popper"
+        >
+          <template #title>
+            <el-icon><Monitor /></el-icon>
+            <span>系统监控</span>
+          </template>
+
+          <el-menu-item index="/core/monitor/data-source-status">
+            <span class="sub-dot" />
+            <span>数据源状态</span>
+          </el-menu-item>
+        </el-sub-menu>
 
         <el-sub-menu
           index="settings"
@@ -218,7 +202,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   HomeFilled, TrendCharts, DataAnalysis, Search, UserFilled,
-  Setting, ChatDotRound, SwitchButton
+  Setting, ChatDotRound, SwitchButton, Monitor
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@core/auth/store'
 

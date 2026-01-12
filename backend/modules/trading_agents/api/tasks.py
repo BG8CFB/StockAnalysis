@@ -21,8 +21,8 @@ from core.background_tasks import create_analysis_task_background
 from core.settings.services.user_service import get_user_settings_service
 from core.admin.audit_logger import get_audit_logger
 
-from modules.trading_agents.core.task_manager import get_task_manager, TaskManager
-from modules.trading_agents.core.concurrency_controller import get_concurrency_controller
+from modules.trading_agents.manager.task_manager import get_task_manager, TaskManager
+from modules.trading_agents.manager.concurrency_controller import get_concurrency_controller
 from modules.trading_agents.services.agent_config_service import get_agent_config_service
 from modules.trading_agents.schemas import (
     # 任务相关
@@ -149,10 +149,13 @@ async def create_tasks(
 
             return UnifiedTaskResponse.for_batch_task(batch_id, stock_codes)
 
+    except HTTPException:
+        # HTTP 异常直接抛出，不需要额外处理
+        raise
     except Exception as e:
-        # 任务创建失败，回滚并发计数
-        for _ in range(stock_count):
-            await settings_service.decrement_concurrent_tasks(str(current_user.id))
+        # 注意：increment_task_usage 在成功后才会调用
+        # 所以任务创建失败时不需要回滚 concurrent_tasks
+        logger.error(f"任务创建失败: user_id={current_user.id}, error={e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"任务创建失败: {str(e)}")
 
 

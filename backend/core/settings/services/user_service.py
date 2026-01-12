@@ -71,7 +71,8 @@ class UserSettingsService:
         if cached:
             try:
                 data = json.loads(cached)
-                return UserSettingsResponse(**data)
+                # 使用 from_db 方法清理可能的无效数据
+                return UserSettingsResponse.from_db(data)
             except Exception as e:
                 logger.warning(f"解析缓存的用户配置失败: {e}")
 
@@ -298,10 +299,15 @@ class UserSettingsService:
         return True, ""
 
     async def increment_task_usage(self, user_id: str) -> None:
-        """增加任务使用计数"""
+        """
+        增加任务使用计数
+
+        确保 quota_info 记录存在，如果不存在则使用 upsert 创建默认值
+        """
         collection = self.db.user_settings
 
-        await collection.update_one(
+        # 使用 update_one with upsert 确保配额记录存在
+        result = await collection.update_one(
             {"user_id": ObjectId(user_id)},
             {
                 "$inc": {
@@ -309,24 +315,74 @@ class UserSettingsService:
                     "quota_info.concurrent_tasks": 1
                 },
                 "$set": {"updated_at": datetime.utcnow()}
-            }
+            },
+            upsert=False  # 配额记录应该在用户注册时创建
         )
+
+        # 如果没有匹配到文档，说明用户配额记录不存在
+        if result.matched_count == 0:
+            logger.warning(f"用户配额记录不存在，创建默认配额: user_id={user_id}")
+            # 创建默认配额记录
+            await collection.update_one(
+                {"user_id": ObjectId(user_id)},
+                {
+                    "$set": {
+                        "quota_info.tasks_used": 1,
+                        "quota_info.concurrent_tasks": 1,
+                        "quota_info.tasks_limit": 100,
+                        "quota_info.reports_count": 0,
+                        "quota_info.reports_limit": 1000,
+                        "quota_info.storage_used_mb": 0.0,
+                        "quota_info.storage_limit_mb": 500,
+                        "quota_info.concurrent_limit": 5,
+                        "updated_at": datetime.utcnow()
+                    }
+                },
+                upsert=True
+            )
 
         # 清除缓存
         redis = await get_redis()
         await redis.delete(UserRedisKey.preferences(user_id))
 
     async def decrement_concurrent_tasks(self, user_id: str) -> None:
-        """减少并发任务计数"""
+        """
+        减少并发任务计数
+
+        使用聚合管道确保 concurrent_tasks 不会小于 0：
+        1. 先获取当前值
+        2. 如果值 > 0 才减少
+        3. 防止因为回滚操作多次调用导致负数
+        """
         collection = self.db.user_settings
 
-        await collection.update_one(
+        # 使用聚合管道确保不会变成负数
+        # 先用 $max 确保 concurrent_tasks >= 1，然后再 -1
+        # 如果 concurrent_tasks 已经是 0，$max 会保持为 0，-1 后变成 -1（仍然有问题）
+        # 正确的做法：先判断是否 > 0
+
+        # 方案：先获取当前值，只有当值 > 0 时才减少
+        user_doc = await collection.find_one(
             {"user_id": ObjectId(user_id)},
-            {
-                "$inc": {"quota_info.concurrent_tasks": -1},
-                "$set": {"updated_at": datetime.utcnow()}
-            }
+            {"quota_info.concurrent_tasks": 1}
         )
+
+        if user_doc:
+            current_concurrent = user_doc.get("quota_info", {}).get("concurrent_tasks", 0)
+            if current_concurrent > 0:
+                # 只有当前值大于 0 时才减少
+                await collection.update_one(
+                    {"user_id": ObjectId(user_id)},
+                    {
+                        "$inc": {"quota_info.concurrent_tasks": -1},
+                        "$set": {"updated_at": datetime.utcnow()}
+                    }
+                )
+            else:
+                # 当前值已经是 0，不执行减少操作
+                logger.debug(f"concurrent_tasks 已经是 0，跳过减少: user_id={user_id}")
+        else:
+            logger.warning(f"用户配额记录不存在，跳过减少并发计数: user_id={user_id}")
 
         # 清除缓存
         redis = await get_redis()

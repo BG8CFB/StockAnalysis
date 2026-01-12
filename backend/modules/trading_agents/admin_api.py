@@ -13,9 +13,9 @@ from core.auth.dependencies import get_current_user
 from core.user.models import UserModel
 from core.auth.rbac import Role, Permission, require_role, require_permission
 from core.ai.model import get_model_service
-from modules.trading_agents.core.task_manager import get_task_manager
+from modules.trading_agents.manager.task_manager import get_task_manager
 from modules.trading_agents.services.report_service import get_report_service
-from modules.trading_agents.core.batch_manager import get_batch_manager
+from modules.trading_agents.manager.batch_manager import get_batch_manager
 from modules.trading_agents.infra import get_alert_manager, AlertEventType, AlertSeverity
 
 logger = logging.getLogger(__name__)

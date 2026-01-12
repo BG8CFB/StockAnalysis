@@ -8,14 +8,12 @@ import asyncio
 import logging
 from typing import Dict, Any, Optional
 
-from modules.trading_agents.core.task_manager import get_task_manager
+from modules.trading_agents.manager.task_manager import get_task_manager
 from modules.trading_agents.schemas import AnalysisTaskCreate
 from modules.trading_agents.services.agent_config_service import get_agent_config_service
 from core.ai.model import get_model_service
-# from modules.trading_agents.core.agent_engine import AgentWorkflowEngine  # 已删除，使用 LangGraph workflow
 from modules.trading_agents.services.report_service import get_report_service
-from modules.trading_agents.websocket import get_ws_manager
-from modules.trading_agents.tools import get_tool_registry
+from modules.trading_agents.pusher import get_ws_manager
 
 logger = logging.getLogger(__name__)
 
@@ -215,6 +213,13 @@ async def execute_analysis_workflow(
 
         if not agent_config:
             raise Exception("无法加载用户智能体配置")
+
+        # **关键修复**: 将 Pydantic 对象转换为字典，确保后续处理兼容
+        if hasattr(agent_config, 'model_dump'):
+            agent_config = agent_config.model_dump(mode='json')
+        elif hasattr(agent_config, 'dict'):
+            agent_config = agent_config.dict()
+
         logger.info(f"[{task_id}] ✅ 用户智能体配置加载成功")
 
         # 2. 加载用户模型偏好
@@ -255,8 +260,8 @@ async def execute_analysis_workflow(
 
         logger.info(f"任务 {task_id} 模型解析完成: data_collection={data_collection_model_id}, debate={debate_model_id}")
 
-        # 4. 请求并发控制
-        from modules.trading_agents.core.concurrency_controller import get_concurrency_controller
+        # 请求并发控制
+        from modules.trading_agents.manager.concurrency_controller import get_concurrency_controller
         concurrency_controller = get_concurrency_controller()
 
         # 为数据收集模型请求并发
@@ -305,39 +310,70 @@ async def execute_analysis_workflow(
             logger.error(f"任务 {task_id} 等待并发槽位时发生异常: {e}", exc_info=True)
             raise Exception(f"任务等待并发槽位失败: {e}") from e
 
-        # 5. 使用 LangGraph 执行工作流
-        logger.info(f"任务 {task_id} 开始执行 LangGraph 工作流...")
+        # 5. 使用新调度器执行工作流
+        logger.info(f"任务 {task_id} 开始执行工作流...")
 
         # 准备配置参数
-        config = {
-            "agent_config": agent_config,
-            "data_collection_model": {
-                "id": data_collection_model_id,
-                "name": data_collection_model.name,
-                "thinking_enabled": data_collection_model.thinking_enabled,
-                "thinking_mode": data_collection_model.thinking_mode,
-            },
-            "debate_model": {
-                "id": debate_model_id,
-                "name": debate_model.name,
-                "thinking_enabled": debate_model.thinking_enabled,
-                "thinking_mode": debate_model.thinking_mode,
-            },
+        model_config = {
+            "data_collection_model": data_collection_model_id,
+            "debate_model": debate_model_id,
         }
 
         try:
-            # 使用 LangGraph 工作流执行
-            from modules.trading_agents.workflow.integration import execute_analysis_workflow_langgraph
-            await execute_analysis_workflow_langgraph(
+            # 使用新的 WorkflowScheduler 执行工作流
+            from modules.trading_agents.scheduler.workflow_scheduler import create_workflow_scheduler
+            from modules.trading_agents.phases import run_phase1, run_phase2, run_phase3, run_phase4
+            from modules.trading_agents.pusher import get_ws_manager
+
+            # 获取 WebSocket 管理器用于进度推送
+            ws_manager = await get_ws_manager()
+
+            # 创建调度器
+            scheduler = create_workflow_scheduler() \
+                .with_phase1_runner(run_phase1) \
+                .with_phase2_runner(run_phase2) \
+                .with_phase3_runner(run_phase3) \
+                .with_phase4_runner(run_phase4) \
+                .with_progress_callback(lambda data: asyncio.create_task(
+                    ws_manager.broadcast_progress(task_id, data)
+                )) \
+                .build()
+
+            # 获取阶段开关
+            stages_config = request.stages
+            enable_phase1 = stages_config.stage1.enabled if stages_config else True
+            enable_phase2 = stages_config.stage2.enabled if stages_config else True
+            enable_phase3 = stages_config.stage3.enabled if stages_config else True
+            enable_phase4 = stages_config.stage4.enabled if stages_config else True
+
+            # 执行工作流
+            final_state = await scheduler.run(
                 task_id=task_id,
                 user_id=user_id,
-                request=request,
-                config=config
+                stock_code=request.stock_code,
+                trade_date=request.trade_date,
+                model_config=model_config,
+                agent_config=agent_config,
+                max_debate_rounds=stages_config.stage2.debate.rounds if stages_config else 2,
+                enable_phase1=enable_phase1,
+                enable_phase2=enable_phase2,
+                enable_phase3=enable_phase3,
+                enable_phase4=enable_phase4,
             )
-            logger.info(f"任务 {task_id} LangGraph 工作流执行完成")
+
+            logger.info(f"任务 {task_id} 工作流执行完成，状态: {final_state.status}")
+
+            # 保存最终报告
+            if final_state.final_report:
+                await report_service.save_report(
+                    task_id=task_id,
+                    user_id=user_id,
+                    report=final_state.final_report,
+                    recommendation=final_state.recommendation,
+                )
 
         except Exception as e:
-            logger.error(f"任务 {task_id} LangGraph 工作流执行失败: {e}", exc_info=True)
+            logger.error(f"任务 {task_id} 工作流执行失败: {e}", exc_info=True)
             raise
 
         logger.info(f"分析任务执行成功: task_id={task_id}")
@@ -357,7 +393,7 @@ async def execute_analysis_workflow(
     finally:
         # 释放并发资源（两个模型都需要释放）
         try:
-            from modules.trading_agents.core.concurrency_controller import get_concurrency_controller
+            from modules.trading_agents.manager.concurrency_controller import get_concurrency_controller
             concurrency_controller = get_concurrency_controller()
 
             # 释放数据收集模型槽位
@@ -409,8 +445,9 @@ async def execute_analysis_workflow(
 
         # 释放 MCP 连接
         try:
-            from modules.trading_agents.tools.mcp_tool_filter import release_task_connections
-            await release_task_connections(task_id)
+            from modules.mcp.pool.pool import get_mcp_connection_pool
+            pool = get_mcp_connection_pool()
+            await pool.release_task_connections(task_id)
             logger.info(f"已释放任务 {task_id} 的 MCP 连接")
         except Exception as e:
             logger.error(f"释放 MCP 连接失败: task_id={task_id}, error={e}")

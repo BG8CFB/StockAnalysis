@@ -84,6 +84,17 @@ class AIModelConfigBase(BaseModel):
         None, description="思考模式类型（仅支持思考的模型需要配置）"
     )
 
+    # 价格配置（用户自定义）
+    custom_input_price: Optional[float] = Field(
+        None, ge=0, description="自定义输入价格（元/百万tokens），留空使用内置价格"
+    )
+    custom_output_price: Optional[float] = Field(
+        None, ge=0, description="自定义输出价格（元/百万tokens），留空使用内置价格"
+    )
+    custom_thinking_price: Optional[float] = Field(
+        None, ge=0, description="自定义思考价格（元/百万tokens），留空使用内置价格"
+    )
+
     @model_validator(mode="after")
     def validate_concurrency(self) -> "AIModelConfigBase":
         """验证并发参数的合理性"""
@@ -126,6 +137,11 @@ class AIModelConfigUpdate(BaseModel):
     enabled: Optional[bool] = None
     thinking_enabled: Optional[bool] = None
     thinking_mode: Optional[ThinkingModeEnum] = None
+
+    # 价格配置（用户自定义）
+    custom_input_price: Optional[float] = Field(None, ge=0)
+    custom_output_price: Optional[float] = Field(None, ge=0)
+    custom_thinking_price: Optional[float] = Field(None, ge=0)
 
     @model_validator(mode="after")
     def validate_concurrency(self) -> "AIModelConfigUpdate":

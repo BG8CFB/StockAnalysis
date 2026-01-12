@@ -13,7 +13,6 @@ from .loader import (
     get_phase2_config,
     get_phase3_config,
     get_phase4_config,
-    validate_agent_config,
 )
 
 __all__ = [
@@ -25,5 +24,4 @@ __all__ = [
     "get_phase2_config",
     "get_phase3_config",
     "get_phase4_config",
-    "validate_agent_config",
 ]

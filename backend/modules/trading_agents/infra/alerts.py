@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from core.db.mongodb import mongodb
-from modules.trading_agents.websocket import get_ws_manager
+from modules.trading_agents.pusher import get_ws_manager
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +130,7 @@ class QuotaExhaustedTrigger(AlertTrigger):
         **context
     ) -> Optional[AlertEvent]:
         # 检查配额是否耗尽
-        from modules.trading_agents.core.concurrency import get_concurrency_manager
+        from modules.trading_agents.manager.concurrency import get_concurrency_manager
         concurrency = get_concurrency_manager()
         has_quota = await concurrency.try_acquire_public_quota(user_id)
 

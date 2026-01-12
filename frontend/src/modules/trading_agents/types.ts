@@ -107,6 +107,10 @@ export interface AIModelConfig {
   enabled: boolean
   thinking_enabled: boolean  // 是否支持思考模式
   thinking_mode?: ThinkingModeEnum | null  // 思考模式类型
+  // 自定义价格配置（元/百万tokens，留空使用内置价格）
+  custom_input_price?: number | null
+  custom_output_price?: number | null
+  custom_thinking_price?: number | null
   is_system: boolean
   owner_id: string | null
   masked_api_key: string
@@ -131,6 +135,10 @@ export interface AIModelConfigCreate {
   enabled?: boolean
   thinking_enabled?: boolean  // 是否支持思考模式
   thinking_mode?: ThinkingModeEnum | null  // 思考模式类型
+  // 自定义价格配置（元/百万tokens，留空使用内置价格）
+  custom_input_price?: number | null
+  custom_output_price?: number | null
+  custom_thinking_price?: number | null
   is_system?: boolean
 }
 
@@ -151,6 +159,10 @@ export interface AIModelConfigUpdate {
   enabled?: boolean
   thinking_enabled?: boolean  // 是否支持思考模式
   thinking_mode?: ThinkingModeEnum | null  // 思考模式类型
+  // 自定义价格配置（元/百万tokens，留空使用内置价格）
+  custom_input_price?: number | null
+  custom_output_price?: number | null
+  custom_thinking_price?: number | null
 }
 
 export interface AIModelTestRequest {

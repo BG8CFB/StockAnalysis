@@ -33,6 +33,158 @@ const AI_BASE_URL = '/ai'
 const TRADING_AGENTS_BASE_URL = '/trading-agents'
 
 // =============================================================================
+// 聊天补全 API（支持流式输出）
+// =============================================================================
+
+export interface ChatMessage {
+  role: 'system' | 'user' | 'assistant' | 'tool'
+  content: string
+}
+
+export interface ChatCompletionRequest {
+  model_id: string
+  messages: ChatMessage[]
+  temperature?: number
+  max_tokens?: number
+  stream?: boolean
+}
+
+export interface ChatCompletionResponse {
+  content: string
+  reasoning_content?: string
+  thinking_tokens?: number
+  usage?: {
+    prompt_tokens: number
+    completion_tokens: number
+    total_tokens: number
+  }
+}
+
+export interface StreamChunk {
+  content: string
+  is_complete: boolean
+}
+
+/**
+ * 聊天补全 API（支持流式和非流式）
+ */
+export const chatApi = {
+  /**
+   * 聊天补全（非流式）
+   */
+  chatCompletion: (data: ChatCompletionRequest) =>
+    httpPost<ChatCompletionResponse>(`${AI_BASE_URL}/chat/completions`, {
+      ...data,
+      stream: false
+    }),
+
+  /**
+   * 聊天补全（流式 SSE）
+   * 使用 fetch API 和 ReadableStream 处理 SSE 流式响应
+   *
+   * 使用示例:
+   * ```ts
+   * const cleanup = chatApi.streamChatCompletion({
+   *   model_id: 'glm-4.7',
+   *   messages: [{ role: 'user', content: '你好' }],
+   * }, {
+   *   onMessage: (chunk) => console.log(chunk.content),
+   *   onComplete: () => console.log('完成'),
+   *   onError: (error) => console.error(error)
+   * })
+   *
+   * // 取消流式请求
+   * cleanup()
+   * ```
+   */
+  streamChatCompletion: (
+    data: ChatCompletionRequest,
+    callbacks: {
+      onMessage: (chunk: StreamChunk) => void
+      onComplete?: () => void
+      onError?: (error: Error) => void
+    }
+  ): (() => void) => {
+    const baseURL = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api'
+    const token = localStorage.getItem('access_token')
+    const url = `${baseURL}${AI_BASE_URL}/chat/completions`
+
+    const controller = new AbortController()
+
+    fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : '',
+      },
+      body: JSON.stringify({
+        model_id: data.model_id,
+        messages: data.messages,
+        temperature: data.temperature,
+        max_tokens: data.max_tokens,
+        stream: true,
+      }),
+      signal: controller.signal,
+    }).then(async (response) => {
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+
+      if (!reader) {
+        throw new Error('Response body is null')
+      }
+
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+
+        if (done) {
+          callbacks.onComplete?.()
+          break
+        }
+
+        // 解码并追加到缓冲区
+        buffer += decoder.decode(value, { stream: true })
+
+        // 处理 SSE 格式数据
+        const lines = buffer.split('\n\n')
+        buffer = lines.pop() || '' // 保留最后一个不完整的行
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim()
+            if (data) {
+              try {
+                const chunk = JSON.parse(data) as StreamChunk
+                callbacks.onMessage(chunk)
+
+                if (chunk.is_complete) {
+                  callbacks.onComplete?.()
+                  return
+                }
+              } catch (e) {
+                console.error('Failed to parse SSE data:', data, e)
+              }
+            }
+          }
+        }
+      }
+    }).catch((error) => {
+      if (error.name !== 'AbortError') {
+        callbacks.onError?.(error as Error)
+      }
+    })
+
+    // 返回清理函数
+    return () => controller.abort()
+  },
+}
+
+// =============================================================================
 // AI 模型管理 API
 // =============================================================================
 
