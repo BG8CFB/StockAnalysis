@@ -104,16 +104,6 @@ class MCPServerConfig(BaseModel):
     name: str = Field(..., description="服务器名称")
     required: bool = Field(default=True, description="是否必需（必需服务器失败将阻止任务启动）")
 
-    @classmethod
-    def from_str(cls, server_name: str) -> "MCPServerConfig":
-        """从字符串创建配置（向后兼容）"""
-        return cls(name=server_name, required=True)
-
-    @classmethod
-    def from_list(cls, server_names: List[str]) -> List["MCPServerConfig"]:
-        """从字符串列表创建配置列表（向后兼容）"""
-        return [cls.from_str(name) for name in server_names]
-
 
 # =============================================================================
 # 任务相关模型
@@ -203,6 +193,7 @@ class AnalysisTaskResponse(BaseModel):
     id: str
     user_id: str
     stock_code: str
+    market: str = Field(default="a_share", description="股票市场：a_share, hong_kong, us")
     trade_date: str
     status: TaskStatusEnum
     current_phase: int
@@ -211,9 +202,11 @@ class AnalysisTaskResponse(BaseModel):
 
     # 结果
     reports: Dict[str, str]
+    final_report: Optional[str] = Field(None, description="最终报告（方便前端直接访问）")
     final_recommendation: Optional[RecommendationEnum]
     buy_price: Optional[float]
     sell_price: Optional[float]
+    risk_level: Optional[str] = Field(None, description="风险等级：高, 中, 低")
 
     # Token 追踪
     token_usage: Dict[str, int]
@@ -234,19 +227,26 @@ class AnalysisTaskResponse(BaseModel):
     @classmethod
     def from_db(cls, data: Dict[str, Any]) -> "AnalysisTaskResponse":
         """从数据库数据创建响应对象"""
+        # 提取 final_report（优先从 reports.final_report，如果不存在则为 None）
+        reports = data.get("reports", {})
+        final_report = reports.get("final_report") if isinstance(reports, dict) else None
+
         return cls(
             id=str(data["_id"]),
             user_id=data["user_id"],
             stock_code=data["stock_code"],
+            market=data.get("market", "a_share"),
             trade_date=data["trade_date"],
             status=TaskStatusEnum(data["status"]),
             current_phase=data.get("current_phase", 1),
             current_agent=data.get("current_agent"),
             progress=data.get("progress", 0.0),
-            reports=data.get("reports", {}),
+            reports=reports,
+            final_report=final_report,
             final_recommendation=RecommendationEnum(data["final_recommendation"]) if data.get("final_recommendation") else None,
             buy_price=data.get("buy_price"),
             sell_price=data.get("sell_price"),
+            risk_level=data.get("risk_level"),
             token_usage=data.get("token_usage", {}),
             error_message=data.get("error_message"),
             error_details=data.get("error_details"),
@@ -389,7 +389,7 @@ class AgentConfig(BaseModel):
                 return v
             # 如果是字符串列表，转换
             if isinstance(v[0], str):
-                return MCPServerConfig.from_list(v)
+                return [MCPServerConfig(name=name, required=True) for name in v]
             # 如果是字典列表，尝试解析
             if isinstance(v[0], dict):
                 try:
@@ -436,14 +436,11 @@ class AgentConfigSlim(BaseModel):
         """向后兼容：自动将字符串/字典列表转换为 MCPServerConfig 列表"""
         if not v:
             return []
-        # 如果已经是 MCPServerConfig 列表，直接返回
         if isinstance(v, list) and len(v) > 0:
             if isinstance(v[0], MCPServerConfig):
                 return v
-            # 如果是字符串列表，转换
             if isinstance(v[0], str):
-                return MCPServerConfig.from_list(v)
-            # 如果是字典列表，尝试解析
+                return [MCPServerConfig(name=name, required=True) for name in v]
             if isinstance(v[0], dict):
                 try:
                     return [MCPServerConfig(**item) for item in v]

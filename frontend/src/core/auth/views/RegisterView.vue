@@ -118,27 +118,10 @@
             />
           </el-form-item>
 
-          <!-- 滑动验证码 -->
-          <el-form-item prop="captcha">
-            <SliderCaptcha
-              ref="captchaRef"
-              action="register"
-              @success="onCaptchaSuccess"
-              @error="onCaptchaError"
-            />
-            <div
-              v-if="captchaError"
-              class="error-tip"
-            >
-              {{ captchaError }}
-            </div>
-          </el-form-item>
-
           <el-form-item>
             <el-button
               type="primary"
               :loading="loading"
-              :disabled="!captchaData"
               class="submit-button"
               @click="handleRegister"
             >
@@ -183,25 +166,18 @@ import {
   TrendCharts
 } from '@element-plus/icons-vue'
 import { useUserStore } from '../store'
-import SliderCaptcha, { type CaptchaData } from '@core/components/SliderCaptcha.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
 
 const formRef = ref<FormInstance>()
-const captchaRef = ref()
 const loading = ref(false)
-const captchaData = ref<CaptchaData | null>(null)
-const captchaError = ref('')
 
 const form = reactive({
   email: '',
   username: '',
   password: '',
   confirm_password: '',
-  captcha_token: '',
-  slide_x: 0,
-  slide_y: 0,
 })
 
 const validateConfirmPassword = (_rule: unknown, value: string, callback: (error?: Error) => void) => {
@@ -234,40 +210,6 @@ const rules: FormRules = {
     { required: true, message: '请确认密码', trigger: 'blur' },
     { validator: validateConfirmPassword, trigger: 'blur' },
   ],
-  captcha: [
-    {
-      validator: (_rule, _value, callback) => {
-        if (!captchaData.value) {
-          callback(new Error('请完成验证码验证'))
-        } else {
-          callback()
-        }
-      },
-      trigger: 'change',
-    },
-  ],
-}
-
-// 验证码成功回调
-function onCaptchaSuccess(data: CaptchaData) {
-  captchaData.value = data
-  captchaError.value = ''
-  form.captcha_token = data.token
-  form.slide_x = data.slideX
-  form.slide_y = data.slideY
-
-  if (formRef.value) {
-    formRef.value.clearValidate('captcha')
-  }
-}
-
-// 验证码失败回调
-function onCaptchaError() {
-  captchaData.value = null
-  form.captcha_token = ''
-  form.slide_x = 0
-  form.slide_y = 0
-  captchaError.value = '验证失败，请重试'
 }
 
 async function handleRegister() {
@@ -276,21 +218,13 @@ async function handleRegister() {
   await formRef.value.validate(async (valid) => {
     if (!valid) return
 
-    if (!captchaData.value) {
-      ElMessage.warning('请完成验证码验证')
-      return
-    }
-
     loading.value = true
     try {
       const result = await userStore.register(
         form.email,
         form.username,
         form.password,
-        form.confirm_password,
-        form.captcha_token,
-        form.slide_x,
-        form.slide_y
+        form.confirm_password
       )
 
       // 处理注册结果
@@ -304,13 +238,8 @@ async function handleRegister() {
         await router.push('/login')
       }
     } catch (error: any) {
-      if (captchaRef.value) {
-        captchaRef.value.refreshCaptcha()
-      }
-      captchaData.value = null
-      form.captcha_token = ''
-      form.slide_x = 0
-      form.slide_y = 0
+      const errorMessage = error?.response?.data?.detail || error?.message || '注册失败，请检查输入信息'
+      ElMessage.error(errorMessage)
     } finally {
       loading.value = false
     }
@@ -538,12 +467,6 @@ function goLogin() {
 :deep(.el-form-item__label) {
   font-weight: var(--font-weight-medium);
   color: var(--color-text-primary);
-}
-
-.error-tip {
-  margin-top: var(--space-2);
-  font-size: var(--font-size-xs);
-  color: var(--color-danger);
 }
 
 .submit-button {

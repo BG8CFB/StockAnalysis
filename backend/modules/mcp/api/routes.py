@@ -5,15 +5,13 @@ MCP API 路由
 """
 
 import logging
-from typing import Dict, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, HTTPException
 
-from core.auth.dependencies import get_current_user, get_current_active_user
+from core.auth.dependencies import get_current_active_user
 from core.user.dependencies import get_current_admin_user
 from core.user.models import UserModel
-from core.auth.rbac import Role, Permission
+from core.auth.rbac import Role
 
 from modules.mcp.schemas import (
     MCPServerConfigCreate,
@@ -22,9 +20,8 @@ from modules.mcp.schemas import (
     MCPServerStatusEnum,
     ConnectionTestResponse,
 )
-from modules.mcp.service.mcp_service import get_mcp_service, MCPService
-from modules.mcp.service.health_checker import get_mcp_health_checker, MCPHealthChecker
-from modules.mcp.pool.pool import get_mcp_connection_pool, MCPConnectionPool
+from modules.mcp.service.mcp_service import get_mcp_service
+from modules.mcp.pool.pool import get_mcp_connection_pool
 from modules.mcp.config.settings_models import MCPSystemSettingsResponse, MCPSystemSettingsCreate
 from modules.mcp.config.settings_service import get_system_settings, update_system_settings, reset_to_defaults
 from modules.mcp.config.loader import reload_mcp_config
@@ -371,109 +368,6 @@ async def reset_mcp_settings(
     }
 
 
-# =============================================================================
-# 向后兼容端点（废弃警告）
-# =============================================================================
-
-@router.post("/trading-agents/mcp-servers", response_model=MCPServerConfigResponse, deprecated=True)
-async def create_mcp_server_legacy(
-    request: MCPServerConfigCreate,
-    current_user: UserModel = Depends(get_current_active_user),
-):
-    """
-    [已废弃] 创建 MCP 服务器配置
-
-    请使用新端点: POST /api/mcp/servers
-    """
-    logger.warning(f"用户使用废弃端点创建 MCP 服务器: user_id={current_user.id}")
-    return await create_mcp_server(request, current_user)
-
-
-@router.get("/trading-agents/mcp-servers", deprecated=True)
-async def list_mcp_servers_legacy(
-    current_user: UserModel = Depends(get_current_active_user),
-):
-    """
-    [已废弃] 列出 MCP 服务器配置
-
-    请使用新端点: GET /api/mcp/servers
-    """
-    logger.warning(f"用户使用废弃端点获取 MCP 服务器列表: user_id={current_user.id}")
-    return await list_mcp_servers(current_user)
-
-
-@router.get("/trading-agents/mcp-servers/{server_id}", response_model=MCPServerConfigResponse, deprecated=True)
-async def get_mcp_server_legacy(
-    server_id: str,
-    current_user: UserModel = Depends(get_current_active_user),
-):
-    """
-    [已废弃] 获取单个 MCP 服务器配置
-
-    请使用新端点: GET /api/mcp/servers/{server_id}
-    """
-    logger.warning(f"用户使用废弃端点获取 MCP 服务器: user_id={current_user.id}, server_id={server_id}")
-    return await get_mcp_server(server_id, current_user)
-
-
-@router.put("/trading-agents/mcp-servers/{server_id}", response_model=MCPServerConfigResponse, deprecated=True)
-async def update_mcp_server_legacy(
-    server_id: str,
-    request: MCPServerConfigUpdate,
-    current_user: UserModel = Depends(get_current_active_user),
-):
-    """
-    [已废弃] 更新 MCP 服务器配置
-
-    请使用新端点: PUT /api/mcp/servers/{server_id}
-    """
-    logger.warning(f"用户使用废弃端点更新 MCP 服务器: user_id={current_user.id}, server_id={server_id}")
-    return await update_mcp_server(server_id, request, current_user)
-
-
-@router.delete("/trading-agents/mcp-servers/{server_id}", deprecated=True)
-async def delete_mcp_server_legacy(
-    server_id: str,
-    current_user: UserModel = Depends(get_current_active_user),
-):
-    """
-    [已废弃] 删除 MCP 服务器配置
-
-    请使用新端点: DELETE /api/mcp/servers/{server_id}
-    """
-    logger.warning(f"用户使用废弃端点删除 MCP 服务器: user_id={current_user.id}, server_id={server_id}")
-    return await delete_mcp_server(server_id, current_user)
-
-
-@router.post("/trading-agents/mcp-servers/{server_id}/test", response_model=ConnectionTestResponse, deprecated=True)
-async def test_mcp_server_legacy(
-    server_id: str,
-    current_user: UserModel = Depends(get_current_active_user),
-):
-    """
-    [已废弃] 测试 MCP 服务器连接
-
-    请使用新端点: POST /api/mcp/servers/{server_id}/test
-    """
-    logger.warning(f"用户使用废弃端点测试 MCP 服务器: user_id={current_user.id}, server_id={server_id}")
-    # 调用 service 方法获取完整响应（包括延迟）
-    is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
-    service = get_mcp_service()
-    return await service.test_server_connection(server_id, str(current_user.id), is_admin)
-
-
-@router.get("/trading-agents/mcp-servers/{server_id}/tools", deprecated=True)
-async def get_mcp_server_tools_legacy(
-    server_id: str,
-    current_user: UserModel = Depends(get_current_active_user),
-):
-    """
-    [已废弃] 获取 MCP 服务器的工具列表
-
-    请使用新端点: GET /api/mcp/servers/{server_id}/tools
-    """
-    logger.warning(f"用户使用废弃端点获取 MCP 工具列表: user_id={current_user.id}, server_id={server_id}")
-    return await get_mcp_server_tools(server_id, current_user)
 
 
 # =============================================================================

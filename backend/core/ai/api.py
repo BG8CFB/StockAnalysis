@@ -251,29 +251,3 @@ async def chat_completion(
             thinking_tokens=response.thinking_tokens,
             usage=response.usage,
         )
-
-
-# =============================================================================
-# 健康检查端点
-# =============================================================================
-
-@router.get("/health")
-async def health_check():
-    """健康检查端点"""
-    return {
-        "status": "healthy",
-        "module": "AI Core",
-    }
-
-
-@router.get("/concurrency/stats")
-async def concurrency_stats(
-    current_user: UserModel = Depends(get_current_active_user),
-):
-    """获取并发统计信息"""
-    is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
-    if not is_admin:
-        raise HTTPException(status_code=403, detail="仅管理员可访问")
-
-    ai_service = get_ai_service()
-    return ai_service.get_concurrency_stats()

@@ -13,8 +13,6 @@ from core.user.dependencies import (
 from core.user.models import (
     AdminResetPasswordRequest,
     ApproveUserRequest,
-    CaptchaGenerateResponse,
-    CaptchaRequiredResponse,
     DisableUserRequest,
     LoginRequest,
     RefreshTokenRequest,
@@ -33,7 +31,6 @@ from core.user.models import (
     UserStatus,
 )
 from core.user.service import (
-    CaptchaRequiredError,
     InvalidCredentialsError,
     InvalidUserStatusError,
     IPBlockedError,
@@ -63,15 +60,12 @@ __all__ = [
     "RequestPasswordResetRequest",
     "ResetPasswordRequest",
     "AdminResetPasswordRequest",
-    "CaptchaGenerateResponse",
-    "CaptchaRequiredResponse",
     # Service
     "UserService",
     "user_service",
     # Exceptions
     "UserExistsError",
     "InvalidCredentialsError",
-    "CaptchaRequiredError",
     "IPBlockedError",
     "UserNotFoundError",
     "InvalidUserStatusError",

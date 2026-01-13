@@ -9,7 +9,6 @@ import {
   mcpApi,
   agentConfigApi,
   taskApi,
-  reportApi,
 } from './api'
 import type {
   AIModelConfig,
@@ -22,10 +21,6 @@ import type {
   UserAgentConfigUpdate,
   AnalysisTask,
   UnifiedTaskCreate,
-  BatchTask,
-  AnalysisReport,
-  ReportSummary,
-  ModelProviderEnum,
 } from './types'
 
 export const useTradingAgentsStore = defineStore('tradingAgents', () => {
@@ -53,10 +48,7 @@ export const useTradingAgentsStore = defineStore('tradingAgents', () => {
   const tasksTotal = ref(0)
   const tasksLoading = ref(false)
 
-  // 报告
-  const reports = ref<AnalysisReport[]>([])
-  const reportSummary = ref<ReportSummary | null>(null)
-  const reportsLoading = ref(false)
+  // 报告（已移除 - 前端暂不需要报告管理功能）
 
   // =========================================================================
   // 计算属性
@@ -292,18 +284,6 @@ export const useTradingAgentsStore = defineStore('tradingAgents', () => {
     }
   }
 
-  async function restorePublicConfig() {
-    try {
-      const result = await agentConfigApi.restorePublicConfig()
-      publicConfig.value = result.config
-      ElMessage.success('公共配置已恢复为默认值')
-      return result
-    } catch (error: any) {
-      ElMessage.error(error.response?.data?.detail || '恢复默认配置失败')
-      throw error
-    }
-  }
-
   async function exportAgentConfig() {
     try {
       const result = await agentConfigApi.exportConfig()
@@ -400,49 +380,6 @@ export const useTradingAgentsStore = defineStore('tradingAgents', () => {
     }
   }
 
-  // =========================================================================
-  // 报告操作
-  // =========================================================================
-
-  async function fetchReports(params?: {
-    stock_code?: string
-    recommendation?: string
-    risk_level?: string
-    limit?: number
-    offset?: number
-  }) {
-    reportsLoading.value = true
-    try {
-      const result = await reportApi.listReports(params)
-      reports.value = result.reports || []
-    } catch (error: any) {
-      ElMessage.error('获取报告列表失败')
-      throw error
-    } finally {
-      reportsLoading.value = false
-    }
-  }
-
-  async function fetchReportSummary(days: number = 30) {
-    try {
-      reportSummary.value = await reportApi.getReportSummary(days)
-    } catch (error: any) {
-      ElMessage.error('获取报告统计失败')
-      throw error
-    }
-  }
-
-  async function deleteReport(reportId: string) {
-    try {
-      await reportApi.deleteReport(reportId)
-      await fetchReports()
-      ElMessage.success('报告已删除')
-    } catch (error: any) {
-      ElMessage.error(error.response?.data?.detail || '删除报告失败')
-      throw error
-    }
-  }
-
   return {
     // 状态
     systemModels,
@@ -457,9 +394,6 @@ export const useTradingAgentsStore = defineStore('tradingAgents', () => {
     tasks,
     tasksTotal,
     tasksLoading,
-    reports,
-    reportSummary,
-    reportsLoading,
 
     // 计算属性
     allModels,
@@ -498,10 +432,5 @@ export const useTradingAgentsStore = defineStore('tradingAgents', () => {
     cancelTask,
     deleteTask,
     retryTask,
-
-    // 报告操作
-    fetchReports,
-    fetchReportSummary,
-    deleteReport,
   }
 })

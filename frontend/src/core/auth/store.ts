@@ -29,10 +29,7 @@ export const useUserStore = defineStore('user', () => {
    */
   async function login(
     account: string,
-    password: string,
-    captchaToken?: string,
-    slideX?: number,
-    slideY?: number
+    password: string
   ) {
     console.log('[UserStore] login called', { account })
     loading.value = true
@@ -40,9 +37,6 @@ export const useUserStore = defineStore('user', () => {
       const response = await authApi.login({
         account,
         password,
-        captcha_token: captchaToken,
-        slide_x: slideX,
-        slide_y: slideY,
       })
       console.log('[UserStore] Login API success', response)
       token.value = response.access_token
@@ -82,10 +76,7 @@ export const useUserStore = defineStore('user', () => {
     email: string,
     username: string,
     password: string,
-    confirmPassword: string,
-    captchaToken?: string,
-    slideX?: number,
-    slideY?: number
+    confirmPassword: string
   ) {
     loading.value = true
     try {
@@ -94,9 +85,6 @@ export const useUserStore = defineStore('user', () => {
         username,
         password,
         confirm_password: confirmPassword,
-        captcha_token: captchaToken,
-        slide_x: slideX,
-        slide_y: slideY,
       })
 
       // 根据用户状态决定下一步操作

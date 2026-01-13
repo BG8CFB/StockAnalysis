@@ -12,7 +12,6 @@ from modules.trading_agents.manager.task_manager import get_task_manager
 from modules.trading_agents.schemas import AnalysisTaskCreate
 from modules.trading_agents.services.agent_config_service import get_agent_config_service
 from core.ai.model import get_model_service
-from modules.trading_agents.services.report_service import get_report_service
 from modules.trading_agents.pusher import get_ws_manager
 
 logger = logging.getLogger(__name__)
@@ -198,7 +197,6 @@ async def execute_analysis_workflow(
     logger.info(f"="*60)
 
     task_manager = get_task_manager()
-    report_service = get_report_service()
 
     # 用于并发控制
     batch_id = task_id
@@ -362,15 +360,6 @@ async def execute_analysis_workflow(
             )
 
             logger.info(f"任务 {task_id} 工作流执行完成，状态: {final_state.status}")
-
-            # 保存最终报告
-            if final_state.final_report:
-                await report_service.save_report(
-                    task_id=task_id,
-                    user_id=user_id,
-                    report=final_state.final_report,
-                    recommendation=final_state.recommendation,
-                )
 
         except Exception as e:
             logger.error(f"任务 {task_id} 工作流执行失败: {e}", exc_info=True)

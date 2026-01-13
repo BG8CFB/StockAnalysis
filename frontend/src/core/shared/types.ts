@@ -17,9 +17,6 @@ export type UserStatus = 'pending' | 'active' | 'disabled' | 'rejected'
 export interface LoginRequest {
   account: string  // 用户名或邮箱
   password: string
-  captcha_token?: string
-  slide_x?: number
-  slide_y?: number
 }
 
 /** 注册请求 */
@@ -28,9 +25,6 @@ export interface RegisterRequest {
   username: string
   password: string
   confirm_password: string
-  captcha_token?: string
-  slide_x?: number
-  slide_y?: number
 }
 
 /** Token 响应 */
@@ -43,18 +37,6 @@ export interface TokenResponse {
 /** 刷新 Token 请求 */
 export interface RefreshTokenRequest {
   refresh_token: string
-}
-
-/** 验证码生成响应 */
-export interface CaptchaGenerateResponse {
-  token: string
-  puzzle_position: { x: number; y: number }
-}
-
-/** 验证码检查响应 */
-export interface CaptchaRequiredResponse {
-  required: boolean
-  reason?: string
 }
 
 // ==================== 用户信息类型 ====================
@@ -137,7 +119,6 @@ export interface SystemStatus {
   version: string
   status: string
   debug?: boolean
-  captcha_enabled?: boolean
   mongodb_connected?: boolean
   redis_connected?: boolean
   user_stats?: {

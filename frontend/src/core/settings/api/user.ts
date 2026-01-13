@@ -38,46 +38,6 @@ export async function updateCoreSettings(
 }
 
 // =============================================================================
-// 通知设置
-// =============================================================================
-
-/**
- * 获取用户通知设置
- */
-export async function getNotificationSettings(): Promise<UserSettingsResponse> {
-  return httpGet<UserSettingsResponse>(`${BASE_PATH}/notifications`)
-}
-
-/**
- * 更新用户通知设置
- */
-export async function updateNotificationSettings(
-  data: NotificationSettingsUpdate
-): Promise<UserSettingsResponse> {
-  return httpPut<UserSettingsResponse>(`${BASE_PATH}/notifications`, data)
-}
-
-// =============================================================================
-// TradingAgents 设置
-// =============================================================================
-
-/**
- * 获取 TradingAgents 设置
- */
-export async function getTradingAgentsSettings(): Promise<UserSettingsResponse> {
-  return httpGet<UserSettingsResponse>(`${BASE_PATH}/trading-agents`)
-}
-
-/**
- * 更新 TradingAgents 设置
- */
-export async function updateTradingAgentsSettings(
-  data: TradingAgentsSettingsUpdate
-): Promise<UserSettingsResponse> {
-  return httpPut<UserSettingsResponse>(`${BASE_PATH}/trading-agents`, data)
-}
-
-// =============================================================================
 // 配额信息
 // =============================================================================
 
@@ -145,36 +105,4 @@ export async function importSettings(
   data: SettingsImport
 ): Promise<{ success: boolean; message: string; settings: UserSettingsResponse }> {
   return httpPost(`${BASE_PATH}/import`, data)
-}
-
-// =============================================================================
-// 兼容旧接口
-// =============================================================================
-
-/**
- * 获取用户偏好（兼容旧接口）
- */
-export async function getPreferencesLegacy() {
-  return httpGet<{
-    theme: string
-    language: string
-    timezone: string
-    watchlist: string[]
-    notification_enabled: boolean
-    email_alerts: boolean
-  }>(`${BASE_PATH}/preferences`)
-}
-
-/**
- * 更新用户偏好（兼容旧接口）
- */
-export async function updatePreferencesLegacy(data: {
-  theme?: string
-  language?: string
-  timezone?: string
-  watchlist?: string[]
-  notification_enabled?: boolean
-  email_alerts?: boolean
-}) {
-  return httpPut(`${BASE_PATH}/preferences`, data)
 }

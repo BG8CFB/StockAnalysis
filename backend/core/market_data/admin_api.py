@@ -1,708 +1,54 @@
 """
 市场数据模块API路由
 
-提供数据查询和同步的HTTP接口
+提供用户数据源配置接口
+
+注意：数据查询和同步接口已删除，仅保留用户数据源配置功能。
 """
 
 import logging
 from typing import List, Optional
-from datetime import datetime
-
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import datetime, date as date_type
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
-from core.market_data.config.schemas import (
-    StockListRequest,
-    QuoteQueryRequest,
-    FinancialQueryRequest,
-    DataSyncRequest,
-    StockInfoResponse,
-    QuoteResponse,
-    FinancialResponse,
-    IndicatorResponse,
-    DataSourceHealthResponse,
-    DataSyncResponse,
-)
-from core.market_data.models import MarketType
-from core.market_data.repositories.stock_info import StockInfoRepository
-from core.market_data.repositories.stock_quotes import StockQuoteRepository
-from core.market_data.repositories.stock_financial import (
-    StockFinancialRepository,
-    StockFinancialIndicatorRepository,
-)
 from core.market_data.repositories.datasource import (
     SystemDataSourceRepository,
     UserDataSourceRepository,
-    DataSourceStatusRepository,
-    DataSourceStatusHistoryRepository,
 )
-from core.market_data.managers.source_router import DataSourceRouter
-from core.market_data.services.data_sync_service import DataSyncService
-from core.market_data.services.source_monitor_service import SourceMonitorService
-from core.market_data.config import get_config
+from core.auth.dependencies import get_current_active_user
+from core.user.models import UserModel
 
 logger = logging.getLogger(__name__)
 
 # 创建路由器
-router = APIRouter(prefix="/api/market-data", tags=["市场数据"])
+router = APIRouter(prefix="/market-data", tags=["市场数据"])
 
-# 全局数据源路由器实例（在启动时初始化）
-_source_router: DataSourceRouter = None
-_data_sync_service: DataSyncService = None
-_source_monitor_service: SourceMonitorService = None
 
-def get_source_router() -> DataSourceRouter:
-    """获取数据源路由器实例"""
-    global _source_router
-    if _source_router is None:
-        config = get_config()
-        _source_router = DataSourceRouter.create_default_router(
-            tushare_token=config.tushare_token
-        )
-    return _source_router
+# =============================================================================
+# 请求/响应模型
+# =============================================================================
 
-def get_data_sync_service() -> DataSyncService:
-    """获取数据同步服务实例"""
-    global _data_sync_service
-    if _data_sync_service is None:
-        _data_sync_service = DataSyncService()
-    return _data_sync_service
+class UserSourceConfigCreate(BaseModel):
+    """创建用户数据源配置请求"""
+    source_id: str = Field(..., description="数据源 ID")
+    market: str = Field(..., description="市场类型: A_STOCK, US_STOCK, HK_STOCK")
+    api_key: str = Field(..., description="API 密钥")
+    enabled: bool = Field(default=True, description="是否启用")
+    priority: int = Field(default=1, description="优先级")
 
-def get_source_monitor_service() -> SourceMonitorService:
-    """获取数据源监控服务实例"""
-    global _source_monitor_service
-    if _source_monitor_service is None:
-        _source_monitor_service = SourceMonitorService()
-    return _source_monitor_service
 
+class UserSourceConfigUpdate(BaseModel):
+    """更新用户数据源配置请求"""
+    api_key: Optional[str] = None
+    enabled: Optional[bool] = None
+    priority: Optional[int] = None
 
-# ==================== 股票信息接口 ====================
 
-@router.post("/stocks/list", response_model=List[StockInfoResponse])
-async def get_stock_list(
-    request: StockListRequest,
-    source_router: DataSourceRouter = Depends(get_source_router)
-):
-    """
-    获取股票列表
-
-    从数据源获取股票列表，支持按市场类型筛选
-    """
-    try:
-        logger.info(f"Fetching stock list for market {request.market.value}")
-
-        # 通过路由器获取数据（自动降级）
-        stocks = await source_router.route_to_best_source(
-            market=request.market,
-            method_name="get_stock_list",
-            status=request.status
-        )
-
-        return [
-            StockInfoResponse(
-                symbol=stock.symbol,
-                market=stock.market,
-                name=stock.name,
-                industry=stock.industry,
-                sector=stock.sector,
-                listing_date=stock.listing_date,
-                exchange=stock.exchange.value,
-                status=stock.status,
-                data_source=stock.data_source
-            )
-            for stock in stocks
-        ]
-
-    except Exception as e:
-        logger.error(f"Failed to get stock list: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取股票列表失败: {str(e)}"
-        )
-
-
-@router.get("/stocks/{symbol}/info", response_model=StockInfoResponse)
-async def get_stock_info(symbol: str):
-    """
-    获取股票详细信息
-
-    从数据库查询股票信息
-    """
-    try:
-        repo = StockInfoRepository()
-        stock_data = await repo.get_by_symbol(symbol)
-
-        if not stock_data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"股票信息不存在: {symbol}"
-            )
-
-        return StockInfoResponse(**stock_data)
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to get stock info for {symbol}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取股票信息失败: {str(e)}"
-        )
-
-
-# ==================== 行情数据接口 ====================
-
-@router.post("/quotes/query", response_model=List[QuoteResponse])
-async def query_quotes(request: QuoteQueryRequest):
-    """
-    查询历史行情
-
-    从数据库查询股票的历史行情数据
-    """
-    try:
-        repo = StockQuoteRepository()
-        quotes_data = await repo.get_quotes(
-            symbol=request.symbol,
-            start_date=request.start_date,
-            end_date=request.end_date,
-            limit=request.limit
-        )
-
-        return [
-            QuoteResponse(
-                symbol=q['symbol'],
-                trade_date=q['trade_date'],
-                open=q['open'],
-                high=q['high'],
-                low=q['low'],
-                close=q['close'],
-                volume=q['volume'],
-                amount=q.get('amount'),
-                change=q.get('change'),
-                change_pct=q.get('change_pct'),
-                data_source=q['data_source']
-            )
-            for q in quotes_data
-        ]
-
-    except Exception as e:
-        logger.error(f"Failed to query quotes for {request.symbol}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"查询行情数据失败: {str(e)}"
-        )
-
-
-@router.get("/quotes/{symbol}/latest", response_model=QuoteResponse)
-async def get_latest_quote(symbol: str):
-    """
-    获取最新行情
-
-    查询指定股票的最新行情数据
-    """
-    try:
-        repo = StockQuoteRepository()
-        quote_data = await repo.get_latest_quote(symbol)
-
-        if not quote_data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"行情数据不存在: {symbol}"
-            )
-
-        return QuoteResponse(
-            symbol=quote_data['symbol'],
-            trade_date=quote_data['trade_date'],
-            open=quote_data['open'],
-            high=quote_data['high'],
-            low=quote_data['low'],
-            close=quote_data['close'],
-            volume=quote_data['volume'],
-            amount=quote_data.get('amount'),
-            change=quote_data.get('change'),
-            change_pct=quote_data.get('change_pct'),
-            data_source=quote_data['data_source']
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to get latest quote for {symbol}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取最新行情失败: {str(e)}"
-        )
-
-
-# ==================== 财务数据接口 ====================
-
-@router.post("/financials/query", response_model=List[FinancialResponse])
-async def query_financials(request: FinancialQueryRequest):
-    """
-    查询财务数据
-
-    从数据库查询股票的财务报表数据
-    """
-    try:
-        repo = StockFinancialRepository()
-        financials_data = await repo.get_financials(
-            symbol=request.symbol,
-            report_type=request.report_type,
-            limit=request.limit
-        )
-
-        return [
-            FinancialResponse(
-                symbol=f['symbol'],
-                report_date=f['report_date'],
-                report_type=f['report_type'],
-                publish_date=f.get('publish_date'),
-                income_statement=f.get('income_statement'),
-                balance_sheet=f.get('balance_sheet'),
-                cash_flow=f.get('cash_flow'),
-                data_source=f['data_source']
-            )
-            for f in financials_data
-        ]
-
-    except Exception as e:
-        logger.error(f"Failed to query financials for {request.symbol}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"查询财务数据失败: {str(e)}"
-        )
-
-
-@router.get("/indicators/{symbol}/latest")
-async def get_latest_indicators(symbol: str):
-    """
-    获取最新财务指标
-
-    查询指定股票的最新财务指标
-    """
-    try:
-        repo = StockFinancialIndicatorRepository()
-        indicator_data = await repo.get_latest_indicator(symbol)
-
-        if not indicator_data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"财务指标不存在: {symbol}"
-            )
-
-        return indicator_data
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to get latest indicators for {symbol}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取财务指标失败: {str(e)}"
-        )
-
-
-# ==================== 数据同步接口 ====================
-
-@router.post("/sync/stock-list")
-async def sync_stock_list(
-    market: str = "A_STOCK",
-    source_id: str = "tushare",
-    status: str = "L",
-    sync_service: DataSyncService = Depends(get_data_sync_service)
-):
-    """
-    同步股票列表
-
-    从数据源同步股票列表到数据库
-    """
-    try:
-        from core.market_data.models import MarketType
-
-        market_type = MarketType(market)
-        result = await sync_service.sync_stock_list(
-            market=market_type,
-            source_id=source_id,
-            status=status
-        )
-
-        return JSONResponse(content=result)
-
-    except Exception as e:
-        logger.error(f"Failed to sync stock list: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"同步股票列表失败: {str(e)}"
-        )
-
-
-@router.post("/sync/daily-quotes")
-async def sync_daily_quotes(
-    symbols: List[str],
-    start_date: str,
-    end_date: str,
-    source_id: str = "tushare",
-    adjust_type: Optional[str] = None,
-    sync_service: DataSyncService = Depends(get_data_sync_service)
-):
-    """
-    同步日线行情
-
-    从数据源同步指定股票的日线行情到数据库
-    """
-    try:
-        result = await sync_service.sync_daily_quotes(
-            symbols=symbols,
-            start_date=start_date,
-            end_date=end_date,
-            source_id=source_id,
-            adjust_type=adjust_type
-        )
-
-        return JSONResponse(content=result)
-
-    except Exception as e:
-        logger.error(f"Failed to sync daily quotes: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"同步日线行情失败: {str(e)}"
-        )
-
-
-@router.post("/sync/minute-quotes")
-async def sync_minute_quotes(
-    symbols: List[str],
-    trade_date: str,
-    source_id: str = "akshare",
-    freq: str = "1min",
-    sync_service: DataSyncService = Depends(get_data_sync_service)
-):
-    """
-    同步分钟K线数据
-
-    从数据源同步指定股票的分钟K线到数据库
-    """
-    try:
-        result = await sync_service.sync_minute_quotes(
-            symbols=symbols,
-            trade_date=trade_date,
-            source_id=source_id,
-            freq=freq
-        )
-
-        return JSONResponse(content=result)
-
-    except Exception as e:
-        logger.error(f"Failed to sync minute quotes: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"同步分钟K线失败: {str(e)}"
-        )
-
-
-@router.post("/sync/financials")
-async def sync_financials(
-    symbols: List[str],
-    report_date: Optional[str] = None,
-    source_id: str = "tushare",
-    sync_service: DataSyncService = Depends(get_data_sync_service)
-):
-    """
-    同步财务数据
-
-    从数据源同步指定股票的财务数据到数据库
-    """
-    try:
-        result = await sync_service.sync_financials(
-            symbols=symbols,
-            report_date=report_date,
-            source_id=source_id
-        )
-
-        return JSONResponse(content=result)
-
-    except Exception as e:
-        logger.error(f"Failed to sync financials: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"同步财务数据失败: {str(e)}"
-        )
-
-
-@router.post("/sync/company-info")
-async def sync_company_info(
-    symbols: List[str],
-    source_id: str = "tushare",
-    sync_service: DataSyncService = Depends(get_data_sync_service)
-):
-    """
-    同步公司信息
-
-    从数据源同步指定股票的公司信息到数据库
-    """
-    try:
-        result = await sync_service.sync_company_info(
-            symbols=symbols,
-            source_id=source_id
-        )
-
-        return JSONResponse(content=result)
-
-    except Exception as e:
-        logger.error(f"Failed to sync company info: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"同步公司信息失败: {str(e)}"
-        )
-
-
-@router.post("/sync/macro-economic")
-async def sync_macro_economic(
-    indicators: List[str],
-    source_id: str = "tushare",
-    sync_service: DataSyncService = Depends(get_data_sync_service)
-):
-    """
-    同步宏观经济数据
-
-    从数据源同步宏观经济数据到数据库
-    """
-    try:
-        result = await sync_service.sync_macro_economic(
-            indicators=indicators,
-            source_id=source_id
-        )
-
-        return JSONResponse(content=result)
-
-    except Exception as e:
-        logger.error(f"Failed to sync macro economic: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"同步宏观经济数据失败: {str(e)}"
-        )
-
-
-# ==================== 数据源健康检查接口 ====================
-
-@router.get("/health", response_model=List[DataSourceHealthResponse])
-async def check_data_sources_health(
-    source_router: DataSourceRouter = Depends(get_source_router)
-):
-    """
-    检查所有数据源的健康状态
-
-    返回各数据源的可用性、响应时间等信息
-    """
-    try:
-        health_report = await source_router.check_all_sources_health()
-
-        return [
-            DataSourceHealthResponse(
-                source_name=source_name,
-                is_available=health['is_available'],
-                response_time_ms=health.get('response_time_ms'),
-                last_check_time=health.get('last_check_time'),
-                failure_count=health.get('failure_count', 0),
-                error=health.get('error')
-            )
-            for source_name, health in health_report.items()
-        ]
-
-    except Exception as e:
-        logger.error(f"Failed to check data sources health: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"健康检查失败: {str(e)}"
-        )
-
-
-@router.post("/health/check")
-async def check_single_source_health(
-    source_id: str,
-    market: str = "A_STOCK",
-    data_type: str = "stock_list",
-    monitor_service: SourceMonitorService = Depends(get_source_monitor_service)
-):
-    """
-    检查单个数据源的健康状态
-
-    对指定数据源的指定数据类型执行健康检查
-    """
-    try:
-        result = await monitor_service.check_single_source(
-            source_id=source_id,
-            market=market,
-            data_type=data_type,
-            check_type="manual_check"
-        )
-
-        return JSONResponse(content=result)
-
-    except Exception as e:
-        logger.error(f"Failed to check source health: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"检查数据源健康状态失败: {str(e)}"
-        )
-
-
-@router.post("/health/check-all")
-async def check_all_sources_health(
-    market: Optional[str] = None,
-    check_type: str = "manual_check",
-    monitor_service: SourceMonitorService = Depends(get_source_monitor_service)
-):
-    """
-    检查所有数据源的健康状态
-
-    对所有数据源执行健康检查
-    """
-    try:
-        result = await monitor_service.check_all_sources(
-            market=market,
-            check_type=check_type
-        )
-
-        return JSONResponse(content=result)
-
-    except Exception as e:
-        logger.error(f"Failed to check all sources health: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"检查所有数据源健康状态失败: {str(e)}"
-        )
-
-
-# ==================== 数据源状态监控接口 ====================
-
-@router.get("/monitor/status-summary")
-async def get_status_summary(
-    market: Optional[str] = None,
-    monitor_service: SourceMonitorService = Depends(get_source_monitor_service)
-):
-    """
-    获取数据源状态汇总
-
-    返回各数据源的健康状态统计
-    """
-    try:
-        summary = await monitor_service.get_status_summary(market=market)
-        return JSONResponse(content=summary)
-
-    except Exception as e:
-        logger.error(f"Failed to get status summary: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取状态汇总失败: {str(e)}"
-        )
-
-
-@router.get("/monitor/source-status/{source_id}")
-async def get_source_status(
-    source_id: str,
-    market: str = "A_STOCK",
-    monitor_service: SourceMonitorService = Depends(get_source_monitor_service)
-):
-    """
-    获取指定数据源的所有状态
-
-    返回该数据源各数据类型的健康状态
-    """
-    try:
-        status_list = await monitor_service.get_source_status(
-            source_id=source_id,
-            market=market
-        )
-        return JSONResponse(content=status_list)
-
-    except Exception as e:
-        logger.error(f"Failed to get source status: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取数据源状态失败: {str(e)}"
-        )
-
-
-# ==================== 错误查询接口 ====================
-
-@router.get("/monitor/recent-events")
-async def get_recent_events(
-    hours: int = 24,
-    limit: int = 100,
-    monitor_service: SourceMonitorService = Depends(get_source_monitor_service)
-):
-    """
-    获取最近的失败/错误事件
-
-    返回指定时间范围内的错误事件记录
-    """
-    try:
-        events = await monitor_service.get_recent_events(
-            hours=hours,
-            limit=limit
-        )
-        return JSONResponse(content=events)
-
-    except Exception as e:
-        logger.error(f"Failed to get recent events: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取最近事件失败: {str(e)}"
-        )
-
-
-@router.get("/monitor/source-history/{source_id}")
-async def get_source_history(
-    source_id: str,
-    event_type: Optional[str] = None,
-    limit: int = 50,
-    monitor_service: SourceMonitorService = Depends(get_source_monitor_service)
-):
-    """
-    获取指定数据源的历史记录
-
-    返回该数据源的状态变更历史
-    """
-    try:
-        history = await monitor_service.get_source_history(
-            source_id=source_id,
-            event_type=event_type,
-            limit=limit
-        )
-        return JSONResponse(content=history)
-
-    except Exception as e:
-        logger.error(f"Failed to get source history: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取数据源历史记录失败: {str(e)}"
-        )
-
-
-@router.get("/monitor/error-statistics")
-async def get_error_statistics(
-    hours: int = 24,
-    monitor_service: SourceMonitorService = Depends(get_source_monitor_service)
-):
-    """
-    获取错误统计信息
-
-    返回指定时间范围内的错误统计数据
-    """
-    try:
-        statistics = await monitor_service.get_error_statistics(hours=hours)
-        return JSONResponse(content=statistics)
-
-    except Exception as e:
-        logger.error(f"Failed to get error statistics: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取错误统计失败: {str(e)}"
-        )
-
-
-# ==================== 数据源配置接口 ====================
+# =============================================================================
+# 系统数据源配置查询接口（只读）
+# =============================================================================
 
 @router.get("/sources/configs")
 async def get_source_configs(
@@ -732,7 +78,7 @@ async def get_source_configs(
     except Exception as e:
         logger.error(f"Failed to get source configs: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             detail=f"获取数据源配置失败: {str(e)}"
         )
 
@@ -756,7 +102,7 @@ async def get_source_config(
 
         if not config:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=404,
                 detail=f"数据源配置不存在: {source_id}"
             )
 
@@ -767,18 +113,20 @@ async def get_source_config(
     except Exception as e:
         logger.error(f"Failed to get source config: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             detail=f"获取数据源配置失败: {str(e)}"
         )
 
 
-# ==================== 用户数据源配置接口 ====================
+# =============================================================================
+# 用户数据源配置接口
+# =============================================================================
 
 @router.get("/user-sources/configs")
 async def get_user_source_configs(
     market: Optional[str] = None,
     enabled_only: bool = True,
-    current_user: dict = Depends(lambda: {"user_id": "test"}),  # TODO: 使用真实的认证依赖
+    current_user: UserModel = Depends(get_current_active_user),
     user_source_repo: UserDataSourceRepository = Depends(lambda: UserDataSourceRepository())
 ):
     """
@@ -787,7 +135,7 @@ async def get_user_source_configs(
     返回当前用户配置的所有数据源
     """
     try:
-        user_id = current_user.get("user_id")
+        user_id = str(current_user.id)
         configs = await user_source_repo.get_user_configs(
             user_id=user_id,
             market=market,
@@ -799,7 +147,7 @@ async def get_user_source_configs(
     except Exception as e:
         logger.error(f"Failed to get user source configs: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             detail=f"获取用户数据源配置失败: {str(e)}"
         )
 
@@ -808,7 +156,7 @@ async def get_user_source_configs(
 async def get_user_source_config(
     source_id: str,
     market: str = "A_STOCK",
-    current_user: dict = Depends(lambda: {"user_id": "test"}),  # TODO: 使用真实的认证依赖
+    current_user: UserModel = Depends(get_current_active_user),
     user_source_repo: UserDataSourceRepository = Depends(lambda: UserDataSourceRepository())
 ):
     """
@@ -817,7 +165,7 @@ async def get_user_source_config(
     返回指定数据源的配置信息
     """
     try:
-        user_id = current_user.get("user_id")
+        user_id = str(current_user.id)
         config = await user_source_repo.get_config(
             user_id=user_id,
             source_id=source_id,
@@ -826,7 +174,7 @@ async def get_user_source_config(
 
         if not config:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=404,
                 detail=f"用户数据源配置不存在: {source_id}"
             )
 
@@ -841,19 +189,15 @@ async def get_user_source_config(
     except Exception as e:
         logger.error(f"Failed to get user source config: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             detail=f"获取用户数据源配置失败: {str(e)}"
         )
 
 
 @router.post("/user-sources/config")
 async def create_user_source_config(
-    source_id: str,
-    market: str,
-    api_key: str,
-    enabled: bool = True,
-    priority: int = 1,
-    current_user: dict = Depends(lambda: {"user_id": "test"}),  # TODO: 使用真实的认证依赖
+    request: UserSourceConfigCreate,
+    current_user: UserModel = Depends(get_current_active_user),
     user_source_repo: UserDataSourceRepository = Depends(lambda: UserDataSourceRepository())
 ):
     """
@@ -862,41 +206,41 @@ async def create_user_source_config(
     允许用户配置自己的付费数据源（如 TuShare Pro、Alpha Vantage）
     """
     try:
-        user_id = current_user.get("user_id")
+        user_id = str(current_user.id)
 
         # 验证允许配置的数据源
         allowed_sources = {
             "A_STOCK": ["tushare_pro"],
             "US_STOCK": ["alpha_vantage"],
-            "HK_STOCK": ["itick"],  # 暂不支持
+            "HK_STOCK": [],  # 暂不支持
         }
 
-        if market not in allowed_sources:
+        if request.market not in allowed_sources:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"不支持的市场类型: {market}"
+                status_code=400,
+                detail=f"不支持的市场类型: {request.market}"
             )
 
-        if source_id not in allowed_sources[market]:
+        if request.source_id not in allowed_sources[request.market]:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"不允许配置该数据源: {source_id}。允许的数据源: {allowed_sources[market]}"
+                status_code=400,
+                detail=f"不允许配置该数据源: {request.source_id}。允许的数据源: {allowed_sources[request.market]}"
             )
 
         # 创建配置
         from core.market_data.models.datasource import UserDataSourceConfig
         config = UserDataSourceConfig(
             user_id=user_id,
-            source_id=source_id,
-            market=market,
-            enabled=enabled,
-            priority=priority,
-            config={"api_key": api_key}
+            source_id=request.source_id,
+            market=request.market,
+            enabled=request.enabled,
+            priority=request.priority,
+            config={"api_key": request.api_key}
         )
 
         doc_id = await user_source_repo.upsert_config(config)
 
-        logger.info(f"Created user source config: user_id={user_id}, source_id={source_id}, market={market}")
+        logger.info(f"Created user source config: user_id={user_id}, source_id={request.source_id}, market={request.market}")
 
         return JSONResponse(content={
             "message": "数据源配置创建成功",
@@ -908,7 +252,7 @@ async def create_user_source_config(
     except Exception as e:
         logger.error(f"Failed to create user source config: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             detail=f"创建用户数据源配置失败: {str(e)}"
         )
 
@@ -917,10 +261,8 @@ async def create_user_source_config(
 async def update_user_source_config(
     source_id: str,
     market: str,
-    api_key: Optional[str] = None,
-    enabled: Optional[bool] = None,
-    priority: Optional[int] = None,
-    current_user: dict = Depends(lambda: {"user_id": "test"}),  # TODO: 使用真实的认证依赖
+    request: UserSourceConfigUpdate,
+    current_user: UserModel = Depends(get_current_active_user),
     user_source_repo: UserDataSourceRepository = Depends(lambda: UserDataSourceRepository())
 ):
     """
@@ -929,7 +271,7 @@ async def update_user_source_config(
     更新指定数据源的配置信息
     """
     try:
-        user_id = current_user.get("user_id")
+        user_id = str(current_user.id)
 
         # 获取现有配置
         existing_config = await user_source_repo.get_config(
@@ -940,18 +282,18 @@ async def update_user_source_config(
 
         if not existing_config:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=404,
                 detail=f"用户数据源配置不存在: {source_id}"
             )
 
         # 构建更新数据
         updates = {}
-        if api_key is not None:
-            updates["config"] = {**existing_config.get("config", {}), "api_key": api_key}
-        if enabled is not None:
-            updates["enabled"] = enabled
-        if priority is not None:
-            updates["priority"] = priority
+        if request.api_key is not None:
+            updates["config"] = {**existing_config.get("config", {}), "api_key": request.api_key}
+        if request.enabled is not None:
+            updates["enabled"] = request.enabled
+        if request.priority is not None:
+            updates["priority"] = request.priority
 
         # 更新配置
         from core.market_data.models.datasource import UserDataSourceConfig
@@ -959,8 +301,8 @@ async def update_user_source_config(
             user_id=user_id,
             source_id=source_id,
             market=market,
-            enabled=enabled if enabled is not None else existing_config["enabled"],
-            priority=priority if priority is not None else existing_config["priority"],
+            enabled=request.enabled if request.enabled is not None else existing_config["enabled"],
+            priority=request.priority if request.priority is not None else existing_config["priority"],
             config=updates.get("config", existing_config["config"])
         )
 
@@ -978,7 +320,7 @@ async def update_user_source_config(
     except Exception as e:
         logger.error(f"Failed to update user source config: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             detail=f"更新用户数据源配置失败: {str(e)}"
         )
 
@@ -987,7 +329,7 @@ async def update_user_source_config(
 async def delete_user_source_config(
     source_id: str,
     market: str,
-    current_user: dict = Depends(lambda: {"user_id": "test"}),  # TODO: 使用真实的认证依赖
+    current_user: UserModel = Depends(get_current_active_user),
     user_source_repo: UserDataSourceRepository = Depends(lambda: UserDataSourceRepository())
 ):
     """
@@ -996,7 +338,7 @@ async def delete_user_source_config(
     删除指定的数据源配置
     """
     try:
-        user_id = current_user.get("user_id")
+        user_id = str(current_user.id)
 
         deleted_count = await user_source_repo.delete_config(
             user_id=user_id,
@@ -1006,7 +348,7 @@ async def delete_user_source_config(
 
         if deleted_count == 0:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=404,
                 detail=f"用户数据源配置不存在: {source_id}"
             )
 
@@ -1019,7 +361,7 @@ async def delete_user_source_config(
     except Exception as e:
         logger.error(f"Failed to delete user source config: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             detail=f"删除用户数据源配置失败: {str(e)}"
         )
 
@@ -1028,7 +370,7 @@ async def delete_user_source_config(
 async def test_user_source_config(
     source_id: str,
     market: str,
-    current_user: dict = Depends(lambda: {"user_id": "test"}),  # TODO: 使用真实的认证依赖
+    current_user: UserModel = Depends(get_current_active_user),
     user_source_repo: UserDataSourceRepository = Depends(lambda: UserDataSourceRepository())
 ):
     """
@@ -1037,7 +379,7 @@ async def test_user_source_config(
     测试用户配置的数据源是否可用
     """
     try:
-        user_id = current_user.get("user_id")
+        user_id = str(current_user.id)
 
         config = await user_source_repo.get_config(
             user_id=user_id,
@@ -1047,7 +389,7 @@ async def test_user_source_config(
 
         if not config:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=404,
                 detail=f"用户数据源配置不存在: {source_id}"
             )
 
@@ -1057,11 +399,11 @@ async def test_user_source_config(
 
         try:
             if source_id == "tushare_pro":
-                from core.market_data.sources.a_stock import TuShareAdapter
+                from core.market_data.sources.a_stock.tushare_adapter import TuShareAdapter
                 adapter = TuShareAdapter(config=config["config"])
                 success = await adapter.test_connection()
             elif source_id == "alpha_vantage":
-                from core.market_data.sources.us_stock import AlphaVantageAdapter
+                from core.market_data.sources.us_stock.alpha_vantage_adapter import AlphaVantageAdapter
                 adapter = AlphaVantageAdapter(config=config["config"])
                 success = await adapter.test_connection()
             else:
@@ -1095,6 +437,6 @@ async def test_user_source_config(
     except Exception as e:
         logger.error(f"Failed to test user source config: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             detail=f"测试用户数据源配置失败: {str(e)}"
         )

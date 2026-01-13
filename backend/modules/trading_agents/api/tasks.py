@@ -7,11 +7,12 @@ import json
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from fastapi.responses import StreamingResponse
 from bson import ObjectId
+from pydantic import BaseModel
 
-from core.auth.dependencies import get_current_active_user
+from core.auth.dependencies import get_current_active_user, get_current_user_from_query
 from core.user.dependencies import get_current_admin_user
 from core.user.models import UserModel
 from core.auth.rbac import Role
@@ -324,13 +325,15 @@ async def get_task(
 @router.get("/{task_id}/stream")
 async def stream_task(
     task_id: str,
-    current_user: UserModel = Depends(get_current_active_user),
+    token: Optional[str] = Query(None, description="访问令牌（用于 SSE 连接认证）"),
+    current_user: UserModel = Depends(get_current_user_from_query),
 ):
     """
     SSE 流式输出任务报告
 
     Args:
         task_id: 任务 ID
+        token: 访问令牌（用于 SSE 连接认证，支持通过 query 参数传递）
         current_user: 当前用户
 
     Returns:
@@ -363,22 +366,22 @@ async def stream_task(
                             chunk_size = 100
                             for i in range(0, len(final_report), chunk_size):
                                 chunk = final_report[i:i + chunk_size]
-                                yield f"data: {json.dumps({'type': 'report_chunk', 'content': chunk}, ensure_ascii=False)}\\n\\n"
-                            yield f"data: {json.dumps({'type': 'report_complete'}, ensure_ascii=False)}\\n\\n"
+                                yield f"data: {json.dumps({'type': 'report_chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
+                            yield f"data: {json.dumps({'type': 'report_complete'}, ensure_ascii=False)}\n\n"
                             break
                         else:
                             # 没有报告，结束流
-                            yield f"data: {json.dumps({'type': 'no_report'}, ensure_ascii=False)}\\n\\n"
+                            yield f"data: {json.dumps({'type': 'no_report'}, ensure_ascii=False)}\n\n"
                             break
 
                     # 如果任务失败或取消
                     elif current_state.get("status") in ["failed", "cancelled", "stopped", "expired"]:
-                        yield f"data: {json.dumps({'type': 'task_ended', 'status': current_state.get('status')}, ensure_ascii=False)}\\n\\n"
+                        yield f"data: {json.dumps({'type': 'task_ended', 'status': current_state.get('status')}, ensure_ascii=False)}\n\n"
                         break
 
                     # 如果任务仍在进行，发送心跳
                     else:
-                        yield f"data: {json.dumps({'type': 'heartbeat', 'status': current_state.get('status')}, ensure_ascii=False)}\\n\\n"
+                        yield f"data: {json.dumps({'type': 'heartbeat', 'status': current_state.get('status')}, ensure_ascii=False)}\n\n"
                         # 根据任务状态动态调整轮询间隔
                         if current_state.get("status") == "running":
                             await asyncio.sleep(0.5)  # 进行中时轮询更快
@@ -387,7 +390,7 @@ async def stream_task(
 
                 except Exception as e:
                     logger.error(f"SSE 流式输出错误: task_id={task_id}, error={e}")
-                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\\n\\n"
+                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
                     break
 
         return StreamingResponse(
@@ -671,10 +674,14 @@ async def clear_tasks_by_status(
     )
 
 
-@router.delete("/batch-delete")
+class BatchDeleteRequest(BaseModel):
+    task_ids: list[str]
+    delete_reports: bool = False
+
+
+@router.post("/batch-delete")
 async def batch_delete_tasks(
-    task_ids: list[str],
-    delete_reports: bool = Query(False, description="是否同时删除关联报告"),
+    request: BatchDeleteRequest,
     current_user: UserModel = Depends(get_current_active_user),
 ):
     """
@@ -692,7 +699,7 @@ async def batch_delete_tasks(
         删除结果
     """
     # 安全检查：限制批量删除数量
-    if len(task_ids) > 100:
+    if len(request.task_ids) > 100:
         raise HTTPException(
             status_code=400,
             detail="单次批量删除最多支持 100 个任务"
@@ -703,12 +710,12 @@ async def batch_delete_tasks(
     failed_tasks = []
 
     logger.info(f"用户 {user_id} 批量删除任务", {
-        "task_ids_count": len(task_ids),
-        "delete_reports": delete_reports
+        "task_ids_count": len(request.task_ids),
+        "delete_reports": request.delete_reports
     })
 
     # 逐个验证和删除任务
-    for task_id in task_ids:
+    for task_id in request.task_ids:
         try:
             # 验证 ObjectId 格式
             obj_id = ObjectId(task_id)
@@ -734,7 +741,7 @@ async def batch_delete_tasks(
             await mongodb.database.analysis_tasks.delete_one({"_id": obj_id})
 
             # 如果需要删除关联报告
-            if delete_reports:
+            if request.delete_reports:
                 await mongodb.database.analysis_reports.delete_many({"task_id": task_id})
 
             success_count += 1
@@ -749,10 +756,10 @@ async def batch_delete_tasks(
         user_id=user_id,
         action="batch_delete_tasks",
         details={
-            "total": len(task_ids),
+            "total": len(request.task_ids),
             "success_count": success_count,
             "failed_count": len(failed_tasks),
-            "delete_reports": delete_reports
+            "delete_reports": request.delete_reports
         }
     )
 

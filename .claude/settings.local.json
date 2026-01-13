@@ -1,9 +1,5 @@
 {
-  "enabledPlugins": {
-    "glm-plan-usage@zai-coding-plugins": true,
-    "glm-plan-bug@zai-coding-plugins": true
-  },
-  "alwaysThinkingEnabled": true,
+  "includeCoAuthoredBy": false,
   "permissions": {
     "allow": [
       "Bash",
@@ -30,10 +26,16 @@
       "Bash(ls:*)",
       "SlashCommand(/commit)",
       "Bash(git:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "mcp__acp__Bash"
     ],
     "deny": [],
     "ask": []
   },
-  "includeCoAuthoredBy": false
+  "enabledPlugins": {
+    "glm-plan-usage@zai-coding-plugins": true,
+    "glm-plan-bug@zai-coding-plugins": true
+  },
+  "outputStyle": "Coding Vibes",
+  "alwaysThinkingEnabled": true
 }

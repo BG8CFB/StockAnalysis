@@ -52,11 +52,6 @@ class InvalidUserStatusError(Exception):
     pass
 
 
-class CaptchaRequiredError(Exception):
-    """需要验证码"""
-    pass
-
-
 class IPBlockedError(Exception):
     """IP 已被封禁"""
     pass
@@ -76,7 +71,6 @@ class UserService:
     def __init__(self) -> None:
         self.rate_limiter = get_rate_limiter()
         self.ip_trust = get_ip_trust_manager()
-        self.captcha = get_captcha_service()
 
     @property
     def db(self) -> AsyncIOMotorDatabase:
@@ -111,11 +105,8 @@ class UserService:
         self,
         data: RegisterRequest,
         client_ip: str,
-        captcha_token: Optional[str] = None,
-        slide_x: Optional[int] = None,
-        slide_y: Optional[int] = None,
     ) -> UserModel:
-        """注册新用户（带验证码和限流）"""
+        """注册新用户"""
         # 1. 检查 IP 注册频率限制
         rate_key = f"register:{client_ip}"
         allowed, retry_after = await self.rate_limiter.is_allowed(
@@ -126,14 +117,7 @@ class UserService:
         if not allowed:
             raise ValueError(f"注册请求过于频繁，请 {retry_after} 秒后再试")
 
-        # 2. 验证图形验证码（DEBUG 模式下跳过）
-        if settings.CAPTCHA_ENABLED and not settings.DEBUG:
-            if not captcha_token or slide_x is None or slide_y is None:
-                raise ValueError("请完成图形验证码")
-            if not await self.captcha.verify_captcha(captcha_token, slide_x, slide_y):
-                raise ValueError("验证码验证失败")
-
-        # 3. 检查邮箱是否已存在
+        # 2. 检查邮箱是否已存在
         existing_email = await self.db.users.find_one({"email": data.email})
         if existing_email:
             raise UserExistsError("该邮箱已被注册")
@@ -192,56 +176,12 @@ class UserService:
 
     # ==================== 登录 ====================
 
-    async def check_captcha_required(self, account: str, client_ip: str) -> tuple[bool, Optional[str]]:
-        """检查是否需要验证码
-
-        Returns:
-            (是否需要验证码, 原因)
-        """
-        # 1. 检查 IP 是否被封禁
-        redis = await get_redis()
-        blocked_key = UserRedisKey.login_blocked_ip(client_ip)
-        is_blocked = await redis.get(blocked_key)
-        if is_blocked:
-            raise IPBlockedError("该 IP 因多次登录失败已被临时封禁")
-
-        # 2. 检查 IP 失败次数
-        failures_key = UserRedisKey.login_failures_ip(client_ip)
-        ip_failures = await redis.get(failures_key)
-        ip_failures = int(ip_failures) if ip_failures else 0
-
-        # 3. 检查账号失败次数
-        account_failures_key = f"login_failures:account:{account}"
-        account_failures = await redis.get(account_failures_key)
-        account_failures = int(account_failures) if account_failures else 0
-
-        # 4. 查询用户，检查是否为信任 IP
-        user = await self._find_user_by_account(account)
-        if user:
-            user_id = str(user["_id"])
-            is_trusted = await self.ip_trust.is_ip_trusted(user_id, client_ip)
-            if is_trusted and ip_failures < 3:
-                # 信任 IP 且失败次数少，无需验证码
-                return False, None
-
-        # 5. 根据失败次数决定是否需要验证码
-        max_failures = settings.LOGIN_MAX_ATTEMPTS
-        if ip_failures >= 3 or account_failures >= 3:
-            return True, "登录失败次数过多，请完成验证码后继续"
-        if ip_failures >= max_failures or account_failures >= max_failures:
-            return True, "登录已被临时锁定，请完成验证码"
-
-        return False, None
-
     async def login(
         self,
         data: LoginRequest,
         client_ip: str,
-        captcha_token: Optional[str] = None,
-        slide_x: Optional[int] = None,
-        slide_y: Optional[int] = None,
     ) -> tuple[UserModel, str, str]:
-        """用户登录（带验证码和限流）- 支持用户名或邮箱"""
+        """用户登录 - 支持用户名或邮箱"""
         redis = await get_redis()
         account = data.account  # 使用新字段名
 
@@ -252,33 +192,10 @@ class UserService:
             remaining = int(is_blocked)
             raise IPBlockedError(f"该 IP 因多次登录失败已被临时封禁，剩余 {remaining} 秒")
 
-        # 2. 获取失败次数
-        failures_key = UserRedisKey.login_failures_ip(client_ip)
-        ip_failures = await redis.get(failures_key)
-        ip_failures = int(ip_failures) if ip_failures else 0
-
-        # 3. 根据账号类型查询用户
+        # 2. 根据账号类型查询用户
         user = await self._find_user_by_account(account)
-        needs_captcha = False
 
-        if user:
-            user_id = str(user["_id"])
-            is_trusted = await self.ip_trust.is_ip_trusted(user_id, client_ip)
-            if not is_trusted and ip_failures >= 3:
-                needs_captcha = True
-        elif ip_failures >= 3:
-            needs_captcha = True
-
-        # 4. 验证验证码（如果需要，DEBUG 模式下跳过）
-        if (needs_captcha or captcha_token) and not settings.DEBUG:
-            if settings.CAPTCHA_ENABLED:
-                if not captcha_token or slide_x is None or slide_y is None:
-                    raise CaptchaRequiredError("请完成图形验证码")
-                if not await self.captcha.verify_captcha(captcha_token, slide_x, slide_y):
-                    await self._record_login_failure(account, client_ip)
-                    raise InvalidCredentialsError("验证码验证失败")
-
-        # 5. 验证用户凭证
+        # 3. 验证用户凭证
         if not user:
             await self._record_login_failure(account, client_ip)
             raise InvalidCredentialsError("用户名或密码错误")
@@ -293,10 +210,9 @@ class UserService:
             await self._record_login_failure(account, client_ip)
             raise InvalidCredentialsError("用户名或密码错误")
 
-        # 8. ❗️ 检查用户状态 (根据不同情况抛出不同异常)
+        # 4. 检查用户状态
         user_status = user.get("status", UserStatus.ACTIVE)
 
-        # 8.1 用户状态检查
         if user_status == UserStatus.PENDING:
             raise InvalidUserStatusError("账号待审核，请等待管理员审核")
         if user_status == UserStatus.DISABLED:
@@ -304,14 +220,14 @@ class UserService:
         if user_status == UserStatus.REJECTED:
             raise InvalidUserStatusError("账号已被拒绝")
 
-        # 8.2 is_active 字段检查
+        # 4.1 is_active 字段检查
         if not user.get("is_active", True):
             raise InvalidCredentialsError("账号已被禁用")
 
-        # 7. 登录成功，清除失败记录
+        # 5. 登录成功，清除失败记录
         await self._clear_login_failures(account, client_ip)
 
-        # 8. 记录 IP 信任
+        # 6. 记录 IP 信任
         user_id = str(user["_id"])
         await self.ip_trust.record_login_success(user_id, client_ip)
 
@@ -530,33 +446,23 @@ class UserService:
         self,
         email: str,
         client_ip: str,
-        captcha_token: Optional[str] = None,
-        slide_x: Optional[int] = None,
-        slide_y: Optional[int] = None,
     ) -> str:
         """请求密码重置，生成 token
 
         Returns:
             reset_token: 重置令牌
         """
-        # 1. 验证验证码（DEBUG 模式下跳过）
-        if settings.CAPTCHA_ENABLED and not settings.DEBUG:
-            if not captcha_token or slide_x is None or slide_y is None:
-                raise ValueError("请完成图形验证码")
-            if not await self.captcha.verify_captcha(captcha_token, slide_x, slide_y):
-                raise ValueError("验证码验证失败")
-
-        # 2. 查找用户
+        # 1. 查找用户
         user = await self.db.users.find_one({"email": email})
         if not user:
             # 为了安全，不暴露用户是否存在
             return "ok"
 
-        # 3. 生成重置 token
+        # 2. 生成重置 token
         reset_token = secrets.token_urlsafe(32)
         token_key = f"password_reset:{reset_token}"
 
-        # 4. 存储到 Redis（1小时有效期）
+        # 3. 存储到 Redis（1小时有效期）
         redis = await get_redis()
         await redis.set(
             token_key,
@@ -564,7 +470,7 @@ class UserService:
             ex=3600,
         )
 
-        # 5. 开发环境：打印到控制台
+        # 4. 开发环境：打印到控制台
         if settings.DEBUG:
             print(f"[Password Reset] Email: {email}, Token: {reset_token}")
             print(f"Reset URL: http://localhost:5173/reset-password?token={reset_token}")

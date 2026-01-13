@@ -96,9 +96,6 @@ class RegisterRequest(BaseModel):
     username: str = Field(..., min_length=2, max_length=20, pattern=r'^[a-zA-Z0-9_]+$')
     password: str = Field(..., min_length=settings.PASSWORD_MIN_LENGTH)
     confirm_password: str
-    captcha_token: Optional[str] = None
-    slide_x: Optional[int] = None
-    slide_y: Optional[int] = None
 
     @field_validator("username")
     @classmethod
@@ -125,9 +122,6 @@ class LoginRequest(BaseModel):
     """登录请求 - 支持用户名或邮箱"""
     account: str = Field(..., min_length=2, description="用户名或邮箱")
     password: str
-    captcha_token: Optional[str] = None
-    slide_x: Optional[int] = None
-    slide_y: Optional[int] = None
 
 
 class TokenResponse(BaseModel):
@@ -233,9 +227,6 @@ class DisableUserRequest(BaseModel):
 class RequestPasswordResetRequest(BaseModel):
     """请求密码重置"""
     email: EmailStr
-    captcha_token: Optional[str] = None
-    slide_x: Optional[int] = None
-    slide_y: Optional[int] = None
 
 
 class ResetPasswordRequest(BaseModel):
@@ -257,42 +248,12 @@ class AdminResetPasswordRequest(BaseModel):
     email: EmailStr  # 目标用户邮箱
 
 
-# ==================== 验证码相关 ====================
-
-
-class CaptchaGenerateRequest(BaseModel):
-    """生成验证码请求"""
-    action: Literal["login", "register", "reset_password"] = "login"
-
-
-class CaptchaGenerateResponse(BaseModel):
-    """生成验证码响应"""
-    token: str
-    puzzle_position: Dict  # {"x": 100, "y": 50}
-
-
-class CaptchaVerifyRequest(BaseModel):
-    """验证验证码请求"""
-    token: str
-    slide_x: int
-    slide_y: int
-
-
-class CaptchaRequiredResponse(BaseModel):
-    """检查是否需要验证码响应"""
-    required: bool
-    reason: Optional[str] = None
-
-
 # ==================== 邮箱验证码模型 ====================
 
 
 class EmailCodeSendRequest(BaseModel):
     """发送邮箱验证码请求"""
     email: EmailStr
-    captcha_token: Optional[str] = None
-    slide_x: Optional[int] = None
-    slide_y: Optional[int] = None
 
 
 class EmailCodeSendResponse(BaseModel):

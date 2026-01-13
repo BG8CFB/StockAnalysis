@@ -79,26 +79,6 @@
             />
           </el-form-item>
 
-          <!-- 滑动验证码 -->
-          <el-form-item v-if="showCaptcha">
-            <SliderCaptcha
-              ref="captchaRef"
-              action="login"
-              @success="onCaptchaSuccess"
-              @error="onCaptchaError"
-            />
-          </el-form-item>
-
-          <!-- 验证码提示信息 -->
-          <el-alert
-            v-if="captchaReason"
-            :title="captchaReason"
-            type="warning"
-            :closable="false"
-            show-icon
-            class="captcha-alert"
-          />
-
           <el-form-item>
             <el-button
               type="primary"
@@ -139,7 +119,6 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, FormInstance, FormRules } from 'element-plus'
 import { Message, Lock, TrendCharts, Check, ArrowRight } from '@element-plus/icons-vue'
 import { useUserStore } from '../store'
-import SliderCaptcha, { type CaptchaData } from '@core/components/SliderCaptcha.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -153,18 +132,11 @@ onMounted(() => {
 })
 
 const formRef = ref<FormInstance>()
-const captchaRef = ref()
 const loading = ref(false)
-const showCaptcha = ref(false)
-const captchaReason = ref('')
-const captchaData = ref<CaptchaData | null>(null)
 
 const form = reactive({
   account: '',
   password: '',
-  captcha_token: '',
-  slide_x: 0,
-  slide_y: 0,
 })
 
 const rules: FormRules = {
@@ -178,25 +150,6 @@ const rules: FormRules = {
   ],
 }
 
-// 验证码成功回调
-function onCaptchaSuccess(data: CaptchaData) {
-  captchaData.value = data
-  form.captcha_token = data.token
-  form.slide_x = data.slideX
-  form.slide_y = data.slideY
-}
-
-// 验证码失败回调
-function onCaptchaError() {
-  captchaData.value = null
-  form.captcha_token = ''
-  form.slide_x = 0
-  form.slide_y = 0
-  if (captchaRef.value) {
-    captchaRef.value.refreshCaptcha()
-  }
-}
-
 async function handleLogin() {
   console.log('[LoginView] handleLogin triggered')
   if (!formRef.value) return
@@ -207,19 +160,11 @@ async function handleLogin() {
       return
     }
 
-    if (showCaptcha.value && !captchaData.value) {
-      ElMessage.warning('请完成验证码验证')
-      return
-    }
-
     loading.value = true
     try {
       const success = await userStore.login(
         form.account,
-        form.password,
-        form.captcha_token || undefined,
-        form.slide_x || undefined,
-        form.slide_y || undefined
+        form.password
       )
       if (success) {
         ElMessage.success('登录成功')
@@ -228,25 +173,8 @@ async function handleLogin() {
         await router.push(redirect)
       }
     } catch (error: any) {
-      if (error.response?.headers?.['x-captcha-required'] || error.response?.status === 400 && error.response?.data?.detail === "请完成图形验证码") {
-        showCaptcha.value = true
-        captchaReason.value = "为了您的账号安全，请完成验证"
-        ElMessage.warning('请完成图形验证码')
-        if (captchaRef.value) {
-           captchaRef.value.refreshCaptcha()
-        }
-      } else {
-        const errorMessage = error?.response?.data?.detail || error?.message || '登录失败，请检查用户名和密码'
-        ElMessage.error(errorMessage)
-      }
-
-      if (showCaptcha.value && captchaRef.value) {
-        captchaRef.value.refreshCaptcha()
-        captchaData.value = null
-        form.captcha_token = ''
-        form.slide_x = 0
-        form.slide_y = 0
-      }
+      const errorMessage = error?.response?.data?.detail || error?.message || '登录失败，请检查用户名和密码'
+      ElMessage.error(errorMessage)
     } finally {
       loading.value = false
     }
@@ -445,10 +373,6 @@ function goRegister() {
 :deep(.el-form-item__label) {
   font-weight: var(--font-weight-medium);
   color: var(--color-text-primary);
-}
-
-.captcha-alert {
-  margin-bottom: var(--space-4);
 }
 
 .submit-button {

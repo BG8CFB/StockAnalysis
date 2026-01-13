@@ -1,6 +1,6 @@
 /**
  * 认证模块 API
- * 统一管理所有认证相关的 API（登录、注册、验证码、用户信息等）
+ * 统一管理所有认证相关的 API（登录、注册、用户信息等）
  */
 import { httpPost, httpGet, httpPut, type RequestConfig } from '@core/api/http'
 import type {
@@ -12,27 +12,11 @@ import type {
   UserInfo,
   UserPreferences,
   UpdatePreferencesRequest,
-  CaptchaGenerateResponse,
-  CaptchaRequiredResponse,
 } from '@core/shared/types'
 
 // ==================== 认证 API ====================
 
 export const authApi = {
-  /**
-   * 生成验证码
-   * 后端: GET/POST /users/captcha/generate
-   */
-  generateCaptcha: (action: 'login' | 'register' | 'reset_password' = 'login') =>
-    httpPost<CaptchaGenerateResponse>(`/users/captcha/generate?action=${action}`),
-
-  /**
-   * 检查是否需要验证码
-   * 后端: GET /users/captcha/required
-   */
-  checkCaptchaRequired: (account: string) =>
-    httpGet<CaptchaRequiredResponse>(`/users/captcha/required?account=${encodeURIComponent(account)}`),
-
   /**
    * 用户登录
    * 后端: POST /users/login
@@ -124,6 +108,4 @@ export type {
   UserInfo,
   UserPreferences,
   UpdatePreferencesRequest,
-  CaptchaGenerateResponse,
-  CaptchaRequiredResponse,
 }

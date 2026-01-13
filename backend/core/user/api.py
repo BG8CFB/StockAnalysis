@@ -1,20 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
 
-from core.user.service import UserService, UserExistsError, InvalidCredentialsError, IPBlockedError, CaptchaRequiredError, InvalidUserStatusError
+from core.user.service import UserService, UserExistsError, InvalidCredentialsError, IPBlockedError, InvalidUserStatusError
 from core.user.models import (
     UserModel, LoginRequest, RegisterRequest, TokenResponse,
-    RequestPasswordResetRequest, ResetPasswordRequest,
-    CaptchaGenerateRequest, CaptchaGenerateResponse, CaptchaVerifyRequest
+    RequestPasswordResetRequest, ResetPasswordRequest
 )
 from core.user.dependencies import get_current_user, get_current_active_user
 from core.auth.security import jwt_manager
 from core.config import settings
-from core.security.captcha_service import get_captcha_service
 
 router = APIRouter(tags=["用户管理"])
 user_service = UserService()
-captcha_service = get_captcha_service()
 
 @router.post("/users/register", response_model=UserModel)
 async def register(request: Request, data: RegisterRequest):
@@ -71,70 +68,12 @@ async def login(request: Request, data: LoginRequest):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="当前IP已被封禁"
         )
-    except CaptchaRequiredError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="请完成图形验证码",
-            headers={"X-Captcha-Required": "true"}
-        )
     except InvalidCredentialsError:
         # 只有真正的账号密码错误才返回 401
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="用户名、邮箱或密码错误",
             headers={"WWW-Authenticate": "Bearer"},
-        )
-
-@router.post("/users/captcha/generate", response_model=CaptchaGenerateResponse)
-async def generate_captcha_post(request: CaptchaGenerateRequest):
-    """生成验证码（POST方式）"""
-    try:
-        captcha = await captcha_service.generate_captcha()
-        return captcha
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"生成验证码失败: {str(e)}"
-        )
-
-@router.get("/users/captcha/generate", response_model=CaptchaGenerateResponse)
-async def generate_captcha(action: str = "login"):
-    """生成验证码（GET方式）"""
-    try:
-        captcha = await captcha_service.generate_captcha()
-        return captcha
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"生成验证码失败: {str(e)}"
-        )
-
-@router.post("/users/captcha/verify")
-async def verify_captcha(request: CaptchaVerifyRequest):
-    """验证验证码"""
-    try:
-        is_valid = await captcha_service.verify_captcha(
-            request.token,
-            request.slide_x,
-            request.slide_y
-        )
-        return {"valid": is_valid}
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"验证码验证失败: {str(e)}"
-        )
-
-@router.get("/users/captcha/required")
-async def check_captcha_required(account: str):
-    """检查是否需要验证码"""
-    try:
-        required, reason = await user_service.check_captcha_required(account, "")
-        return {"required": required, "reason": reason}
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"检查验证码状态失败: {str(e)}"
         )
 
 @router.get("/users/me", response_model=UserModel)
@@ -201,9 +140,6 @@ async def request_password_reset(
         reset_token = await user_service.request_password_reset(
             data.email,
             client_ip,
-            data.captcha_token,
-            data.slide_x,
-            data.slide_y
         )
         return {"success": True, "token": reset_token}
     except ValueError as e:

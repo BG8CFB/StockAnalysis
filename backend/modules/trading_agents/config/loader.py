@@ -47,9 +47,6 @@ class ConfigLoader:
         self.base_dir = Path(base_dir)
         self._default_config: Optional[Dict[str, Any]] = None
 
-        # 向后兼容：旧模板目录
-        self.templates_dir = Path(__file__).parent / "templates"
-
     def load_default_config(self) -> Dict[str, Any]:
         """
         加载默认配置（新架构）
@@ -117,44 +114,6 @@ class ConfigLoader:
 
         logger.info(f"[{phase_name}] 加载 {len(agents)} 个智能体配置")
         return agents
-
-    def load_default_config_legacy(self) -> Dict[str, Any]:
-        """
-        加载默认配置（旧版，向后兼容）
-
-        从 templates/agents.yaml 加载配置。
-
-        Returns:
-            配置字典
-
-        Raises:
-            ConfigurationError: 配置加载失败
-        """
-        config_file = self.templates_dir / "agents.yaml"
-
-        if not config_file.exists():
-            raise ConfigurationError(
-                f"默认配置文件不存在: {config_file}",
-                details={"file": str(config_file)}
-            )
-
-        try:
-            with open(config_file, "r", encoding="utf-8") as f:
-                config = yaml.safe_load(f)
-
-            logger.info(f"加载默认配置成功（旧版）: {config_file}")
-            return config
-
-        except yaml.YAMLError as e:
-            raise ConfigurationError(
-                f"配置文件解析失败: {e}",
-                details={"file": str(config_file), "error": str(e)}
-            )
-        except Exception as e:
-            raise ConfigurationError(
-                f"加载配置文件失败: {e}",
-                details={"file": str(config_file), "error": str(e)}
-            )
 
     def load_config_from_file(self, file_path: Path) -> Dict[str, Any]:
         """

@@ -38,6 +38,8 @@ export enum TransportModeEnum {
   STDIO = 'stdio',
   SSE = 'sse',
   HTTP = 'http',
+  STREAMABLE_HTTP = 'streamable_http', // Streamable HTTP (推荐)
+  WEBSOCKET = 'websocket',             // WebSocket
 }
 
 export enum AuthTypeEnum {

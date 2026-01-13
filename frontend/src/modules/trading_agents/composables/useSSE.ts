@@ -72,7 +72,7 @@ export function useSSE(options: SSEOptions) {
   // SSE 端点
   const getSSEEndpoint = () => {
     const token = localStorage.getItem('access_token')
-    const baseEndpoint = `/api/trading-agents/stream/${taskId}`
+    const baseEndpoint = `/api/trading-agents/tasks/${taskId}/stream`
     return token ? `${baseEndpoint}?token=${encodeURIComponent(token)}` : baseEndpoint
   }
 

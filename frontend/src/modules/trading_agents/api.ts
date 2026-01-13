@@ -33,158 +33,6 @@ const AI_BASE_URL = '/ai'
 const TRADING_AGENTS_BASE_URL = '/trading-agents'
 
 // =============================================================================
-// 聊天补全 API（支持流式输出）
-// =============================================================================
-
-export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant' | 'tool'
-  content: string
-}
-
-export interface ChatCompletionRequest {
-  model_id: string
-  messages: ChatMessage[]
-  temperature?: number
-  max_tokens?: number
-  stream?: boolean
-}
-
-export interface ChatCompletionResponse {
-  content: string
-  reasoning_content?: string
-  thinking_tokens?: number
-  usage?: {
-    prompt_tokens: number
-    completion_tokens: number
-    total_tokens: number
-  }
-}
-
-export interface StreamChunk {
-  content: string
-  is_complete: boolean
-}
-
-/**
- * 聊天补全 API（支持流式和非流式）
- */
-export const chatApi = {
-  /**
-   * 聊天补全（非流式）
-   */
-  chatCompletion: (data: ChatCompletionRequest) =>
-    httpPost<ChatCompletionResponse>(`${AI_BASE_URL}/chat/completions`, {
-      ...data,
-      stream: false
-    }),
-
-  /**
-   * 聊天补全（流式 SSE）
-   * 使用 fetch API 和 ReadableStream 处理 SSE 流式响应
-   *
-   * 使用示例:
-   * ```ts
-   * const cleanup = chatApi.streamChatCompletion({
-   *   model_id: 'glm-4.7',
-   *   messages: [{ role: 'user', content: '你好' }],
-   * }, {
-   *   onMessage: (chunk) => console.log(chunk.content),
-   *   onComplete: () => console.log('完成'),
-   *   onError: (error) => console.error(error)
-   * })
-   *
-   * // 取消流式请求
-   * cleanup()
-   * ```
-   */
-  streamChatCompletion: (
-    data: ChatCompletionRequest,
-    callbacks: {
-      onMessage: (chunk: StreamChunk) => void
-      onComplete?: () => void
-      onError?: (error: Error) => void
-    }
-  ): (() => void) => {
-    const baseURL = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api'
-    const token = localStorage.getItem('access_token')
-    const url = `${baseURL}${AI_BASE_URL}/chat/completions`
-
-    const controller = new AbortController()
-
-    fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': token ? `Bearer ${token}` : '',
-      },
-      body: JSON.stringify({
-        model_id: data.model_id,
-        messages: data.messages,
-        temperature: data.temperature,
-        max_tokens: data.max_tokens,
-        stream: true,
-      }),
-      signal: controller.signal,
-    }).then(async (response) => {
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const reader = response.body?.getReader()
-      const decoder = new TextDecoder()
-
-      if (!reader) {
-        throw new Error('Response body is null')
-      }
-
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-
-        if (done) {
-          callbacks.onComplete?.()
-          break
-        }
-
-        // 解码并追加到缓冲区
-        buffer += decoder.decode(value, { stream: true })
-
-        // 处理 SSE 格式数据
-        const lines = buffer.split('\n\n')
-        buffer = lines.pop() || '' // 保留最后一个不完整的行
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6).trim()
-            if (data) {
-              try {
-                const chunk = JSON.parse(data) as StreamChunk
-                callbacks.onMessage(chunk)
-
-                if (chunk.is_complete) {
-                  callbacks.onComplete?.()
-                  return
-                }
-              } catch (e) {
-                console.error('Failed to parse SSE data:', data, e)
-              }
-            }
-          }
-        }
-      }
-    }).catch((error) => {
-      if (error.name !== 'AbortError') {
-        callbacks.onError?.(error as Error)
-      }
-    })
-
-    // 返回清理函数
-    return () => controller.abort()
-  },
-}
-
-// =============================================================================
 // AI 模型管理 API
 // =============================================================================
 
@@ -344,17 +192,6 @@ export const agentConfigApi = {
     httpPut<UserAgentConfig>(`${TRADING_AGENTS_BASE_URL}/agent-config/public`, data),
 
   /**
-   * 恢复公共配置为默认值
-   * 从YAML重新导入，仅管理员可访问
-   * 后端: POST /admin/trading-agents/agent-config/public/restore
-   */
-  restorePublicConfig: () =>
-    httpPost<{ success: boolean; message: string; config: UserAgentConfig }>(
-      `/admin/trading-agents/agent-config/public/restore`,
-      {}
-    ),
-
-  /**
    * 导出配置
    * 后端: POST /trading-agents/agent-config/export
    */
@@ -377,16 +214,30 @@ export const settingsApi = {
   /**
    * 获取用户的 TradingAgents 设置
    * 返回用户的分析规则配置
+   * 后端: GET /settings/trading-agents
+   * 注意：后端返回 UserSettingsResponse，需要从中提取 trading_agents_settings
    */
-  getSettings: () =>
-    httpGet<TradingAgentsSettingsResponse>(`${TRADING_AGENTS_BASE_URL}/settings`),
+  getSettings: async (): Promise<TradingAgentsSettings> => {
+    // 后端返回完整的 UserSettingsResponse，我们提取 trading_agents_settings
+    const response = await httpGet<{
+      trading_agents_settings: TradingAgentsSettings
+    }>(`/settings/trading-agents`)
+    return response.trading_agents_settings
+  },
 
   /**
    * 更新用户的 TradingAgents 设置
    * 更新用户的分析规则配置
+   * 后端: PUT /settings/trading-agents
+   * 注意：后端返回 UserSettingsResponse，需要从中提取 trading_agents_settings
    */
-  updateSettings: (data: TradingAgentsSettings) =>
-    httpPut<TradingAgentsSettingsResponse>(`${TRADING_AGENTS_BASE_URL}/settings`, data),
+  updateSettings: async (data: TradingAgentsSettings): Promise<TradingAgentsSettings> => {
+    // 后端返回完整的 UserSettingsResponse，我们提取 trading_agents_settings
+    const response = await httpPut<{
+      trading_agents_settings: TradingAgentsSettings
+    }>(`/settings/trading-agents`, data)
+    return response.trading_agents_settings
+  },
 }
 
 // =============================================================================
@@ -457,50 +308,55 @@ export const taskApi = {
     httpGet<{ position: number; waiting_count: number }>(
       `${TRADING_AGENTS_BASE_URL}/tasks/${taskId}/queue-position`
     ),
-}
 
-// =============================================================================
-// 报告管理 API
-// =============================================================================
-
-export const reportApi = {
   /**
-   * 获取报告列表
-   * 后端: GET /trading-agents/reports
+   * 获取任务状态统计
+   * 后端: GET /trading-agents/tasks/status-counts
    */
-  listReports: (params?: {
-    stock_code?: string
-    recommendation?: string
-    risk_level?: string
-    limit?: number
-    offset?: number
+  getStatusCounts: () =>
+    httpGet<{
+      all: number
+      running: number
+      completed: number
+      failed: number
+      cancelled: number
+      _detail?: {
+        pending: number
+        running: number
+        completed: number
+        failed: number
+        cancelled: number
+        stopped: number
+      }
+    }>(`${TRADING_AGENTS_BASE_URL}/tasks/status-counts`),
+
+  /**
+   * 批量清空指定状态的任务
+   * 后端: DELETE /trading-agents/tasks/clear
+   */
+  clearTasksByStatus: (params: {
+    statuses: string
+    delete_reports?: boolean
   }) =>
-    httpGet<{ reports: AnalysisReport[] }>(`${TRADING_AGENTS_BASE_URL}/reports`, {
-      params
-    }),
+    httpDelete<{ success: boolean; message: string }>(
+      `${TRADING_AGENTS_BASE_URL}/tasks/clear`,
+      { params }
+    ),
 
   /**
-   * 获取报告统计摘要
-   * 后端: GET /trading-agents/reports/summary
+   * 批量删除任务
+   * 后端: POST /trading-agents/tasks/batch-delete
    */
-  getReportSummary: (days?: number) =>
-    httpGet<ReportSummary>(`${TRADING_AGENTS_BASE_URL}/reports/summary`, {
-      params: days !== undefined ? { days } : undefined
-    }),
-
-  /**
-   * 获取报告详情
-   * 后端: GET /trading-agents/reports/{id}
-   */
-  getReport: (reportId: string) =>
-    httpGet<AnalysisReport>(`${TRADING_AGENTS_BASE_URL}/reports/${reportId}`),
-
-  /**
-   * 删除报告
-   * 后端: DELETE /trading-agents/reports/{id}
-   */
-  deleteReport: (reportId: string) =>
-    httpDelete<{ success: boolean; message: string }>(`${TRADING_AGENTS_BASE_URL}/reports/${reportId}`),
+  batchDeleteTasks: (params: {
+    task_ids: string[]
+    delete_reports?: boolean
+  }) =>
+    httpPost<{
+      success_count: number
+      failed_count: number
+      failed_tasks: Array<{ task_id: string; reason: string }>
+      message: string
+    }>(`${TRADING_AGENTS_BASE_URL}/tasks/batch-delete`, params),
 }
 
 // =============================================================================

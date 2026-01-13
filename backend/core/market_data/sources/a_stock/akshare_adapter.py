@@ -9,11 +9,12 @@ from ...models import (
     MarketType, Exchange
 )
 from ...tools.field_mapper import FieldMapper, AkShareFieldMapper
+from ..base import DataSourceAdapter
 
 logger = logging.getLogger(__name__)
 
 
-class AkShareAdapter:
+class AkShareAdapter(DataSourceAdapter):
     """AkShare数据源适配器（A股）"""
 
     def __init__(self, config: Optional[Dict] = None):
