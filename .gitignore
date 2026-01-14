@@ -108,7 +108,8 @@ coverage/
 *.temp
 
 # AI Assistants and Tools
-.claude/
+.claude/*
+!.claude/settings.local.json
 .kiro/
 
 # Trae IDE (keep documents)
