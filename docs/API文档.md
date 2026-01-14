@@ -855,103 +855,9 @@ GET /api/trading-agents/tasks/{id}/queue-position
 
 ---
 
-## 5. TradingAgents 报告管理
+## 5. TradingAgents 智能体配置
 
-### 5.1 列出报告
-
-**请求**：
-```
-GET /api/trading-agents/reports?page=1&page_size=20
-```
-
-**返回**：
-```json
-{
-  "total": 100,
-  "reports": [
-    {
-      "id": "report_id",
-      "task_id": "task_id",
-      "stock_code": "000001",
-      "trade_date": "2024-01-01",
-      "report_type": "final",
-      "recommendation": "买入",
-      "buy_price": 10.5,
-      "sell_price": 12.0,
-      "token_usage": {
-        "total": 5000
-      },
-      "created_at": "2024-01-01T00:05:00Z"
-    }
-  ]
-}
-```
-
-### 5.2 获取报告统计摘要
-
-**请求**：
-```
-GET /api/trading-agents/reports/summary
-```
-
-**返回**：
-```json
-{
-  "total_reports": 100,
-  "buy_count": 45,
-  "sell_count": 30,
-  "hold_count": 25,
-  "avg_buy_price": 10.5,
-  "avg_sell_price": 12.0,
-  "recommendation_distribution": {
-    "买入": 45,
-    "卖出": 30,
-    "持有": 25
-  },
-  "total_token_usage": 500000
-}
-```
-
-### 5.3 获取报告详情
-
-**请求**：
-```
-GET /api/trading-agents/reports/{id}
-```
-
-**返回**：
-```json
-{
-  "id": "report_id",
-  "task_id": "task_id",
-  "stock_code": "000001",
-  "trade_date": "2024-01-01",
-  "report_type": "final",
-  "report_content": "完整的报告内容...",
-  "recommendation": "买入",
-  "buy_price": 10.5,
-  "sell_price": 12.0,
-  "token_usage": {
-    "total": 5000,
-    "input": 3000,
-    "output": 2000
-  },
-  "created_at": "2024-01-01T00:05:00Z"
-}
-```
-
-### 5.4 删除报告
-
-**请求**：
-```
-DELETE /api/trading-agents/reports/{id}
-```
-
----
-
-## 6. TradingAgents 智能体配置
-
-### 6.1 获取智能体配置
+### 5.1 获取智能体配置
 
 **请求**：
 ```
@@ -999,7 +905,7 @@ GET /api/trading-agents/agent-config
 }
 ```
 
-### 6.2 更新智能体配置
+### 5.2 更新智能体配置
 
 **请求**：
 ```
@@ -1021,14 +927,14 @@ PUT /api/trading-agents/agent-config
 }
 ```
 
-### 6.3 重置为默认配置
+### 5.3 重置为默认配置
 
 **请求**：
 ```
 POST /api/trading-agents/agent-config/reset
 ```
 
-### 6.4 导出配置
+### 5.4 导出配置
 
 **请求**：
 ```
@@ -1043,7 +949,7 @@ POST /api/trading-agents/agent-config/export
 }
 ```
 
-### 6.5 导入配置
+### 5.5 导入配置
 
 **请求**：
 ```
@@ -1059,9 +965,9 @@ POST /api/trading-agents/agent-config/import
 
 ---
 
-## 7. TradingAgents 分析设置
+## 6. TradingAgents 分析设置
 
-### 7.1 获取分析设置
+### 6.1 获取分析设置
 
 **请求**：
 ```
@@ -1091,7 +997,7 @@ GET /api/trading-agents/settings
 }
 ```
 
-### 7.2 更新分析设置
+### 6.2 更新分析设置
 
 **请求**：
 ```

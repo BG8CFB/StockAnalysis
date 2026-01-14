@@ -73,9 +73,6 @@ RATE_LIMIT_PERIOD_SECONDS: int = int(os.getenv("RATE_LIMIT_PERIOD_SECONDS", "60"
 # CORS配置
 CORS_ORIGINS: list = os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
 
-# API配置
-API_ENCRYPTION_KEY: Optional[str] = os.getenv("API_ENCRYPTION_KEY")
-
 # 市场数据源配置
 TUSHARE_TOKEN: Optional[str] = os.getenv("TUSHARE_TOKEN")
 
@@ -97,8 +94,29 @@ PORT: int = int(os.getenv("PORT", "8000"))
 
 # CORS 详细配置
 CORS_ALLOW_CREDENTIALS: bool = os.getenv("CORS_ALLOW_CREDENTIALS", "true").lower() == "true"
-CORS_ALLOW_METHODS: list = os.getenv("CORS_ALLOW_METHODS", "[\"*\"]").split(",") if os.getenv("CORS_ALLOW_METHODS") else ["*"]
-CORS_ALLOW_HEADERS: list = os.getenv("CORS_ALLOW_HEADERS", "[\"*\"]").split(",") if os.getenv("CORS_ALLOW_HEADERS") else ["*"]
+
+# 解析 CORS_ALLOW_METHODS 和 CORS_ALLOW_HEADERS
+# 支持格式: "*", "GET,POST", 或 JSON 数组 '["GET","POST"]'
+def _parse_cors_list(env_value: str, default: list) -> list:
+    """解析 CORS 配置列表"""
+    if not env_value:
+        return default
+    env_value = env_value.strip()
+    # 通配符
+    if env_value == "*":
+        return ["*"]
+    # JSON 数组格式
+    if env_value.startswith("[") and env_value.endswith("]"):
+        import json
+        try:
+            return json.loads(env_value)
+        except json.JSONDecodeError:
+            pass
+    # 逗号分隔格式
+    return [item.strip() for item in env_value.split(",")]
+
+CORS_ALLOW_METHODS: list = _parse_cors_list(os.getenv("CORS_ALLOW_METHODS"), ["*"])
+CORS_ALLOW_HEADERS: list = _parse_cors_list(os.getenv("CORS_ALLOW_HEADERS"), ["*"])
 
 
 class Settings:
@@ -162,9 +180,6 @@ class Settings:
 
     # CORS
     CORS_ORIGINS: list = CORS_ORIGINS
-
-    # API
-    API_ENCRYPTION_KEY: Optional[str] = API_ENCRYPTION_KEY
 
     # 市场数据源
     TUSHARE_TOKEN: Optional[str] = TUSHARE_TOKEN
