@@ -7,11 +7,11 @@ MCP 统一连接池
 import asyncio
 import logging
 from datetime import datetime
-from typing import Dict, Optional, List, Any
+from typing import Dict, Optional, Any
 
 from core.db.mongodb import mongodb
 from modules.mcp.pool.connection import MCPConnection, ConnectionState
-from modules.mcp.schemas import MCPServerConfigResponse, MCPServerStatusEnum
+from modules.mcp.schemas import MCPServerConfigResponse
 from modules.mcp.config.loader import (
     get_pool_personal_max_concurrency,
     get_pool_public_per_user_max,
@@ -93,7 +93,10 @@ class MCPConnectionPool:
             self._semaphores[server_id] = {}
 
             # 初始化请求队列（根据服务器类型使用不同队列大小）
-            queue_size = get_pool_public_queue_size() if server_config.is_system else get_pool_personal_queue_size()
+            if server_config.is_system:
+                queue_size = get_pool_public_queue_size()
+            else:
+                queue_size = get_pool_personal_queue_size()
             self._queues[server_id] = asyncio.Queue(maxsize=queue_size)
 
             logger.info(f"[MCPConnectionPool] 注册服务器: {server_id} ({server_config.name})")
@@ -244,6 +247,13 @@ class MCPConnectionPool:
                 )
                 conn.last_used_at = datetime.utcnow()
                 return conn
+            else:
+                # 连接不可用，从映射中移除
+                logger.warning(
+                    f"[MCPConnectionPool] 现有连接不可用: {existing_conn_id}，将创建新连接"
+                )
+                if task_id in self._task_connections:
+                    del self._task_connections[task_id]
 
         # 获取用户级信号量（并发控制）
         semaphore = self._get_user_semaphore(server_id, user_id)
@@ -267,7 +277,7 @@ class MCPConnectionPool:
                 )
 
                 # 初始化连接
-                tools = await conn.initialize()
+                await conn.initialize()
 
                 # 注册到连接池
                 self._connections[conn.connection_id] = conn
@@ -346,6 +356,29 @@ class MCPConnectionPool:
                 # 释放信号量
                 semaphore = self._get_user_semaphore(conn.server_id, conn.user_id)
                 semaphore.release()
+
+    async def mark_task_cancelled(self, task_id: str) -> None:
+        """
+        标记任务取消（便捷方法）
+
+        Args:
+            task_id: 任务 ID
+        """
+        connection_id = self._task_connections.get(task_id)
+        if connection_id:
+            conn = self._connections.get(connection_id)
+            if conn:
+                # 标记连接为完成（而不是失败）
+                await conn.mark_complete()
+                # 从任务-连接映射中移除
+                del self._task_connections[task_id]
+                # 释放信号量
+                semaphore = self._get_user_semaphore(conn.server_id, conn.user_id)
+                semaphore.release()
+                logger.info(
+                    f"[MCPConnectionPool] 任务取消，释放连接: {connection_id} "
+                    f"(server={conn.server_id}, task={task_id})"
+                )
 
     # ========================================================================
     # 连接查询与统计
@@ -495,6 +528,73 @@ class MCPConnectionPool:
                 logger.info(f"[MCPConnectionPool] 清理已关闭连接: {len(to_remove)} 个")
 
             return len(to_remove)
+
+    async def cleanup_idle_semaphores(
+        self,
+        idle_threshold_seconds: int = 3600
+    ) -> int:
+        """
+        清理空闲的用户信号量（释放内存）
+
+        Args:
+            idle_threshold_seconds: 空闲阈值（秒），默认1小时
+
+        Returns:
+            清理的信号量数量
+        """
+        cleaned_count = 0
+
+        async with self._server_lock:
+            for server_id, user_semaphores in list(self._semaphores.items()):
+                # 检查该服务器下的每个用户信号量
+                idle_users = []
+
+                for user_id in list(user_semaphores.keys()):
+                    # 检查该用户是否有活跃的连接
+                    has_active_connection = any(
+                        conn.user_id == user_id and conn.server_id == server_id and conn.is_active
+                        for conn in self._connections.values()
+                    )
+
+                    # 如果没有活跃连接，则标记为空闲
+                    if not has_active_connection:
+                        idle_users.append(user_id)
+
+                # 删除空闲用户的信号量
+                for user_id in idle_users:
+                    del self._semaphores[server_id][user_id]
+                    cleaned_count += 1
+                    logger.debug(
+                        f"[MCPConnectionPool] 清理空闲信号量: "
+                        f"server={server_id}, user={user_id}"
+                    )
+
+                # 如果某个服务器的所有信号量都被清理了，删除该服务器的条目
+                if not self._semaphores[server_id]:
+                    del self._semaphores[server_id]
+
+        if cleaned_count > 0:
+            logger.info(f"[MCPConnectionPool] 清理空闲信号量: {cleaned_count} 个")
+
+        return cleaned_count
+
+    async def cleanup_all(self, idle_threshold_seconds: int = 3600) -> Dict[str, int]:
+        """
+        执行完整的清理操作（连接 + 信号量）
+
+        Args:
+            idle_threshold_seconds: 空闲阈值（秒）
+
+        Returns:
+            清理统计
+        """
+        connections_cleaned = await self.cleanup_closed_connections()
+        semaphores_cleaned = await self.cleanup_idle_semaphores(idle_threshold_seconds)
+
+        return {
+            "connections_cleaned": connections_cleaned,
+            "semaphores_cleaned": semaphores_cleaned,
+        }
 
 
 # 全局连接池实例

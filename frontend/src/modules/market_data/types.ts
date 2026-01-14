@@ -1,6 +1,6 @@
 /**
  * 市场数据模块类型定义
- * 仅包含数据源监控相关类型
+ * 严格按照 docs/market_data/数据源状态监控设计.md 实现
  */
 
 /**
@@ -13,16 +13,7 @@ export enum MarketType {
 }
 
 /**
- * 市场类型标签映射
- */
-export const MarketTypeLabels: Record<MarketType, string> = {
-  [MarketType.A_STOCK]: 'A股',
-  [MarketType.US_STOCK]: '美股',
-  [MarketType.HK_STOCK]: '港股'
-}
-
-/**
- * 市场中文映射
+ * 市场类型名称映射
  */
 export const MarketTypeName: Record<MarketType, string> = {
   [MarketType.A_STOCK]: 'A股',
@@ -31,7 +22,7 @@ export const MarketTypeName: Record<MarketType, string> = {
 }
 
 /**
- * 数据源状态枚举
+ * 数据源健康状态
  */
 export enum DataSourceStatus {
   HEALTHY = 'healthy',
@@ -41,19 +32,19 @@ export enum DataSourceStatus {
 }
 
 /**
- * 数据源状态标签映射
+ * 数据源状态显示标签
  */
 export const DataSourceStatusLabels: Record<DataSourceStatus, string> = {
-  [DataSourceStatus.HEALTHY]: '正常',
-  [DataSourceStatus.DEGRADED]: '已降级',
-  [DataSourceStatus.UNAVAILABLE]: '不可用',
-  [DataSourceStatus.STANDBY]: '待机'
+  [DataSourceStatus.HEALTHY]: '✅ 正常',
+  [DataSourceStatus.DEGRADED]: '⚠️ 已降级',
+  [DataSourceStatus.UNAVAILABLE]: '❌ 不可用',
+  [DataSourceStatus.STANDBY]: '💤 待机'
 }
 
 /**
- * 数据源状态标签类型映射
+ * 数据源状态标签类型（Element Plus）
  */
-export const DataSourceStatusTagType: Record<DataSourceStatus, any> = {
+export const DataSourceStatusTagType: Record<DataSourceStatus, '' | 'success' | 'warning' | 'danger' | 'info'> = {
   [DataSourceStatus.HEALTHY]: 'success',
   [DataSourceStatus.DEGRADED]: 'warning',
   [DataSourceStatus.UNAVAILABLE]: 'danger',
@@ -61,50 +52,59 @@ export const DataSourceStatusTagType: Record<DataSourceStatus, any> = {
 }
 
 /**
- * 数据源状态图标映射
- */
-export const DataSourceStatusIcon: Record<DataSourceStatus, string> = {
-  [DataSourceStatus.HEALTHY]: '✅',
-  [DataSourceStatus.DEGRADED]: '⚠️',
-  [DataSourceStatus.UNAVAILABLE]: '❌',
-  [DataSourceStatus.STANDBY]: '💤'
-}
-
-/**
- * 数据源显示名称映射
+ * 数据源显示名称
  */
 export const DataSourceDisplayName: Record<string, string> = {
-  'tushare': 'TuShare Pro',
-  'akshare': 'AkShare',
-  'yahoo_finance': 'Yahoo Finance',
-  'alpha_vantage': 'Alpha Vantage',
-  'itick': 'iTick'
+  tushare: 'TuShare',
+  akshare: 'AkShare',
+  yahoo: 'Yahoo Finance',
+  alpha_vantage: 'Alpha Vantage'
 }
 
 /**
- * 数据源图标映射（返回 Element Plus 图标组件名称）
+ * 下次更新说明映射
  */
-export const DataSourceIconName: Record<string, string> = {
-  'tushare': 'TrendCharts',
-  'akshare': 'TrendCharts',
-  'yahoo_finance': 'TrendCharts',
-  'alpha_vantage': 'TrendCharts',
-  'itick': 'TrendCharts'
+export const NextUpdateMap: Record<string, string> = {
+  daily_quote: '收盘后自动同步',
+  realtime_quote: '实时更新',
+  minute_quote: '盘中实时更新',
+  financials: '季度更新',
+  financial_indicator: '季度更新',
+  company_info: '按需更新',
+  news: '实时更新',
+  calendar: '每日更新',
+  top_list: '每日收盘后',
+  moneyflow: '盘中实时更新',
+  dividend: '按公告更新',
+  shareholder_num: '季度更新',
+  top_shareholder: '季度更新',
+  margin: '每日收盘后',
+  macro_economy: '按发布周期',
+  sector: '每日更新',
+  index: '盘中实时更新',
+  ipo: '按公告更新',
+  pledge: '按公告更新',
+  repurchase: '按公告更新',
+  adj_factor: '每日收盘后'
 }
 
+// =============================================================================
+// 响应类型（按文档 API 设计）
+// =============================================================================
+
 /**
- * 仪表板概览数据
+ * 仪表板概览响应（文档 3.1.1）
  */
 export interface DashboardOverview {
-  a_stock?: MarketStatusInfo
-  us_stock?: MarketStatusInfo
-  hk_stock?: MarketStatusInfo
+  a_stock?: MarketStatusSummary
+  us_stock?: MarketStatusSummary
+  hk_stock?: MarketStatusSummary
 }
 
 /**
- * 市场状态信息
+ * 市场状态汇总
  */
-export interface MarketStatusInfo {
+export interface MarketStatusSummary {
   status: DataSourceStatus
   last_update: string
   last_update_relative: string
@@ -112,93 +112,87 @@ export interface MarketStatusInfo {
 }
 
 /**
- * 数据源健康状态
- */
-export interface DataSourceHealth {
-  sourceName: string
-  isAvailable: boolean
-  responseTimeMs?: number
-  lastCheckTime?: string
-  failureCount: number
-  error?: string
-}
-
-/**
- * 市场详细状态
+ * 市场详细状态响应（文档 3.1.2）
  */
 export interface MarketDetail {
   market: MarketType
-  marketName: string
-  dataTypes: DataTypeStatus[]
+  market_name: string
+  data_types: DataTypeStatus[]
 }
 
 /**
- * 数据类型状态
+ * 数据类型状态项（文档 3.1.2）
+ * 对应前端卡片的数据结构
  */
 export interface DataTypeStatus {
-  dataType: string
-  dataTypeName: string
-  currentSource: DataSourceInfo
-  isFallback: boolean
-  canRetry: boolean
-  primarySource?: {
-    sourceId: string
-    status: string
-    canRetry: boolean
-  }
-  fallbackReason?: string
+  data_type: string
+  data_type_name: string
+  current_source: CurrentDataSource
+  is_fallback: boolean
+  can_retry: boolean
+  primary_source?: PrimaryDataSource
+  fallback_reason?: string
 }
 
 /**
- * 数据源信息
+ * 当前数据源信息
  */
-export interface DataSourceInfo {
-  sourceType: 'system' | 'user'
-  sourceId: string
-  sourceName: string
+export interface CurrentDataSource {
+  source_type: string
+  source_id: string
+  source_name: string
   status: DataSourceStatus
-  lastCheck: string
-  lastCheckRelative: string
-  responseTimeMs?: number
+  last_check: string | null
+  last_check_relative: string
+  response_time_ms: number | null
 }
 
 /**
- * 数据类型详细信息
+ * 主数据源信息（降级时）
+ */
+export interface PrimaryDataSource {
+  source_id: string
+  status: DataSourceStatus
+  can_retry: boolean
+}
+
+/**
+ * 数据类型详细响应（文档 3.2.1）
  */
 export interface DataTypeDetail {
   market: MarketType
-  dataType: string
-  dataTypeName: string
-  sources: DataSourceDetailInfo[]
-  recentEvents: StatusEvent[]
+  data_type: string
+  data_type_name: string
+  sources: SourceDetail[]
+  recent_events: StatusEvent[]
 }
 
 /**
  * 数据源详细信息
  */
-export interface DataSourceDetailInfo {
-  sourceType: 'system' | 'user'
-  sourceId: string
-  sourceName: string
+export interface SourceDetail {
+  source_type: string
+  source_id: string
+  source_name: string
   status: DataSourceStatus
   priority: number
-  lastCheck?: string
-  responseTimeMs?: number
-  avgResponseTimeMs?: number
-  failureCount: number
-  note?: string
-  apiEndpoints?: ApiEndpointInfo[]
+  last_check: string | null
+  response_time_ms: number | null
+  avg_response_time_ms: number | null
+  failure_count: number
+  note: string | null
+  api_endpoints: ApiEndpoint[]
 }
 
 /**
- * API 端点信息
+ * API 端点信息（文档 3.2.1）
  */
-export interface ApiEndpointInfo {
-  endpointName: string
-  endpointNameCn: string
+export interface ApiEndpoint {
+  endpoint_name: string
+  endpoint_name_cn: string
   status: DataSourceStatus
-  lastCheck?: string
-  failureCount: number
+  last_check: string | null
+  failure_count: number
 }
 
 /**
@@ -206,38 +200,38 @@ export interface ApiEndpointInfo {
  */
 export interface StatusEvent {
   timestamp: string
-  eventType: string
+  event_type: string
   description: string
-  fromStatus?: string
-  toStatus?: string
-  fromSource?: string
-  toSource?: string
-  sourceId?: string
+  from_status: string | null
+  to_status: string | null
+  from_source: string | null
+  to_source: string | null
+  source_id: string | null
 }
 
 /**
- * 错误详情
+ * 错误详情响应
  */
 export interface ErrorDetail {
   market: MarketType
-  dataType: string
-  sourceId: string
-  sourceName: string
+  data_type: string
+  source_id: string
+  source_name: string
   error: {
-    apiEndpoint?: string
+    api_endpoint?: string
     status?: string
-    errorCode?: string
-    errorMessage?: string
-    errorType?: string
-    rawResponse?: any
-    occurredAt?: string
-    failureCount?: number
-    retryHistory?: RetryHistory[]
+    error_code?: string
+    error_message?: string
+    error_type?: string
+    raw_response?: any
+    occurred_at?: string
+    failure_count?: number
+    retry_history?: RetryHistory[]
   }
-  adminDebugInfo?: {
+  admin_debug_info?: {
     traceback?: string
-    requestParams?: any
-    fullError?: any
+    request_params?: any
+    full_error?: any
   }
 }
 
@@ -251,80 +245,36 @@ export interface RetryHistory {
 }
 
 /**
- * 重试响应
+ * 手动重试响应（文档 3.4）
  */
 export interface RetryResponse {
   success: boolean
   message: string
   result?: {
-    status: string
-    responseTimeMs: number
-    recoveredAt: string
-    wasFallback: boolean
-    previousSource: string
+    status: DataSourceStatus
+    response_time_ms: number
+    recovered_at: string
+    was_fallback: boolean
+    previous_source: string
   }
   error?: {
-    errorCode?: string
-    errorMessage?: string
-    failureCount?: number
+    error_message?: string
+    failure_count?: number
   }
 }
 
 /**
- * 历史记录响应
+ * 历史记录响应（文档 3.5）
  */
 export interface HistoryResponse {
   events: StatusEvent[]
 }
 
 /**
- * 刷新状态响应
+ * 刷新状态响应（文档 3.6）
  */
 export interface RefreshStatusResponse {
   success: boolean
   message: string
-  refreshedAt: string
-}
-
-/**
- * 时间范围选项
- */
-export interface TimeRangeOption {
-  label: string
-  value: string
-}
-
-/**
- * 市场标签选项
- */
-export interface MarketTabOption {
-  label: string
-  value: MarketType
-}
-
-/**
- * API 端点说明映射（文档 2.2.2 节的数据类型列表）
- */
-export const DataTypeInfo: Record<string, { name: string; category: string; interfaces: string }> = {
-  daily_quote: { name: '日线行情数据', category: '核心行情数据', interfaces: 'pro_bar / stock_zh_a_hist()' },
-  realtime_quote: { name: '实时行情数据', category: '核心行情数据', interfaces: 'stock_zh_a_spot_em()' },
-  minute_quote: { name: '分钟行情数据', category: '核心行情数据', interfaces: 'stk_mins / stock_zh_a_hist_min_em()' },
-  financials: { name: '财务报表数据', category: '公司基本面数据', interfaces: 'income / stock_profit_sheet_by_report_em()' },
-  financial_indicator: { name: '财务指标数据', category: '公司基本面数据', interfaces: 'fina_indicator / stock_financial_abstract()' },
-  company_info: { name: '公司信息数据', category: '公司基本面数据', interfaces: 'stock_basic' },
-  news: { name: '新闻资讯数据', category: '市场参考数据', interfaces: 'news / js_news()' },
-  calendar: { name: '交易日历数据', category: '市场参考数据', interfaces: 'trade_cal / tool_trade_date_hist_sina()' },
-  top_list: { name: '龙虎榜数据', category: '资金动向数据', interfaces: 'top_list / stock_lhb_detail_em()' },
-  moneyflow: { name: '资金流向数据', category: '资金动向数据', interfaces: 'moneyflow / stock_individual_fund_flow()' },
-  dividend: { name: '分红送股数据', category: '资金动向数据', interfaces: 'dividend / stock_dividend_cninfo()' },
-  shareholder_num: { name: '股东人数数据', category: '股东数据', interfaces: 'stk_holdernumber' },
-  top_shareholder: { name: '十大股东数据', category: '股东数据', interfaces: 'stock_gdfx_top_10_em()' },
-  margin: { name: '融资融券数据', category: '融资融券', interfaces: 'margin / stock_margin_sse()' },
-  macro_economy: { name: '宏观经济数据', category: '宏观经济数据', interfaces: 'cn_gdp / cn_cpi / cn_ppi / cn_pmi' },
-  sector: { name: '板块数据', category: '板块数据', interfaces: 'stock_board_concept_name_em()' },
-  index: { name: '指数数据', category: '板块数据', interfaces: 'index_daily' },
-  ipo: { name: 'IPO新股数据', category: '特殊数据', interfaces: 'new_share' },
-  pledge: { name: '股权质押数据', category: '特殊数据', interfaces: 'pledge_detail' },
-  repurchase: { name: '股票回购数据', category: '特殊数据', interfaces: 'repurchase' },
-  adj_factor: { name: '复权因子数据', category: '交易辅助数据', interfaces: 'adj_factor' }
+  refreshed_at: string
 }

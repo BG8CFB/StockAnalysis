@@ -3,10 +3,9 @@
 """
 
 from typing import List, Optional
-from datetime import datetime
 
 from core.market_data.repositories.base import BaseRepository
-from core.market_data.models import StockQuote, MarketType
+from core.market_data.models import StockQuote
 
 
 class StockQuoteRepository(BaseRepository):
@@ -139,7 +138,7 @@ class StockQuoteRepository(BaseRepository):
         """
         filter_query = {
             "trade_date": {"$lt": cutoff_date},
-            "is_intraday": True  # 仅删除盘中数据
+            "is_complete": False  # 仅删除盘中数据（不完整的数据）
         }
         return await self.delete_many(filter_query)
 
@@ -165,3 +164,29 @@ class StockQuoteRepository(BaseRepository):
         }
         result = await kline_collection.delete_many(filter_query)
         return result.deleted_count
+
+    async def delete_quotes_in_range(
+        self,
+        symbol: str,
+        start_date: str,
+        end_date: str
+    ) -> int:
+        """
+        删除指定日期范围内的行情数据（用于回滚）
+
+        Args:
+            symbol: 股票代码
+            start_date: 开始日期（YYYYMMDD）
+            end_date: 结束日期（YYYYMMDD）
+
+        Returns:
+            删除的文档数量
+        """
+        filter_query = {
+            "symbol": symbol,
+            "trade_date": {
+                "$gte": start_date,
+                "$lte": end_date
+            }
+        }
+        return await self.delete_many(filter_query)

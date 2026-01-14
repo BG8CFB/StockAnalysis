@@ -2,8 +2,8 @@
  * 系统设置 API 接口
  * 统一管理所有系统设置相关的 API
  */
-import { httpGet, httpPut } from '@/core/api/http'
-import type { SystemConfig, SystemInfo } from '../types/system'
+import { httpGet, httpPut } from '@core/api/http'
+import type { SystemConfig, SystemStatus, SystemInfo } from '../types/system'
 
 export const systemSettingsApi = {
   /**

@@ -24,6 +24,7 @@ class StockQuote(BaseModel):
     change: Optional[float] = Field(None, description="涨跌额")
     change_pct: Optional[float] = Field(None, description="涨跌幅（%）")
     turnover_rate: Optional[float] = Field(None, description="换手率（%）")
+    is_complete: bool = Field(True, description="是否完整收盘数据（true=收盘后，false=盘中）")
     data_source: str = Field(..., description="数据来源")
     fetched_at: datetime = Field(default_factory=datetime.now, description="数据获取时间")
 

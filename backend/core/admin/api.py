@@ -179,6 +179,26 @@ async def enable_user(
         )
 
 
+@router.put("/users/{user_id}/reapprove")
+async def reapprove_user(
+    user_id: str,
+    current_admin: UserModel = Depends(get_current_admin_user),
+):
+    """重新审核通过用户（从 REJECTED 状态恢复）"""
+    try:
+        user = await admin_service.reapprove_user(user_id, str(current_admin.id))
+        return {
+            "success": True,
+            "message": "用户已重新审核通过",
+            "user": UserListResponse(**user.model_dump()),
+        }
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+
+
 @router.put("/users/{user_id}")
 async def update_user(
     user_id: str,
@@ -249,12 +269,15 @@ async def admin_request_password_reset(
 ):
     """管理员触发用户密码重置"""
     try:
-        reset_token = await admin_service.admin_request_password_reset(user_id, str(current_admin.id))
+        reset_token = await admin_service.admin_request_password_reset(
+            user_id, str(current_admin.id)
+        )
         # 开发环境返回 token，生产环境应该只返回成功消息
         return {
             "success": True,
             "message": "密码重置链接已生成",
-            "token": reset_token if current_admin.role == Role.SUPER_ADMIN else None,  # 只有超管能看到token
+            "token": reset_token if current_admin.role == Role.SUPER_ADMIN else None,
+            # 只有超管能看到token
         }
     except ValueError as e:
         raise HTTPException(

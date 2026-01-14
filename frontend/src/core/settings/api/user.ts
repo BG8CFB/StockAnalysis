@@ -4,7 +4,7 @@
  * 提供用户配置的 CRUD、导入导出等接口调用
  */
 
-import { httpGet, httpPut, httpPost } from '@/core/api/http'
+import { httpGet, httpPut, httpPost } from '@core/api/http'
 import type {
   UserSettingsResponse,
   CoreSettingsUpdate,

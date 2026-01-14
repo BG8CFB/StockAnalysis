@@ -183,35 +183,20 @@ class AIModelConfigResponse(AIModelConfigBase):
     created_at: datetime
     updated_at: datetime
     masked_api_key: str = Field(..., description="脱敏后的 API Key")
-    api_key_valid: bool = Field(default=True, description="API Key 是否有效（解密成功）")
 
     @classmethod
     def from_db(cls, data: Dict[str, Any]) -> "AIModelConfigResponse":
         """从数据库数据创建响应对象"""
         api_key_encrypted = data.get("api_key", "")
 
-        # 尝试解密 API Key（兼容未加密的旧数据）
-        api_key_valid = True  # 默认认为有效
+        # Base64 解码 API Key
+        api_key = ""
         try:
-            from core.security.encryption import decrypt_sensitive_data, is_encrypted
-
-            if is_encrypted(api_key_encrypted):
-                api_key = decrypt_sensitive_data(api_key_encrypted)
-            else:
-                # 未加密的旧数据，直接使用
-                api_key = api_key_encrypted
+            from core.security.encryption import decrypt_sensitive_data
+            api_key = decrypt_sensitive_data(api_key_encrypted)
         except Exception:
-            # 解密失败，可能是密钥变更或数据损坏
-            # 使用占位符避免验证失败，并标记为无效
-            import logging
-
-            logger = logging.getLogger(__name__)
-            logger.warning(
-                f"API Key 解密失败: model_id={data.get('model_id')}, "
-                f"model_name={data.get('name')}. 请重新配置 API Key。"
-            )
-            api_key = "DECRYPT_FAILED_PLEASE_UPDATE"  # 使用占位符而非空字符串
-            api_key_valid = False  # 标记为无效
+            # 解码失败，返回空字符串
+            api_key = ""
 
         masked = cls._mask_api_key(api_key)
 
@@ -237,7 +222,7 @@ class AIModelConfigResponse(AIModelConfigBase):
             platform_name=(PresetPlatformEnum(platform_name) if platform_name else None),
             provider=ModelProviderEnum(provider) if provider else None,
             api_base_url=data["api_base_url"],
-            api_key=api_key,  # 解密后的明文（仅在内存中使用）
+            api_key=api_key,
             model_id=data["model_id"],
             custom_headers=data.get("custom_headers", {}),
             max_concurrency=data.get("max_concurrency", 40),
@@ -253,7 +238,6 @@ class AIModelConfigResponse(AIModelConfigBase):
             created_at=data["created_at"],
             updated_at=data["updated_at"],
             masked_api_key=masked,
-            api_key_valid=api_key_valid,  # 标记 API Key 是否有效
         )
 
     @staticmethod

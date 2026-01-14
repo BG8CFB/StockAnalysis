@@ -219,7 +219,7 @@ class MarketDataApi {
    * 获取仪表板概览
    */
   async getDashboardOverview(): Promise<DashboardOverviewResponse> {
-    const response = await request.get<DashboardOverviewResponse>('/api/core/system/data-source-status/overview')
+    const response = await request.get<DashboardOverviewResponse>('/core/system/data-source-status/overview')
     return response.data
   }
 
@@ -227,7 +227,7 @@ class MarketDataApi {
    * 获取指定市场的详细状态
    */
   async getMarketDetail(market: MarketType): Promise<MarketDetailResponse> {
-    const response = await request.get<MarketDetailResponse>(`/api/core/system/data-source-status/${market}`)
+    const response = await request.get<MarketDetailResponse>(`/core/system/data-source-status/${market}`)
     return response.data
   }
 
@@ -235,7 +235,7 @@ class MarketDataApi {
    * 获取指定数据类型的详细信息
    */
   async getDataTypeDetail(market: MarketType, dataType: string): Promise<DataTypeDetailResponse> {
-    const response = await request.get<DataTypeDetailResponse>(`/api/core/system/data-source-status/${market}/${dataType}`)
+    const response = await request.get<DataTypeDetailResponse>(`/core/system/data-source-status/${market}/${dataType}`)
     return response.data
   }
 
@@ -243,7 +243,7 @@ class MarketDataApi {
    * 获取接口错误详情（普通用户）
    */
   async getErrorDetail(market: MarketType, dataType: string, sourceId: string): Promise<ErrorDetailResponse> {
-    const response = await request.get<ErrorDetailResponse>(`/api/core/system/data-source-status/${market}/${dataType}/${sourceId}/error`)
+    const response = await request.get<ErrorDetailResponse>(`/core/system/data-source-status/${market}/${dataType}/${sourceId}/error`)
     return response.data
   }
 
@@ -251,7 +251,7 @@ class MarketDataApi {
    * 获取接口错误详情（管理员）
    */
   async getErrorDetailAdmin(market: MarketType, dataType: string, sourceId: string): Promise<ErrorDetailResponse> {
-    const response = await request.get<ErrorDetailResponse>(`/api/core/admin/data-source-status/${market}/${dataType}/${sourceId}/error`)
+    const response = await request.get<ErrorDetailResponse>(`/core/system/data-source-status/${market}/${dataType}/${sourceId}/error`)
     return response.data
   }
 
@@ -259,7 +259,7 @@ class MarketDataApi {
    * 手动重试数据源
    */
   async retryDataSource(market: MarketType, dataType: string, sourceId: string): Promise<RetryResponse> {
-    const response = await request.post<RetryResponse>(`/api/core/system/data-source-status/${market}/${dataType}/${sourceId}/retry`)
+    const response = await request.post<RetryResponse>(`/core/system/data-source-status/${market}/${dataType}/${sourceId}/retry`)
     return response.data
   }
 
@@ -267,7 +267,7 @@ class MarketDataApi {
    * 获取历史记录
    */
   async getHistory(market: MarketType, dataType: string, hours: number = 24): Promise<HistoryResponse> {
-    const response = await request.get<HistoryResponse>(`/api/core/system/data-source-status/${market}/${dataType}/history`, {
+    const response = await request.get<HistoryResponse>(`/core/system/data-source-status/${market}/${dataType}/history`, {
       params: { hours }
     })
     return response.data
@@ -281,7 +281,7 @@ class MarketDataApi {
     if (market) {
       params.market = market
     }
-    const response = await request.post<RefreshStatusResponse>('/api/core/system/data-source-status/refresh', params)
+    const response = await request.post<RefreshStatusResponse>('/core/system/data-source-status/refresh', params)
     return response.data
   }
 }

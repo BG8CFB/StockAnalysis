@@ -3,9 +3,9 @@
 """
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Literal, Optional
+from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from core.config import settings
 from core.auth.rbac import Role
@@ -38,7 +38,7 @@ class UserModel(BaseModel):
     reject_reason: Optional[str] = None       # 拒绝原因
 
     # 基础字段
-    is_active: bool = True  # 保留（兼容 status，DISABLED 时为 False）
+    is_active: bool = True  # 保留字段（向后兼容），通过 model_validator 与 status 同步
     is_verified: bool = False
     created_by: Optional[PyObjectId] = None
     last_login_at: Optional[datetime] = None
@@ -50,6 +50,37 @@ class UserModel(BaseModel):
         "arbitrary_types_allowed": True,
         "by_alias": True  # 序列化时使用 serialization_alias
     }
+
+    @field_validator("is_active", mode="before")
+    @classmethod
+    def sync_is_active_with_status(cls, v: bool, info) -> bool:
+        """
+        确保 is_active 与 status 同步
+        当 status 为 ACTIVE 时 is_active 必须为 True，否则为 False
+        """
+        # 获取 status 的值（如果已设置）
+        status = None
+        if "status" in info.data:
+            status = info.data["status"]
+
+        # 如果 status 已设置，根据 status 计算 is_active
+        if status is not None:
+            return status == UserStatus.ACTIVE
+
+        # 如果 status 未设置，保持 is_active 的值（用于旧数据兼容）
+        return v
+
+    @field_validator("status", mode="after")
+    @classmethod
+    def ensure_status_consistency(cls, status: UserStatus, info) -> UserStatus:
+        """
+        确保 status 与 is_active 的一致性
+        """
+        # 更新 is_active 以匹配 status
+        if "is_active" not in info.data or info.data["is_active"] != (status == UserStatus.ACTIVE):
+            # 注意：这里不能直接修改 info.data，所以依赖 model_validator 在后续处理
+            pass
+        return status
 
 
 class UserPreferences(BaseModel):

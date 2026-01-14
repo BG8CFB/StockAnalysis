@@ -3,6 +3,7 @@
 使用 APScheduler 进行定时任务管理
 """
 import logging
+from datetime import datetime, timedelta
 from typing import Optional
 
 try:
@@ -46,6 +47,60 @@ async def cleanup_rejected_users_task():
         logger.error(f"清理被拒绝用户任务失败: {e}")
 
 
+async def cleanup_expired_watchlist_data_task():
+    """定时清理过期自选股数据任务"""
+    try:
+        from core.market_data.repositories.watchlist import WatchlistRepository
+        from core.market_data.repositories.stock_quotes import StockQuoteRepository
+
+        logger.info("开始执行清理过期自选股数据任务")
+
+        # 计算截止日期（1周前）
+        cutoff_date = (datetime.now() - timedelta(days=7)).strftime("%Y%m%d")
+
+        watchlist_repo = WatchlistRepository()
+        stock_quotes_repo = StockQuoteRepository()
+
+        # 获取所有自选股
+        watchlists = await watchlist_repo.get_all_watchlists()
+        total_deleted = 0
+
+        async for watchlist in watchlists:
+            symbols = watchlist.get("symbols", [])
+
+            for symbol in symbols:
+                try:
+                    # 删除过期的日线数据
+                    deleted = await stock_quotes_repo.delete_old_quotes(symbol, cutoff_date)
+                    total_deleted += deleted
+                    logger.debug(f"删除 {symbol} 的过期数据 {deleted} 条")
+                except Exception as e:
+                    logger.warning(f"清理 {symbol} 数据失败: {e}")
+
+        logger.info(f"清理过期自选股数据任务完成，共删除 {total_deleted} 条记录")
+    except Exception as e:
+        logger.error(f"清理过期自选股数据任务失败: {e}")
+
+
+async def cleanup_mcp_connection_pool_task():
+    """定时清理 MCP 连接池任务"""
+    try:
+        from modules.mcp.pool.pool import get_mcp_connection_pool
+
+        logger.info("开始执行清理 MCP 连接池任务")
+
+        pool = get_mcp_connection_pool()
+        result = await pool.cleanup_all(idle_threshold_seconds=3600)
+
+        logger.info(
+            f"清理 MCP 连接池任务完成，"
+            f"清理连接 {result['connections_cleaned']} 个，"
+            f"清理信号量 {result['semaphores_cleaned']} 个"
+        )
+    except Exception as e:
+        logger.error(f"清理 MCP 连接池任务失败: {e}")
+
+
 def init_scheduler():
     """初始化定时任务调度器"""
     if not APSCHEDULER_AVAILABLE:
@@ -58,11 +113,27 @@ def init_scheduler():
         if sched is None:
             return
 
-        # 每天凌晨 2 点执行清理任务
+        # 每天凌晨 2 点执行清理被拒绝用户任务
         sched.add_job(
             cleanup_rejected_users_task,
             CronTrigger(hour=2, minute=0),
             id="cleanup_rejected_users",
+            replace_existing=True,
+        )
+
+        # 每天凌晨 3 点执行清理过期自选股数据任务
+        sched.add_job(
+            cleanup_expired_watchlist_data_task,
+            CronTrigger(hour=3, minute=0),
+            id="cleanup_expired_watchlist_data",
+            replace_existing=True,
+        )
+
+        # 每小时执行一次 MCP 连接池清理任务
+        sched.add_job(
+            cleanup_mcp_connection_pool_task,
+            CronTrigger(minute=0),
+            id="cleanup_mcp_connection_pool",
             replace_existing=True,
         )
 

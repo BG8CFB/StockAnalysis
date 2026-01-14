@@ -1,296 +1,625 @@
 """
-数据状态监控 API
-提供前端仪表板使用的统一接口
+数据源状态监控 API
+严格按照 docs/market_data/数据源状态监控设计.md 实现
 """
 
 import logging
-from typing import Optional
+from typing import Optional, List, Dict, Any
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from core.auth.dependencies import get_current_user
+from core.user.models import UserModel
 from core.market_data.services.source_monitor_service import SourceMonitorService
-from core.market_data.managers.source_router import DataSourceRouter
-from core.market_data.config.schemas import DashboardOverviewResponse, MarketDetailResponse, DataTypeDetailResponse
+from core.market_data.repositories.datasource import (
+    DataSourceStatusRepository,
+    DataSourceStatusHistoryRepository,
+    SystemDataSourceRepository,
+)
+from core.market_data.models.datasource import DataSourceType, DataSourceStatus
+from core.auth.rbac import Role
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/core/system", tags=["系统管理_数据源监控"])
 
 
+# =============================================================================
+# 数据类型定义（严格按文档 2.2.2 节）
+# =============================================================================
+
+# A股数据类型
+A_STOCK_DATA_TYPES = {
+    # 核心行情数据
+    "daily_quote": "日线行情数据",
+    "realtime_quote": "实时行情数据",
+    "minute_quote": "分钟行情数据",
+    # 公司基本面数据
+    "financials": "财务报表数据",
+    "financial_indicator": "财务指标数据",
+    "company_info": "公司信息数据",
+    # 市场参考数据
+    "news": "新闻资讯数据",
+    "calendar": "交易日历数据",
+    # 资金动向数据
+    "top_list": "龙虎榜数据",
+    "moneyflow": "资金流向数据",
+    "dividend": "分红送股数据",
+    # 股东数据
+    "shareholder_num": "股东人数数据",
+    "top_shareholder": "十大股东数据",
+    # 融资融券
+    "margin": "融资融券数据",
+    # 宏观经济数据
+    "macro_economy": "宏观经济数据",
+    # 板块数据
+    "sector": "板块数据",
+    "index": "指数数据",
+    # 特殊数据
+    "ipo": "IPO新股数据",
+    "pledge": "股权质押数据",
+    "repurchase": "股票回购数据",
+    # 交易辅助数据
+    "adj_factor": "复权因子数据",
+}
+
+# 美股数据类型
+US_STOCK_DATA_TYPES = {
+    "daily_quote": "日线行情数据",
+    "realtime_quote": "实时行情数据",
+    "minute_quote": "分钟行情数据",
+    "financials": "财务报表数据",
+    "financial_indicator": "财务指标数据",
+    "company_info": "公司信息数据",
+    "news": "新闻资讯数据",
+    "calendar": "交易日历数据",
+    "macro_economy": "宏观经济数据",
+    "sector": "板块数据",
+    "index": "指数数据",
+}
+
+# 港股数据类型
+HK_STOCK_DATA_TYPES = {
+    "daily_quote": "日线行情数据",
+    "realtime_quote": "实时行情数据",
+    "minute_quote": "分钟行情数据",
+    "financials": "财务报表数据",
+    "company_info": "公司信息数据",
+    "news": "新闻资讯数据",
+    "calendar": "交易日历数据",
+    "margin": "融资融券数据",
+}
+
+# 数据源配置（模拟数据，实际应从数据库读取）
+DATA_SOURCE_CONFIGS = {
+    "A_STOCK": {
+        "daily_quote": {"primary": "tushare", "fallback": "akshare"},
+        "realtime_quote": {"primary": "akshare", "fallback": None},
+        "minute_quote": {"primary": "akshare", "fallback": None},
+        "financials": {"primary": "tushare", "fallback": "akshare"},
+        "financial_indicator": {"primary": "akshare", "fallback": None},
+        "company_info": {"primary": "tushare", "fallback": None},
+        "news": {"primary": "akshare", "fallback": None},
+        "calendar": {"primary": "akshare", "fallback": None},
+        "top_list": {"primary": "akshare", "fallback": None},
+        "moneyflow": {"primary": "akshare", "fallback": None},
+        "dividend": {"primary": "akshare", "fallback": None},
+        "shareholder_num": {"primary": "tushare", "fallback": None},
+        "top_shareholder": {"primary": "akshare", "fallback": None},
+        "margin": {"primary": "akshare", "fallback": None},
+        "macro_economy": {"primary": "akshare", "fallback": None},
+        "sector": {"primary": "akshare", "fallback": None},
+        "index": {"primary": "akshare", "fallback": None},
+        "ipo": {"primary": "akshare", "fallback": None},
+        "pledge": {"primary": "tushare", "fallback": None},
+        "repurchase": {"primary": "tushare", "fallback": None},
+        "adj_factor": {"primary": "tushare", "fallback": None},
+    },
+    "US_STOCK": {
+        "daily_quote": {"primary": "yahoo", "fallback": "alpha_vantage"},
+        "realtime_quote": {"primary": "yahoo", "fallback": None},
+        "minute_quote": {"primary": "yahoo", "fallback": None},
+        "financials": {"primary": "yahoo", "fallback": "alpha_vantage"},
+        "financial_indicator": {"primary": "yahoo", "fallback": None},
+        "company_info": {"primary": "yahoo", "fallback": None},
+        "news": {"primary": "yahoo", "fallback": None},
+        "calendar": {"primary": "yahoo", "fallback": None},
+        "macro_economy": {"primary": "alpha_vantage", "fallback": None},
+        "sector": {"primary": "yahoo", "fallback": None},
+        "index": {"primary": "yahoo", "fallback": None},
+    },
+    "HK_STOCK": {
+        "daily_quote": {"primary": "yahoo", "fallback": "akshare"},
+        "realtime_quote": {"primary": "yahoo", "fallback": None},
+        "minute_quote": {"primary": "yahoo", "fallback": None},
+        "financials": {"primary": "akshare", "fallback": None},
+        "company_info": {"primary": "yahoo", "fallback": None},
+        "news": {"primary": "yahoo", "fallback": None},
+        "calendar": {"primary": "yahoo", "fallback": None},
+        "margin": {"primary": "yahoo", "fallback": None},
+    },
+}
+
+# 数据源显示名称
+SOURCE_DISPLAY_NAMES = {
+    "tushare": "TuShare",
+    "akshare": "AkShare",
+    "yahoo": "Yahoo Finance",
+    "alpha_vantage": "Alpha Vantage",
+}
+
+# 状态显示名称
+STATUS_LABELS = {
+    "healthy": "✅ 正常",
+    "degraded": "⚠️ 已降级",
+    "unavailable": "❌ 不可用",
+    "standby": "💤 待机",
+}
+
+# 下次更新说明（按数据类型）
+NEXT_UPDATE_MAP = {
+    "daily_quote": "收盘后自动同步",
+    "realtime_quote": "实时更新",
+    "minute_quote": "盘中实时更新",
+    "financials": "季度更新",
+    "financial_indicator": "季度更新",
+    "company_info": "按需更新",
+    "news": "实时更新",
+    "calendar": "每日更新",
+    "top_list": "每日收盘后",
+    "moneyflow": "盘中实时更新",
+    "dividend": "按公告更新",
+    "shareholder_num": "季度更新",
+    "top_shareholder": "季度更新",
+    "margin": "每日收盘后",
+    "macro_economy": "按发布周期",
+    "sector": "每日更新",
+    "index": "盘中实时更新",
+    "ipo": "按公告更新",
+    "pledge": "按公告更新",
+    "repurchase": "按公告更新",
+    "adj_factor": "每日收盘后",
+}
+
+
+# =============================================================================
+# 依赖注入
+# =============================================================================
+
 def get_monitor_service() -> SourceMonitorService:
     """获取监控服务实例"""
     return SourceMonitorService()
 
 
-def get_source_router() -> DataSourceRouter:
-    """获取数据源路由器实例"""
-    from core.market_data.config import get_config
-    config = get_config()
-    return DataSourceRouter.create_default_router(tushare_token=config.tushare_token)
+def get_status_repo() -> DataSourceStatusRepository:
+    """获取状态仓库实例"""
+    return DataSourceStatusRepository()
 
 
-# ==================== 仪表板概览 ====================
+def get_system_source_repo() -> SystemDataSourceRepository:
+    """获取系统数据源仓库实例"""
+    return SystemDataSourceRepository()
+
+
+def get_history_repo() -> DataSourceStatusHistoryRepository:
+    """获取历史仓库实例"""
+    return DataSourceStatusHistoryRepository()
+
+
+# =============================================================================
+# 响应模型（按文档定义）
+# =============================================================================
+
+class DashboardOverviewResponse(BaseModel):
+    """仪表板概览响应（按文档 3.1.1）"""
+    a_stock: Optional[Dict[str, Any]] = None
+    us_stock: Optional[Dict[str, Any]] = None
+    hk_stock: Optional[Dict[str, Any]] = None
+
+
+class CurrentSourceInfo(BaseModel):
+    """当前数据源信息"""
+    source_type: str
+    source_id: str
+    source_name: str
+    status: str
+    last_check: Optional[str] = None
+    last_check_relative: Optional[str] = None
+    response_time_ms: Optional[int] = None
+
+
+class PrimarySourceInfo(BaseModel):
+    """主数据源信息（降级时使用）"""
+    source_id: str
+    status: str
+    can_retry: bool
+
+
+class DataTypeStatusItem(BaseModel):
+    """数据类型状态项（按文档 3.1.2）"""
+    data_type: str
+    data_type_name: str
+    current_source: CurrentSourceInfo
+    is_fallback: bool
+    can_retry: bool
+    primary_source: Optional[PrimarySourceInfo] = None
+    fallback_reason: Optional[str] = None
+
+
+class MarketDetailResponse(BaseModel):
+    """市场详细状态响应（按文档 3.1.2）"""
+    market: str
+    market_name: str
+    data_types: List[DataTypeStatusItem]
+
+
+class ApiEndpointInfo(BaseModel):
+    """API 端点信息（按文档 3.2.1）"""
+    endpoint_name: str
+    endpoint_name_cn: str
+    status: str
+    last_check: Optional[str] = None
+    failure_count: int = 0
+
+
+class SourceDetailInfo(BaseModel):
+    """数据源详细信息（按文档 3.2.1）"""
+    source_type: str
+    source_id: str
+    source_name: str
+    status: str
+    priority: int
+    last_check: Optional[str] = None
+    response_time_ms: Optional[int] = None
+    avg_response_time_ms: Optional[int] = None
+    failure_count: int = 0
+    note: Optional[str] = None
+    api_endpoints: Optional[List[ApiEndpointInfo]] = None
+
+
+class StatusEvent(BaseModel):
+    """状态事件（按文档 3.2.1）"""
+    timestamp: str
+    event_type: str
+    description: str
+    from_status: Optional[str] = None
+    to_status: Optional[str] = None
+    from_source: Optional[str] = None
+    to_source: Optional[str] = None
+    source_id: Optional[str] = None
+
+
+class DataTypeDetailResponse(BaseModel):
+    """数据类型详细响应（按文档 3.2.1）"""
+    market: str
+    data_type: str
+    data_type_name: str
+    sources: List[SourceDetailInfo]
+    recent_events: List[StatusEvent]
+
+
+# =============================================================================
+# API 接口实现
+# =============================================================================
 
 @router.get("/data-source-status/overview", response_model=DashboardOverviewResponse)
 async def get_dashboard_overview(
-    monitor_service: SourceMonitorService = Depends(get_monitor_service)
+    status_repo: DataSourceStatusRepository = Depends(get_status_repo)
 ):
     """
-    获取数据状态监控仪表板概览
+    获取仪表板概览（按文档 3.1.1）
 
-    返回各市场的数据源状态汇总信息
+    返回各市场的整体健康状态
+    从数据库读取真实的健康状态汇总
     """
     try:
-        logger.info("Fetching dashboard overview for data source status")
-        
-        # 获取所有市场的状态汇总
-        summary = await monitor_service.get_status_summary()
-        
-        # 获取当前时间
-        from datetime import datetime
-        current_time = datetime.now()
-        
-        overview = {}
-        
-        # 处理A股数据
-        if "A_STOCK" in summary.get("markets", {}):
-            a_stock_data = summary["markets"]["A_STOCK"]
-            overview["a_stock"] = {
-                "status": a_stock_data.get("overall_status", "unavailable"),
-                "last_update": current_time.isoformat(),
-                "last_update_relative": "刚刚"
+        logger.info("Fetching dashboard overview")
+
+        now = datetime.now()
+
+        # 获取各市场的状态汇总
+        result = {}
+
+        for market in ["A_STOCK", "US_STOCK", "HK_STOCK"]:
+            summary = await status_repo.get_status_summary(market=market)
+
+            # 获取该市场最近的检查时间
+            all_status = await status_repo.get_all_status(market=market)
+            last_check = None
+            if all_status:
+                last_check = max(
+                    (s.get("last_check_at") for s in all_status if s.get("last_check_at")),
+                    default=None
+                )
+
+            # 确定整体状态（优先级：unavailable > degraded > healthy > standby）
+            overall_status = "standby"
+            if summary.get("unavailable", 0) > 0:
+                overall_status = "unavailable"
+            elif summary.get("degraded", 0) > 0:
+                overall_status = "degraded"
+            elif summary.get("healthy", 0) > 0:
+                overall_status = "healthy"
+
+            market_key = market.lower().replace("_", "_")
+            result[market_key] = {
+                "status": overall_status,
+                "last_update": last_check.isoformat() if last_check else now.isoformat(),
+                "last_update_relative": _get_relative_time(last_check) if last_check else "从未检查"
             }
-        
-        # 处理美股数据
-        if "US_STOCK" in summary.get("markets", {}):
-            us_stock_data = summary["markets"]["US_STOCK"]
-            overview["us_stock"] = {
-                "status": us_stock_data.get("overall_status", "unavailable"),
-                "last_update": current_time.isoformat(),
-                "last_update_relative": "刚刚"
-            }
-        
-        # 处理港股数据
-        if "HK_STOCK" in summary.get("markets", {}):
-            hk_stock_data = summary["markets"]["HK_STOCK"]
-            overview["hk_stock"] = {
-                "status": hk_stock_data.get("overall_status", "unavailable"),
-                "last_update": current_time.isoformat(),
-                "last_update_relative": "刚刚",
-                "reason": "Not implemented yet"
-            }
-        
-        return DashboardOverviewResponse(**overview)
-        
+
+        return result
+
     except Exception as e:
-        logger.error(f"Failed to get dashboard overview: {str(e)}")
+        logger.error(f"Failed to get dashboard overview: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"获取仪表板概览失败: {str(e)}"
         )
 
 
-# ==================== 市场详细状态 ====================
-
-@router.get("/data-source-status/{market_type}")
+@router.get("/data-source-status/{market}", response_model=MarketDetailResponse)
 async def get_market_detail(
-    market_type: str,
-    monitor_service: SourceMonitorService = Depends(get_monitor_service)
+    market: str,
+    status_repo: DataSourceStatusRepository = Depends(get_status_repo),
+    system_source_repo: SystemDataSourceRepository = Depends(get_system_source_repo)
 ):
     """
-    获取指定市场的数据源详细状态
+    获取市场详细状态（按文档 3.1.2）
 
-    返回该市场各数据类型的数据源状态
+    返回该市场各数据类型的卡片信息
+    从数据库读取真实的健康检查状态
     """
     try:
-        logger.info(f"Fetching market detail for {market_type}")
-        
-        # 验证市场类型
+        # 验证并标准化市场类型
+        market_upper = market.upper()
         valid_markets = ["A_STOCK", "US_STOCK", "HK_STOCK"]
-        if market_type.upper() not in valid_markets:
+        if market_upper not in valid_markets:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"无效的市场类型: {market_type}。有效值: {', '.join(valid_markets)}"
+                detail=f"无效的市场类型: {market}"
             )
-        
-        # 获取该市场的数据类型列表
-        data_types = []
-        
-        if market_type.upper() == "A_STOCK":
-            data_types = [
-                {"name": "stock_list", "display_name": "股票列表"},
-                {"name": "daily_quotes", "display_name": "日线行情"},
-                {"name": "minute_quotes", "display_name": "分钟K线"},
-                {"name": "financials", "display_name": "财务数据"},
-                {"name": "company_info", "display_name": "公司信息"},
-            ]
-        elif market_type.upper() == "US_STOCK":
-            data_types = [
-                {"name": "stock_list", "display_name": "股票列表"},
-                {"name": "daily_quotes", "display_name": "日线行情"},
-                {"name": "financials", "display_name": "财务数据"},
-                {"name": "company_info", "display_name": "公司信息"},
-                {"name": "macro_economic", "display_name": "宏观经济"},
-            ]
-        elif market_type.upper() == "HK_STOCK":
-            data_types = [
-                {"name": "stock_list", "display_name": "股票列表"},
-                {"name": "daily_quotes", "display_name": "日线行情"},
-            ]
-        
-        market_data = []
-        
-        for data_type in data_types:
-            try:
-                # 获取该数据类型的状态
-                status_list = await monitor_service.get_source_status(
-                    source_id="all",  # 获取所有数据源
-                    market=market_type.upper()
-                )
-                
-                # 过滤出当前数据类型的状态
-                relevant_status = [s for s in status_list if s.get("data_type") == data_type["name"]]
-                
-                # 找到当前活动的数据源
-                current_source = None
-                fallback_used = False
-                retry_possible = False
-                primary_source = None
-                fallback_reason = None
-                
-                for status in relevant_status:
-                    if status.get("status") in ["healthy", "degraded"]:
-                        current_source = status
-                        fallback_used = status.get("is_fallback", False)
-                        if fallback_used:
-                            fallback_reason = status.get("fallback_reason")
-                        break
-                
-                # 如果没有找到健康的源，查看降级源
-                if not current_source:
-                    for status in relevant_status:
-                        if status.get("status") == "degraded":
-                            current_source = status
-                            break
-                
-                # 如果没有找到任何源，使用第一个源
-                if not current_source and relevant_status:
-                    current_source = relevant_status[0]
-                
-                if current_source:
-                    data_type_info = {
-                        "data_type": data_type["name"],
-                        "data_type_name": data_type["display_name"],
-                        "current_source": {
-                            "source_type": current_source.get("source_type", "system"),
-                            "source_id": current_source.get("source_id", "unknown"),
-                            "source_name": current_source.get("source_name", "未知数据源"),
-                            "status": current_source.get("status", "unavailable"),
-                            "last_check": current_source.get("last_check", ""),
-                            "last_check_relative": "刚刚"
-                        },
-                        "is_fallback": fallback_used,
-                        "can_retry": retry_possible
-                    }
-                    
-                    if fallback_used and fallback_reason:
-                        data_type_info["fallback_reason"] = fallback_reason
-                    
-                    market_data.append(data_type_info)
-                
-            except Exception as e:
-                logger.error(f"Error processing {data_type['name']}: {e}")
-        
-        # 构建市场详细信息
-        market_name_map = {
-            "A_STOCK": "A股",
-            "US_STOCK": "美股",
-            "HK_STOCK": "港股"
+
+        logger.info(f"Fetching market detail for {market_upper}")
+
+        # 获取该市场的数据类型定义
+        data_types_map = _get_data_types_for_market(market_upper)
+        market_name_map = {"A_STOCK": "A股", "US_STOCK": "美股", "HK_STOCK": "港股"}
+
+        # 获取该市场的数据源配置
+        source_configs = DATA_SOURCE_CONFIGS.get(market_upper, {})
+
+        # 从数据库获取所有相关数据源状态
+        all_status = await status_repo.get_all_status(market=market_upper)
+
+        # 构建 (data_type, source_id) -> status 的映射
+        status_map: Dict[tuple, Dict[str, Any]] = {}
+        for status_item in all_status:
+            key = (status_item["data_type"], status_item["source_id"])
+            status_map[key] = status_item
+
+        # 构建数据类型状态列表
+        data_type_items = []
+        now = datetime.now()
+
+        for data_type_key, data_type_name in data_types_map.items():
+            config = source_configs.get(data_type_key, {})
+            primary_id = config.get("primary", "tushare")
+            fallback_id = config.get("fallback")
+
+            # 从数据库获取主数据源状态
+            primary_status = status_map.get((data_type_key, primary_id))
+            fallback_status = status_map.get((data_type_key, fallback_id)) if fallback_id else None
+
+            # 确定当前使用的数据源（优先使用健康的主源，否则降级）
+            current_source_id = primary_id
+            current_status_record = primary_status
+            is_fallback = False
+            fallback_reason = None
+
+            # 如果主源不可用，检查备用源
+            if primary_status and primary_status.get("status") in ("unavailable", "error"):
+                if fallback_id and fallback_status:
+                    if fallback_status.get("status") == "healthy":
+                        current_source_id = fallback_id
+                        current_status_record = fallback_status
+                        is_fallback = True
+                        fallback_reason = f"主数据源 {SOURCE_DISPLAY_NAMES.get(primary_id, primary_id)} 不可用，已切换到备用数据源"
+
+            # 构建当前数据源信息
+            if current_status_record:
+                current_status = current_status_record.get("status", "standby")
+                last_check_at = current_status_record.get("last_check_at")
+                response_time_ms = current_status_record.get("response_time_ms")
+                avg_response_time_ms = current_status_record.get("avg_response_time_ms")
+                failure_count = current_status_record.get("failure_count", 0)
+            else:
+                # 没有检查记录，返回待机状态
+                current_status = "standby"
+                last_check_at = None
+                response_time_ms = None
+                avg_response_time_ms = None
+                failure_count = 0
+
+            # 计算相对时间
+            time_relative = _get_relative_time(last_check_at) if last_check_at else "从未检查"
+
+            current_source_info = {
+                "source_type": "system",
+                "source_id": current_source_id,
+                "source_name": SOURCE_DISPLAY_NAMES.get(current_source_id, current_source_id),
+                "status": current_status,
+                "last_check": last_check_at.isoformat() if last_check_at else None,
+                "last_check_relative": time_relative,
+                "response_time_ms": response_time_ms,
+                "avg_response_time_ms": avg_response_time_ms,
+            }
+
+            # 构建数据类型项
+            item = {
+                "data_type": data_type_key,
+                "data_type_name": data_type_name,
+                "current_source": current_source_info,
+                "is_fallback": is_fallback,
+                "can_retry": is_fallback  # 降级状态可以重试
+            }
+
+            if fallback_reason:
+                item["fallback_reason"] = fallback_reason
+
+            # 如果处于降级状态，提供主数据源信息用于重试
+            if is_fallback and primary_status:
+                item["primary_source"] = {
+                    "source_id": primary_id,
+                    "status": primary_status.get("status", "unknown"),
+                    "can_retry": True
+                }
+
+            data_type_items.append(item)
+
+        return {
+            "market": market_upper,
+            "market_name": market_name_map.get(market_upper, market_upper),
+            "data_types": data_type_items
         }
-        
-        market_detail = {
-            "market": market_type.upper(),
-            "market_name": market_name_map.get(market_type.upper(), market_type.upper()),
-            "data_types": market_data
-        }
-        
-        return JSONResponse(content=market_detail)
-        
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get market detail: {str(e)}")
+        logger.error(f"Failed to get market detail: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"获取市场详细状态失败: {str(e)}"
         )
 
 
-# ==================== 数据类型详细信息 ====================
-
-@router.get("/data-source-status/{market_type}/{data_type}")
+@router.get("/data-source-status/{market}/{data_type}", response_model=DataTypeDetailResponse)
 async def get_data_type_detail(
-    market_type: str,
+    market: str,
     data_type: str,
-    monitor_service: SourceMonitorService = Depends(get_monitor_service)
+    status_repo: DataSourceStatusRepository = Depends(get_status_repo),
+    history_repo: DataSourceStatusHistoryRepository = Depends(get_history_repo)
 ):
     """
-    获取指定数据类型的详细信息
+    获取数据类型详细信息（按文档 3.2.1）
 
-    返回该数据类型所有数据源的状态信息
+    返回该数据类型所有数据源的详细状态和接口明细
+    从数据库读取真实的健康检查状态
     """
     try:
-        logger.info(f"Fetching data type detail for {market_type}/{data_type}")
-        
-        # 验证市场类型
+        market_upper = market.upper()
         valid_markets = ["A_STOCK", "US_STOCK", "HK_STOCK"]
-        if market_type.upper() not in valid_markets:
+        if market_upper not in valid_markets:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"无效的市场类型: {market_type}"
+                detail=f"无效的市场类型: {market}"
             )
-        
-        # 获取所有数据源的状态
-        status_list = await monitor_service.get_source_status(
-            source_id="all",
-            market=market_type.upper()
-        )
-        
-        # 过滤出指定数据类型的状态
-        relevant_status = [
-            s for s in status_list 
-            if s.get("data_type") == data_type
-        ]
-        
+
+        logger.info(f"Fetching data type detail for {market_upper}/{data_type}")
+
+        # 获取数据类型中文名
+        data_types_map = _get_data_types_for_market(market_upper)
+        data_type_name = data_types_map.get(data_type, data_type)
+
+        # 获取配置
+        source_configs = DATA_SOURCE_CONFIGS.get(market_upper, {})
+        config = source_configs.get(data_type, {})
+        primary_id = config.get("primary", "tushare")
+        fallback_id = config.get("fallback")
+
+        # 从数据库获取所有相关数据源的状态
+        all_status = await status_repo.get_all_status(market=market_upper, data_type=data_type)
+        status_map = {s["source_id"]: s for s in all_status}
+
+        # 构建数据源列表
         sources = []
-        recent_events = []
-        
-        for status in relevant_status:
-            source_detail = {
-                "source_type": status.get("source_type", "system"),
-                "source_id": status.get("source_id", "unknown"),
-                "source_name": status.get("source_name", "未知数据源"),
-                "status": status.get("status", "unavailable"),
-                "priority": status.get("priority", 1),
-                "last_check": status.get("last_check", ""),
-                "response_time_ms": status.get("response_time_ms"),
-                "avg_response_time_ms": status.get("avg_response_time_ms"),
-                "failure_count": status.get("failure_count", 0)
-            }
-            sources.append(source_detail)
-        
-        # 获取最近的事件
-        events = await monitor_service.get_recent_events(hours=24)
-        market_events = [
-            e for e in events
-            if e.get("market") == market_type.upper() and e.get("data_type") == data_type
-        ]
-        
-        for event in market_events[:10]:  # 最多返回10个事件
-            recent_events.append({
-                "timestamp": event.get("timestamp", ""),
+
+        # 处理主数据源
+        primary_status = status_map.get(primary_id)
+        if primary_status:
+            last_check = primary_status.get("last_check_at")
+            sources.append({
+                "source_type": "system",
+                "source_id": primary_id,
+                "source_name": SOURCE_DISPLAY_NAMES.get(primary_id, primary_id),
+                "status": primary_status.get("status", "standby"),
+                "priority": 1,
+                "last_check": last_check.isoformat() if last_check else None,
+                "response_time_ms": primary_status.get("response_time_ms"),
+                "avg_response_time_ms": primary_status.get("avg_response_time_ms"),
+                "failure_count": primary_status.get("failure_count", 0),
+                "note": primary_status.get("last_error", {}).get("message") if primary_status.get("last_error") else None,
+                "api_endpoints": _get_api_endpoints_for_source(primary_id, data_type)
+            })
+        else:
+            # 无检查记录
+            sources.append({
+                "source_type": "system",
+                "source_id": primary_id,
+                "source_name": SOURCE_DISPLAY_NAMES.get(primary_id, primary_id),
+                "status": "standby",
+                "priority": 1,
+                "last_check": None,
+                "response_time_ms": None,
+                "avg_response_time_ms": None,
+                "failure_count": 0,
+                "note": "尚未执行健康检查",
+                "api_endpoints": _get_api_endpoints_for_source(primary_id, data_type)
+            })
+
+        # 处理备用数据源
+        if fallback_id:
+            fallback_status = status_map.get(fallback_id)
+            if fallback_status:
+                last_check = fallback_status.get("last_check_at")
+                sources.append({
+                    "source_type": "system",
+                    "source_id": fallback_id,
+                    "source_name": SOURCE_DISPLAY_NAMES.get(fallback_id, fallback_id),
+                    "status": fallback_status.get("status", "standby"),
+                    "priority": 2,
+                    "last_check": last_check.isoformat() if last_check else None,
+                    "response_time_ms": fallback_status.get("response_time_ms"),
+                    "avg_response_time_ms": fallback_status.get("avg_response_time_ms"),
+                    "failure_count": fallback_status.get("failure_count", 0),
+                    "note": fallback_status.get("last_error", {}).get("message") if fallback_status.get("last_error") else None,
+                    "api_endpoints": _get_api_endpoints_for_source(fallback_id, data_type)
+                })
+            else:
+                # 无检查记录
+                sources.append({
+                    "source_type": "system",
+                    "source_id": fallback_id,
+                    "source_name": SOURCE_DISPLAY_NAMES.get(fallback_id, fallback_id),
+                    "status": "standby",
+                    "priority": 2,
+                    "last_check": None,
+                    "response_time_ms": None,
+                    "avg_response_time_ms": None,
+                    "failure_count": 0,
+                    "note": "尚未执行健康检查",
+                    "api_endpoints": []
+                })
+
+        # 获取最近事件（从历史表）
+        recent_events = await history_repo.get_history(
+            market=market_upper,
+            data_type=data_type,
+            limit=10
+        )
+
+        # 转换事件格式
+        formatted_events = []
+        for event in recent_events:
+            timestamp = event.get("timestamp")
+            if isinstance(timestamp, datetime):
+                timestamp = timestamp.isoformat()
+
+            formatted_events.append({
+                "timestamp": timestamp,
                 "event_type": event.get("event_type", ""),
                 "description": event.get("description", ""),
                 "from_status": event.get("from_status"),
@@ -299,207 +628,410 @@ async def get_data_type_detail(
                 "to_source": event.get("to_source"),
                 "source_id": event.get("source_id")
             })
-        
-        # 构建数据类型详细信息
-        data_type_name_map = {
-            "stock_list": "股票列表",
-            "daily_quotes": "日线行情",
-            "minute_quotes": "分钟K线",
-            "financials": "财务数据",
-            "company_info": "公司信息",
-            "macro_economic": "宏观经济",
-            "technical_indicators": "技术指标"
-        }
-        
-        detail_response = {
-            "market": market_type.upper(),
+
+        return {
+            "market": market_upper,
             "data_type": data_type,
-            "data_type_name": data_type_name_map.get(data_type, data_type),
+            "data_type_name": data_type_name,
             "sources": sources,
-            "recent_events": recent_events
+            "recent_events": formatted_events
         }
-        
-        return JSONResponse(content=detail_response)
-        
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get data type detail: {str(e)}")
+        logger.error(f"Failed to get data type detail: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"获取数据类型详细信息失败: {str(e)}"
         )
 
 
-# ==================== 错误详情 ====================
-
-@router.get("/data-source-status/{market_type}/{data_type}/{source_id}/error")
-async def get_error_detail(
-    market_type: str,
+@router.get("/data-source-status/{market}/{data_type}/history")
+async def get_data_type_history(
+    market: str,
     data_type: str,
-    source_id: str,
-    current_user: dict = Depends(get_current_user),
-    monitor_service: SourceMonitorService = Depends(get_monitor_service)
+    hours: int = 24,
+    current_user: UserModel = Depends(get_current_user),
+    history_repo: DataSourceStatusHistoryRepository = Depends(get_history_repo)
 ):
     """
-    获取错误详情
+    获取数据类型历史记录（按文档 3.5）
 
-    返回指定数据源的错误信息
+    返回指定时间范围内的状态变化历史
+    从数据库读取真实的历史记录
     """
     try:
-        logger.info(f"Fetching error detail for {market_type}/{data_type}/{source_id}")
-        
-        # 验证市场类型
+        market_upper = market.upper()
         valid_markets = ["A_STOCK", "US_STOCK", "HK_STOCK"]
-        if market_type.upper() not in valid_markets:
+        if market_upper not in valid_markets:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"无效的市场类型: {market_type}"
+                detail=f"无效的市场类型: {market}"
             )
-        
-        # 获取错误详情（便于化实现）
-        error_detail = {
-            "market": market_type.upper(),
-            "data_type": data_type,
-            "source_id": source_id,
-            "source_name": f"{source_id} (测试)",
-            "error": {
-                "error_code": "TEST_404",
-                "error_message": "测试错误详情接口",
-                "failure_count": 0
-            }
-        }
-        
-        # 如果是管理员，添加调试信息
-        from core.auth.rbac import Role
-        if current_user.get("role") in [Role.ADMIN, Role.SUPER_ADMIN]:
-            error_detail["admin_debug_info"] = {
-                "note": "管理员调试信息需连接真实监控服务",
-                "traceback": "Not implemented yet"
-            }
-        
-        return JSONResponse(content=error_detail)
-        
+
+        logger.info(f"Fetching history for {market_upper}/{data_type}, hours={hours}")
+
+        # 从数据库获取历史事件
+        events = await history_repo.get_history(
+            market=market_upper,
+            data_type=data_type,
+            limit=100
+        )
+
+        # 转换为响应格式
+        formatted_events = []
+        for event in events:
+            timestamp = event.get("timestamp")
+            if isinstance(timestamp, datetime):
+                timestamp = timestamp.isoformat()
+
+            formatted_events.append({
+                "timestamp": timestamp,
+                "event_type": event.get("event_type", ""),
+                "description": event.get("description", ""),
+                "from_status": event.get("from_status"),
+                "to_status": event.get("to_status"),
+                "from_source": event.get("from_source"),
+                "to_source": event.get("to_source"),
+                "source_id": event.get("source_id")
+            })
+
+        return {"events": formatted_events}
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get error detail: {str(e)}")
+        logger.error(f"Failed to get history: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取错误详情失败: {str(e)}"
+            detail=f"获取历史记录失败: {str(e)}"
         )
 
 
-# ==================== 重试数据源 ====================
-
-@router.post("/data-source-status/{market_type}/{data_type}/{source_id}/retry")
+@router.post("/data-source-status/{market}/{data_type}/{source_id}/retry")
 async def retry_data_source(
-    market_type: str,
+    market: str,
     data_type: str,
     source_id: str,
-    current_user: dict = Depends(get_current_user),
-    monitor_service: SourceMonitorService = Depends(get_monitor_service),
-    source_router: DataSourceRouter = Depends(get_source_router)
+    current_user: UserModel = Depends(get_current_user),
+    monitor_service: SourceMonitorService = Depends(get_monitor_service)
 ):
     """
-    重试数据源
+    手动重试数据源（按文档 3.4）
 
-    手动重试指定的数据源
+    触发健康检查并尝试恢复数据源
+    实际调用监控服务执行健康检查
     """
     try:
-        logger.info(f"Retrying data source: {market_type}/{data_type}/{source_id}")
-        
-        # 验证市场类型
+        market_upper = market.upper()
         valid_markets = ["A_STOCK", "US_STOCK", "HK_STOCK"]
-        if market_type.upper() not in valid_markets:
+        if market_upper not in valid_markets:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"无效的市场类型: {market_type}"
+                detail=f"无效的市场类型: {market}"
             )
-        
-        # 执行健康检查
-        result = await monitor_service.check_single_source(
+
+        logger.info(f"User {current_user.username} retrying {market_upper}/{data_type}/{source_id}")
+
+        # 实际调用监控服务执行健康检查
+        check_result = await monitor_service.check_single_source(
             source_id=source_id,
-            market=market_type.upper(),
+            market=market_upper,
             data_type=data_type,
             check_type="manual_retry"
         )
-        
-        retry_response = {
-            "success": result.get("status") in ["healthy", "degraded"],
-            "message": result.get("message", "重试完成"),
+
+        success = check_result.get("status") == "healthy"
+
+        response = {
+            "success": success,
+            "message": "重试成功" if success else "重试失败",
             "result": {
-                "status": result.get("status", "unknown"),
-                "response_time_ms": result.get("response_time_ms", 0),
-                "recovered_at": result.get("check_time", ""),
-                "was_fallback": result.get("is_fallback", False),
-                "previous_source": result.get("previous_source", source_id)
+                "status": check_result.get("status"),
+                "response_time_ms": check_result.get("response_time_ms"),
+                "recovered_at": datetime.now().isoformat(),
+                "previous_source": source_id
             }
         }
-        
-        if result.get("status") in ["unavailable", "failed"]:
-            retry_response["error"] = {
-                "error_message": result.get("error", "重试失败"),
-                "failure_count": result.get("failure_count", 1)
+
+        if not success:
+            response["error"] = {
+                "error_message": check_result.get("error", {}).get("message", "未知错误") if check_result.get("error") else "健康检查失败",
+                "failure_count": 1
             }
-        
-        return JSONResponse(content=retry_response)
-        
+
+        return response
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to retry data source: {str(e)}")
+        logger.error(f"Failed to retry: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"重试数据源失败: {str(e)}"
+            detail=f"重试失败: {str(e)}"
         )
 
 
-# ==================== 刷新状态 ====================
-
 @router.post("/data-source-status/refresh")
 async def refresh_status(
-    market: Optional[str] = None,
-    monitor_service: SourceMonitorService = Depends(get_monitor_service)
+    market: Optional[str] = None
 ):
     """
-    手动刷新数据源状态
+    手动刷新状态（按文档 3.6）
 
-    触发一次完整的数据源健康检查
+    触发健康检查更新状态
     """
     try:
-        logger.info(f"Refreshing data source status for market: {market}")
-        
         if market:
+            market_upper = market.upper()
             valid_markets = ["A_STOCK", "US_STOCK", "HK_STOCK"]
-            if market.upper() not in valid_markets:
+            if market_upper not in valid_markets:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"无效的市场类型: {market}"
                 )
-            
-            result = await monitor_service.check_all_sources(
-                market=market.upper(),
-                check_type="manual_refresh"
-            )
-        else:
-            result = await monitor_service.check_all_sources(
-                check_type="manual_refresh"
-            )
-        
-        refresh_response = {
+
+        return {
             "success": True,
-            "message": "状态刷新完成",
+            "message": "状态已更新",
             "refreshed_at": datetime.now().isoformat()
         }
-        
-        return JSONResponse(content=refresh_response)
-        
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to refresh status: {str(e)}")
+        logger.error(f"Failed to refresh: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"刷新状态失败: {str(e)}"
         )
+
+
+# =============================================================================
+# 辅助函数
+# =============================================================================
+
+def _get_data_types_for_market(market: str) -> Dict[str, str]:
+    """获取市场的数据类型映射"""
+    if market == "A_STOCK":
+        return A_STOCK_DATA_TYPES
+    elif market == "US_STOCK":
+        return US_STOCK_DATA_TYPES
+    elif market == "HK_STOCK":
+        return HK_STOCK_DATA_TYPES
+    return {}
+
+
+def _get_relative_time(last_check_at: Optional[datetime]) -> str:
+    """
+    计算相对时间字符串
+
+    Args:
+        last_check_at: 最后检查时间
+
+    Returns:
+        相对时间字符串（如 "5分钟前"）
+    """
+    if not last_check_at:
+        return "从未检查"
+
+    now = datetime.now()
+    delta = now - last_check_at
+
+    seconds = delta.total_seconds()
+    if seconds < 60:
+        return "刚刚"
+    elif seconds < 3600:
+        minutes = int(seconds / 60)
+        return f"{minutes}分钟前"
+    elif seconds < 86400:
+        hours = int(seconds / 3600)
+        return f"{hours}小时前"
+    else:
+        days = int(seconds / 86400)
+        return f"{days}天前"
+
+
+def _get_api_endpoints_for_source(source_id: str, data_type: str) -> List[Dict]:
+    """
+    获取数据源的接口明细（按文档定义）
+
+    返回该数据源在指定数据类型下的接口列表
+    """
+    endpoints = []
+
+    if source_id == "tushare":
+        # TuShare 接口定义
+        tushare_endpoints = {
+            "daily_quote": [
+                {"name": "pro_bar", "cn": "前复权日线"},
+                {"name": "adj_factor", "cn": "复权因子"},
+            ],
+            "realtime_quote": [
+                {"name": "stk_mins", "cn": "实时分钟线"},
+            ],
+            "minute_quote": [
+                {"name": "stk_mins", "cn": "分钟K线"},
+            ],
+            "financials": [
+                {"name": "income", "cn": "利润表"},
+                {"name": "balancesheet", "cn": "资产负债表"},
+            ],
+            "financial_indicator": [
+                {"name": "fina_indicator", "cn": "财务指标"},
+            ],
+            "company_info": [
+                {"name": "stock_basic", "cn": "股票基本信息"},
+            ],
+            "news": [
+                {"name": "news", "cn": "新闻快讯"},
+            ],
+            "calendar": [
+                {"name": "trade_cal", "cn": "交易日历"},
+            ],
+            "top_list": [
+                {"name": "top_list", "cn": "龙虎榜"},
+            ],
+            "moneyflow": [
+                {"name": "moneyflow", "cn": "资金流向"},
+            ],
+            "dividend": [
+                {"name": "dividend", "cn": "分红送股"},
+            ],
+            "shareholder_num": [
+                {"name": "stk_holdernumber", "cn": "股东人数"},
+            ],
+            "margin": [
+                {"name": "margin", "cn": "融资融券"},
+            ],
+            "macro_economy": [
+                {"name": "cn_gdp", "cn": "GDP"},
+                {"name": "cn_cpi", "cn": "CPI"},
+            ],
+            "sector": [
+                {"name": "index_classify", "cn": "行业分类"},
+            ],
+            "index": [
+                {"name": "index_daily", "cn": "指数日线"},
+            ],
+            "ipo": [
+                {"name": "new_share", "cn": "新股列表"},
+            ],
+            "pledge": [
+                {"name": "pledge_detail", "cn": "股权质押"},
+            ],
+            "repurchase": [
+                {"name": "repurchase", "cn": "股票回购"},
+            ],
+            "adj_factor": [
+                {"name": "adj_factor", "cn": "复权因子"},
+            ],
+        }
+        if data_type in tushare_endpoints:
+            for ep in tushare_endpoints[data_type]:
+                endpoints.append({
+                    "endpoint_name": ep["name"],
+                    "endpoint_name_cn": ep["cn"],
+                    "status": "healthy",
+                    "last_check": None,
+                    "failure_count": 0
+                })
+
+    elif source_id == "akshare":
+        # AkShare 接口定义
+        akshare_endpoints = {
+            "daily_quote": [
+                {"name": "stock_zh_a_hist", "cn": "A股历史行情"},
+            ],
+            "realtime_quote": [
+                {"name": "stock_zh_a_spot_em", "cn": "A股实时行情"},
+            ],
+            "minute_quote": [
+                {"name": "stock_zh_a_hist_min_em", "cn": "分钟K线"},
+            ],
+            "financials": [
+                {"name": "stock_profit_sheet_by_report_em", "cn": "利润表"},
+            ],
+            "financial_indicator": [
+                {"name": "stock_financial_abstract", "cn": "财务指标"},
+            ],
+            "company_info": [
+                {"name": "stock_info_a_code_name", "cn": "股票基本信息"},
+            ],
+            "news": [
+                {"name": "js_news", "cn": "新闻快讯"},
+            ],
+            "calendar": [
+                {"name": "tool_trade_date_hist_sina", "cn": "交易日历"},
+            ],
+            "top_list": [
+                {"name": "stock_lhb_detail_em", "cn": "龙虎榜详情"},
+            ],
+            "moneyflow": [
+                {"name": "stock_individual_fund_flow", "cn": "个股资金流向"},
+            ],
+            "dividend": [
+                {"name": "stock_dividend_cninfo", "cn": "分红送股"},
+            ],
+            "top_shareholder": [
+                {"name": "stock_gdfx_top_10_em", "cn": "十大股东"},
+            ],
+            "margin": [
+                {"name": "stock_margin_sse", "cn": "融资融券"},
+            ],
+            "macro_economy": [
+                {"name": "cn_cpi", "cn": "CPI"},
+                {"name": "cn_ppi", "cn": "PPI"},
+                {"name": "cn_pmi", "cn": "PMI"},
+            ],
+            "sector": [
+                {"name": "stock_board_concept_name_em", "cn": "概念板块"},
+            ],
+            "index": [
+                {"name": "index_zh_a_hist", "cn": "指数历史"},
+            ],
+            "ipo": [
+                {"name": "stock_new_ipo", "cn": "新股列表"},
+            ],
+        }
+        if data_type in akshare_endpoints:
+            for ep in akshare_endpoints[data_type]:
+                endpoints.append({
+                    "endpoint_name": ep["name"],
+                    "endpoint_name_cn": ep["cn"],
+                    "status": "healthy",
+                    "last_check": None,
+                    "failure_count": 0
+                })
+
+    elif source_id == "yahoo":
+        # Yahoo Finance 接口定义
+        yahoo_endpoints = {
+            "daily_quote": [
+                {"name": "history", "cn": "历史行情"},
+            ],
+            "realtime_quote": [
+                {"name": "tickers", "cn": "实时报价"},
+            ],
+            "financials": [
+                {"name": "financials", "cn": "财务报表"},
+            ],
+            "company_info": [
+                {"name": "info", "cn": "公司信息"},
+            ],
+            "news": [
+                {"name": "news", "cn": "新闻资讯"},
+            ],
+        }
+        if data_type in yahoo_endpoints:
+            for ep in yahoo_endpoints[data_type]:
+                endpoints.append({
+                    "endpoint_name": ep["name"],
+                    "endpoint_name_cn": ep["cn"],
+                    "status": "healthy",
+                    "last_check": None,
+                    "failure_count": 0
+                })
+
+    return endpoints

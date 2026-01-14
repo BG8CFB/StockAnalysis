@@ -41,10 +41,7 @@ async def get_current_user_optional(
         user = await mongodb.database.users.find_one({"_id": PyObjectId(user_id)})
         if user is None:
             return None
-        # 兼容旧数据：如果没有 status 字段，根据 is_active 设置默认值
-        if "status" not in user:
-            user["status"] = UserStatus.ACTIVE if user.get("is_active", True) else UserStatus.DISABLED
-        return UserModel(**user)
+        return UserModel.model_validate(user)
     except Exception:
         return None
 
@@ -84,18 +81,10 @@ async def get_current_user(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="用户不存在",
             )
-        # 兼容旧数据：如果没有 status 字段，根据 is_active 设置默认值
-        if "status" not in user:
-            user["status"] = UserStatus.ACTIVE if user.get("is_active", True) else UserStatus.DISABLED
-
-        # 显式将 _id 转换为 id 字符串（修复 alias 映射问题）
-        if "_id" in user and "id" not in user:
-            user["id"] = str(user["_id"])
-
-        return UserModel(**user)
-    except Exception as e:
-        if isinstance(e, HTTPException):
-            raise
+        return UserModel.model_validate(user)
+    except HTTPException:
+        raise
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="获取用户信息失败",

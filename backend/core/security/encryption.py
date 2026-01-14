@@ -53,7 +53,7 @@ class EncodingManager:
             decoded = base64.b64decode(ciphertext.encode('utf-8')).decode('utf-8')
             return decoded
         except Exception as e:
-            logger.debug(f"解码失败（可能是旧加密格式）: {e}")
+            logger.error(f"解码失败: {e}")
             raise ValueError(f"解码失败: {e}")
 
     def is_encrypted(self, value: str) -> bool:
@@ -75,7 +75,7 @@ class EncodingManager:
 
     @property
     def key_preview(self) -> str:
-        """获取密钥预览（兼容接口，Base64 无密钥）"""
+        """获取密钥预览（Base64 无密钥）"""
         return "Base64编码(无密钥)"
 
 
@@ -96,7 +96,7 @@ def get_encoding_manager() -> EncodingManager:
 
 
 # =============================================================================
-# 便捷函数（保持兼容性）
+# 便捷函数
 # =============================================================================
 
 def encrypt_sensitive_data(plaintext: str) -> str:

@@ -6,8 +6,6 @@
 
 import asyncio
 import logging
-import time
-import uuid
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 
@@ -17,7 +15,6 @@ from core.db.mongodb import mongodb
 from modules.trading_agents.manager.task_manager_restore import (
     restore_running_tasks_with_checkpoint,
 )
-from modules.trading_agents.models import AgentState, create_initial_state
 from modules.trading_agents.schemas import (
     TaskStatusEnum,
     AnalysisTaskCreate,
@@ -28,7 +25,6 @@ from modules.trading_agents.schemas import (
 from modules.trading_agents.exceptions import (
     TaskNotFoundException,
     TaskAlreadyRunningException,
-    TaskCancelledException,
 )
 from modules.trading_agents.pusher import (
     get_ws_manager,
@@ -121,7 +117,10 @@ class TaskManager:
         # 插入数据库
         await mongodb.database.analysis_tasks.insert_one(task_doc)
 
-        logger.info(f"创建分析任务: task_id={task_id}, user_id={user_id}, stock={request.stock_code}, market={request.market}")
+        logger.info(
+            f"创建分析任务: task_id={task_id}, user_id={user_id}, "
+            f"stock={request.stock_code}, market={request.market}"
+        )
 
         # 发送任务创建事件
         ws_manager = await get_ws_manager()
@@ -193,7 +192,7 @@ class TaskManager:
 
             # 使用数据库中的正确信息
             asyncio.create_task(
-                execute_analysis_workflow(
+                self.execute_analysis_workflow(
                     task_id=task_id,
                     user_id=user_id,
                     request=AnalysisTaskCreate(
@@ -249,23 +248,35 @@ class TaskManager:
         default_model = await model_service.get_default_model(user_id=user_id)
         return default_model.batch_concurrency if default_model else 1
 
-    async def get_task_status(self, task_id: str) -> Dict[str, Any]:
+    async def get_task_status(self, task_id: str, user_id: Optional[str] = None) -> Dict[str, Any]:
         """
         获取任务状态
 
         Args:
             task_id: 任务 ID
+            user_id: 用户 ID（可选，用于数据隔离验证）
 
         Returns:
             任务状态字典
 
         Raises:
             TaskNotFoundException: 任务不存在
+            PermissionError: 用户无权访问该任务
         """
-        task_doc = await mongodb.database.analysis_tasks.find_one({"_id": ObjectId(task_id)})
+        query = {"_id": ObjectId(task_id)}
+
+        # 如果提供了 user_id，添加用户隔离验证
+        if user_id is not None:
+            query["user_id"] = user_id
+
+        task_doc = await mongodb.database.analysis_tasks.find_one(query)
 
         if not task_doc:
             raise TaskNotFoundException(task_id)
+
+        # 验证任务属于请求的用户（如果提供了 user_id）
+        if user_id is not None and task_doc.get("user_id") != user_id:
+            raise PermissionError("无权访问该任务")
 
         # 转换为字典格式
         return {
@@ -332,7 +343,12 @@ class TaskManager:
             query["risk_level"] = risk_level
 
         # 查询数据库
-        cursor = mongodb.database.analysis_tasks.find(query).sort("created_at", -1).skip(offset).limit(limit)
+        cursor = (
+            mongodb.database.analysis_tasks.find(query)
+            .sort("created_at", -1)
+            .skip(offset)
+            .limit(limit)
+        )
 
         tasks = []
         async for task_doc in cursor:
@@ -448,7 +464,7 @@ class TaskManager:
         # 使用失败级别的延迟（30秒），确保当前操作完成
         try:
             pool = get_mcp_connection_pool()
-            await pool.mark_task_failed(task_id)
+            await pool.mark_task_cancelled(task_id)
         except Exception as e:
             logger.warning(f"MCP 连接延迟释放设置失败: task_id={task_id}, error={e}")
 
@@ -507,7 +523,7 @@ class TaskManager:
         # 原因同 cancel_task
         try:
             pool = get_mcp_connection_pool()
-            await pool.mark_task_failed(task_id)
+            await pool.mark_task_cancelled(task_id)
         except Exception as e:
             logger.warning(f"MCP 连接延迟释放设置失败: task_id={task_id}, error={e}")
 
@@ -686,7 +702,7 @@ class TaskManager:
 
                 # 从数据库读取所有字段，确保数据一致性
                 asyncio.create_task(
-                    execute_analysis_workflow(
+                    self.execute_analysis_workflow(
                         task_id=new_task_id,
                         user_id=user_id,
                         request=AnalysisTaskCreate(
@@ -829,6 +845,395 @@ class TaskManager:
             "status": TaskStatusEnum.RUNNING.value
         })
         return count
+
+    async def create_task_background(
+        self,
+        user_id: str,
+        request: AnalysisTaskCreate,
+        config: Dict[str, Any]
+    ) -> str:
+        """
+        后台任务：创建并执行分析任务
+
+        此函数会在后台异步执行，避免阻塞 HTTP 响应。
+
+        Args:
+            user_id: 用户 ID
+            request: 分析任务请求
+            config: 智能体配置快照
+
+        Returns:
+            任务 ID
+        """
+        # 1. 创建任务记录
+        task_id = await self.create_task(
+            user_id=user_id,
+            request=request,
+            config=config
+        )
+
+        # 2. 标记任务为运行中
+        await self.mark_task_running(task_id)
+
+        # 3. 在后台异步执行工作流（不阻塞响应）
+        # 注意：必须保存 Task 对象的引用，否则会被垃圾回收
+        task = asyncio.create_task(
+            self.execute_analysis_workflow(
+                task_id=task_id,
+                user_id=user_id,
+                request=request
+            ),
+            name=f"workflow-{task_id}"
+        )
+
+        # 保存任务引用
+        self._running_tasks[task_id] = task
+
+        # 添加回调来追踪任务状态
+        def task_callback(t):
+            if task_id in self._running_tasks:
+                del self._running_tasks[task_id]
+
+        task.add_done_callback(task_callback)
+
+        return task_id
+
+    async def execute_analysis_workflow(
+        self,
+        task_id: str,
+        user_id: str,
+        request: AnalysisTaskCreate,
+        _skip_model_loading: bool = False
+    ) -> None:
+        """
+        执行分析工作流
+
+        Args:
+            task_id: 任务 ID
+            user_id: 用户 ID
+            request: 分析任务请求
+            _skip_model_loading: 跳过模型加载（用于批量任务）
+        """
+        logger.info("="*60)
+        logger.info(f"execute_analysis_workflow 开始: task_id={task_id}, user_id={user_id}")
+        logger.info("="*60)
+
+        # 用于并发控制
+        batch_id = task_id
+        data_collection_model_id = None
+        debate_model_id = None
+
+        try:
+            # 1. 加载用户智能体配置
+            logger.info(f"[{task_id}] 步骤1: 加载用户智能体配置...")
+            from modules.trading_agents.services.agent_config_service import get_agent_config_service
+            config_service = get_agent_config_service()
+            agent_config = await config_service.get_user_config(user_id, create_if_missing=True)
+
+            if not agent_config:
+                raise Exception("无法加载用户智能体配置")
+
+            # 将 Pydantic 对象转换为字典
+            if hasattr(agent_config, 'model_dump'):
+                agent_config = agent_config.model_dump(mode='json')
+            elif hasattr(agent_config, 'dict'):
+                agent_config = agent_config.dict()
+
+            logger.info(f"[{task_id}] ✅ 用户智能体配置加载成功")
+
+            # 2. 加载用户模型偏好
+            logger.info(f"[{task_id}] 步骤2: 加载用户模型偏好...")
+            from core.settings.services.user_service import get_user_settings_service
+            settings_service = get_user_settings_service()
+            user_settings = await settings_service.get_user_settings(user_id)
+            logger.info(f"[{task_id}] ✅ 用户模型偏好加载成功")
+
+            # 3. 确定使用的两个 AI 模型（带回退机制）
+            if not _skip_model_loading:
+                logger.info(f"[{task_id}] 步骤3: 解析AI模型...")
+                from core.ai.model import get_model_service
+                model_service = get_model_service()
+
+                # 确定数据收集模型（带回退）
+                logger.info(f"[{task_id}] 3.1 解析数据收集模型...")
+                data_collection_model = await self._resolve_model_with_fallback(
+                    model_service=model_service,
+                    requested_model_id=request.data_collection_model,
+                    user_settings=user_settings,
+                    model_type="data_collection",
+                    user_id=user_id
+                )
+                logger.info(f"[{task_id}] ✅ 数据收集模型解析成功")
+
+                # 确定辩论模型（带回退）
+                logger.info(f"[{task_id}] 3.2 解析辩论模型...")
+                debate_model = await self._resolve_model_with_fallback(
+                    model_service=model_service,
+                    requested_model_id=request.debate_model,
+                    user_settings=user_settings,
+                    model_type="debate",
+                    user_id=user_id
+                )
+                logger.info(f"[{task_id}] ✅ 辩论模型解析成功")
+
+                data_collection_model_id = str(data_collection_model.id)
+                debate_model_id = str(debate_model.id)
+
+                logger.info(f"任务 {task_id} 模型解析完成: data_collection={data_collection_model_id}, debate={debate_model_id}")
+
+            # 请求并发控制
+            from modules.trading_agents.manager.concurrency_controller import get_concurrency_controller
+            concurrency_controller = get_concurrency_controller()
+
+            # 为数据收集模型请求并发
+            if data_collection_model_id:
+                from core.ai.model import get_model_service
+                model_service = get_model_service()
+                data_collection_model_obj = await model_service.get_model(data_collection_model_id, user_id)
+                data_collection_config = {
+                    "max_concurrency": data_collection_model_obj.max_concurrency,
+                    "task_concurrency": data_collection_model_obj.task_concurrency,
+                    "batch_concurrency": data_collection_model_obj.batch_concurrency,
+                }
+            else:
+                data_collection_config = {}
+
+            # 为辩论模型请求并发
+            if debate_model_id:
+                debate_model_obj = await model_service.get_model(debate_model_id, user_id)
+                debate_config = {
+                    "max_concurrency": debate_model_obj.max_concurrency,
+                    "task_concurrency": debate_model_obj.task_concurrency,
+                    "batch_concurrency": debate_model_obj.batch_concurrency,
+                }
+            else:
+                debate_config = {}
+
+            if data_collection_model_id and debate_model_id:
+                logger.info(f"任务 {task_id} 请求并发控制槽位...")
+
+                try:
+                    # 等待数据收集模型槽位（超时 5 分钟）
+                    logger.info(f"任务 {task_id} 等待数据收集模型槽位...")
+                    await concurrency_controller.wait_for_execution(
+                        model_id=data_collection_model_id,
+                        task_id=task_id,
+                        user_id=user_id,
+                        model_config=data_collection_config,
+                        timeout=300.0,
+                    )
+                    logger.info(f"任务 {task_id} 获取到数据收集模型槽位")
+
+                    # 等待辩论模型槽位（超时 5 分钟）
+                    logger.info(f"任务 {task_id} 等待辩论模型槽位...")
+                    await concurrency_controller.wait_for_execution(
+                        model_id=debate_model_id,
+                        task_id=task_id,
+                        user_id=user_id,
+                        model_config=debate_config,
+                        timeout=300.0,
+                    )
+                    logger.info(f"任务 {task_id} 获取到辩论模型槽位")
+
+                except asyncio.TimeoutError as e:
+                    logger.error(f"任务 {task_id} 等待并发槽位超时: {e}")
+                    raise Exception(f"任务等待执行超时，请稍后重试") from e
+                except Exception as e:
+                    logger.error(f"任务 {task_id} 等待并发槽位时发生异常: {e}", exc_info=True)
+                    raise Exception(f"任务等待并发槽位失败: {e}") from e
+
+            # 5. 使用新调度器执行工作流
+            logger.info(f"任务 {task_id} 开始执行工作流...")
+
+            # 准备配置参数
+            model_config = {
+                "data_collection_model": data_collection_model_id,
+                "debate_model": debate_model_id,
+            }
+
+            try:
+                # 使用新的 WorkflowScheduler 执行工作流
+                from modules.trading_agents.scheduler.workflow_scheduler import create_workflow_scheduler
+                from modules.trading_agents.phases import run_phase1, run_phase2, run_phase3, run_phase4
+
+                # 获取 WebSocket 管理器用于进度推送
+                ws_manager = await get_ws_manager()
+
+                # 创建调度器
+                scheduler = create_workflow_scheduler() \
+                    .with_phase1_runner(run_phase1) \
+                    .with_phase2_runner(run_phase2) \
+                    .with_phase3_runner(run_phase3) \
+                    .with_phase4_runner(run_phase4) \
+                    .with_progress_callback(lambda data: asyncio.create_task(
+                        ws_manager.broadcast_progress(task_id, data)
+                    )) \
+                    .build()
+
+                # 获取阶段开关
+                stages_config = request.stages
+                enable_phase1 = stages_config.stage1.enabled if stages_config else True
+                enable_phase2 = stages_config.stage2.enabled if stages_config else True
+                enable_phase3 = stages_config.stage3.enabled if stages_config else True
+                enable_phase4 = stages_config.stage4.enabled if stages_config else True
+
+                # 执行工作流
+                final_state = await scheduler.run(
+                    task_id=task_id,
+                    user_id=user_id,
+                    stock_code=request.stock_code,
+                    trade_date=request.trade_date,
+                    model_config=model_config,
+                    agent_config=agent_config,
+                    max_debate_rounds=stages_config.stage2.debate.rounds if stages_config else 2,
+                    enable_phase1=enable_phase1,
+                    enable_phase2=enable_phase2,
+                    enable_phase3=enable_phase3,
+                    enable_phase4=enable_phase4,
+                )
+
+                logger.info(f"任务 {task_id} 工作流执行完成，状态: {final_state.status}")
+
+            except Exception as e:
+                logger.error(f"任务 {task_id} 工作流执行失败: {e}", exc_info=True)
+                raise
+
+            logger.info(f"分析任务执行成功: task_id={task_id}")
+
+        except Exception as e:
+            import traceback
+            error_trace = traceback.format_exc()
+            logger.error(f"分析任务执行失败: task_id={task_id}, error={e}\n{error_trace}")
+
+            # 标记任务失败
+            await self.fail_task(
+                task_id=task_id,
+                error_message=str(e),
+                error_details={"type": type(e).__name__, "traceback": error_trace}
+            )
+
+        finally:
+            # 释放并发资源（两个模型都需要释放）
+            if data_collection_model_id or debate_model_id:
+                try:
+                    from modules.trading_agents.manager.concurrency_controller import get_concurrency_controller
+                    concurrency_controller = get_concurrency_controller()
+
+                    # 释放数据收集模型槽位
+                    if data_collection_model_id:
+                        try:
+                            await concurrency_controller.release_execution(
+                                model_id=data_collection_model_id,
+                                task_id=task_id,
+                                user_id=user_id,
+                                batch_id=batch_id,
+                            )
+                            logger.info(
+                                f"已释放任务 {task_id} 的数据收集模型并发槽位: "
+                                f"model_id={data_collection_model_id}"
+                            )
+                        except Exception as e:
+                            logger.error(
+                                f"释放数据收集模型并发槽位失败: task_id={task_id}, error={e}"
+                            )
+
+                    # 释放辩论模型槽位
+                    if debate_model_id:
+                        try:
+                            await concurrency_controller.release_execution(
+                                model_id=debate_model_id,
+                                task_id=task_id,
+                                user_id=user_id,
+                                batch_id=batch_id,
+                            )
+                            logger.info(
+                                f"已释放任务 {task_id} 的辩论模型并发槽位: "
+                                f"model_id={debate_model_id}"
+                            )
+                        except Exception as e:
+                            logger.error(
+                                f"释放辩论模型并发槽位失败: task_id={task_id}, error={e}"
+                            )
+                except Exception as e:
+                    logger.error(f"释放并发资源时发生错误: task_id={task_id}, error={e}")
+
+            # 减少用户的并发任务计数
+            try:
+                from core.settings.services.user_service import get_user_settings_service
+                settings_service = get_user_settings_service()
+                await settings_service.decrement_concurrent_tasks(user_id)
+                logger.info(f"已减少用户 {user_id} 的并发任务计数")
+            except Exception as e:
+                logger.error(f"减少并发任务计数失败: task_id={task_id}, user_id={user_id}, error={e}")
+
+            # 释放 MCP 连接
+            try:
+                pool = get_mcp_connection_pool()
+                await pool.release_task_connections(task_id)
+                logger.info(f"已释放任务 {task_id} 的 MCP 连接")
+            except Exception as e:
+                logger.error(f"释放 MCP 连接失败: task_id={task_id}, error={e}")
+
+    async def _resolve_model_with_fallback(
+        self,
+        model_service,
+        requested_model_id: Optional[str],
+        user_settings,
+        model_type: str,
+        user_id: str
+    ):
+        """
+        解析模型（带回退机制）
+
+        回退顺序：
+        1. 任务参数指定的模型
+        2. 用户默认模型
+        3. 系统默认模型
+        """
+        model = None
+        source = None
+        user_model_id = None
+
+        # 优先级1：任务参数指定
+        if requested_model_id:
+            model = await model_service.get_model(requested_model_id, user_id, is_admin=False)
+            if model:
+                source = f"任务参数指定({model.name})"
+                logger.info(f"使用{model_type}模型: {source}")
+                return model
+            else:
+                logger.warning(f"任务参数指定的{model_type}模型不可用: {requested_model_id}")
+
+        # 优先级2：用户默认模型
+        if user_settings and user_settings.trading_agents_settings:
+            user_model_id = getattr(
+                user_settings.trading_agents_settings,
+                f"{model_type}_model_id",
+                None
+            )
+            if user_model_id:
+                model = await model_service.get_model(user_model_id, user_id, is_admin=False)
+                if model:
+                    source = f"用户默认模型({model.name})"
+                    logger.info(f"使用{model_type}模型: {source}")
+                    return model
+                else:
+                    logger.warning(f"用户默认的{model_type}模型不可用: {user_model_id}")
+
+        # 优先级3：系统默认模型
+        model = await model_service.get_default_model(user_id=user_id)
+        if model:
+            source = f"系统默认模型({model.name})"
+            logger.info(f"使用{model_type}模型: {source}")
+            return model
+
+        # 全部不可用
+        raise Exception(
+            f"无可用的{model_type}模型。"
+            f"任务参数指定: {requested_model_id}, "
+            f"用户默认: {user_model_id if user_settings else 'None'}, "
+            f"系统默认: 不可用"
+        )
 
 
 # =============================================================================

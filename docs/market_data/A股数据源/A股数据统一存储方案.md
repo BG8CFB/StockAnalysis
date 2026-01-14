@@ -739,8 +739,8 @@ A股数据源优先级：
 |---------|---------|---------|------|---------|---------|
 | **基础数据** |
 | 股票列表 | stock_basic | stock_zh_a_spot_em | 通用 | 0 | 优先TU，降级AK |
-| 交易日历 | trade_cal | **无** | TU独占 | 0 | 仅TU |
-| IPO新股列表 | new_share | **无** | TU独占 | 0 | 仅TU |
+| 交易日历 | trade_cal | tool_trade_date_hist_sina | 通用 | 0 | 优先TU，降级AK |
+| 每日基础指标 | daily_basic | stock_zh_a_spot_em | 通用 | 0 | 优先TU，降级AK |
 | **行情数据** |
 | 日线行情 | daily / pro_bar | stock_zh_a_hist | 通用 | 0 | 优先TU，降级AK |
 | 分钟行情 | stk_mins | stock_zh_a_hist_min_em | 权限 | 2000 | 积分不足用AK |
@@ -750,21 +750,34 @@ A股数据源优先级：
 | 资产负债表 | balancesheet | stock_balance_sheet_by_report_em | 权限 | 2000 | 积分不足用AK |
 | 现金流量表 | cashflow | stock_cash_flow_sheet_by_report_em | 权限 | 2000 | 积分不足用AK |
 | 财务指标 | fina_indicator | stock_financial_abstract | 权限 | 2000 | 积分不足用AK |
-| **特色数据** |
-| 龙虎榜 | top_list | stock_lhb_detail_em | 权限 | 2000 | 积分不足用AK |
-| 资金流向 | moneyflow | **无** | TU独占 | 2000 | 积分不足无法获取 |
-| 股东人数 | stk_holdernumber | **无** | TU独占 | 2000 | 积分不足无法获取 |
+| **公司信息** |
+| 公司信息 | stock_company | stock_individual_info_em | 通用 | 0 | 优先TU，降级AK |
+| **宏观经济数据** |
+| SHIBOR利率 | shibor | shibor_quote | 通用 | 0 | 优先TU，降级AK |
+| CPI数据 | cpi | **无** | TU独占 | 0 | 仅TU |
+| PPI数据 | ppi | **无** | TU独占 | 0 | 仅TU |
+| 货币供应量 | money_supply | **无** | TU独占 | 0 | 仅TU |
+| 财新PMI | **无** | (需其他来源) | - | - | 暂不支持 |
+| 中采PMI | pmi_cic | **无** | TU独占 | 0 | 仅TU |
+| **资金流向数据** |
+| 北向资金流向 | moneyflow_hsgt | moneyflow_hsgt_hist_sina | 通用 | 2000 | 优先TU，降级AK |
+| 个股资金流向 | moneyflow | individual_fund_flow | TU独占 | 2000 | 积分不足无法获取 |
+| **龙虎榜数据** |
+| 龙虎榜汇总 | top_list | stock_lhb_detail_em | 权限 | 2000 | 积分不足用AK |
 | **股东数据** |
+| 股东人数 | stk_holdernumber | **无** | TU独占 | 2000 | 积分不足无法获取 |
 | 十大流通股东 | **无** | stock_gdfx_top_10_em | AK独占 | - | 仅AK |
-| 个股龙虎榜日期 | **无** | stock_lhb_stock_detail_date_em | AK独占 | - | 仅AK |
-| 个股龙虎榜明细 | **无** | stock_lhb_stock_detail_em | AK独占 | - | 仅AK |
-| **融资融券** |
-| 融资融券汇总 | **无** | stock_margin_sse/szse | AK独占 | - | 仅AK |
+| **融资融券数据** |
+| 融资融券汇总 | margin | stock_margin_sse/szse | 权限 | 2000 | 积分不足用AK |
 | **板块数据** |
 | 概念板块列表 | **无** | stock_board_concept_name_em | AK独占 | - | 仅AK |
 | 概念板块行情 | **无** | stock_board_concept_spot_em | AK独占 | - | 仅AK |
-| 概念板块成分股 | **无** | stock_board_concept_cons_em | AK独占 | - | 仅AK |
-| 行业板块列表 | **无** | stock_board_industry_name_em | AK独占 | - | 仅AK |
+| 板块成分股 | **无** | stock_board_concept_cons_em | AK独占 | - | 仅AK |
+| **其他数据** |
+| IPO新股列表 | new_share | stock_new_em | AK独占 | 0 | 仅AK |
+| 停牌股票 | **无** | stock_suspend_em | AK独占 | - | 仅AK |
+| 分红送股 | dividend | stock_dividend_cninfo | 权限 | 2000 | 积分不足用AK |
+| 股票新闻 | **无** | stock_news_em | AK独占 | - | 仅AK |
 
 #### 6.3.3 独占接口存储策略
 

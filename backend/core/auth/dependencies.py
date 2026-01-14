@@ -34,7 +34,7 @@ async def get_current_user_optional(
         user = await mongodb.database.users.find_one({"_id": PyObjectId(user_id)})
         if user is None:
             return None
-        return UserModel(**user)
+        return UserModel.model_validate(user)
     except Exception:
         return None
 
@@ -74,10 +74,17 @@ async def get_current_user(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="用户不存在",
             )
-        return UserModel(**user)
-    except Exception as e:
-        if isinstance(e, HTTPException):
-            raise
+        return UserModel.model_validate(user)
+    except HTTPException:
+        raise
+    except (ValueError, TypeError):
+        # ObjectId 转换错误或模型验证错误
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="用户数据格式错误",
+        )
+    except Exception:
+        # 其他未预期的错误（数据库连接错误等）
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="获取用户信息失败",
@@ -153,10 +160,17 @@ async def get_current_user_from_query(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="用户不存在",
             )
-        return UserModel(**user)
-    except Exception as e:
-        if isinstance(e, HTTPException):
-            raise
+        return UserModel.model_validate(user)
+    except HTTPException:
+        raise
+    except (ValueError, TypeError):
+        # ObjectId 转换错误或模型验证错误
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="用户数据格式错误",
+        )
+    except Exception:
+        # 其他未预期的错误（数据库连接错误等）
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="获取用户信息失败",

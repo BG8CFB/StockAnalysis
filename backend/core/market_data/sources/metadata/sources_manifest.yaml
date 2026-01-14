@@ -15,7 +15,7 @@ a_stock:
       - daily_quote
       - minute_quote
       - financials
-      - indicators
+      - financial_indicator
       - company_info
       - news
       - calendar

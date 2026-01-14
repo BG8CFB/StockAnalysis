@@ -11,6 +11,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from core.config import settings
 from core.db.mongodb import mongodb
+from core.db.redis import get_redis, UserRedisKey
 from core.user.models import Role, UserModel, UserStatus, UserListResponse
 
 logger = logging.getLogger(__name__)
@@ -78,13 +79,8 @@ class AdminService:
 
         users = []
         async for user_doc in cursor:
-            # 检测缺少密码的异常用户
-            if not user_doc.get("hashed_password"):
-                logger.warning(
-                    f"检测到异常用户（缺少 hashed_password）: "
-                    f"id={user_doc.get('_id')}, email={user_doc.get('email')}, "
-                    f"username={user_doc.get('username')}"
-                )
+            # 检测并处理异常用户（自动禁用并踢出登录）
+            await self._handle_abnormal_user(user_doc)
 
             # 使用 UserModel 验证，然后用 UserListResponse 序列化（带有正确的字段别名）
             user_model = UserModel.model_validate(user_doc)
@@ -125,13 +121,8 @@ class AdminService:
 
         users = []
         async for user_doc in cursor:
-            # 检测缺少密码的异常用户
-            if not user_doc.get("hashed_password"):
-                logger.warning(
-                    f"检测到异常用户（缺少 hashed_password）: "
-                    f"id={user_doc.get('_id')}, email={user_doc.get('email')}, "
-                    f"username={user_doc.get('username')}"
-                )
+            # 检测并处理异常用户（自动禁用并踢出登录）
+            await self._handle_abnormal_user(user_doc)
 
             # 使用 UserModel 验证，然后用 UserListResponse 序列化（带有正确的字段别名）
             user_model = UserModel.model_validate(user_doc)
@@ -314,6 +305,48 @@ class AdminService:
 
         return await self._get_user_model(user_id)
 
+    async def reapprove_user(
+        self,
+        user_id: str,
+        admin_id: str,
+    ) -> UserModel:
+        """重新审核通过用户（从 REJECTED 状态恢复）"""
+        # 检查用户是否存在
+        user = await self.db.users.find_one({"_id": ObjectId(user_id)})
+        if not user:
+            raise ValueError("用户不存在")
+
+        # 只能恢复被拒绝的用户
+        if user.get("status") != UserStatus.REJECTED:
+            raise ValueError(f"用户状态为 {user.get('status')}，无法重新审核通过")
+
+        # 更新状态
+        await self.db.users.update_one(
+            {"_id": ObjectId(user_id)},
+            {
+                "$set": {
+                    "status": UserStatus.ACTIVE,
+                    "is_active": True,
+                    "reviewed_by": ObjectId(admin_id),
+                    "reviewed_at": datetime.utcnow(),
+                    "reject_reason": None,
+                    "updated_at": datetime.utcnow(),
+                }
+            }
+        )
+
+        # 记录审计日志
+        await self._create_audit_log(
+            action="reapprove",
+            target_user_id=user_id,
+            user_id=admin_id,
+            reason="从拒绝状态恢复",
+        )
+
+        logger.info(f"用户重新审核通过: admin_id={admin_id}, user_id={user_id}")
+
+        return await self._get_user_model(user_id)
+
     # ==================== 用户管理 ====================
 
     async def get_user_by_id(
@@ -324,7 +357,7 @@ class AdminService:
         user = await self.db.users.find_one({"_id": ObjectId(user_id)})
         if not user:
             raise ValueError("用户不存在")
-        return UserModel(**user)
+        return UserModel.model_validate(user)
 
     async def create_user(
         self,
@@ -557,12 +590,59 @@ class AdminService:
 
     # ==================== 辅助方法 ====================
 
+    async def _handle_abnormal_user(
+        self,
+        user_doc: dict,
+    ) -> bool:
+        """处理异常用户（缺少密码等）
+
+        Returns:
+            True 如果用户已被处理（禁用），False 如果用户正常
+        """
+        user_id = str(user_doc.get("_id"))
+
+        # 检测缺少密码的异常用户
+        if not user_doc.get("hashed_password"):
+            logger.warning(
+                f"检测到异常用户（缺少 hashed_password），自动禁用并踢出登录: "
+                f"id={user_id}, email={user_doc.get('email')}, "
+                f"username={user_doc.get('username')}"
+            )
+
+            # 1. 禁用用户
+            await self.db.users.update_one(
+                {"_id": ObjectId(user_id)},
+                {
+                    "$set": {
+                        "status": UserStatus.DISABLED,
+                        "is_active": False,
+                        "updated_at": datetime.utcnow(),
+                    }
+                }
+            )
+
+            # 2. 清理所有 Redis session（踢出登录）
+            try:
+                redis = await get_redis()
+                # 删除所有匹配该用户的 session keys
+                pattern = f"user:{user_id}:session:*"
+                keys = await redis.keys(pattern)
+                if keys:
+                    await redis.delete(*keys)
+                    logger.info(f"已清理异常用户 {user_id} 的 {len(keys)} 个会话")
+            except Exception as e:
+                logger.error(f"清理异常用户 {user_id} 的会话失败: {e}")
+
+            return True
+
+        return False
+
     async def _get_user_model(self, user_id: str) -> UserModel:
         """获取用户模型"""
         user = await self.db.users.find_one({"_id": ObjectId(user_id)})
         if not user:
             raise ValueError("用户不存在")
-        return UserModel(**user)
+        return UserModel.model_validate(user)
 
     async def _create_audit_log(
         self,

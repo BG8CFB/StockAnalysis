@@ -6,4 +6,4 @@ export type {
   SystemConfig,
   SystemStatus,
   SystemInfo,
-} from '@/core/shared/types'
+} from '@core/shared/types'

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getCoreSettings, updateCoreSettings } from '@/core/settings'
-import type { CoreSettings } from '@/core/settings'
+import { getCoreSettings, updateCoreSettings } from '@core/settings'
+import type { CoreSettings } from '@core/settings'
 
 const settings = ref<CoreSettings>({
   theme: 'light',

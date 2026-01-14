@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { getQuotaInfo } from '@/core/settings'
+import { getQuotaInfo } from '@core/settings'
 
 interface QuotaInfo {
   tasks_used: number

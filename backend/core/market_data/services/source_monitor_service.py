@@ -91,6 +91,9 @@ class SourceMonitorService:
             elif data_type == "financials":
                 result = await adapter.get_stock_financials("000001.SZ")
                 success = len(result) > 0
+            elif data_type == "financial_indicator":
+                result = await adapter.get_financial_indicators("000001.SZ")
+                success = len(result) > 0
             elif data_type == "company_info":
                 result = await adapter.get_stock_company("000001.SZ")
                 success = result is not None
@@ -221,7 +224,7 @@ class SourceMonitorService:
             market = config["market"]
 
             data_types = config.get("supported_data_types", [
-                "stock_list", "daily_quotes", "financials", "company_info"
+                "stock_list", "daily_quotes", "financials", "financial_indicator", "company_info"
             ])
 
             for data_type in data_types:
