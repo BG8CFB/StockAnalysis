@@ -209,7 +209,7 @@ class AIService:
         # 如果有配置服务，使用配置服务
         if self._config_service:
             if model_id:
-                config = await self._config_service.get_by_model_id(user_id, model_id)
+                config = await self._config_service.get_model(model_id, user_id)
                 if config:
                     return self._config_to_dict(config)
 

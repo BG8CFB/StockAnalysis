@@ -1,6 +1,7 @@
 import logging
 import pandas as pd
 from typing import Optional, List, Dict, Any
+from datetime import datetime
 
 from ...models import (
     StockInfo, StockQuote, StockKLine, StockFinancial,
@@ -18,12 +19,10 @@ class AkShareAdapter(DataSourceAdapter):
     """AkShare数据源适配器（A股）"""
 
     def __init__(self, config: Optional[Dict] = None):
+        super().__init__(config)
         import akshare as ak
         self.ak = ak
         self.source_name = "akshare"
-        self.config = config or {}
-        # 添加失败计数（用于与 DataSourceAdapter 兼容）
-        self.failure_count = 0
 
     async def connect(self) -> bool:
         """测试连接"""

@@ -1,6 +1,6 @@
 # Market Data 数据源模块文档
 
-本目录包含股票数据源模块（`backend/market_data/`）的所有设计文档和接口文档。
+本目录包含市场数据模块（`backend/core/market_data/`）的所有设计文档和接口文档。
 
 ---
 
@@ -9,72 +9,69 @@
 ```
 docs/market_data/
 ├── README.md                        # 本文件
+├── 目录规划.md                      # 文档目录规划说明
 ├── 设计方案.md                      # 模块整体设计方案
 ├── 数据库设计.md                    # 数据库设计文档
-├── 数据源状态监控设计.md            # 数据源监控功能详细设计
-├── A股数据源/
-│   ├── tushare接口文档.md           # Tushare 接口文档
-│   └── akshare接口文档.md           # AkShare 接口文档
-│   └── A股数据统一存储方案.md      # A股数据存储方案
-├── 美股数据源/
-│   ├── yahoo_finance接口文档.md     # Yahoo Finance 接口文档
-│   ├── akshare接口文档.md           # AkShare（美股）接口文档
-│   ├── alpha_vantage接口文档.md     # Alpha Vantage 接口文档
-│   ├── tushare接口文档.md          # Tushare（美股）接口文档
-│   ├── itick接口文档.md            # iTick 接口文档
-│   └── 美股数据统一存储方案.md     # 美股数据存储方案
-└── 港股数据源/
-    ├── yahoo_finance接口文档.md     # Yahoo Finance 接口文档
-    ├── akshare接口文档.md           # AkShare（港股）接口文档
-    ├── tushare接口文档.md          # Tushare（港股）接口文档
-    └── 港股数据统一存储方案.md     # 港股数据存储方案
+├── 前端页面设计.md                  # 前端页面设计文档
+├── API接口文档.md                   # API 接口文档
+├── architecture/                    # 架构设计文档目录
+└── 数据源/                          # 各数据源接口文档
+    ├── A股数据源/
+    │   ├── tushare接口文档.md       # Tushare 接口文档
+    │   ├── akshare接口文档.md       # AkShare 接口文档
+    │   └── A股数据统一存储方案.md   # A股数据存储方案
+    ├── 美股数据源/
+    │   ├── yahoo_finance接口文档.md # Yahoo Finance 接口文档
+    │   ├── akshare接口文档.md       # AkShare（美股）接口文档
+    │   ├── alpha_vantage接口文档.md # Alpha Vantage 接口文档
+    │   ├── tushare接口文档.md       # Tushare（美股）接口文档
+    │   ├── itick接口文档.md         # iTick（美股）接口文档
+    │   └── 美股数据统一存储方案.md   # 美股数据存储方案
+    └── 港股数据源/
+        ├── yahoo_finance接口文档.md # Yahoo Finance 接口文档
+        ├── akshare接口文档.md       # AkShare（港股）接口文档
+        ├── tushare接口文档.md       # Tushare（港股）接口文档
+        ├── itick接口文档.md         # iTick（港股）接口文档
+        └── 港股数据统一存储方案.md   # 港股数据存储方案
 ```
 
 ---
 
 ## 📖 文档说明
 
-### 前端模块说明
+### 目录规划.md
 
-**注意**：前端市场数据模块仅包含数据源状态监控功能，不包含股票列表和行情数据查询页面。
-
-**前端页面**：
-- **数据源监控页面** (`/market-data/health`) - 实时监控市场数据源的健康状态和响应时间
-
-**前端文件结构**：
-```
-frontend/src/modules/market_data/
-├── api/
-│   └── marketDataApi.ts          # 数据源监控 API 客户端
-├── types.ts                      # 类型定义
-└── views/
-    └── DataSourceHealthView.vue   # 数据源监控页面
-```
-
-### 后端文档说明
+- **内容**：文档目录组织规划和说明
+- **包含**：
+  - 文档组织原则
+  - 目录结构说明
+  - 文档命名规范
+  - 维护指南
 
 ### 设计方案.md
 - **内容**：数据源模块的整体架构设计
 - **包含**：
   - 模块定位与目标
-  - 核心概念界定
+  - 核心概念界定（数据源类型概述）
   - 双通道数据流设计
   - 用户级数据源配置
   - 模块架构设计
   - 统一数据模型与标准化
   - ETL 数据处理流程
   - 数据同步策略
-  - Tushare 与 AkShare 接口说明
+  - 数据源接口说明（引用各市场接口文档）
   - 核心业务逻辑设计
-  - **数据源降级与状态管理** ⭐
-  - 定时任务设计
+  - 数据库设计概述（引用数据库设计文档）
   - 技术指标计算
-  - API 端点设计
+  - API 接口设计（引用 API接口文档）
+  - 与 TradingAgents 集成方案
   - 并发与限流策略
   - 错误处理与降级
-  - 与 TradingAgents 集成方案
+  - 数据源状态管理
+  - 定时任务设计
 
 ### 数据库设计.md
+
 - **内容**：数据源模块的数据库设计
 - **包含**：
   - 数据库概述
@@ -86,26 +83,34 @@ frontend/src/modules/market_data/
   - 新闻与宏观数据表
   - 用户数据表
   - 系统管理表
-  - **数据源状态监控表** ⭐
   - 数据保留与清理策略
   - 索引设计
 
-### 数据源状态监控设计.md ⭐
-- **内容**：数据源状态监控功能的完整设计文档（包含前端页面设计）
-- **包含**：
-  - 功能概述与设计原则
-  - 页面设计（仪表板概览、详情页、错误对话框、时间范围选择）
-  - API 设计（状态查询、错误详情、手动重试、历史记录、刷新状态）
-  - 前端路由设计
-  - 测试方案（单元测试、集成测试、用户验收测试）
+### 前端页面设计.md
 
-**前端实现说明**：
-- 前端仅实现"数据源监控"页面，不包含股票列表和行情数据查询页面
-- 前端页面路径：`/market-data/health`
-- 前端文件：`frontend/src/modules/market_data/views/DataSourceHealthView.vue`
+- **内容**：前端页面的完整设计文档
+- **包含**：
+  - 模块概述
+  - 页面设计（数据源监控、用户配置等）
+  - 前端文件结构
+  - 前端路由配置
+
+### API接口文档.md
+
+- **内容**：所有 API 接口的完整文档
+- **包含**：
+  - 接口概述
+  - 数据同步接口
+  - 健康检查接口
+  - 状态监控接口
+  - 数据源配置接口
+  - 请求/响应模型
+  - 错误代码
 
 ### 数据源接口文档
+
 各数据源的接口文档应包含：
+
 - 数据源简介
 - 接口地址和认证方式
 - 支持的数据类型
@@ -115,13 +120,34 @@ frontend/src/modules/market_data/
 - 限流规则
 - 注意事项
 
+**A股数据源**：
+
+- `tushare接口文档.md` - TuShare 数据源接口文档
+- `akshare接口文档.md` - AkShare 数据源接口文档
+- `A股数据统一存储方案.md` - A股数据存储方案
+
+**美股数据源**：
+
+- `yahoo_finance接口文档.md` - Yahoo Finance 数据源接口文档
+- `akshare接口文档.md` - AkShare（美股）接口文档
+- `alpha_vantage接口文档.md` - Alpha Vantage 数据源接口文档
+- `tushare接口文档.md` - Tushare（美股）接口文档
+- `itick接口文档.md` - iTick（美股）接口文档
+- `美股数据统一存储方案.md` - 美股数据存储方案
+
+**港股数据源**：
+
+- `yahoo_finance接口文档.md` - Yahoo Finance 数据源接口文档
+- `akshare接口文档.md` - AkShare（港股）接口文档
+- `tushare接口文档.md` - Tushare（港股）接口文档
+- `itick接口文档.md` - iTick（港股）接口文档
+- `港股数据统一存储方案.md` - 港股数据存储方案
+
 ---
 
 ## 🔗 相关文档
 
 - [项目 README.md](../README.md)
-- [系统设计文档.md](../系统设计文档.md)
-- [MCP 模块设计方案.md](../MCP模块设计方案.md)
 
 ---
 
@@ -140,4 +166,4 @@ frontend/src/modules/market_data/
 
 ---
 
-**最后更新**：2026-01-09
+**最后更新**：2026-01-14

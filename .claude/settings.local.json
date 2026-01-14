@@ -27,14 +27,18 @@
       "SlashCommand(/commit)",
       "Bash(git:*)",
       "Bash(mkdir:*)",
-      "mcp__acp__Bash"
+      "mcp__acp__Bash",
+      "mcp__fetch__fetch",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__query-docs"
     ],
     "deny": [],
     "ask": []
   },
   "enabledPlugins": {
     "glm-plan-usage@zai-coding-plugins": true,
-    "glm-plan-bug@zai-coding-plugins": true
+    "glm-plan-bug@zai-coding-plugins": true,
+    "superpowers@superpowers-marketplace": true
   },
   "outputStyle": "Default",
   "alwaysThinkingEnabled": true

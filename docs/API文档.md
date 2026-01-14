@@ -11,13 +11,10 @@
 - [1. 系统与认证](#1-系统与认证)
 - [2. 管理员接口](#2-管理员接口-adminsuper_admin)
 - [3. AI 模型管理](#3-ai-模型管理)
-- [4. TradingAgents 任务管理](#4-tradingagents-任务管理)
-- [5. TradingAgents 报告管理](#5-tradingagents-报告管理)
-- [6. TradingAgents 智能体配置](#6-tradingagents-智能体配置)
-- [7. TradingAgents 分析设置](#7-tradingagents-分析设置)
-- [8. TradingAgents 管理员接口](#8-tradingagents-管理员接口-adminsuper_admin)
-- [9. MCP 模块](#9-mcp-模块)
-- [10. WebSocket 接口](#10-websocket-接口)
+- [4. TradingAgents 模块 API](#4-tradingagents-模块-api)
+- [5. MCP 模块](#5-mcp-模块)
+- [6. WebSocket 接口](#6-websocket-接口)
+- [7. 市场数据模块 API](#7-市场数据模块-api)
 
 ---
 
@@ -643,473 +640,26 @@ PUT /api/ai/models/{id}/default
 
 ---
 
-## 4. TradingAgents 任务管理
+## 4. TradingAgents 模块 API
 
-### 4.1 创建分析任务（支持单股和批量）
+> 📖 **详细文档**：
+> - [TradingAgents API 接口文档](./TradingAgents/API接口文档.md) - TradingAgents 模块 API 完整文档，包含前后端映射、调用示例等详细说明
 
-**请求**：
-```
-POST /api/trading-agents/tasks
-```
+TradingAgents 模块包含以下主要功能区域的接口：
 
-**请求体**：
-```json
-{
-  "stock_codes": ["000001", "000002"],
-  "market": "a_share",
-  "trade_date": "2024-01-01",
-  "data_collection_model": "model_id_1",
-  "debate_model": "model_id_2",
-  "stages": {
-    "stage1": {
-      "enabled": true,
-      "selected_agents": ["technical_analyst", "fundamental_analyst"]
-    },
-    "stage2": {
-      "enabled": true,
-      "debate": {
-        "rounds": 3
-      }
-    },
-    "stage3": {
-      "enabled": true
-    },
-    "stage4": {
-      "enabled": true
-    }
-  }
-}
-```
+- **任务管理**：创建、查询、停止、删除分析任务（单股/批量）
+- **报告管理**：查询任务生成的分析报告
+- **智能体配置**：管理分析师团队、辩论团队等智能体的配置
+- **分析设置**：管理分析流程的全局设置（如轮次、超时等）
+- **管理员接口**：系统级模型管理、全局任务管理等
 
-**字段说明**：
-- `stock_codes`: 股票代码列表（1-50个）
-- `market`: 市场类型（a_share, hong_kong, us）
-- `trade_date`: 交易日期
-- `data_collection_model`: 数据收集阶段模型ID（可选）
-- `debate_model`: 辩论阶段模型ID（可选）
-- `stages`: 阶段配置
-
-**返回**：
-```json
-{
-  "task_id": "task_id_1",
-  "batch_id": null,
-  "stock_codes": ["000001"],
-  "total_count": 1,
-  "message": "已创建单股分析任务，任务ID: task_id_1"
-}
-```
-
-或批量任务：
-```json
-{
-  "task_id": null,
-  "batch_id": "batch_id_1",
-  "stock_codes": ["000001", "000002"],
-  "total_count": 2,
-  "message": "已创建批量分析任务，批量ID: batch_id_1，共 2 个股票"
-}
-```
-
-### 4.2 列出任务
-
-**请求**：
-```
-GET /api/trading-agents/tasks?page=1&page_size=20&status=running
-```
-
-**查询参数**：
-- `page`: 页码
-- `page_size`: 每页数量
-- `status`: 状态筛选（pending, running, completed, failed, cancelled）
-- `stock_code`: 股票代码筛选
-
-**返回**：
-```json
-{
-  "total": 50,
-  "page": 1,
-  "page_size": 20,
-  "tasks": [
-    {
-      "id": "task_id",
-      "user_id": "user_id",
-      "stock_code": "000001",
-      "trade_date": "2024-01-01",
-      "status": "running",
-      "current_phase": 2,
-      "current_agent": "debate_manager",
-      "progress": 45.5,
-      "reports": {
-        "phase1": "第一阶段报告..."
-      },
-      "final_recommendation": null,
-      "token_usage": {
-        "total": 1000,
-        "input": 600,
-        "output": 400
-      },
-      "created_at": "2024-01-01T00:00:00Z",
-      "started_at": "2024-01-01T00:01:00Z"
-    }
-  ]
-}
-```
-
-### 4.3 获取任务详情
-
-**请求**：
-```
-GET /api/trading-agents/tasks/{id}
-```
-
-**返回**：
-```json
-{
-  "id": "task_id",
-  "user_id": "user_id",
-  "stock_code": "000001",
-  "trade_date": "2024-01-01",
-  "status": "completed",
-  "current_phase": 4,
-  "current_agent": null,
-  "progress": 100.0,
-  "reports": {
-    "phase1": "第一阶段报告内容...",
-    "phase2": "第二阶段报告内容...",
-    "phase3": "第三阶段报告内容...",
-    "final": "最终投资建议..."
-  },
-  "final_recommendation": "买入",
-  "buy_price": 10.5,
-  "sell_price": 12.0,
-  "token_usage": {
-    "total": 5000,
-    "input": 3000,
-    "output": 2000,
-    "by_phase": {
-      "phase1": 1500,
-      "phase2": 2000,
-      "phase3": 1000,
-      "phase4": 500
-    }
-  },
-  "created_at": "2024-01-01T00:00:00Z",
-  "started_at": "2024-01-01T00:01:00Z",
-  "completed_at": "2024-01-01T00:05:00Z"
-}
-```
-
-### 4.4 取消/停止任务
-
-**请求**：
-```
-POST /api/trading-agents/tasks/{id}/cancel
-```
-
-**返回**：
-```json
-{
-  "success": true,
-  "message": "任务已取消"
-}
-```
-
-### 4.5 SSE 实时报告流
-
-**请求**：
-```
-GET /api/trading-agents/tasks/{id}/stream
-```
-
-**返回**: Server-Sent Events (SSE) 流
-
-### 4.6 删除任务
-
-**请求**：
-```
-DELETE /api/trading-agents/tasks/{id}
-```
-
-### 4.7 重试失败任务
-
-**请求**：
-```
-POST /api/trading-agents/tasks/{id}/retry
-```
-
-### 4.8 获取队列位置
-
-**请求**：
-```
-GET /api/trading-agents/tasks/{id}/queue-position
-```
-
-**返回**：
-```json
-{
-  "position": 3,
-  "estimated_wait_minutes": 5
-}
-```
+请参考 [TradingAgents API 接口文档](./TradingAgents/API接口文档.md) 获取完整的接口定义。
 
 ---
 
-## 5. TradingAgents 智能体配置
+## 5. MCP 模块
 
-### 5.1 获取智能体配置
-
-**请求**：
-```
-GET /api/trading-agents/agent-config
-```
-
-**返回**：
-```json
-{
-  "id": "config_id",
-  "user_id": "user_id",
-  "is_customized": false,
-  "phase1": {
-    "enabled": true,
-    "max_rounds": 1,
-    "max_concurrency": 3,
-    "agents": [
-      {
-        "slug": "technical_analyst",
-        "name": "技术分析师",
-        "role_definition": "你是一位专业的技术分析师...",
-        "when_to_use": "用于技术面分析",
-        "enabled_mcp_servers": ["finance_mcp"],
-        "enabled_local_tools": [],
-        "enabled": true
-      }
-    ]
-  },
-  "phase2": {
-    "enabled": true,
-    "max_rounds": 3,
-    "agents": [
-      {
-        "slug": "bull_debater",
-        "name": "看多辩手",
-        "role_definition": "你是一位看多的辩论者...",
-        "when_to_use": "用于多空辩论"
-      }
-    ]
-  },
-  "phase3": { ... },
-  "phase4": { ... },
-  "created_at": "2024-01-01T00:00:00Z",
-  "updated_at": "2024-01-01T00:00:00Z"
-}
-```
-
-### 5.2 更新智能体配置
-
-**请求**：
-```
-PUT /api/trading-agents/agent-config
-```
-
-**请求体**：
-```json
-{
-  "phase1": {
-    "enabled": true,
-    "max_rounds": 1,
-    "max_concurrency": 3,
-    "agents": [ ... ]
-  },
-  "phase2": { ... },
-  "phase3": { ... },
-  "phase4": { ... }
-}
-```
-
-### 5.3 重置为默认配置
-
-**请求**：
-```
-POST /api/trading-agents/agent-config/reset
-```
-
-### 5.4 导出配置
-
-**请求**：
-```
-POST /api/trading-agents/agent-config/export
-```
-
-**返回**：
-```json
-{
-  "config": { ... },
-  "exported_at": "2024-01-01T00:00:00Z"
-}
-```
-
-### 5.5 导入配置
-
-**请求**：
-```
-POST /api/trading-agents/agent-config/import
-```
-
-**请求体**：
-```json
-{
-  "config": { ... }
-}
-```
-
----
-
-## 6. TradingAgents 分析设置
-
-### 6.1 获取分析设置
-
-**请求**：
-```
-GET /api/trading-agents/settings
-```
-
-**返回**：
-```json
-{
-  "id": "settings_id",
-  "user_id": "user_id",
-  "settings": {
-    "data_collection_model_id": "model_id_1",
-    "debate_model_id": "model_id_2",
-    "default_debate_rounds": 3,
-    "max_debate_rounds": 5,
-    "phase_timeout_minutes": 30,
-    "agent_timeout_minutes": 10,
-    "tool_timeout_seconds": 30,
-    "task_expiry_hours": 24,
-    "archive_days": 30,
-    "enable_loop_detection": true,
-    "enable_progress_events": true
-  },
-  "created_at": "2024-01-01T00:00:00Z",
-  "updated_at": "2024-01-01T00:00:00Z"
-}
-```
-
-### 6.2 更新分析设置
-
-**请求**：
-```
-PUT /api/trading-agents/settings
-```
-
-**请求体**：
-```json
-{
-  "data_collection_model_id": "new_model_id",
-  "debate_rounds": 5,
-  "phase_timeout_minutes": 45
-}
-```
-
----
-
-## 8. TradingAgents 管理员接口 (ADMIN/SUPER_ADMIN)
-
-### 8.1 获取公共智能体配置
-
-**请求**：
-```
-GET /api/trading-agents/agent-config/public
-```
-
-### 8.2 更新公共智能体配置
-
-**请求**：
-```
-PUT /api/trading-agents/agent-config/public
-```
-
-### 8.3 获取所有系统模型
-
-**请求**：
-```
-GET /api/trading-agents/admin/models
-```
-
-**返回**：
-```json
-{
-  "models": [
-    {
-      "id": "model_id",
-      "name": "GPT-4",
-      "user_id": "user_id",
-      "is_default": false
-    }
-  ]
-}
-```
-
-### 8.4 创建系统模型
-
-**请求**：
-```
-POST /api/trading-agents/admin/models
-```
-
-**请求体**：
-```json
-{
-  "name": "Claude 3.5",
-  "provider": "anthropic",
-  "api_base": "https://api.anthropic.com/v1",
-  "api_key": "sk-ant-...",
-  "model_name": "claude-3-5-sonnet-20241022"
-}
-```
-
-### 8.5 更新系统模型
-
-**请求**：
-```
-PUT /api/trading-agents/admin/models/{id}
-```
-
-### 8.6 删除系统模型
-
-**请求**：
-```
-DELETE /api/trading-agents/admin/models/{id}
-```
-
-### 8.7 获取所有任务（跨用户）
-
-**请求**：
-```
-GET /api/trading-agents/admin/all-tasks?page=1&page_size=20
-```
-
-### 8.8 删除任意任务
-
-**请求**：
-```
-DELETE /api/trading-agents/admin/all-tasks/{id}
-```
-
-### 8.9 取消/停止任意任务
-
-**请求**：
-```
-POST /api/trading-agents/admin/all-tasks/{id}/cancel
-```
-
----
-
-## 9. MCP 模块
-
-### 9.1 列出 MCP 服务器
+### 5.1 列出 MCP 服务器
 
 **请求**：
 ```
@@ -1134,7 +684,7 @@ GET /api/mcp/servers
 }
 ```
 
-### 9.2 创建 MCP 服务器
+### 5.2 创建 MCP 服务器
 
 **请求**：
 ```
@@ -1168,7 +718,7 @@ POST /api/mcp/servers
 }
 ```
 
-### 9.3 获取 MCP 服务器详情
+### 5.3 获取 MCP 服务器详情
 
 **请求**：
 ```
@@ -1192,7 +742,7 @@ GET /api/mcp/servers/{id}
 }
 ```
 
-### 9.4 更新 MCP 服务器
+### 5.4 更新 MCP 服务器
 
 **请求**：
 ```
@@ -1207,14 +757,14 @@ PUT /api/mcp/servers/{id}
 }
 ```
 
-### 9.5 删除 MCP 服务器
+### 5.5 删除 MCP 服务器
 
 **请求**：
 ```
 DELETE /api/mcp/servers/{id}
 ```
 
-### 9.6 测试 MCP 服务器连接
+### 5.6 测试 MCP 服务器连接
 
 **请求**：
 ```
@@ -1233,7 +783,7 @@ POST /api/mcp/servers/{id}/test
 }
 ```
 
-### 9.7 获取 MCP 服务器工具列表
+### 5.7 获取 MCP 服务器工具列表
 
 **请求**：
 ```
@@ -1254,7 +804,7 @@ GET /api/mcp/servers/{id}/tools
 }
 ```
 
-### 9.8 获取 MCP 设置
+### 5.8 获取 MCP 设置
 
 **请求**：
 ```
@@ -1270,7 +820,7 @@ GET /api/mcp/settings
 }
 ```
 
-### 9.9 更新 MCP 设置
+### 5.9 更新 MCP 设置
 
 **请求**：
 ```
@@ -1285,14 +835,14 @@ PUT /api/mcp/settings
 }
 ```
 
-### 9.10 重置为默认设置
+### 5.10 重置为默认设置
 
 **请求**：
 ```
 POST /api/mcp/settings/reset
 ```
 
-### 9.11 获取默认配置
+### 5.11 获取默认配置
 
 **请求**：
 ```
@@ -1301,9 +851,9 @@ GET /api/mcp/config/default
 
 ---
 
-## 10. WebSocket 接口
+## 6. WebSocket 接口
 
-### 10.1 实时任务进度推送
+### 6.1 实时任务进度推送
 
 **连接**：
 ```
@@ -1335,6 +885,22 @@ WS /api/trading-agents/ws/{task_id}?token={access_token}
 - `task_completed`: 任务完成
 - `task_failed`: 任务失败
 - `task_cancelled`: 任务取消
+
+---
+
+## 7. 市场数据模块 API
+
+> 📖 **详细文档**：
+> - [Market Data API 接口文档](./market_data/API接口文档.md) - 数据同步、健康检查、状态监控、数据源配置等完整 API 文档
+
+市场数据模块（`backend/core/market_data/`）提供以下主要功能：
+
+- **数据同步**：同步股票列表、行情、财务数据等
+- **健康检查**：检查数据源健康状态
+- **状态监控**：获取状态汇总、历史事件、错误统计
+- **数据源配置**：数据源配置管理
+
+请参考 [Market Data API 接口文档](./market_data/API接口文档.md) 获取完整的接口定义。
 
 ---
 
