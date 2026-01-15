@@ -1,7 +1,7 @@
 # TradingAgents API 接口文档
 
-**版本**: v3.0
-**最后更新**: 2026-01-14
+**版本**: v3.0 (LangChain create_agent 重构版)
+**最后更新**: 2026-01-15
 **状态**: 最新
 
 ---
@@ -11,14 +11,12 @@
 - [一、API 概述](#一api-概述)
 - [二、任务管理接口](#二任务管理接口)
 - [三、智能体配置接口](#三智能体配置接口)
-- [四、AI 模型管理接口](#四ai-模型管理接口)
-- [五、MCP 服务器管理接口](#五mcp-服务器管理接口)
-- [六、设置接口](#六设置接口)
-- [七、管理员接口](#七管理员接口)
-- [八、WebSocket 与 SSE](#八websocket-与-sse)
-- [九、数据模型](#九数据模型)
-- [十、错误码](#十错误码)
-- [十一、API 调用流程](#十一api-调用流程)
+- [四、设置接口](#四设置接口)
+- [五、管理员接口](#五管理员接口)
+- [六、WebSocket 与 SSE](#六websocket-与-sse)
+- [七、数据模型](#七数据模型)
+- [八、错误码](#八错误码)
+- [九、API 调用流程](#九api-调用流程)
 
 ---
 
@@ -38,10 +36,14 @@
 |------|----------|----------|
 | 任务管理 | `/trading-agents/tasks` | 所有认证用户 |
 | 智能体配置 | `/trading-agents/agent-config` | 所有认证用户 |
-| AI 模型管理 | `/ai/models` | 所有认证用户 |
-| MCP 服务器管理 | `/mcp/servers` | 所有认证用户 |
 | 设置管理 | `/settings/trading-agents` | 所有认证用户 |
 | 管理员接口 | `/admin/trading-agents` | ADMIN/SUPER_ADMIN |
+
+**架构说明**：
+- **TradingAgents 模块** (`modules/trading_agents/`) 是业务模块，负责股票分析的业务逻辑
+- **核心 AI 模块** (`core/ai/`) 提供模型管理、LLM 调用、Token 计数、定价等基础设施服务
+- **MCP 模块** (`modules/mcp/`) 提供工具协议、连接池、服务器管理等基础设施服务
+- TradingAgents **使用**上述两个基础设施模块来实现业务功能
 
 ### 1.3 前端页面与 API 映射关系
 
@@ -63,16 +65,6 @@
                      →   POST /trading-agents/tasks/{id}/cancel
                      →   DELETE /trading-agents/tasks/{id}
 
-AI 模型管理          →   GET    /ai/models                ModelManagementView.vue
-                     →   POST   /ai/models
-                     →   PUT    /ai/models/{id}
-                     →   DELETE /ai/models/{id}
-
-MCP 服务器管理        →   GET    /mcp/servers             MCPServerManagementView.vue
-                     →   POST   /mcp/servers
-                     →   PUT    /mcp/servers/{id}
-                     →   DELETE /mcp/servers/{id}
-
 智能体配置管理        →   GET  /trading-agents/agent-config          AgentConfigView.vue
                      →   PUT  /trading-agents/agent-config
                      →   POST /trading-agents/agent-config/reset
@@ -82,6 +74,8 @@ MCP 服务器管理        →   GET    /mcp/servers             MCPServerManage
 
 所有任务管理          →   GET /admin/trading-agents/tasks  AllTasksView.vue
 ```
+
+**注意**：AI 模型管理 (`/ai/models`) 和 MCP 服务器管理 (`/mcp/servers`) 属于各自的基础设施模块，不在此文档范围。
 
 ### 1.4 通用响应格式
 
@@ -851,292 +845,9 @@ updateConfig({
 
 ---
 
-## 四、AI 模型管理接口
+## 四、设置接口
 
-### 4.1 获取模型列表
-
-**接口**：`GET /api/ai/models`
-
-**描述**：获取用户的 AI 模型列表
-
-**前端调用**：
-- **页面**: AI 模型管理 (`ModelManagementView.vue`)、单股分析页 (`SingleAnalysisView.vue`)
-- **方法**: `listModels(params)`
-- **API 文件**: `frontend/src/modules/trading_agents/api.ts`
-
-**查询参数**：
-
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `is_system` | boolean | 否 | 是否筛选系统模型 |
-| `enabled` | boolean | 否 | 是否筛选已启用模型 |
-
-**响应示例**：
-
-```json
-{
-  "models": [
-    {
-      "id": "...",
-      "name": "Claude Sonnet",
-      "platform_type": "preset",
-      "platform_name": "anthropic",
-      "model_id": "claude-sonnet-4-20250514",
-      "enabled": true,
-      "is_system": false,
-      "max_concurrency": 5,
-      "task_concurrency": 2,
-      "batch_concurrency": 1
-    }
-  ]
-}
-```
-
-**后端实现**: `backend/core/ai/api.py`
-
----
-
-### 4.2 创建模型
-
-**接口**：`POST /api/ai/models`
-
-**描述**：创建新的 AI 模型配置
-
-**前端调用**：
-- **页面**: AI 模型管理 (`ModelManagementView.vue`)
-- **方法**: `createModel(modelData)`
-
-**前端调用示例**：
-
-```typescript
-// frontend/src/modules/trading_agents/api.ts
-createModel({
-  name: "My GPT-4",
-  platform_type: "preset",
-  platform_name: "openai",
-  api_base_url: "https://api.openai.com/v1",
-  api_key: "sk-xxxxx",
-  model_id: "gpt-4",
-  max_concurrency: 5,
-  task_concurrency: 2,
-  batch_concurrency: 1,
-  timeout_seconds: 60,
-  temperature: 0.7,
-  thinking_enabled: false,
-  enabled: true,
-  is_system: false
-})
-```
-
-**后端实现**: `backend/core/ai/api.py`
-
----
-
-### 4.3 更新模型
-
-**接口**：`PUT /api/ai/models/{id}`
-
-**前端调用**：
-- **页面**: AI 模型管理 (`ModelManagementView.vue`)
-- **方法**: `updateModel(id, modelData)`
-
-**后端实现**: `backend/core/ai/api.py`
-
----
-
-### 4.4 删除模型
-
-**接口**：`DELETE /api/ai/models/{id}`
-
-**前端调用**：
-- **页面**: AI 模型管理 (`ModelManagementView.vue`)
-- **方法**: `deleteModel(id)`
-
-**后端实现**: `backend/core/ai/api.py`
-
----
-
-### 4.5 测试模型连接
-
-**接口**：`POST /api/ai/models/test`
-
-**描述**：测试 AI 模型连接是否正常
-
-**前端调用**：
-- **页面**: AI 模型管理 (`ModelManagementView.vue`)
-- **方法**: `testModel(testConfig)`
-
-**前端调用示例**：
-
-```typescript
-// frontend/src/modules/trading_agents/api.ts
-testModel({
-  api_base_url: "https://api.openai.com/v1",
-  api_key: "sk-xxxxx",
-  model_id: "gpt-4",
-  timeout_seconds: 30
-})
-
-// 响应
-{
-  "success": true,
-  "message": "连接成功",
-  "latency_ms": 245
-}
-```
-
-**后端实现**: `backend/core/ai/api.py`
-
----
-
-### 4.6 获取可用模型列表
-
-**接口**：`POST /api/ai/models/list`
-
-**描述**：从平台获取可用的模型列表
-
-**前端调用**：
-- **页面**: AI 模型管理 (`ModelManagementView.vue`)
-- **方法**: `listAvailableModels(platformConfig)`
-
-**后端实现**: `backend/core/ai/api.py`
-
----
-
-## 五、MCP 服务器管理接口
-
-### 5.1 获取服务器列表
-
-**接口**：`GET /api/mcp/servers`
-
-**描述**：获取用户的 MCP 服务器列表
-
-**前端调用**：
-- **页面**: MCP 服务器管理 (`MCPServerManagementView.vue`)、智能体配置 (`AgentConfigView.vue`)
-- **方法**: `listServers()`
-- **API 文件**: `frontend/src/modules/mcp/api.ts`
-
-**响应示例**：
-
-```json
-{
-  "servers": [
-    {
-      "id": "...",
-      "name": "财经数据服务器",
-      "transport": "streamable_http",
-      "url": "http://localhost:3000/sse",
-      "enabled": true,
-      "is_system": false
-    }
-  ]
-}
-```
-
-**后端实现**: `backend/modules/mcp/api/routes.py`
-
----
-
-### 5.2 创建服务器
-
-**接口**：`POST /api/mcp/servers`
-
-**前端调用**：
-- **页面**: MCP 服务器管理 (`MCPServerManagementView.vue`)
-- **方法**: `createServer(serverData)`
-
-**前端调用示例**：
-
-```typescript
-// frontend/src/modules/mcp/api.ts
-createServer({
-  name: "财经数据服务器",
-  transport: "streamable_http",
-  url: "http://localhost:3000/sse",
-  auth_type: "bearer",
-  auth_token: "xxxxx",
-  auto_approve: ["get_stock_quotes"],
-  enabled: true,
-  is_system: false
-})
-```
-
-**后端实现**: `backend/modules/mcp/api/routes.py`
-
----
-
-### 5.3 更新服务器
-
-**接口**：`PUT /api/mcp/servers/{id}`
-
-**前端调用**：
-- **页面**: MCP 服务器管理 (`MCPServerManagementView.vue`)
-- **方法**: `updateServer(id, serverData)`
-
-**后端实现**: `backend/modules/mcp/api/routes.py`
-
----
-
-### 5.4 删除服务器
-
-**接口**：`DELETE /api/mcp/servers/{id}`
-
-**前端调用**：
-- **页面**: MCP 服务器管理 (`MCPServerManagementView.vue`)
-- **方法**: `deleteServer(id)`
-
-**后端实现**: `backend/modules/mcp/api/routes.py`
-
----
-
-### 5.5 测试服务器连接
-
-**接口**：`POST /api/mcp/servers/test`
-
-**前端调用**：
-- **页面**: MCP 服务器管理 (`MCPServerManagementView.vue`)
-- **方法**: `testServer(serverData)`
-
-**后端实现**: `backend/modules/mcp/api/routes.py`
-
----
-
-### 5.6 获取服务器工具列表
-
-**接口**：`GET /api/mcp/servers/{id}/tools`
-
-**描述**：获取 MCP 服务器提供的工具列表
-
-**前端调用**：
-- **页面**: MCP 服务器管理 (`MCPServerManagementView.vue`)
-- **方法**: `getServerTools(id)`
-
-**响应示例**：
-
-```json
-{
-  "tools": [
-    {
-      "name": "get_stock_quotes",
-      "description": "获取股票实时行情",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "symbol": { "type": "string" }
-        }
-      }
-    }
-  ]
-}
-```
-
-**后端实现**: `backend/modules/mcp/api/routes.py`
-
----
-
-## 六、设置接口
-
-### 6.1 获取分析设置
+### 4.1 获取分析设置
 
 **接口**：`GET /api/settings/trading-agents`
 
@@ -1174,7 +885,7 @@ createServer({
 
 ---
 
-### 6.2 更新分析设置
+### 4.2 更新分析设置
 
 **接口**：`PUT /api/settings/trading-agents`
 
@@ -1186,9 +897,9 @@ createServer({
 
 ---
 
-## 七、管理员接口
+## 五、管理员接口
 
-### 7.1 获取所有任务
+### 5.1 获取所有任务
 
 **接口**：`GET /api/admin/trading-agents/tasks`
 
@@ -1204,7 +915,7 @@ createServer({
 
 ---
 
-### 7.2 获取告警列表
+### 5.2 获取告警列表
 
 **接口**：`GET /api/admin/alerts`
 
@@ -1218,7 +929,7 @@ createServer({
 
 ---
 
-### 7.3 处理告警
+### 5.3 处理告警
 
 **接口**：`POST /api/admin/alerts/{id}/handle`
 
@@ -1232,7 +943,7 @@ createServer({
 
 ---
 
-### 7.4 忽略告警
+### 5.4 忽略告警
 
 **接口**：`POST /api/admin/alerts/{id}/dismiss`
 
@@ -1246,9 +957,9 @@ createServer({
 
 ---
 
-## 八、WebSocket 与 SSE
+## 六、WebSocket 与 SSE
 
-### 8.1 WebSocket 实时推送
+### 6.1 WebSocket 实时推送
 
 **连接端点**：`WS /api/trading-agents/ws/{user_id}`
 
@@ -1327,15 +1038,15 @@ WS /api/trading-agents/ws/{user_id}?token={jwt_token}
 
 ---
 
-### 8.2 SSE 流式报告
+### 6.2 SSE 流式报告
 
 详见 [2.11 SSE 流式输出](#211-sse-流式输出)
 
 ---
 
-## 九、数据模型
+## 七、数据模型
 
-### 9.1 任务状态枚举
+### 7.1 任务状态枚举
 
 | 状态 | 代码 | 描述 |
 |------|------|------|
@@ -1347,7 +1058,7 @@ WS /api/trading-agents/ws/{user_id}?token={jwt_token}
 | 已停止 | `STOPPED` | 任务被停止（执行中） |
 | 已过期 | `EXPIRED` | 任务超时过期 |
 
-### 9.2 推荐等级枚举
+### 7.2 推荐等级枚举
 
 | 等级 | 代码 | 描述 |
 |------|------|------|
@@ -1357,7 +1068,7 @@ WS /api/trading-agents/ws/{user_id}?token={jwt_token}
 | 卖出 | `SELL` | 预期下跌 |
 | 强烈卖出 | `STRONG_SELL` | 预期显著下跌 |
 
-### 9.3 风险等级枚举
+### 7.3 风险等级枚举
 
 | 等级 | 代码 | 描述 |
 |------|------|------|
@@ -1365,7 +1076,7 @@ WS /api/trading-agents/ws/{user_id}?token={jwt_token}
 | 中风险 | `MEDIUM` | 风险适中 |
 | 高风险 | `HIGH` | 风险较高 |
 
-### 9.4 阶段配置模型
+### 7.4 阶段配置模型
 
 ```typescript
 interface StageConfig {
@@ -1382,7 +1093,7 @@ interface StageConfig {
 }
 ```
 
-### 9.5 任务创建请求模型
+### 7.5 任务创建请求模型
 
 ```typescript
 interface TaskCreateRequest {
@@ -1402,9 +1113,9 @@ interface TaskCreateRequest {
 
 ---
 
-## 十、错误码
+## 八、错误码
 
-### 10.1 HTTP 状态码
+### 8.1 HTTP 状态码
 
 | 状态码 | 描述 |
 |--------|------|
@@ -1416,7 +1127,7 @@ interface TaskCreateRequest {
 | 429 | 配额不足 |
 | 500 | 服务器内部错误 |
 
-### 10.2 业务错误码
+### 8.2 业务错误码
 
 | 错误信息 | 场景 |
 |----------|------|
@@ -1430,9 +1141,9 @@ interface TaskCreateRequest {
 
 ---
 
-## 十一、API 调用流程
+## 九、API 调用流程
 
-### 11.1 创建分析任务流程
+### 9.1 创建分析任务流程
 
 ```
 用户操作                       前端                          后端
@@ -1468,7 +1179,7 @@ interface TaskCreateRequest {
    → 渲染 Markdown
 ```
 
-### 11.2 任务管理流程
+### 9.2 任务管理流程
 
 ```
 用户操作                       前端                          后端
@@ -1499,7 +1210,7 @@ interface TaskCreateRequest {
    → 更新列表
 ```
 
-### 11.3 配置管理流程
+### 9.3 配置管理流程
 
 ```
 用户操作                       前端                          后端
@@ -1527,44 +1238,25 @@ interface TaskCreateRequest {
    → 应用配置
 ```
 
-### 11.4 AI 模型管理流程
-
-```
-用户操作                       前端                          后端
-──────────────────────────────────────────────────────────────────────
-1. 打开模型管理
-   → listModels()
-   → GET /api/ai/models
-   → 渲染模型列表
-
-2. 创建模型
-   → 填写表单
-   → createModel(modelData)
-   → POST /api/ai/models
-   → 测试连接
-   → 保存模型
-
-3. 测试连接
-   → testModel(testConfig)
-   → POST /api/ai/models/test
-   → 显示延迟和状态
-
-4. 更新模型
-   → updateModel(id, data)
-   → PUT /api/ai/models/{id}
-   → 刷新列表
-```
-
 ---
 
 ## 相关文档
 
-- [架构设计](../architecture/架构设计.md)
-- [四阶段工作流](../architecture/四阶段工作流.md)
-- [并发控制机制](../architecture/并发控制机制.md)
-- [智能体配置管理](../agents/智能体配置管理.md)
-- [MCP 工具集成](../integration/MCP工具.md)
-- [前端页面设计](../frontend/页面设计.md)
+### TradingAgents 内部文档
+
+- [架构设计](./architecture/架构设计.md) - 整体架构、核心组件、技术选型
+- [四阶段工作流](./architecture/四阶段工作流.md) - 四阶段工作流详细设计、执行流程
+- [并发控制机制](./architecture/并发控制机制.md) - 三层并发控制、队列管理、资源调度
+- [智能体配置](./features/智能体配置.md) - 智能体配置管理、配置层级、读取优先级
+- [分析设置](./features/分析设置.md) - 用户分析参数设置、模型配置、超时配置
+- [MCP 工具使用](./tools/MCP工具.md) - TradingAgents 如何使用 MCP 工具
+- [前端页面设计](./前端页面设计.md) - 前端页面功能、布局、交互设计
+
+### 依赖的基础设施模块文档
+
+- [核心 AI 模块](../../backend/core/ai/README.md) - 模型管理、LLM 调用、Token 计数、定价
+- [MCP 模块](../MCP/MCP模块设计方案.md) - 工具协议、连接池、服务器管理
+- [市场数据模块](../market_data/README.md) - A股/美股/港股数据
 
 ---
 
