@@ -46,12 +46,19 @@ const moduleRoutes: RouteRecordRaw[] = [
     component: () => import('@modules/ask_stock/views/AskStockView.vue'),
     meta: { requiresAuth: true, title: 'AI 问股' },
   },
-  // 系统监控模块
+  // 市场数据模块 - 系统监控
   {
     path: '/core/monitor/data-source-status',
     name: 'DataSourceMonitor',
     component: () => import('@modules/market_data/views/DataSourceHealthView.vue'),
     meta: { requiresAuth: true, title: '数据源状态监控' },
+  },
+  // 市场数据模块 - 用户配置
+  {
+    path: '/settings/data-sources',
+    name: 'UserDataSourceConfig',
+    component: () => import('@modules/market_data/views/UserDataSourceConfigView.vue'),
+    meta: { requiresAuth: true, title: '数据源配置' },
   },
   // TradingAgents 分析模块
   {
