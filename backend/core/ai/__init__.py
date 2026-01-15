@@ -6,29 +6,30 @@
 """
 
 # 新架构：基于 LangChain 的统一服务
-from .service import AIService, get_ai_service, set_ai_service
-from .types import (
-    AIMessage,
-    AITool,
-    AIResponse,
-    AIStreamChunk,
-    create_message,
-    create_tool,
-)
+from .concurrency import ConcurrencyConfig, ConcurrencyManager
 from .langchain.adapter import LangChainAdapter
-from .concurrency import ConcurrencyManager, ConcurrencyConfig
 
 # 模型配置（保留兼容）
 from .model import get_model_service
 from .model.schemas import (
-    ModelProviderEnum,
     AIModelConfigBase,
     AIModelConfigCreate,
-    AIModelConfigUpdate,
     AIModelConfigResponse,
+    AIModelConfigUpdate,
     AIModelTestRequest,
     ConnectionTestResponse,
+    ModelProviderEnum,
     ThinkingModeEnum,
+)
+from .service import AIService, get_ai_service, set_ai_service
+from .thinking_manager import ThinkingContentManager, get_thinking_manager
+from .types import (
+    AIMessage,
+    AIResponse,
+    AIStreamChunk,
+    AITool,
+    create_message,
+    create_tool,
 )
 
 __all__ = [
@@ -45,6 +46,8 @@ __all__ = [
     "create_tool",
     # 新架构：适配器和并发管理
     "LangChainAdapter",
+    "ThinkingContentManager",
+    "get_thinking_manager",
     "ConcurrencyManager",
     "ConcurrencyConfig",
     # 模型配置

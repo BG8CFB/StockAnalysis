@@ -6,9 +6,9 @@
 
 import asyncio
 import logging
-from typing import Dict, Optional
-from dataclasses import dataclass
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 

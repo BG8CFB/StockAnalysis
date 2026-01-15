@@ -338,3 +338,37 @@ class DataSourceRouter:
         router = cls(sources=sources)
         logger.info(f"Created global router with sources: {[s.source_name for s in router.sources]}")
         return router
+
+
+# =============================================================================
+# 全局单例
+# =============================================================================
+
+_source_router: Optional[DataSourceRouter] = None
+
+
+def get_source_router() -> DataSourceRouter:
+    """
+    获取全局数据源路由器单例
+
+    Returns:
+        数据源路由器实例
+    """
+    global _source_router
+    if _source_router is None:
+        # 创建默认路由器（使用 AkShare，不需要 API Key）
+        akshare = AkShareAdapter(config={})
+        _source_router = DataSourceRouter(sources=[akshare])
+        logger.info("Created default source router with AkShare")
+    return _source_router
+
+
+def set_source_router(router: DataSourceRouter) -> None:
+    """
+    设置全局数据源路由器（用于测试或自定义配置）
+
+    Args:
+        router: 数据源路由器实例
+    """
+    global _source_router
+    _source_router = router

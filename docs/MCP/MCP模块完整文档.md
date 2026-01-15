@@ -1341,8 +1341,8 @@ enabled_mcp_servers:
                     │ LangChain Tools
                     ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                   LangGraph Agent                             │
-│  create_react_agent(llm, tools)                               │
+│                   LangChain Agent                            │
+│  create_agent(llm, tools)                                     │
 └─────────────────────────────────────────────────────────────┘
                     │ LLM 调用
                     ↓

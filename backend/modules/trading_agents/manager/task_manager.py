@@ -26,10 +26,10 @@ from modules.trading_agents.exceptions import (
     TaskNotFoundException,
     TaskAlreadyRunningException,
 )
-from modules.trading_agents.pusher import (
+from modules.trading_agents.api.websocket_manager import (
     get_ws_manager,
 )
-from modules.trading_agents.pusher.events import (
+from modules.trading_agents.workflow.events import (
     EventType,
     create_event,
     create_task_completed_event,
@@ -1045,54 +1045,66 @@ class TaskManager:
             # 5. 使用新调度器执行工作流
             logger.info(f"任务 {task_id} 开始执行工作流...")
 
-            # 准备配置参数
-            model_config = {
-                "data_collection_model": data_collection_model_id,
-                "debate_model": debate_model_id,
-            }
-
             try:
                 # 使用新的 WorkflowScheduler 执行工作流
-                from modules.trading_agents.scheduler.workflow_scheduler import create_workflow_scheduler
-                from modules.trading_agents.phases import run_phase1, run_phase2, run_phase3, run_phase4
+                from modules.trading_agents.scheduler.workflow_scheduler import (
+                    WorkflowScheduler,
+                    create_workflow_scheduler,
+                )
+                from core.ai.service import AIService
+
+                # 获取 AI 服务
+                ai_service = AIService()
 
                 # 获取 WebSocket 管理器用于进度推送
                 ws_manager = await get_ws_manager()
 
+                # 进度回调函数
+                async def progress_callback(progress_data: Dict[str, Any]):
+                    await ws_manager.broadcast_event(task_id, create_event(
+                        event_type=EventType.TASK_STARTED,
+                        task_id=task_id,
+                        stock_code=request.stock_code,
+                    ))
+
                 # 创建调度器
-                scheduler = create_workflow_scheduler() \
-                    .with_phase1_runner(run_phase1) \
-                    .with_phase2_runner(run_phase2) \
-                    .with_phase3_runner(run_phase3) \
-                    .with_phase4_runner(run_phase4) \
-                    .with_progress_callback(lambda data: asyncio.create_task(
-                        ws_manager.broadcast_progress(task_id, data)
-                    )) \
+                scheduler = create_workflow_scheduler(ai_service) \
+                    .with_agent_config(agent_config) \
+                    .with_progress_callback(progress_callback) \
                     .build()
 
-                # 获取阶段开关
-                stages_config = request.stages
-                enable_phase1 = stages_config.stage1.enabled if stages_config else True
-                enable_phase2 = stages_config.stage2.enabled if stages_config else True
-                enable_phase3 = stages_config.stage3.enabled if stages_config else True
-                enable_phase4 = stages_config.stage4.enabled if stages_config else True
+                # 获取阶段配置
+                stages_config = request.stages.model_dump() if request.stages else {}
+                selected_agents = stages_config.get("stage1", {}).get("selected_agents")
 
                 # 执行工作流
                 final_state = await scheduler.run(
                     task_id=task_id,
                     user_id=user_id,
                     stock_code=request.stock_code,
+                    stock_name=None,  # 可以后续从市场数据获取
+                    market=request.market,
                     trade_date=request.trade_date,
-                    model_config=model_config,
-                    agent_config=agent_config,
-                    max_debate_rounds=stages_config.stage2.debate.rounds if stages_config else 2,
-                    enable_phase1=enable_phase1,
-                    enable_phase2=enable_phase2,
-                    enable_phase3=enable_phase3,
-                    enable_phase4=enable_phase4,
+                    selected_agents=selected_agents,
+                    data_collection_model=data_collection_model_id or "claude-sonnet-4-20250514",
+                    debate_model=debate_model_id or "claude-haiku-4-20250514",
+                    stages=stages_config,
                 )
 
                 logger.info(f"任务 {task_id} 工作流执行完成，状态: {final_state.status}")
+
+                # 保存最终结果到数据库
+                await self.complete_task(
+                    task_id=task_id,
+                    final_recommendation=self._convert_recommendation(final_state.final_recommendation),
+                    buy_price=final_state.buy_price,
+                    sell_price=final_state.sell_price,
+                    token_usage=final_state.token_usage.model_dump() if final_state.token_usage else {},
+                )
+
+                # 保存最终报告
+                if final_state.final_report:
+                    await self.add_task_report(task_id, "final_report", final_state.final_report)
 
             except Exception as e:
                 logger.error(f"任务 {task_id} 工作流执行失败: {e}", exc_info=True)
@@ -1234,6 +1246,37 @@ class TaskManager:
             f"用户默认: {user_model_id if user_settings else 'None'}, "
             f"系统默认: 不可用"
         )
+
+    def _convert_recommendation(self, recommendation: Optional[str]) -> Optional[RecommendationEnum]:
+        """
+        转换推荐结果字符串为枚举
+
+        Args:
+            recommendation: 推荐结果字符串
+
+        Returns:
+            RecommendationEnum 或 None
+        """
+        if not recommendation:
+            return None
+
+        # 映射常见的推荐结果格式
+        mapping = {
+            # 中文格式
+            "强烈买入": RecommendationEnum.BUY,
+            "买入": RecommendationEnum.BUY,
+            "持有": RecommendationEnum.HOLD,
+            "卖出": RecommendationEnum.SELL,
+            "强烈卖出": RecommendationEnum.SELL,
+            # 英文格式
+            "STRONG_BUY": RecommendationEnum.BUY,
+            "BUY": RecommendationEnum.BUY,
+            "HOLD": RecommendationEnum.HOLD,
+            "SELL": RecommendationEnum.SELL,
+            "STRONG_SELL": RecommendationEnum.SELL,
+        }
+
+        return mapping.get(recommendation.upper(), RecommendationEnum.HOLD)
 
 
 # =============================================================================

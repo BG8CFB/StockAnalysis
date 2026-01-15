@@ -1,0 +1,202 @@
+"""
+Phase 4: 激进策略分析师
+
+**版本**: v4.0 (LangChain 1.1.0 create_agent 重构版)
+**最后更新**: 2026-01-15
+
+追求高收益，承担高波动。
+"""
+
+import logging
+from typing import Dict, Any, Optional
+
+from langchain_core.language_models import BaseChatModel
+from langchain.agents import create_agent
+
+
+from modules.trading_agents.models.state import WorkflowState
+
+logger = logging.getLogger(__name__)
+
+
+class AggressiveDebator:
+    """
+    激进策略分析师
+
+    追求高收益，承担高波动，关注机会成本。
+    """
+
+    def __init__(
+        self,
+        model: BaseChatModel,
+        config: Optional[Dict[str, Any]] = None
+    ):
+        """
+        初始化激进策略分析师
+
+        Args:
+            model: LLM 模型
+            config: 智能体配置
+        """
+        self.model = model
+        self.config = config or {}
+        self.slug = "aggressive-debator"
+        self.name = "激进策略分析师"
+        self.agent = self._create_agent()
+
+    def _create_agent(self):
+        """创建智能体实例 (LangChain 1.1.0 create_agent API)"""
+        system_prompt_str = self._build_system_prompt()
+        
+        # 使用 LangChain 1.1.0 的 create_agent
+        graph = create_agent(
+            model=self.model,
+            tools=[],
+            system_prompt=system_prompt_str,
+            debug=False
+        )
+        
+        return graph
+
+    def _build_system_prompt(self) -> str:
+        """构建系统提示词"""
+        role_definition = self.config.get("roleDefinition", "")
+
+        prompt = f"""
+# 角色
+你是激进策略分析师，你的任务是追求高收益，承担高波动。
+
+# 职责
+1. 关注机会成本：踏空的风险
+2. 关注潜在收益：上涨空间的乐观预期
+3. 关注时间效率：快速获利的可能性
+
+# 分析维度
+- **机会成本**: 如果不买入，可能错失的收益
+- **潜在收益**: 乐观情景下的上涨空间
+- **时间效率**: 快速获利的可能性
+- **波动容忍**: 高波动下的持仓能力
+
+# 输出格式
+```markdown
+# 激进策略分析师报告
+
+## 核心观点
+[一句话总结你的核心观点]
+
+## 机会成本分析
+[如果不买入，可能错失的收益]
+
+## 潜在收益分析
+[乐观情景下的上涨空间]
+
+## 结论
+[基于激进策略风格得出的结论]
+
+## 建议
+[具体的投资建议]
+```
+
+{role_definition}
+"""
+        return prompt.strip()
+
+    async def analyze(
+        self,
+        state: WorkflowState,
+        investment_decision: Optional[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        执行策略分析
+
+        Args:
+            state: 工作流状态
+            investment_decision: 投资决策
+
+        Returns:
+            分析结果
+        """
+        logger.info(f"[Phase 4] 激进策略分析师开始分析: {state.stock_code}")
+
+        # 构建输入
+        messages = self._build_input_messages(state, investment_decision)
+        try:
+            # 调用智能体 (使用 LangGraph create_agent 的正确输入格式)
+            # 调用智能体
+            prompt_text = messages[0]["content"] if messages else "Please analyze."
+            result = await self.agent.ainvoke({"messages": [{"role": "user", "content": prompt_text}]}, config={"recursion_limit": 10})
+
+            # 提取输出
+            output = self._extract_output(result)
+
+            logger.info(f"[Phase 4] 激进策略分析师分析完成: {state.stock_code}")
+
+            return {
+                "slug": self.slug,
+                "name": self.name,
+                "output": output,
+                "error": None
+            }
+
+        except Exception as e:
+            logger.error(f"[Phase 4] 激进策略分析师分析失败: {state.stock_code}, error={e}")
+
+            return {
+                "slug": self.slug,
+                "name": self.name,
+                "output": None,
+                "error": str(e)
+            }
+
+    def _build_input_messages(
+        self,
+        state: WorkflowState,
+        investment_decision: Optional[Dict[str, Any]]
+    ) -> list:
+        """构建输入消息"""
+        decision_text = ""
+        if investment_decision:
+            decision_text = f"""
+# 投资决策
+- 推荐等级: {investment_decision.get('recommendation')}
+- 风险等级: {investment_decision.get('risk_level')}
+- 买入价位: {investment_decision.get('buy_price')}
+- 卖出价位: {investment_decision.get('sell_price')}
+"""
+
+        prompt = f"""
+请以激进策略分析师的视角，评估以下投资决策：
+
+# 股票信息
+- 股票代码: {state.stock_code}
+- 股票名称: {state.stock_name or '未知'}
+- 市场: {state.market}
+- 交易日期: {state.trade_date}
+
+{decision_text}
+
+请提供你的策略分析和建议。
+"""
+        return [{"role": "user", "content": prompt.strip()}]
+
+    def _extract_output(self, result: Any) -> Optional[str]:
+        """从结果中提取输出"""
+        if isinstance(result, dict):
+            # AgentExecutor format: {"output": "..."}
+            output = result.get("output")
+            if output:
+                return str(output)
+
+            # LangGraph format
+            messages = result.get("messages", [])
+            if messages:
+                last_message = messages[-1]
+                if hasattr(last_message, "content"):
+                    return last_message.content
+                elif isinstance(last_message, dict):
+                    return last_message.get("content")
+
+        if isinstance(result, str):
+            return result
+
+        return str(result)

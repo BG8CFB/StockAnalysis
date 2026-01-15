@@ -24,7 +24,7 @@ from core.admin.audit_logger import get_audit_logger
 
 from modules.trading_agents.manager.task_manager import get_task_manager, TaskManager
 from modules.trading_agents.manager.concurrency_controller import get_concurrency_controller
-from modules.trading_agents.services.agent_config_service import get_agent_config_service
+from modules.trading_agents.manager.agent_config_service import get_agent_config_service
 from modules.trading_agents.schemas import (
     # 任务相关
     AnalysisTaskCreate,

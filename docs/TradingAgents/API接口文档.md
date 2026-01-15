@@ -9,14 +9,15 @@
 ## 目录
 
 - [一、API 概述](#一api-概述)
-- [二、任务管理接口](#二任务管理接口)
-- [三、智能体配置接口](#三智能体配置接口)
-- [四、设置接口](#四设置接口)
-- [五、管理员接口](#五管理员接口)
-- [六、WebSocket 与 SSE](#六websocket-与-sse)
-- [七、数据模型](#七数据模型)
-- [八、错误码](#八错误码)
-- [九、API 调用流程](#九api-调用流程)
+- [二、与核心基础设施的集成](#二与核心基础设施的集成)
+- [三、任务管理接口](#三任务管理接口)
+- [四、智能体配置接口](#四智能体配置接口)
+- [五、设置接口](#五设置接口)
+- [六、管理员接口](#六管理员接口)
+- [七、WebSocket 与 SSE](#七websocket-与-sse)
+- [八、数据模型](#八数据模型)
+- [九、错误码](#九错误码)
+- [十、API 调用流程](#十api-调用流程)
 
 ---
 
@@ -40,10 +41,17 @@
 | 管理员接口 | `/admin/trading-agents` | ADMIN/SUPER_ADMIN |
 
 **架构说明**：
-- **TradingAgents 模块** (`modules/trading_agents/`) 是业务模块，负责股票分析的业务逻辑
-- **核心 AI 模块** (`core/ai/`) 提供模型管理、LLM 调用、Token 计数、定价等基础设施服务
-- **MCP 模块** (`modules/mcp/`) 提供工具协议、连接池、服务器管理等基础设施服务
-- TradingAgents **使用**上述两个基础设施模块来实现业务功能
+
+TradingAgents 模块作为业务模块，依赖并复用以下两个核心基础设施模块：
+
+| 模块 | 路径 | 调用方式 | 提供的能力 |
+|------|------|----------|------------|
+| **核心 AI 模块** | `backend/core/ai/` | 通过 `AIService` 统一服务调用 | LLM 调用、并发控制、Token 计数与定价、使用统计 |
+| **MCP 模块** | `backend/modules/mcp/` | 通过 `MCPConnectionPool` 连接池调用 | 工具连接获取、工具调用、连接复用、并发控制 |
+
+**核心原则**：TradingAgents 不重复实现 AI 调用和工具调用的基础能力，全部复用核心模块提供的统一接口。
+
+详细的集成说明请参考 [二、与核心基础设施的集成](#二与核心基础设施的集成)。
 
 ### 1.3 前端页面与 API 映射关系
 
@@ -96,9 +104,94 @@
 
 ---
 
-## 二、任务管理接口
+## 二、与核心基础设施的集成
 
-### 2.1 创建任务
+### 2.1 架构依赖关系
+
+TradingAgents 作为业务模块，**不重复实现**以下基础能力，全部复用核心模块提供的服务：
+
+| 能力域 | 核心模块 | 复用方式 | TradingAgents 获得的能力 |
+|--------|----------|----------|--------------------------|
+| **AI 调用** | `core/ai/` | 通过 `AIService` 统一服务 | LLM 调用、并发控制、Token 统计、成本计算 |
+| **工具调用** | `modules/mcp/` | 通过 `MCPConnectionPool` 连接池 | MCP 工具调用、连接复用、并发控制 |
+
+### 2.2 AI 调用集成
+
+TradingAgents 通过核心 AI 模块的 `AIService` 进行所有 LLM 调用。
+
+**核心 AI 模块文件位置**：`backend/core/ai/service.py`
+
+**调用方式**：
+
+TradingAgents 智能体直接调用 `AIService.chat_completion()` 方法，传入以下参数：
+
+| 参数 | 说明 | 用途 |
+|------|------|------|
+| `user_id` | 用户 ID | 用户隔离、配额控制 |
+| `messages` | 消息列表 | 对话上下文 |
+| `model_id` | 模型 ID | 指定使用的模型 |
+| `tools` | 工具列表 | MCP 工具绑定 |
+| `task_id` | 任务 ID | Token 使用统计关联 |
+| `phase` | 阶段标识 | Phase 1-4 标记 |
+| `agent_slug` | 智能体标识 | 具体智能体标记 |
+
+**核心模块自动处理**：
+
+1. **并发控制**：通过 `ConcurrencyManager` 自动管理模型并发槽位
+2. **模型创建**：通过 `LangChainAdapter` 创建 ChatModel 实例（支持智谱/Claude/OpenAI/DeepSeek 等）
+3. **Token 统计**：自动记录输入/输出 Token 数量
+4. **成本计算**：通过 `PricingService` 自动计算调用成本
+5. **使用记录**：通过 `UsageService` 自动记录到数据库
+
+### 2.3 MCP 工具集成
+
+TradingAgents 通过 MCP 模块的 `MCPConnectionPool` 调用外部工具。
+
+**MCP 模块文件位置**：`backend/modules/mcp/pool/pool.py`
+
+**调用方式**：
+
+TradingAgents 智能体通过以下步骤调用 MCP 工具：
+
+| 步骤 | 操作 | 说明 |
+|------|------|------|
+| 1 | `acquire_connection()` | 获取或创建 MCP 长连接（支持任务级复用） |
+| 2 | `call_tool()` | 调用具体工具，传入工具名称和参数 |
+| 3 | `release_connection()` | 释放连接（启动 10 秒延迟关闭） |
+
+**核心模块自动处理**：
+
+1. **连接复用**：同一任务内的多次调用复用同一连接
+2. **并发控制**：通过用户级信号量（个人 100 并发，公共 10 并发）
+3. **服务器管理**：支持动态注册/注销/禁用 MCP 服务器
+4. **自动清理**：连接关闭后自动清理，信号量空闲后自动释放
+5. **任务标记**：支持任务完成/失败/取消的标记方法
+
+### 2.4 接口归属说明
+
+为了避免职责混淆，以下接口归属各自的基础设施模块，不在 TradingAgents 文档范围：
+
+| 功能 | 模块 | 路径 | 文档位置 |
+|------|------|------|----------|
+| AI 模型管理 | 核心 AI 模块 | `/ai/models` | `backend/core/ai/README.md` |
+| MCP 服务器管理 | MCP 模块 | `/mcp/servers` | `docs/MCP/MCP模块设计方案.md` |
+| 市场数据获取 | 市场数据模块 | `/market-data/*` | `docs/market_data/README.md` |
+
+### 2.5 复用设计的好处
+
+| 好处 | 说明 |
+|------|------|
+| **避免重复造轮子** | AI 调用、工具调用的基础能力只需实现一次 |
+| **统一维护** | 核心能力升级时，所有业务模块自动受益 |
+| **数据一致性** | Token 统计、成本计算使用同一套逻辑 |
+| **并发控制统一** | 全局统一的并发限制，避免资源冲突 |
+| **配置统一** | 模型配置、MCP 配置统一管理，用户只需配置一次 |
+
+---
+
+## 三、任务管理接口
+
+### 3.1 创建任务
 
 **接口**：`POST /api/trading-agents/tasks`
 
@@ -166,7 +259,7 @@ createTasks({
 
 ---
 
-### 2.2 查询任务列表
+### 3.2 查询任务列表
 
 **接口**：`GET /api/trading-agents/tasks`
 
@@ -229,7 +322,7 @@ listTasks({
 
 ---
 
-### 2.3 获取任务详情
+### 3.3 获取任务详情
 
 **接口**：`GET /api/trading-agents/tasks/{task_id}`
 
@@ -286,7 +379,7 @@ listTasks({
 
 ---
 
-### 2.4 获取任务队列位置
+### 3.4 获取任务队列位置
 
 **接口**：`GET /api/trading-agents/tasks/{task_id}/queue-position`
 
@@ -313,7 +406,7 @@ listTasks({
 
 ---
 
-### 2.5 取消/停止任务
+### 3.5 取消/停止任务
 
 **接口**：`POST /api/trading-agents/tasks/{task_id}/cancel`
 
@@ -336,7 +429,7 @@ listTasks({
 
 ---
 
-### 2.6 重试失败任务
+### 3.6 重试失败任务
 
 **接口**：`POST /api/trading-agents/tasks/{task_id}/retry`
 
@@ -346,13 +439,13 @@ listTasks({
 - **页面**: 分析详情页 (`AnalysisDetailView.vue`)、任务中心 (`TaskCenterView.vue`)
 - **方法**: `retryTask(taskId)`
 
-**响应**：返回新创建的任务信息（格式同 2.3）
+**响应**：返回新创建的任务信息（格式同 3.3）
 
 **后端实现**: `backend/modules/trading_agents/api/tasks.py:510`
 
 ---
 
-### 2.7 删除任务
+### 3.7 删除任务
 
 **接口**：`DELETE /api/trading-agents/tasks/{task_id}`
 
@@ -379,7 +472,7 @@ listTasks({
 
 ---
 
-### 2.8 批量删除任务
+### 3.8 批量删除任务
 
 **接口**：`POST /api/trading-agents/tasks/batch-delete`
 
@@ -413,7 +506,7 @@ listTasks({
 
 ---
 
-### 2.9 清空指定状态任务
+### 3.9 清空指定状态任务
 
 **接口**：`DELETE /api/trading-agents/tasks/clear`
 
@@ -434,7 +527,7 @@ listTasks({
 
 ---
 
-### 2.10 获取任务状态统计
+### 3.10 获取任务状态统计
 
 **接口**：`GET /api/trading-agents/tasks/status-counts`
 
@@ -468,7 +561,7 @@ listTasks({
 
 ---
 
-### 2.11 SSE 流式输出
+### 3.11 SSE 流式输出
 
 **接口**：`GET /api/trading-agents/tasks/{task_id}/stream`
 
@@ -520,9 +613,9 @@ onMessage((event) => {
 
 ---
 
-## 三、智能体配置接口
+## 四、智能体配置接口
 
-### 3.1 获取用户配置
+### 4.1 获取用户配置
 
 **接口**：`GET /api/trading-agents/agent-config`
 
@@ -589,7 +682,7 @@ getAgentConfig({ include_prompts: false })
 
 ---
 
-### 3.2 更新用户配置
+### 4.2 更新用户配置
 
 **接口**：`PUT /api/trading-agents/agent-config`
 
@@ -629,7 +722,7 @@ updateConfig({
 
 ---
 
-### 3.3 重置为默认配置
+### 4.3 重置为默认配置
 
 **接口**：`POST /api/trading-agents/agent-config/reset`
 
@@ -645,7 +738,7 @@ updateConfig({
 
 ---
 
-### 3.4 导出配置
+### 4.4 导出配置
 
 **接口**：`POST /api/trading-agents/agent-config/export`
 
@@ -672,7 +765,7 @@ updateConfig({
 
 ---
 
-### 3.5 导入配置
+### 4.5 导入配置
 
 **接口**：`POST /api/trading-agents/agent-config/import`
 
@@ -690,7 +783,7 @@ updateConfig({
 
 ---
 
-### 3.6 获取公共配置（管理员）
+### 4.6 获取公共配置（管理员）
 
 **接口**：`GET /api/trading-agents/agent-config/public`
 
@@ -706,7 +799,7 @@ updateConfig({
 
 ---
 
-### 3.7 更新公共配置（管理员）
+### 4.7 更新公共配置（管理员）
 
 **接口**：`PUT /api/trading-agents/agent-config/public`
 
@@ -720,7 +813,7 @@ updateConfig({
 
 ---
 
-### 3.8 导出公共配置（管理员）
+### 4.8 导出公共配置（管理员）
 
 **接口**：`GET /api/trading-agents/admin/public-config/export`
 
@@ -740,7 +833,7 @@ updateConfig({
 
 ---
 
-### 3.9 导入公共配置（管理员）
+### 4.9 导入公共配置（管理员）
 
 **接口**：`POST /api/trading-agents/admin/public-config/import`
 
@@ -761,7 +854,7 @@ updateConfig({
 
 ---
 
-### 3.10 恢复公共配置为默认（管理员）
+### 4.10 恢复公共配置为默认（管理员）
 
 **接口**：`POST /api/trading-agents/admin/public-config/reset`
 
@@ -779,7 +872,7 @@ updateConfig({
 
 ---
 
-### 3.11 获取配置来源状态
+### 4.11 获取配置来源状态
 
 **接口**：`GET /api/trading-agents/agent-config/status`
 
@@ -807,7 +900,7 @@ updateConfig({
 
 ---
 
-### 3.12 导出个人配置
+### 4.12 导出个人配置
 
 **接口**：`GET /api/trading-agents/agent-config/export`
 
@@ -826,7 +919,7 @@ updateConfig({
 
 ---
 
-### 3.13 导入个人配置
+### 4.13 导入个人配置
 
 **接口**：`POST /api/trading-agents/agent-config/import`
 
@@ -845,9 +938,9 @@ updateConfig({
 
 ---
 
-## 四、设置接口
+## 五、设置接口
 
-### 4.1 获取分析设置
+### 5.1 获取分析设置
 
 **接口**：`GET /api/settings/trading-agents`
 
@@ -885,7 +978,7 @@ updateConfig({
 
 ---
 
-### 4.2 更新分析设置
+### 5.2 更新分析设置
 
 **接口**：`PUT /api/settings/trading-agents`
 
@@ -897,9 +990,9 @@ updateConfig({
 
 ---
 
-## 五、管理员接口
+## 六、管理员接口
 
-### 5.1 获取所有任务
+### 6.1 获取所有任务
 
 **接口**：`GET /api/admin/trading-agents/tasks`
 
@@ -915,7 +1008,7 @@ updateConfig({
 
 ---
 
-### 5.2 获取告警列表
+### 6.2 获取告警列表
 
 **接口**：`GET /api/admin/alerts`
 
@@ -929,7 +1022,7 @@ updateConfig({
 
 ---
 
-### 5.3 处理告警
+### 6.3 处理告警
 
 **接口**：`POST /api/admin/alerts/{id}/handle`
 
@@ -943,7 +1036,7 @@ updateConfig({
 
 ---
 
-### 5.4 忽略告警
+### 6.4 忽略告警
 
 **接口**：`POST /api/admin/alerts/{id}/dismiss`
 
@@ -957,9 +1050,9 @@ updateConfig({
 
 ---
 
-## 六、WebSocket 与 SSE
+## 七、WebSocket 与 SSE
 
-### 6.1 WebSocket 实时推送
+### 7.1 WebSocket 实时推送
 
 **连接端点**：`WS /api/trading-agents/ws/{user_id}`
 
@@ -1038,15 +1131,15 @@ WS /api/trading-agents/ws/{user_id}?token={jwt_token}
 
 ---
 
-### 6.2 SSE 流式报告
+### 7.2 SSE 流式报告
 
-详见 [2.11 SSE 流式输出](#211-sse-流式输出)
+详见 [3.11 SSE 流式输出](#311-sse-流式输出)
 
 ---
 
-## 七、数据模型
+## 八、数据模型
 
-### 7.1 任务状态枚举
+### 8.1 任务状态枚举
 
 | 状态 | 代码 | 描述 |
 |------|------|------|
@@ -1058,7 +1151,7 @@ WS /api/trading-agents/ws/{user_id}?token={jwt_token}
 | 已停止 | `STOPPED` | 任务被停止（执行中） |
 | 已过期 | `EXPIRED` | 任务超时过期 |
 
-### 7.2 推荐等级枚举
+### 8.2 推荐等级枚举
 
 | 等级 | 代码 | 描述 |
 |------|------|------|
@@ -1068,7 +1161,7 @@ WS /api/trading-agents/ws/{user_id}?token={jwt_token}
 | 卖出 | `SELL` | 预期下跌 |
 | 强烈卖出 | `STRONG_SELL` | 预期显著下跌 |
 
-### 7.3 风险等级枚举
+### 8.3 风险等级枚举
 
 | 等级 | 代码 | 描述 |
 |------|------|------|
@@ -1076,7 +1169,7 @@ WS /api/trading-agents/ws/{user_id}?token={jwt_token}
 | 中风险 | `MEDIUM` | 风险适中 |
 | 高风险 | `HIGH` | 风险较高 |
 
-### 7.4 阶段配置模型
+### 8.4 阶段配置模型
 
 ```typescript
 interface StageConfig {
@@ -1093,7 +1186,7 @@ interface StageConfig {
 }
 ```
 
-### 7.5 任务创建请求模型
+### 8.5 任务创建请求模型
 
 ```typescript
 interface TaskCreateRequest {
@@ -1113,9 +1206,9 @@ interface TaskCreateRequest {
 
 ---
 
-## 八、错误码
+## 九、错误码
 
-### 8.1 HTTP 状态码
+### 9.1 HTTP 状态码
 
 | 状态码 | 描述 |
 |--------|------|
@@ -1127,7 +1220,7 @@ interface TaskCreateRequest {
 | 429 | 配额不足 |
 | 500 | 服务器内部错误 |
 
-### 8.2 业务错误码
+### 9.2 业务错误码
 
 | 错误信息 | 场景 |
 |----------|------|
@@ -1141,9 +1234,9 @@ interface TaskCreateRequest {
 
 ---
 
-## 九、API 调用流程
+## 十、API 调用流程
 
-### 9.1 创建分析任务流程
+### 10.1 创建分析任务流程
 
 ```
 用户操作                       前端                          后端
@@ -1179,7 +1272,7 @@ interface TaskCreateRequest {
    → 渲染 Markdown
 ```
 
-### 9.2 任务管理流程
+### 10.2 任务管理流程
 
 ```
 用户操作                       前端                          后端
@@ -1210,7 +1303,7 @@ interface TaskCreateRequest {
    → 更新列表
 ```
 
-### 9.3 配置管理流程
+### 10.3 配置管理流程
 
 ```
 用户操作                       前端                          后端

@@ -3,212 +3,26 @@
  * 仅包含数据源监控相关接口
  */
 import request from '@core/api/http'
+import {
+  MarketType,
+  type DashboardOverview,
+  type MarketDetail,
+  type DataTypeDetail,
+  type ErrorDetail,
+  type RetryResponse,
+  type HistoryResponse,
+  type RefreshStatusResponse,
+  type StatusEvent,
+} from '../types'
 
-/**
- * 市场类型枚举
- */
-export enum MarketType {
-  A_STOCK = 'A_STOCK',
-  US_STOCK = 'US_STOCK',
-  HK_STOCK = 'HK_STOCK'
-}
+// 重新导出类型，保持向后兼容
+export type { MarketType, StatusEvent }
 
-/**
- * 数据源健康状态响应
- */
-export interface DataSourceHealthResponse {
-  source_name: string
-  is_available: boolean
-  response_time_ms?: number
-  last_check_time?: string
-  failure_count: number
-  error?: string
-}
-
-/**
- * 仪表板概览响应
- */
-export interface DashboardOverviewResponse {
-  a_stock?: {
-    status: 'healthy' | 'degraded' | 'unavailable'
-    last_update: string
-    last_update_relative: string
-  }
-  us_stock?: {
-    status: 'healthy' | 'degraded' | 'unavailable'
-    last_update: string
-    last_update_relative: string
-  }
-  hk_stock?: {
-    status: 'healthy' | 'degraded' | 'unavailable'
-    last_update: string
-    last_update_relative: string
-    reason?: string
-  }
-}
-
-/**
- * 市场详细状态响应
- */
-export interface MarketDetailResponse {
-  market: MarketType
-  market_name: string
-  data_types: DataTypeStatus[]
-}
-
-/**
- * 数据类型状态
- */
-export interface DataTypeStatus {
-  data_type: string
-  data_type_name: string
-  current_source: DataSourceInfo
-  is_fallback: boolean
-  can_retry: boolean
-  primary_source?: {
-    source_id: string
-    status: string
-    can_retry: boolean
-  }
-  fallback_reason?: string
-}
-
-/**
- * 数据源信息
- */
-export interface DataSourceInfo {
-  source_type: 'system' | 'user'
-  source_id: string
-  source_name: string
-  status: 'healthy' | 'degraded' | 'unavailable' | 'standby'
-  last_check: string
-  last_check_relative: string
-  response_time_ms?: number
-}
-
-/**
- * 数据类型详细信息响应
- */
-export interface DataTypeDetailResponse {
-  market: MarketType
-  data_type: string
-  data_type_name: string
-  sources: DataSourceDetailInfo[]
-  recent_events: StatusEvent[]
-}
-
-/**
- * 数据源详细信息
- */
-export interface DataSourceDetailInfo {
-  source_type: 'system' | 'user'
-  source_id: string
-  source_name: string
-  status: 'healthy' | 'degraded' | 'unavailable' | 'standby'
-  priority: number
-  last_check?: string
-  response_time_ms?: number
-  avg_response_time_ms?: number
-  failure_count: number
-  note?: string
-  api_endpoints?: ApiEndpointInfo[]
-}
-
-/**
- * API 端点信息
- */
-export interface ApiEndpointInfo {
-  endpoint_name: string
-  endpoint_name_cn: string
-  status: 'healthy' | 'unavailable'
-  last_check?: string
-  failure_count: number
-}
-
-/**
- * 状态事件
- */
-export interface StatusEvent {
-  timestamp: string
-  event_type: string
-  description: string
-  from_status?: string
-  to_status?: string
-  from_source?: string
-  to_source?: string
-  source_id?: string
-}
-
-/**
- * 错误详情响应
- */
-export interface ErrorDetailResponse {
-  market: MarketType
-  data_type: string
-  source_id: string
-  source_name: string
-  error: {
-    api_endpoint?: string
-    status?: string
-    error_code?: string
-    error_message?: string
-    error_type?: string
-    raw_response?: any
-    occurred_at?: string
-    failure_count?: number
-    retry_history?: RetryHistory[]
-  }
-  admin_debug_info?: {
-    traceback?: string
-    request_params?: any
-    full_error?: any
-  }
-}
-
-/**
- * 重试历史
- */
-export interface RetryHistory {
-  attempt: number
-  timestamp: string
-  error: string
-}
-
-/**
- * 手动重试响应
- */
-export interface RetryResponse {
-  success: boolean
-  message: string
-  result?: {
-    status: string
-    response_time_ms: number
-    recovered_at: string
-    was_fallback: boolean
-    previous_source: string
-  }
-  error?: {
-    error_code?: string
-    error_message?: string
-    failure_count?: number
-  }
-}
-
-/**
- * 历史记录响应
- */
-export interface HistoryResponse {
-  events: StatusEvent[]
-}
-
-/**
- * 刷新状态响应
- */
-export interface RefreshStatusResponse {
-  success: boolean
-  message: string
-  refreshed_at: string
-}
+// API 响应类型别名，使用 types.ts 中的类型
+export type DashboardOverviewResponse = DashboardOverview
+export type MarketDetailResponse = MarketDetail
+export type DataTypeDetailResponse = DataTypeDetail
+export type ErrorDetailResponse = ErrorDetail
 
 /**
  * 市场数据 API 类
@@ -218,40 +32,40 @@ class MarketDataApi {
   /**
    * 获取仪表板概览
    */
-  async getDashboardOverview(): Promise<DashboardOverviewResponse> {
-    const response = await request.get<DashboardOverviewResponse>('/core/system/data-source-status/overview')
+  async getDashboardOverview(): Promise<DashboardOverview> {
+    const response = await request.get<DashboardOverview>('/core/system/data-source-status/overview')
     return response.data
   }
 
   /**
    * 获取指定市场的详细状态
    */
-  async getMarketDetail(market: MarketType): Promise<MarketDetailResponse> {
-    const response = await request.get<MarketDetailResponse>(`/core/system/data-source-status/${market}`)
+  async getMarketDetail(market: MarketType): Promise<MarketDetail> {
+    const response = await request.get<MarketDetail>(`/core/system/data-source-status/${market}`)
     return response.data
   }
 
   /**
    * 获取指定数据类型的详细信息
    */
-  async getDataTypeDetail(market: MarketType, dataType: string): Promise<DataTypeDetailResponse> {
-    const response = await request.get<DataTypeDetailResponse>(`/core/system/data-source-status/${market}/${dataType}`)
+  async getDataTypeDetail(market: MarketType, dataType: string): Promise<DataTypeDetail> {
+    const response = await request.get<DataTypeDetail>(`/core/system/data-source-status/${market}/${dataType}`)
     return response.data
   }
 
   /**
    * 获取接口错误详情（普通用户）
    */
-  async getErrorDetail(market: MarketType, dataType: string, sourceId: string): Promise<ErrorDetailResponse> {
-    const response = await request.get<ErrorDetailResponse>(`/core/system/data-source-status/${market}/${dataType}/${sourceId}/error`)
+  async getErrorDetail(market: MarketType, dataType: string, sourceId: string): Promise<ErrorDetail> {
+    const response = await request.get<ErrorDetail>(`/core/system/data-source-status/${market}/${dataType}/${sourceId}/error`)
     return response.data
   }
 
   /**
    * 获取接口错误详情（管理员）
    */
-  async getErrorDetailAdmin(market: MarketType, dataType: string, sourceId: string): Promise<ErrorDetailResponse> {
-    const response = await request.get<ErrorDetailResponse>(`/core/system/data-source-status/${market}/${dataType}/${sourceId}/error`)
+  async getErrorDetailAdmin(market: MarketType, dataType: string, sourceId: string): Promise<ErrorDetail> {
+    const response = await request.get<ErrorDetail>(`/core/system/data-source-status/${market}/${dataType}/${sourceId}/error`)
     return response.data
   }
 

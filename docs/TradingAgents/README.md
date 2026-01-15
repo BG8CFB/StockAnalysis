@@ -157,9 +157,9 @@ backend/modules/trading_agents/
 
 | 变化类型 | v2.0 | v3.0 |
 |----------|------|------|
-| 调度方式 | StateGraph 工作流图 | 函数式调用 + create_agent |
+| 调度方式 | 工作流图 | 函数式调用 + create_agent |
 | 阶段实现 | runner.py + nodes | 独立智能体文件 |
-| 状态管理 | LangGraph State | Python 对象传递 |
+| 状态管理 | 图状态管理 | Python 对象传递 |
 | 智能体创建 | 图节点定义 | create_agent() 接口 |
 
 ---

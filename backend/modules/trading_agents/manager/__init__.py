@@ -15,11 +15,13 @@ from ..exceptions import (
     get_http_status_from_exception,
 )
 
-# 基础设施
-from ..infra import (
+# 基础设施（已合并到 manager 目录）
+from .database import (
     init_indexes,
     get_collection_stats,
     drop_collections,
+)
+from .alerts import (
     AlertManager,
     get_alert_manager,
 )

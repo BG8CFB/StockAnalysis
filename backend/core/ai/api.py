@@ -11,20 +11,20 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from core.auth.dependencies import get_current_active_user
-from core.user.models import UserModel
-from core.auth.rbac import Role
+from core.ai import AIMessage, get_ai_service
 from core.ai.model import get_model_service
 from core.ai.model.schemas import (
     AIModelConfigCreate,
-    AIModelConfigUpdate,
     AIModelConfigResponse,
+    AIModelConfigUpdate,
     AIModelTestRequest,
     ConnectionTestResponse,
     ListModelsRequest,
     ListModelsResponse,
 )
-from core.ai import get_ai_service, AIMessage
+from core.auth.dependencies import get_current_active_user
+from core.auth.rbac import Role
+from core.user.models import UserModel
 
 logger = logging.getLogger(__name__)
 

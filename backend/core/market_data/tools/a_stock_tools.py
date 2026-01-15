@@ -12,6 +12,10 @@ from core.market_data.tools.base_tool import MarketDataToolBase, DataSource
 
 if TYPE_CHECKING:
     from core.market_data.managers.source_router import DataSourceRouter
+else:
+    # 运行时使用 Any 作为类型
+    from typing import Any
+    DataSourceRouter = Any  # type: ignore
 
 logger = logging.getLogger(__name__)
 

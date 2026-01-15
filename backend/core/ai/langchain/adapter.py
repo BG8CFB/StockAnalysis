@@ -6,10 +6,10 @@ LangChain 适配器
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
-from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
+from langchain_openai import ChatOpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ class LangChainAdapter:
         thinking_mode: Optional[str] = None,
         reasoning_effort: Optional[str] = None,
         budget_tokens: Optional[int] = None,
-        **kwargs
+        **kwargs,
     ):
         """
         创建 LangChain ChatModel 实例
@@ -80,7 +80,7 @@ class LangChainAdapter:
                 max_retries=max_retries,
                 thinking_enabled=thinking_enabled,
                 budget_tokens=budget_tokens,
-                **kwargs
+                **kwargs,
             )
 
         # 其他平台使用 ChatOpenAI (OpenAI 兼容接口)
@@ -95,7 +95,7 @@ class LangChainAdapter:
             thinking_enabled=thinking_enabled,
             thinking_mode=thinking_mode,
             reasoning_effort=reasoning_effort,
-            **kwargs
+            **kwargs,
         )
 
     @classmethod
@@ -111,7 +111,7 @@ class LangChainAdapter:
         thinking_enabled: bool = False,
         thinking_mode: Optional[str] = None,
         reasoning_effort: Optional[str] = None,
-        **kwargs
+        **kwargs,
     ) -> ChatOpenAI:
         """创建 ChatOpenAI 实例"""
         # 确定 API 端点
@@ -122,9 +122,9 @@ class LangChainAdapter:
 
         # 添加思考参数
         if thinking_enabled:
-            model_kwargs.update(cls._build_thinking_params(
-                model_id, thinking_mode, reasoning_effort
-            ))
+            model_kwargs.update(
+                cls._build_thinking_params(model_id, thinking_mode, reasoning_effort)
+            )
 
         logger.debug(
             f"创建 ChatOpenAI: model={model_id}, platform={platform}, "
@@ -144,7 +144,7 @@ class LangChainAdapter:
             timeout=timeout_seconds,
             max_retries=max_retries,
             model_kwargs=model_kwargs if model_kwargs else {},
-            **kwargs
+            **kwargs,
         )
 
     @classmethod
@@ -157,7 +157,7 @@ class LangChainAdapter:
         max_retries: int = 3,
         thinking_enabled: bool = False,
         budget_tokens: Optional[int] = None,
-        **kwargs
+        **kwargs,
     ) -> ChatAnthropic:
         """创建 ChatAnthropic 实例"""
         # 构建模型参数
@@ -166,16 +166,10 @@ class LangChainAdapter:
         # Claude 思考参数
         if thinking_enabled:
             budget = budget_tokens or 20000
-            model_kwargs["thinking"] = {
-                "type": "enabled",
-                "budget_tokens": budget
-            }
+            model_kwargs["thinking"] = {"type": "enabled", "budget_tokens": budget}
             logger.debug(f"Claude 思考模式: budget_tokens={budget}")
 
-        logger.debug(
-            f"创建 ChatAnthropic: model={model_id}, "
-            f"thinking={thinking_enabled}"
-        )
+        logger.debug(f"创建 ChatAnthropic: model={model_id}, " f"thinking={thinking_enabled}")
 
         return ChatAnthropic(
             model=model_id,
@@ -184,7 +178,7 @@ class LangChainAdapter:
             timeout=timeout_seconds,
             max_retries=max_retries,
             model_kwargs=model_kwargs if model_kwargs else {},
-            **kwargs
+            **kwargs,
         )
 
     @classmethod
@@ -192,17 +186,31 @@ class LangChainAdapter:
         cls,
         model_id: str,
         thinking_mode: Optional[str] = None,
-        reasoning_effort: Optional[str] = None
+        reasoning_effort: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        构建思考参数
+        构建思考参数（支持多模型思考模式）
 
-        根据模型 ID 和配置返回对应的思考参数。
+        统一支持以下思考能力：
+        - GLM-4.7: 交错式思考 + 保留式思考
+        - DeepSeek: 思考模式（V3.2+ 支持工具调用）
+        - OpenAI o1/o3: 推理级别控制
+        - Claude: 扩展思考模式
+
+        Args:
+            model_id: 模型 ID
+            thinking_mode: 思考模式 (preserved=保留式, clear_on_new=新轮次清除)
+            reasoning_effort: 推理级别 (low/medium/high)
+
+        Returns:
+            模型参数字典，包含 "thinking" 或 "reasoning" 键
         """
         model_id_lower = model_id.lower()
 
-        # GLM-4.7 思考模式
+        # GLM-4.7 思考模式（支持交错式和保留式思考）
         if "glm-4.7" in model_id_lower:
+            # preserved: 保留式思考（多轮对话保留思考块，提升缓存命中率）
+            # clear_on_new: 新轮次清除思考内容
             clear_thinking = thinking_mode == "clear_on_new"
             return {
                 "thinking": {
@@ -211,8 +219,17 @@ class LangChainAdapter:
                 }
             }
 
-        # DeepSeek R1 思考模式
-        if "deepseek" in model_id_lower and "reasoner" in model_id_lower:
+        # GLM-4.6 及早期版本的思考模式
+        if "glm-4" in model_id_lower:
+            return {
+                "thinking": {
+                    "type": "enabled",
+                }
+            }
+
+        # DeepSeek 思考模式（支持所有 DeepSeek 模型）
+        # 包括: deepseek-chat, deepseek-coder, deepseek-reasoner
+        if "deepseek" in model_id_lower:
             return {
                 "thinking": {
                     "type": "enabled",
@@ -228,6 +245,8 @@ class LangChainAdapter:
                 }
             }
 
+        # 其他模型（Qwen、Moonshot 等）如果支持思考模式
+        # 使用通用格式，由各平台自行实现
         return {}
 
     @classmethod

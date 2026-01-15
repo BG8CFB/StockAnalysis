@@ -15,7 +15,7 @@ import logging
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from core.auth.security import jwt_manager
-from modules.trading_agents.pusher import get_ws_manager, WebSocketManager
+from modules.trading_agents.api.websocket_manager import get_ws_manager, WebSocketManager
 
 logger = logging.getLogger(__name__)
 

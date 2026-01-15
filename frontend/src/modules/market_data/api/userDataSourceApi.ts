@@ -65,7 +65,7 @@ class UserDataSourceApi {
       params.market = market
     }
     const response = await request.get<UserDataSourceConfig[]>('/market-data/user-sources/configs', { params })
-    return response
+    return response.data
   }
 
   /**
@@ -75,7 +75,7 @@ class UserDataSourceApi {
     const response = await request.get<UserDataSourceConfig>(`/market-data/user-sources/config/${sourceId}`, {
       params: { market }
     })
-    return response
+    return response.data
   }
 
   /**
@@ -86,7 +86,7 @@ class UserDataSourceApi {
       '/market-data/user-sources/config',
       data
     )
-    return response
+    return response.data
   }
 
   /**
@@ -102,7 +102,7 @@ class UserDataSourceApi {
       data,
       { params: { market } }
     )
-    return response
+    return response.data
   }
 
   /**
@@ -113,7 +113,7 @@ class UserDataSourceApi {
       `/market-data/user-sources/config/${sourceId}`,
       { params: { market } }
     )
-    return response
+    return response.data
   }
 
   /**
@@ -125,7 +125,7 @@ class UserDataSourceApi {
       {},
       { params: { market } }
     )
-    return response
+    return response.data
   }
 }
 

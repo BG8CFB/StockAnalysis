@@ -5,18 +5,18 @@ AI 模型配置管理服务
 API Key 使用加密存储保护。
 """
 
-import logging
 import asyncio
+import logging
 import time
 from datetime import datetime
-from typing import List, Optional, Dict
+from typing import Dict, List, Optional
+
 from bson import ObjectId
 
-from core.db.mongodb import mongodb
 from core.ai.model.schemas import (
     AIModelConfigCreate,
-    AIModelConfigUpdate,
     AIModelConfigResponse,
+    AIModelConfigUpdate,
     AIModelTestRequest,
     ConnectionTestResponse,
     ListModelsRequest,
@@ -25,6 +25,7 @@ from core.ai.model.schemas import (
     PlatformTypeEnum,
     PresetPlatformEnum,
 )
+from core.db.mongodb import mongodb
 from core.security.encryption import encrypt_sensitive_data
 
 logger = logging.getLogger(__name__)
@@ -399,9 +400,7 @@ class AIModelService:
 
         try:
             # 使用新的 AIService 进行测试
-            from core.ai import get_ai_service, AIMessage
-
-            ai_service = get_ai_service()
+            from core.ai import AIMessage
 
             # 创建测试消息
             test_messages = [

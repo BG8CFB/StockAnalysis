@@ -1,6 +1,6 @@
 # 股票分析平台
 
-一个基于 **LangGraph** 多智能体工作流的股票分析平台，支持多用户登录注册，每个用户的配置和数据完全隔离。
+一个基于 **LangChain** 多智能体工作流的股票分析平台，支持多用户登录注册，每个用户的配置和数据完全隔离。
 
 ## 技术栈
 
@@ -11,7 +11,7 @@
 | 状态管理 | Pinia |
 | 路由 | Vue Router |
 | 后端框架 | FastAPI + Python |
-| 工作流引擎 | **LangGraph** (StateGraph) |
+| 工作流引擎 | **LangChain** (create_agent) |
 | LLM 接入 | 智谱 AI (glm-4.6) |
 | 工具协议 | MCP (Model Context Protocol) |
 | 数据库 | MongoDB + Redis |
@@ -138,7 +138,7 @@ docker-compose -f docker-compose.dev.yml logs frontend  # 前端日志
 ### 已实现
 
 **核心功能：**
-- **TradingAgents 智能分析系统**（基于 LangGraph）
+- **TradingAgents 智能分析系统**（基于 LangChain）
   - 四阶段工作流：分析师团队 → 观点辩论 → 风险评估 → 总结报告
   - 多智能体协作：技术分析、基本面分析、情绪分析、新闻分析
   - MCP 工具集成：实时数据获取和外部工具调用

@@ -7,15 +7,15 @@ AI 统一服务
 
 import logging
 from datetime import datetime
-from typing import List, Optional, AsyncIterator, Dict, Any
+from typing import Any, AsyncIterator, Dict, List, Optional
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
-from .types import AIMessage, AIResponse, AIStreamChunk, AITool, create_message
-from .langchain.adapter import LangChainAdapter
 from .concurrency import ConcurrencyManager
+from .langchain.adapter import LangChainAdapter
 from .pricing import get_pricing_service
-from .usage import get_usage_service, AIUsageRecord
+from .types import AIMessage, AIResponse, AIStreamChunk, AITool, create_message
+from .usage import get_usage_service
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ class AIService:
         task_id: Optional[str] = None,
         phase: Optional[str] = None,
         agent_slug: Optional[str] = None,
-        **kwargs
+        **kwargs,
     ) -> AIResponse:
         """
         聊天补全
@@ -97,10 +97,7 @@ class AIService:
 
             # 添加工具（如果有）
             if tools:
-                invoke_kwargs["tools"] = [
-                    tool.to_langchain_format()
-                    for tool in tools
-                ]
+                invoke_kwargs["tools"] = [tool.to_langchain_format() for tool in tools]
 
             # 调用模型
             logger.debug(
@@ -132,11 +129,7 @@ class AIService:
             return parsed_response
 
     async def stream_completion(
-        self,
-        user_id: str,
-        messages: List[AIMessage],
-        model_id: Optional[str] = None,
-        **kwargs
+        self, user_id: str, messages: List[AIMessage], model_id: Optional[str] = None, **kwargs
     ) -> AsyncIterator[AIStreamChunk]:
         """
         流式聊天补全
@@ -168,19 +161,24 @@ class AIService:
 
             # 流式调用
             async for chunk in chat_model.astream(lc_messages):
+                # 提取思考内容（如果存在）
+                reasoning_content = None
+                if (
+                    hasattr(chunk, "additional_kwargs")
+                    and "reasoning_content" in chunk.additional_kwargs
+                ):
+                    reasoning_content = chunk.additional_kwargs["reasoning_content"]
+
                 yield AIStreamChunk(
                     content=chunk.content or "",
+                    reasoning_content=reasoning_content,
                     is_complete=False,
                 )
 
             # 发送完成标记
             yield AIStreamChunk(content="", is_complete=True)
 
-    async def validate_connection(
-        self,
-        user_id: str,
-        model_id: Optional[str] = None
-    ) -> bool:
+    async def validate_connection(self, user_id: str, model_id: Optional[str] = None) -> bool:
         """
         验证连接
 
@@ -200,12 +198,29 @@ class AIService:
             logger.warning(f"连接验证失败: user={user_id}, model={model_id}, error={e}")
             return False
 
-    async def _get_model_config(
-        self,
-        user_id: str,
-        model_id: Optional[str]
-    ) -> Dict:
+    async def _get_model_config(self, user_id: str, model_id: Optional[str]) -> Dict:
         """获取模型配置"""
+        # 优先从环境变量读取配置（用于测试）
+        import os
+
+        env_api_key = os.getenv("ZHIPU_API_KEY", "")
+        env_api_base = os.getenv("ZHIPU_API_BASE", "")
+        env_model = os.getenv("ZHIPU_MODEL", "")
+
+        if env_api_key:
+            platform = "zhipu_coding" if "coding" in env_api_base.lower() else "zhipu"
+            return {
+                "model_id": env_model or model_id or "glm-4.7",
+                "platform": platform,
+                "api_key": env_api_key,
+                "api_base_url": env_api_base or "https://open.bigmodel.cn/api/coding/paas/v4",
+                "temperature": 0.5,
+                "timeout_seconds": 120,
+                "max_retries": 3,
+                "thinking_enabled": True,  # 默认启用思考模式
+                "thinking_mode": "preserved",  # 保留式思考（提升缓存命中率）
+            }
+
         # 如果有配置服务，使用配置服务
         if self._config_service:
             if model_id:
@@ -232,8 +247,8 @@ class AIService:
             "temperature": 0.5,
             "timeout_seconds": 60,
             "max_retries": 3,
-            "thinking_enabled": False,
-            "thinking_mode": None,
+            "thinking_enabled": True,  # 默认启用思考模式
+            "thinking_mode": "preserved",  # 保留式思考
         }
 
     def _config_to_dict(self, config) -> Dict:
@@ -314,11 +329,11 @@ class AIService:
                 output_tokens = usage.get("output_tokens", 0)
                 total_tokens = usage.get("total_tokens", input_tokens + output_tokens)
 
-        # 计算成本
-        cost = None
+        # 计算成本（用于统计，当前不返回）
+        _cost = None
         if total_tokens > 0:
             try:
-                cost = self._pricing_service.calculate_cost(
+                _cost = self._pricing_service.calculate_cost(
                     model_id=config["model_id"],
                     input_tokens=input_tokens,
                     output_tokens=output_tokens,
@@ -390,14 +405,109 @@ class AIService:
         self.concurrency_manager.clear_user_semaphore(user_id)
 
         # 清除模型缓存中该用户的配置缓存
-        keys_to_remove = [
-            k for k in self._config_cache.keys()
-            if k.startswith(f"{user_id}:")
-        ]
+        keys_to_remove = [k for k in self._config_cache.keys() if k.startswith(f"{user_id}:")]
         for key in keys_to_remove:
             del self._config_cache[key]
 
         logger.debug(f"清除用户缓存: user={user_id}")
+
+    def get_model(self, model_id: str, user_id: str = "system") -> BaseChatModel:
+        """
+        获取 LangChain ChatModel 实例
+
+        Args:
+            model_id: 模型 ID
+            user_id: 用户 ID（默认为 system）
+
+        Returns:
+            LangChain ChatModel 实例
+
+        Note:
+            这是一个同步方法，用于简化 scheduler 等需要直接获取模型实例的场景。
+        """
+        import asyncio
+        import os
+
+        # 优先从环境变量读取配置（始终优先）
+        env_api_key = os.getenv("ZHIPU_API_KEY", "")
+        env_api_base = os.getenv("ZHIPU_API_BASE", "")
+        env_model = os.getenv("ZHIPU_MODEL", "")
+
+        if env_api_key:
+            platform = "zhipu_coding" if "coding" in env_api_base.lower() else "zhipu"
+            config = {
+                "model_id": env_model or model_id or "glm-4.7",
+                "platform": platform,
+                "api_key": env_api_key,
+                "api_base_url": env_api_base or "https://open.bigmodel.cn/api/coding/paas/v4",
+                "temperature": 0.5,
+                "timeout_seconds": 120,
+                "max_retries": 3,
+                "thinking_enabled": True,  # 默认启用思考模式
+                "thinking_mode": "preserved",  # 保留式思考
+            }
+            return self._create_model_sync(config)
+
+        # 尝试获取模型配置
+        config = None
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # 在运行中的事件循环，使用默认配置
+                config = {
+                    "model_id": model_id,
+                    "platform": "zhipu",
+                    "api_key": "",
+                    "api_base_url": "https://open.bigmodel.cn/api/paas/v4",
+                    "temperature": 0.5,
+                    "timeout_seconds": 60,
+                    "max_retries": 3,
+                    "thinking_enabled": True,  # 默认启用思考模式
+                    "thinking_mode": "preserved",  # 保留式思考
+                }
+            else:
+                config = loop.run_until_complete(self._get_model_config(user_id, model_id))
+        except RuntimeError:
+            # 没有事件循环，创建新的
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                config = loop.run_until_complete(self._get_model_config(user_id, model_id))
+            finally:
+                loop.close()
+
+        # 如果获取配置失败，使用默认配置
+        if not config:
+            config = {
+                "model_id": model_id,
+                "platform": "zhipu",
+                "api_key": "",
+                "api_base_url": "https://open.bigmodel.cn/api/paas/v4",
+                "temperature": 0.5,
+                "timeout_seconds": 60,
+                "max_retries": 3,
+                "thinking_enabled": True,  # 默认启用思考模式
+                "thinking_mode": "preserved",  # 保留式思考
+            }
+
+        # 创建模型实例
+        return self._create_model_sync(config)
+
+    def _create_model_sync(self, config: Dict) -> BaseChatModel:
+        """同步创建 ChatModel 实例"""
+        from .langchain.adapter import LangChainAdapter
+
+        return LangChainAdapter.create_chat_model(
+            model_id=config["model_id"],
+            api_key=config.get("api_key", ""),
+            platform=config.get("platform", "zhipu"),
+            api_base_url=config.get("api_base_url"),
+            temperature=config.get("temperature", 0.5),
+            timeout_seconds=config.get("timeout_seconds", 60),
+            max_retries=config.get("max_retries", 3),
+            thinking_enabled=config.get("thinking_enabled", False),
+            thinking_mode=config.get("thinking_mode"),
+        )
 
 
 # =============================================================================

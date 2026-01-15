@@ -6,7 +6,8 @@ AI 模型配置数据模型
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field, model_validator
 
 

@@ -1,15 +1,17 @@
 """
-TradingAgents API 路由聚合模块
+TradingAgents API 路由模块
 
-合并后的 API 路由模块：
-- tasks.py: 任务管理 + 智能体配置路由
-- reports.py: WebSocket + 健康检查路由（报告管理和设置路由已删除）
+API 层 - 对外接口（HTTP + WebSocket）
+- tasks.py: 任务管理 API
+- reports.py: 报告查询 API
+- websocket.py: WebSocket 路由（合并自 websocket/）
 """
 
 from fastapi import APIRouter
 
 from .tasks import router as tasks_router, config_router
 from .reports import websocket_router, health_router
+from .websocket import router as websocket_tasks_router
 
 # 创建聚合路由器
 router = APIRouter()
@@ -19,5 +21,6 @@ router.include_router(tasks_router)
 router.include_router(config_router)
 router.include_router(websocket_router)
 router.include_router(health_router)
+router.include_router(websocket_tasks_router)
 
 __all__ = ["router"]

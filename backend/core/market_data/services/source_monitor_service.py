@@ -15,6 +15,7 @@ from core.market_data.models.datasource import (
     DataSourceHealthStatus,
     DataSourceStatusHistory,
 )
+from core.market_data.models import MarketType
 from core.market_data.repositories.datasource import (
     SystemDataSourceRepository,
     DataSourceStatusRepository,
@@ -591,5 +592,3 @@ class SourceMonitorService:
     async def stop_monitoring(self):
         """停止监控"""
         pass
-
-    from core.market_data.models import MarketType

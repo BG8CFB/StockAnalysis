@@ -347,13 +347,13 @@ const handleRetry = async (sourceId: string, dataType: string) => {
  * 导出日志
  */
 const handleExportLog = async () => {
-  if (!selectedDataTypeDetail) return
+  if (!selectedDataTypeDetail.value) return
 
   try {
     exporting.value = true
     const history = await marketDataApi.getHistory(
       activeMarket.value,
-      selectedDataTypeDetail.data_type,
+      selectedDataTypeDetail.value.data_type,
       24
     )
 
@@ -370,7 +370,7 @@ const handleExportLog = async () => {
     const link = document.createElement('a')
     const url = URL.createObjectURL(blob)
     link.setAttribute('href', url)
-    link.setAttribute('download', `data_source_history_${selectedDataTypeDetail.data_type}_${Date.now()}.csv`)
+    link.setAttribute('download', `data_source_history_${selectedDataTypeDetail.value.data_type}_${Date.now()}.csv`)
     link.style.visibility = 'hidden'
     document.body.appendChild(link)
     link.click()
