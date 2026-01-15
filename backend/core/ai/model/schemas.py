@@ -184,6 +184,9 @@ class AIModelConfigResponse(AIModelConfigBase):
     updated_at: datetime
     masked_api_key: str = Field(..., description="脱敏后的 API Key")
 
+    # 覆盖基类的 api_key 字段：响应对象中不返回完整 API Key
+    api_key: Optional[str] = Field(None, description="API Key（响应中不返回）")
+
     @classmethod
     def from_db(cls, data: Dict[str, Any]) -> "AIModelConfigResponse":
         """从数据库数据创建响应对象"""
@@ -222,7 +225,7 @@ class AIModelConfigResponse(AIModelConfigBase):
             platform_name=(PresetPlatformEnum(platform_name) if platform_name else None),
             provider=ModelProviderEnum(provider) if provider else None,
             api_base_url=data["api_base_url"],
-            api_key=api_key,
+            api_key=None,  # 响应中不返回完整 API Key
             model_id=data["model_id"],
             custom_headers=data.get("custom_headers", {}),
             max_concurrency=data.get("max_concurrency", 40),
