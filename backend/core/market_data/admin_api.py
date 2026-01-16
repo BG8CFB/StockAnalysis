@@ -8,7 +8,7 @@
 
 import logging
 from typing import List, Optional
-from datetime import datetime, date as date_type
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -19,6 +19,7 @@ from core.market_data.repositories.datasource import (
 )
 from core.auth.dependencies import get_current_active_user
 from core.user.models import UserModel
+from core.config import SUPPORTED_MARKETS
 
 logger = logging.getLogger(__name__)
 
@@ -65,12 +66,12 @@ async def get_source_configs(
         if market:
             configs = await system_source_repo.get_enabled_configs(
                 market=market,
-                enabled=enabled_only
+                enabled_only=enabled_only
             )
         else:
             all_configs = []
-            for m in ["A_STOCK", "US_STOCK", "HK_STOCK"]:
-                all_configs.extend(await system_source_repo.get_enabled_configs(market=m, enabled=enabled_only))
+            for m in SUPPORTED_MARKETS:
+                all_configs.extend(await system_source_repo.get_enabled_configs(market=m, enabled_only=enabled_only))
             configs = all_configs
 
         return JSONResponse(content=configs)
@@ -403,7 +404,7 @@ async def test_user_source_config(
                 adapter = TuShareAdapter(config=config["config"])
                 success = await adapter.test_connection()
             elif source_id == "alpha_vantage":
-                from core.market_data.sources.us_stock.alpha_vantage_adapter import AlphaVantageAdapter
+                from core.market_data.sources.us_stock.alphavantage_adapter import AlphaVantageAdapter
                 adapter = AlphaVantageAdapter(config=config["config"])
                 success = await adapter.test_connection()
             else:
@@ -439,4 +440,145 @@ async def test_user_source_config(
         raise HTTPException(
             status_code=500,
             detail=f"测试用户数据源配置失败: {str(e)}"
+        )
+
+
+# =============================================================================
+# 手动触发同步接口
+# =============================================================================
+
+@router.post("/sync/trigger-full")
+async def trigger_full_sync(
+    market: str = Query("A_STOCK", description="市场类型: A_STOCK, US_STOCK, HK_STOCK"),
+    current_user: UserModel = Depends(get_current_active_user)
+):
+    """
+    手动触发全量同步
+
+    触发指定市场的全量数据同步，包括：
+    - 股票列表
+    - 日线行情（最近1个月）
+    - 公司信息
+    - 财务数据
+
+    注意：此操作可能需要较长时间，建议在非高峰期执行。
+    """
+    from core.market_data.services.data_sync_service import DataSyncService
+    from core.market_data.repositories.stock_info import StockInfoRepository
+    from core.market_data.models import MarketType
+
+    try:
+        user_id = str(current_user.id)
+        logger.info(f"User {user_id} triggered full sync for {market}")
+
+        sync_service = DataSyncService()
+        stock_repo = StockInfoRepository()
+
+        results = {
+            "market": market,
+            "user_id": user_id,
+            "started_at": datetime.now().isoformat(),
+            "tasks": []
+        }
+
+        # 1. 同步股票列表
+        try:
+            logger.info(f"[{market}] 开始同步股票列表...")
+            stock_list_result = await sync_service.sync_stock_list_with_fallback(
+                market=MarketType(market.lower()),
+                status="L"
+            )
+            results["tasks"].append({
+                "name": "同步股票列表",
+                "status": stock_list_result["status"],
+                "result": stock_list_result.get("result", {})
+            })
+            logger.info(f"[{market}] 股票列表同步完成: {stock_list_result['status']}")
+        except Exception as e:
+            logger.error(f"[{market}] 股票列表同步失败: {e}")
+            results["tasks"].append({
+                "name": "同步股票列表",
+                "status": "failed",
+                "error": str(e)
+            })
+
+        # 2. 同步日线行情（最近1个月，限制前100只股票）
+        try:
+            logger.info(f"[{market}] 开始同步日线行情...")
+            stocks = await stock_repo.get_by_market(MarketType(market.lower()), limit=100)
+            symbols = [s["symbol"] for s in stocks]
+
+            if symbols:
+                end_date = datetime.now().strftime("%Y%m%d")
+                start_date = (datetime.now() - timedelta(days=30)).strftime("%Y%m%d")
+
+                quotes_result = await sync_service.sync_daily_quotes_with_fallback(
+                    symbols=symbols,
+                    start_date=start_date,
+                    end_date=end_date
+                )
+                results["tasks"].append({
+                    "name": "同步日线行情",
+                    "status": quotes_result["status"],
+                    "result": quotes_result.get("result", {})
+                })
+                logger.info(f"[{market}] 日线行情同步完成: {quotes_result['status']}")
+            else:
+                results["tasks"].append({
+                    "name": "同步日线行情",
+                    "status": "skipped",
+                    "error": "没有找到股票列表"
+                })
+        except Exception as e:
+            logger.error(f"[{market}] 日线行情同步失败: {e}")
+            results["tasks"].append({
+                "name": "同步日线行情",
+                "status": "failed",
+                "error": str(e)
+            })
+
+        # 3. 同步公司信息（仅A股）
+        if market == "A_STOCK":
+            try:
+                logger.info(f"[{market}] 开始同步公司信息...")
+                stocks = await stock_repo.get_by_market(MarketType.A_STOCK, limit=50)
+                symbols = [s["symbol"] for s in stocks]
+
+                if symbols:
+                    company_result = await sync_service.sync_company_info_with_fallback(
+                        symbols=symbols
+                    )
+                    results["tasks"].append({
+                        "name": "同步公司信息",
+                        "status": company_result["status"],
+                        "result": company_result.get("result", {})
+                    })
+                    logger.info(f"[{market}] 公司信息同步完成: {company_result['status']}")
+                else:
+                    results["tasks"].append({
+                        "name": "同步公司信息",
+                        "status": "skipped",
+                        "error": "没有找到股票列表"
+                    })
+            except Exception as e:
+                logger.error(f"[{market}] 公司信息同步失败: {e}")
+                results["tasks"].append({
+                    "name": "同步公司信息",
+                    "status": "failed",
+                    "error": str(e)
+                })
+
+        results["finished_at"] = datetime.now().isoformat()
+        results["total_tasks"] = len(results["tasks"])
+        results["successful_tasks"] = sum(1 for t in results["tasks"] if t["status"] in ["completed", "completed_with_errors"])
+
+        logger.info(f"Full sync completed for {market}: {results['successful_tasks']}/{results['total_tasks']} tasks")
+
+        return JSONResponse(content=results)
+
+    except Exception as e:
+        logger.error(f"Failed to trigger full sync: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"触发全量同步失败: {str(e)}"
         )

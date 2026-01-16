@@ -151,6 +151,13 @@ class AgentConfigLoader:
                 details={"file": str(file_path), "error": str(e)}
             )
 
+    # Phase 2-4 固定智能体定义（只能修改提示词，不能删除或添加）
+    FIXED_AGENTS = {
+        "phase2": ["bull-researcher", "bear-researcher", "research-manager", "trader"],
+        "phase3": ["aggressive-debator", "neutral-debator", "conservative-debator", "risk-manager"],
+        "phase4": ["summarizer"]
+    }
+
     def validate_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """
         验证配置结构
@@ -175,6 +182,10 @@ class AgentConfigLoader:
 
             phase_config = config[phase]
 
+            # Phase 4 是必须执行的
+            if phase == "phase4":
+                phase_config["enabled"] = True
+
             # 验证必需字段
             if "enabled" not in phase_config:
                 raise ConfigurationError(
@@ -196,33 +207,133 @@ class AgentConfigLoader:
                     details={"phase": phase, "type": type(agents).__name__}
                 )
 
-            # 验证每个智能体的必需字段
-            for agent in agents:
-                if not isinstance(agent, dict):
-                    raise ConfigurationError(
-                        f"智能体配置必须是字典: {phase}",
-                        details={"phase": phase, "type": type(agent).__name__}
-                    )
-
-                if "slug" not in agent:
-                    raise ConfigurationError(
-                        f"智能体配置缺少 slug 字段: {phase}",
-                        details={"phase": phase}
-                    )
-
-                if "name" not in agent:
-                    raise ConfigurationError(
-                        f"智能体配置缺少 name 字段: {phase}",
-                        details={"phase": phase, "agent": agent.get("slug")}
-                    )
-
-                if "roleDefinition" not in agent:
-                    raise ConfigurationError(
-                        f"智能体配置缺少 roleDefinition 字段: {phase}",
-                        details={"phase": phase, "agent": agent.get("slug")}
-                    )
+            # Phase 1: 完全动态，不限制智能体
+            if phase == "phase1":
+                self._validate_phase1_agents(agents)
+            # Phase 2-4: 固定智能体，只能修改提示词
+            elif phase in self.FIXED_AGENTS:
+                self._validate_fixed_agents(phase, agents)
 
         return config
+
+    def _validate_phase1_agents(self, agents: List[Dict[str, Any]]) -> None:
+        """
+        验证 Phase 1 智能体配置（完全动态，不限制智能体）
+
+        Args:
+            agents: 智能体列表
+
+        Raises:
+            ConfigurationError: 验证失败
+        """
+        for agent in agents:
+            if not isinstance(agent, dict):
+                raise ConfigurationError(
+                    f"智能体配置必须是字典: phase1",
+                    details={"type": type(agent).__name__}
+                )
+
+            if "slug" not in agent:
+                raise ConfigurationError(
+                    f"智能体配置缺少 slug 字段: phase1",
+                    details={"agent": agent}
+                )
+
+            if "name" not in agent:
+                raise ConfigurationError(
+                    f"智能体配置缺少 name 字段: phase1, slug={agent.get('slug')}",
+                    details={"slug": agent.get("slug")}
+                )
+
+            if "roleDefinition" not in agent:
+                raise ConfigurationError(
+                    f"智能体配置缺少 roleDefinition 字段: phase1, slug={agent.get('slug')}",
+                    details={"slug": agent.get("slug")}
+                )
+
+    def _validate_fixed_agents(self, phase: str, agents: List[Dict[str, Any]]) -> None:
+        """
+        验证 Phase 2-4 固定智能体配置（只能修改提示词，不能删除或添加）
+
+        Args:
+            phase: 阶段名称
+            agents: 智能体列表
+
+        Raises:
+            ConfigurationError: 验证失败
+        """
+        fixed_slugs = self.FIXED_AGENTS[phase]
+        agent_slugs = [agent.get("slug") for agent in agents]
+
+        # 验证智能体数量
+        if len(agents) != len(fixed_slugs):
+            raise ConfigurationError(
+                f"{phase} 智能体数量错误: 期望 {len(fixed_slugs)} 个，实际 {len(agents)} 个",
+                details={
+                    "phase": phase,
+                    "expected": len(fixed_slugs),
+                    "actual": len(agents),
+                    "expected_agents": fixed_slugs,
+                    "actual_agents": agent_slugs
+                }
+            )
+
+        # 验证每个必需的智能体是否存在
+        for fixed_slug in fixed_slugs:
+            if fixed_slug not in agent_slugs:
+                raise ConfigurationError(
+                    f"{phase} 缺少必需的智能体: {fixed_slug}（不能删除固定智能体）",
+                    details={
+                        "phase": phase,
+                        "missing_agent": fixed_slug,
+                        "required_agents": fixed_slugs
+                    }
+                )
+
+        # 验证不允许添加额外的智能体
+        for agent_slug in agent_slugs:
+            if agent_slug not in fixed_slugs:
+                raise ConfigurationError(
+                    f"{phase} 不允许添加智能体: {agent_slug}（固定智能体不能修改）",
+                    details={
+                        "phase": phase,
+                        "invalid_agent": agent_slug,
+                        "allowed_agents": fixed_slugs
+                    }
+                )
+
+        # 验证每个智能体的必需字段
+        for agent in agents:
+            if not isinstance(agent, dict):
+                raise ConfigurationError(
+                    f"智能体配置必须是字典: {phase}",
+                    details={"phase": phase, "type": type(agent).__name__}
+                )
+
+            if "slug" not in agent:
+                raise ConfigurationError(
+                    f"智能体配置缺少 slug 字段: {phase}",
+                    details={"phase": phase}
+                )
+
+            if "name" not in agent:
+                raise ConfigurationError(
+                    f"智能体配置缺少 name 字段: {phase}, slug={agent.get('slug')}",
+                    details={"phase": phase, "slug": agent.get("slug")}
+                )
+
+            if "roleDefinition" not in agent:
+                raise ConfigurationError(
+                    f"智能体配置缺少 roleDefinition 字段: {phase}, slug={agent.get('slug')}",
+                    details={"phase": phase, "slug": agent.get("slug")}
+                )
+
+            # Phase 4 的 summarizer 必须 enabled
+            if phase == "phase4" and not agent.get("enabled", True):
+                raise ConfigurationError(
+                    f"{phase} 的总结智能体必须启用（不能禁用）",
+                    details={"phase": phase, "slug": agent.get("slug")}
+                )
 
     def export_to_yaml(self, config: Dict[str, Any], file_path: Path) -> None:
         """

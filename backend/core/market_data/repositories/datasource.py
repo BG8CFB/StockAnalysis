@@ -76,21 +76,21 @@ class SystemDataSourceRepository(BaseRepository):
     async def get_enabled_configs(
         self,
         market: str,
-        enabled: bool = True
+        enabled_only: bool = True
     ) -> List[Dict[str, Any]]:
         """
         获取启用的数据源配置列表，按优先级排序
 
         Args:
             market: 市场类型
-            enabled: 是否启用
+            enabled_only: 是否只返回启用的配置
 
         Returns:
             配置列表
         """
         filter_query = {
             "market": market,
-            "enabled": enabled
+            "enabled": enabled_only
         }
         return await self.find_many(filter_query, sort=[("priority", 1)])
 
@@ -668,12 +668,12 @@ class DataSourceStatusRepository(BaseRepository):
             "healthy": 0,
             "degraded": 0,
             "unavailable": 0,
-            "standby": 0
         }
 
         for item in results:
             status = item["_id"]
-            summary[status] = item["count"]
+            if status in summary:
+                summary[status] = item["count"]
 
         return summary
 

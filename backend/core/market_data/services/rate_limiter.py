@@ -9,7 +9,23 @@ import logging
 from typing import Optional
 from datetime import datetime, timedelta
 
+from core.config import (
+    DATA_SOURCE_RATE_LIMIT_WINDOW,
+    DATA_SOURCE_RATE_LIMIT_MAX_REQUESTS,
+)
+
 logger = logging.getLogger(__name__)
+
+
+# Lua 脚本：原子性地执行 incr 和 expire 操作
+# 返回值：当前计数
+INCR_AND_EXPIRE_SCRIPT = """
+local current = redis.call('INCR', KEYS[1])
+if current == 1 then
+    redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+return current
+"""
 
 
 class RateLimiter:
@@ -18,26 +34,36 @@ class RateLimiter:
 
     按 symbol + data_type 粒度进行限流，1分钟时间窗口。
     支持内存和 Redis 两种实现方式。
+
+    Redis 实现使用 Lua 脚本确保 incr 和 expire 操作的原子性。
     """
 
     def __init__(
         self,
         redis_client=None,
-        window_seconds: int = 60,
-        max_requests: int = 1
+        window_seconds: int = None,
+        max_requests: int = None
     ):
         """
         初始化限流服务
 
         Args:
             redis_client: Redis 客户端（可选，不传则使用内存存储）
-            window_seconds: 时间窗口（秒），默认 60 秒
-            max_requests: 时间窗口内最大请求数，默认 1 次
+            window_seconds: 时间窗口（秒），默认从配置读取
+            max_requests: 时间窗口内最大请求数，默认从配置读取
         """
         self.redis = redis_client
-        self.window_seconds = window_seconds
-        self.max_requests = max_requests
+        # 使用配置文件中的默认值
+        self.window_seconds = window_seconds if window_seconds is not None else DATA_SOURCE_RATE_LIMIT_WINDOW
+        self.max_requests = max_requests if max_requests is not None else DATA_SOURCE_RATE_LIMIT_MAX_REQUESTS
         self._memory_store = {}  # 内存存储（用于无 Redis 的情况）
+        self._lua_script = None  # Lua 脚本缓存
+
+    async def _get_lua_script(self):
+        """获取或注册 Lua 脚本"""
+        if self._lua_script is None:
+            self._lua_script = await self.redis.register_script(INCR_AND_EXPIRE_SCRIPT)
+        return self._lua_script
 
     def _make_key(self, symbol: str, data_type: str) -> str:
         """
@@ -76,7 +102,7 @@ class RateLimiter:
 
     async def _check_redis(self, key: str) -> bool:
         """
-        使用 Redis 检查限流
+        使用 Redis 检查限流（使用 Lua 脚本确保原子性）
 
         Args:
             key: 限流键
@@ -85,12 +111,12 @@ class RateLimiter:
             是否允许访问
         """
         try:
-            # 使用 Redis 的 INCR 和 EXPIRE 实现滑动窗口限流
-            current = await self.redis.incr(key)
-
-            if current == 1:
-                # 第一次请求，设置过期时间
-                await self.redis.expire(key, self.window_seconds)
+            # 使用 Lua 脚本原子性地执行 incr 和 expire
+            script = await self._get_lua_script()
+            current = await script(
+                keys=[key],
+                args=[self.window_seconds]
+            )
 
             if current <= self.max_requests:
                 logger.debug(f"Rate limiter: allowed key={key}, count={current}/{self.max_requests}")
@@ -244,7 +270,7 @@ class RateLimiter:
         data_type: str
     ) -> tuple[bool, int]:
         """
-        检查并增加计数（原子操作）
+        检查并增加计数（使用 Lua 脚本确保原子操作）
 
         Args:
             symbol: 股票代码
@@ -257,9 +283,12 @@ class RateLimiter:
 
         if self.redis:
             try:
-                current = await self.redis.incr(key)
-                if current == 1:
-                    await self.redis.expire(key, self.window_seconds)
+                # 使用 Lua 脚本原子性地执行 incr 和 expire
+                script = await self._get_lua_script()
+                current = await script(
+                    keys=[key],
+                    args=[self.window_seconds]
+                )
 
                 allowed = current <= self.max_requests
                 if not allowed:

@@ -217,8 +217,7 @@ class AIService:
                 "temperature": 0.5,
                 "timeout_seconds": 120,
                 "max_retries": 3,
-                "thinking_enabled": True,  # 默认启用思考模式
-                "thinking_mode": "preserved",  # 保留式思考（提升缓存命中率）
+                "thinking_enabled": True,
             }
 
         # 如果有配置服务，使用配置服务
@@ -247,8 +246,7 @@ class AIService:
             "temperature": 0.5,
             "timeout_seconds": 60,
             "max_retries": 3,
-            "thinking_enabled": True,  # 默认启用思考模式
-            "thinking_mode": "preserved",  # 保留式思考
+            "thinking_enabled": True,
         }
 
     def _config_to_dict(self, config) -> Dict:
@@ -280,7 +278,6 @@ class AIService:
                 timeout_seconds=config.get("timeout_seconds", 60),
                 max_retries=config.get("max_retries", 3),
                 thinking_enabled=config.get("thinking_enabled", False),
-                thinking_mode=config.get("thinking_mode"),
             )
 
         return self._model_cache[cache_key]
@@ -443,8 +440,7 @@ class AIService:
                 "temperature": 0.5,
                 "timeout_seconds": 120,
                 "max_retries": 3,
-                "thinking_enabled": True,  # 默认启用思考模式
-                "thinking_mode": "preserved",  # 保留式思考
+                "thinking_enabled": True,
             }
             return self._create_model_sync(config)
 
@@ -462,8 +458,7 @@ class AIService:
                     "temperature": 0.5,
                     "timeout_seconds": 60,
                     "max_retries": 3,
-                    "thinking_enabled": True,  # 默认启用思考模式
-                    "thinking_mode": "preserved",  # 保留式思考
+                    "thinking_enabled": True,
                 }
             else:
                 config = loop.run_until_complete(self._get_model_config(user_id, model_id))
@@ -486,8 +481,7 @@ class AIService:
                 "temperature": 0.5,
                 "timeout_seconds": 60,
                 "max_retries": 3,
-                "thinking_enabled": True,  # 默认启用思考模式
-                "thinking_mode": "preserved",  # 保留式思考
+                "thinking_enabled": True,
             }
 
         # 创建模型实例
@@ -506,7 +500,6 @@ class AIService:
             timeout_seconds=config.get("timeout_seconds", 60),
             max_retries=config.get("max_retries", 3),
             thinking_enabled=config.get("thinking_enabled", False),
-            thinking_mode=config.get("thinking_mode"),
         )
 
 

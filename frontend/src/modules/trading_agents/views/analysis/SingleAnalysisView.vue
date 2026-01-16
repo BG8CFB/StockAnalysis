@@ -192,10 +192,10 @@
                   <span class="stage-number">02</span>
                   <div>
                     <h4 class="stage-title">
-                      双向辩论
+                      多空博弈与投资决策
                     </h4>
                     <p class="stage-desc">
-                      看涨/看跌分析师对抗辩论
+                      看涨/看跌研究员、投资组合经理、交易员共同参与决策
                     </p>
                   </div>
                 </div>
@@ -210,7 +210,7 @@
               >
                 <div class="stage-tags">
                   <el-tag
-                    v-for="role in ['看涨分析师', '看跌分析师', '研究部主管']"
+                    v-for="role in ['看涨研究员', '看跌研究员', '投资组合经理', '交易员']"
                     :key="role"
                     size="small"
                   >
@@ -240,10 +240,10 @@
                   <span class="stage-number">03</span>
                   <div>
                     <h4 class="stage-title">
-                      风险管理
+                      策略风格与风险评估
                     </h4>
                     <p class="stage-desc">
-                      三方风险评估与风控方案
+                      激进/中性/保守派辩论与风险管理主席评估
                     </p>
                   </div>
                 </div>
@@ -258,7 +258,7 @@
               >
                 <div class="stage-tags">
                   <el-tag
-                    v-for="role in ['激进派', '保守派', '中性派']"
+                    v-for="role in ['激进派', '中性派', '保守派', '风险管理主席']"
                     :key="role"
                     size="small"
                   >
@@ -285,10 +285,10 @@
                   <span class="stage-number">04</span>
                   <div>
                     <h4 class="stage-title">
-                      最终总结
+                      总结智能体
                     </h4>
                     <p class="stage-desc">
-                      综合所有分析结果生成报告
+                      综合所有分析结果生成最终报告
                     </p>
                   </div>
                 </div>
@@ -336,14 +336,14 @@
                   type="success"
                   size="small"
                 >
-                  双向辩论
+                  多空博弈与投资决策
                 </el-tag>
                 <el-tag
                   v-if="stagesConfig.stage3.enabled"
                   type="warning"
                   size="small"
                 >
-                  风险管理
+                  策略风格与风险评估
                 </el-tag>
                 <el-tag
                   type="info"
@@ -516,6 +516,7 @@ import {
   Clock,
 } from '@element-plus/icons-vue'
 import { useTradingAgentsStore } from '../../store'
+import { useAIModelStore } from '@core/settings/stores/ai-model'
 import { agentConfigApi, settingsApi } from '../../api'
 import {
   TaskStatusEnum,
@@ -527,6 +528,7 @@ import {
 
 const router = useRouter()
 const store = useTradingAgentsStore()
+const aiModelStore = useAIModelStore()
 
 // 表单引用
 const formRef = ref<FormInstance>()
@@ -549,7 +551,7 @@ const activeAnalysts = computed(() => {
 
 // 计算启用的模型列表
 const enabledModels = computed(() => {
-  return store.enabledModels
+  return aiModelStore.enabledModels
 })
 
 // 计算预计耗时
@@ -589,8 +591,7 @@ async function loadAgentConfig() {
     }
 
     // 从 TradingAgents 设置 API 加载默认配置
-    const settingsResponse = await settingsApi.getSettings()
-    const tradingAgentsSettings = settingsResponse.settings
+    const tradingAgentsSettings = await settingsApi.getSettings()
     const defaultDebateRounds = tradingAgentsSettings.default_debate_rounds ?? 3
 
     stagesConfig.stage2.debate.rounds = defaultDebateRounds
@@ -863,7 +864,7 @@ onMounted(async () => {
   window.addEventListener('storage', storageEventHandler)
   await loadAgentConfig()
   await loadRecentTasks()
-  await store.fetchModels()
+  await aiModelStore.fetchModels()
 })
 
 onUnmounted(() => {

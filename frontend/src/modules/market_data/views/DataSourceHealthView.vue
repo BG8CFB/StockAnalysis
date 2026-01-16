@@ -3,72 +3,210 @@
     <!-- 页面标题和刷新按钮 -->
     <div class="page-header">
       <h2>数据源状态监控</h2>
-      <el-button @click="handleRefresh" :loading="loading" size="small">
+      <el-button
+        :loading="loading"
+        size="small"
+        @click="handleRefresh"
+      >
         <el-icon><Refresh /></el-icon>
         刷新
       </el-button>
     </div>
 
     <!-- 市场标签页 -->
-    <el-tabs v-model="activeMarket" @tab-change="handleMarketChange" class="market-tabs">
-      <el-tab-pane label="A股" :name="MarketType.A_STOCK" />
-      <el-tab-pane label="美股" :name="MarketType.US_STOCK" />
-      <el-tab-pane label="港股" :name="MarketType.HK_STOCK" />
+    <el-tabs
+      v-model="activeMarket"
+      class="market-tabs"
+      @tab-change="handleMarketChange"
+    >
+      <el-tab-pane
+        label="A股"
+        :name="MarketType.A_STOCK"
+      />
+      <el-tab-pane
+        label="美股"
+        :name="MarketType.US_STOCK"
+      />
+      <el-tab-pane
+        label="港股"
+        :name="MarketType.HK_STOCK"
+      />
     </el-tabs>
 
     <!-- 表格布局 -->
-    <el-table :data="marketDetail?.data_types || []" stripe size="small" class="status-table">
-      <el-table-column label="数据类型" prop="data_type_name" min-width="120" />
+    <el-table
+      :data="marketDetail?.data_types || []"
+      stripe
+      size="small"
+      class="status-table"
+    >
+      <el-table-column
+        label="数据类型"
+        prop="data_type_name"
+        width="110"
+      />
 
-      <el-table-column label="当前数据源" min-width="140">
+      <el-table-column
+        label="主数据源"
+        width="120"
+      >
         <template #default="{ row }">
-          <strong>{{ dataSourceDisplayName(row.current_source.source_id) }}</strong>
+          <div class="source-cell">
+            <span>{{ dataSourceDisplayName(row.primary_source.source_id) }}</span>
+            <el-tag
+              v-if="row.primary_source.is_current"
+              type="success"
+              size="small"
+              class="current-tag"
+            >
+              当前使用
+            </el-tag>
+          </div>
         </template>
       </el-table-column>
 
-      <el-table-column label="状态" width="100" align="center">
+      <el-table-column
+        label="状态"
+        width="90"
+        align="center"
+      >
         <template #default="{ row }">
           <el-tag
-            :type="getDataSourceStatusTagType(row.current_source.status)"
+            v-if="row.primary_source.status"
+            :type="getDataSourceStatusTagType(row.primary_source.status)"
             size="small"
           >
-            {{ dataSourceStatusLabel(row.current_source.status) }}
+            {{ dataSourceStatusLabel(row.primary_source.status) }}
           </el-tag>
+          <span v-else class="status-placeholder">-</span>
         </template>
       </el-table-column>
 
-      <el-table-column label="检查时间" width="140">
+      <el-table-column
+        label="备用数据源"
+        width="120"
+      >
+        <template #default="{ row }">
+          <div v-if="row.fallback_source" class="source-cell">
+            <span>{{ dataSourceDisplayName(row.fallback_source.source_id) }}</span>
+            <el-tag
+              v-if="row.fallback_source.is_current"
+              type="success"
+              size="small"
+              class="current-tag"
+            >
+              当前使用
+            </el-tag>
+          </div>
+          <span v-else class="status-placeholder">-</span>
+        </template>
+      </el-table-column>
+
+      <el-table-column
+        label="状态"
+        width="90"
+        align="center"
+      >
+        <template #default="{ row }">
+          <el-tag
+            v-if="row.fallback_source && row.fallback_source.status"
+            :type="getDataSourceStatusTagType(row.fallback_source.status)"
+            size="small"
+          >
+            {{ dataSourceStatusLabel(row.fallback_source.status) }}
+          </el-tag>
+          <span v-else class="status-placeholder">-</span>
+        </template>
+      </el-table-column>
+
+      <el-table-column
+        label="检查时间"
+        width="130"
+      >
         <template #default="{ row }">
           <span class="time-info">
-            {{ row.current_source.last_check_relative }}
-            <span v-if="row.current_source.response_time_ms" class="response-time">
-              {{ row.current_source.response_time_ms }}ms
+            {{ getCurrentSourceCheckTime(row) }}
+            <span
+              v-if="getCurrentSourceResponseTime(row)"
+              class="response-time"
+            >
+              {{ getCurrentSourceResponseTime(row) }}ms
             </span>
           </span>
         </template>
       </el-table-column>
 
-      <el-table-column label="备注" min-width="200">
+      <el-table-column
+        label="备注/失败原因"
+        min-width="180"
+      >
         <template #default="{ row }">
-          <span v-if="row.is_fallback && row.fallback_reason" class="fallback-reason">
-            <el-tag type="warning" size="small">已降级</el-tag>
-            {{ row.fallback_reason }}
-          </span>
+          <div class="note-cell">
+            <!-- 主数据源错误信息 -->
+            <span
+              v-if="row.primary_source.error_message && !row.primary_source.is_current"
+              class="error-message"
+            >
+              <el-tag
+                type="danger"
+                size="small"
+              >主源异常</el-tag>
+              {{ row.primary_source.error_message }}
+            </span>
+            <!-- 备用数据源正在使用 -->
+            <span
+              v-else-if="row.fallback_source && row.fallback_source.is_current"
+              class="fallback-info"
+            >
+              <el-tag
+                type="warning"
+                size="small"
+              >已降级</el-tag>
+              使用备用数据源
+            </span>
+            <!-- 正常状态 - 显示运行正常 -->
+            <span
+              v-else-if="row.primary_source.is_current && row.primary_source.status === 'healthy'"
+              class="normal-status"
+            >
+              <el-tag
+                type="success"
+                size="small"
+              >正常</el-tag>
+              运行正常
+            </span>
+            <!-- 其他状态：未检查或等待 -->
+            <span
+              v-else
+              class="waiting-status"
+            >
+              等待检查
+            </span>
+          </div>
         </template>
       </el-table-column>
 
-      <el-table-column label="操作" width="140" fixed="right">
+      <el-table-column
+        label="操作"
+        width="140"
+        fixed="right"
+      >
         <template #default="{ row }">
           <el-button
-            v-if="row.is_fallback && row.primary_source?.can_retry"
+            v-if="!row.primary_source.is_current"
             type="primary"
             link
             size="small"
-            @click="handleRetry(row.primary_source!.source_id, row.data_type)"
+            @click="handleRetry(row.primary_source.source_id, row.data_type)"
           >
-            重试
+            重试主源
           </el-button>
-          <el-button type="primary" link size="small" @click="handleViewDetail(row)">
+          <el-button
+            type="primary"
+            link
+            size="small"
+            @click="handleViewDetail(row)"
+          >
             详情
           </el-button>
         </template>
@@ -82,10 +220,16 @@
       width="800px"
       destroy-on-close
     >
-      <div v-if="selectedDataTypeDetail" class="detail-dialog">
+      <div
+        v-if="selectedDataTypeDetail"
+        class="detail-dialog"
+      >
         <!-- 基本信息 -->
         <div class="detail-info">
-          <el-descriptions :column="2" border>
+          <el-descriptions
+            :column="2"
+            border
+          >
             <el-descriptions-item label="数据类型">
               {{ selectedDataTypeDetail.data_type_name }}
             </el-descriptions-item>
@@ -96,58 +240,126 @@
         </div>
 
         <!-- 数据源详情列表 -->
-        <div v-for="source in selectedDataTypeDetail.sources" :key="source.source_id" class="source-section">
+        <div
+          v-for="source in selectedDataTypeDetail.sources"
+          :key="source.source_id"
+          class="source-section"
+        >
           <el-divider>
-            <el-tag :type="getDataSourceStatusTagType(source.status)" size="large">
-              {{ dataSourceDisplayName(source.source_name) }}
-            </el-tag>
-            <span style="margin-left: 12px;">{{ dataSourceStatusLabel(source.status) }}</span>
+            <div class="source-divider">
+              <el-tag
+                :type="getDataSourceStatusTagType(source.status)"
+                size="large"
+              >
+                {{ dataSourceDisplayName(source.source_name) }}
+              </el-tag>
+              <span class="source-status">
+                {{ source.status ? dataSourceStatusLabel(source.status) : '未检查' }}
+              </span>
+              <el-tag
+                v-if="source.note === '当前使用'"
+                type="success"
+                size="small"
+              >
+                当前使用
+              </el-tag>
+            </div>
           </el-divider>
 
-          <el-descriptions :column="2" border>
+          <el-descriptions
+            :column="2"
+            border
+          >
             <el-descriptions-item label="优先级">
-              {{ source.priority }}
+              主数据源
             </el-descriptions-item>
-            <el-descriptions-item v-if="source.last_check" label="最后检查">
+            <el-descriptions-item
+              v-if="source.last_check"
+              label="最后检查"
+            >
               {{ formatTime(source.last_check) }}
             </el-descriptions-item>
-            <el-descriptions-item v-if="source.response_time_ms" label="响应时间">
+            <el-descriptions-item
+              v-if="source.response_time_ms"
+              label="响应时间"
+            >
               {{ source.response_time_ms }} ms
             </el-descriptions-item>
-            <el-descriptions-item v-if="source.avg_response_time_ms" label="平均响应时间">
+            <el-descriptions-item
+              v-if="source.avg_response_time_ms"
+              label="平均响应时间"
+            >
               {{ source.avg_response_time_ms }} ms
             </el-descriptions-item>
             <el-descriptions-item label="失败次数">
-              <el-tag :type="source.failure_count > 0 ? 'danger' : 'success'" size="small">
+              <el-tag
+                :type="source.failure_count > 0 ? 'danger' : 'success'"
+                size="small"
+              >
                 {{ source.failure_count }}
               </el-tag>
             </el-descriptions-item>
-            <el-descriptions-item v-if="source.note" label="备注">
-              <el-text type="info">{{ source.note }}</el-text>
+            <el-descriptions-item
+              v-if="source.note"
+              label="备注"
+            >
+              <el-text type="info">
+                {{ source.note }}
+              </el-text>
             </el-descriptions-item>
           </el-descriptions>
 
           <!-- API接口明细 -->
-          <div v-if="source.api_endpoints && source.api_endpoints.length > 0" class="api-endpoints">
+          <div
+            v-if="source.api_endpoints && source.api_endpoints.length > 0"
+            class="api-endpoints"
+          >
             <h4>接口明细</h4>
-            <el-table :data="source.api_endpoints" border size="small">
-              <el-table-column prop="endpoint_name_cn" label="接口名称" width="200" />
-              <el-table-column prop="endpoint_name" label="接口代码" width="180" />
-              <el-table-column label="状态" width="100">
+            <el-table
+              :data="source.api_endpoints"
+              border
+              size="small"
+            >
+              <el-table-column
+                prop="endpoint_name_cn"
+                label="接口名称"
+                width="200"
+              />
+              <el-table-column
+                prop="endpoint_name"
+                label="接口代码"
+                width="180"
+              />
+              <el-table-column
+                label="状态"
+                width="100"
+              >
                 <template #default="{ row }">
-                  <el-tag :type="getDataSourceStatusTagType(row.status)" size="small">
+                  <el-tag
+                    :type="getDataSourceStatusTagType(row.status)"
+                    size="small"
+                  >
                     {{ dataSourceStatusLabel(row.status) }}
                   </el-tag>
                 </template>
               </el-table-column>
-              <el-table-column label="失败次数" width="100">
+              <el-table-column
+                label="失败次数"
+                width="100"
+              >
                 <template #default="{ row }">
-                  <el-tag :type="row.failure_count > 0 ? 'danger' : 'success'" size="small">
+                  <el-tag
+                    :type="row.failure_count > 0 ? 'danger' : 'success'"
+                    size="small"
+                  >
                     {{ row.failure_count }}
                   </el-tag>
                 </template>
               </el-table-column>
-              <el-table-column label="最后检查" min-width="150">
+              <el-table-column
+                label="最后检查"
+                min-width="150"
+              >
                 <template #default="{ row }">
                   {{ row.last_check ? formatTime(row.last_check) : '-' }}
                 </template>
@@ -168,10 +380,20 @@
           >
             <el-card>
               <p>{{ event.description }}</p>
-              <div v-if="event.from_source && event.to_source" class="event-source-change">
-                <el-tag size="small">{{ dataSourceDisplayName(event.from_source) }}</el-tag>
+              <div
+                v-if="event.from_source && event.to_source"
+                class="event-source-change"
+              >
+                <el-tag size="small">
+                  {{ dataSourceDisplayName(event.from_source) }}
+                </el-tag>
                 <el-icon><Right /></el-icon>
-                <el-tag type="success" size="small">{{ dataSourceDisplayName(event.to_source) }}</el-tag>
+                <el-tag
+                  type="success"
+                  size="small"
+                >
+                  {{ dataSourceDisplayName(event.to_source) }}
+                </el-tag>
               </div>
             </el-card>
           </el-timeline-item>
@@ -188,8 +410,14 @@
 
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="detailDialogVisible = false">关闭</el-button>
-          <el-button type="primary" @click="handleExportLog" :loading="exporting">
+          <el-button @click="detailDialogVisible = false">
+            关闭
+          </el-button>
+          <el-button
+            type="primary"
+            :loading="exporting"
+            @click="handleExportLog"
+          >
             <el-icon><Download /></el-icon>
             导出日志
           </el-button>
@@ -242,15 +470,33 @@ const dataSourceDisplayName = (sourceIdOrName: string) => {
 /**
  * 获取数据源状态标签
  */
-const dataSourceStatusLabel = (status: DataSourceStatus) => {
+const dataSourceStatusLabel = (status: DataSourceStatus | null) => {
+  if (!status) return '-'
   return DataSourceStatusLabels[status] || status
 }
 
 /**
  * 获取数据源状态标签类型
  */
-const getDataSourceStatusTagType = (status: DataSourceStatus) => {
+const getDataSourceStatusTagType = (status: DataSourceStatus | null) => {
+  if (!status) return 'info'
   return DataSourceStatusTagType[status] || ''
+}
+
+/**
+ * 获取当前使用的数据源检查时间
+ */
+const getCurrentSourceCheckTime = (row: DataTypeStatus) => {
+  const current = row.primary_source.is_current ? row.primary_source : row.fallback_source
+  return current?.last_check_relative || '-'
+}
+
+/**
+ * 获取当前使用的数据源响应时间
+ */
+const getCurrentSourceResponseTime = (row: DataTypeStatus) => {
+  const current = row.primary_source.is_current ? row.primary_source : row.fallback_source
+  return current?.response_time_ms || null
 }
 
 /**
@@ -442,6 +688,21 @@ onUnmounted(() => {
 
 // 表格样式
 .status-table {
+  .source-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    .current-tag {
+      flex-shrink: 0;
+    }
+  }
+
+  .status-placeholder {
+    color: var(--el-text-color-placeholder);
+    font-size: 12px;
+  }
+
   .time-info {
     font-size: 12px;
     color: var(--el-text-color-regular);
@@ -452,12 +713,36 @@ onUnmounted(() => {
     }
   }
 
-  .fallback-reason {
-    font-size: 12px;
-    color: var(--el-color-warning);
+  .note-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
 
-    .el-tag {
-      margin-right: 4px;
+    .error-message {
+      font-size: 12px;
+      color: var(--el-color-danger);
+
+      .el-tag {
+        margin-right: 4px;
+      }
+    }
+
+    .fallback-info {
+      font-size: 12px;
+      color: var(--el-color-warning);
+
+      .el-tag {
+        margin-right: 4px;
+      }
+    }
+
+    .normal-status {
+      font-size: 12px;
+    }
+
+    .waiting-status {
+      font-size: 12px;
+      color: var(--el-text-color-secondary);
     }
   }
 }
@@ -473,6 +758,17 @@ onUnmounted(() => {
 
     &:last-child {
       margin-bottom: 0;
+    }
+
+    .source-divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+
+      .source-status {
+        font-size: 14px;
+        color: var(--el-text-color-regular);
+      }
     }
 
     .api-endpoints {

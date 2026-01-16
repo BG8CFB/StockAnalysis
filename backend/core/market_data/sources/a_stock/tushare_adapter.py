@@ -36,20 +36,27 @@ class TuShareAdapter(DataSourceAdapter):
         super().__init__(config)
 
         api_token = self.config.get("api_token") if self.config else None
-        if not api_token:
-            raise ValueError("TuShare API Token is required")
+        self._has_token = bool(api_token)
 
-        ts.set_token(api_token)
-        self.pro = ts.pro_api()
+        if self._has_token:
+            ts.set_token(api_token)
+            self.pro = ts.pro_api()
+            logger.info("TuShare adapter initialized with API token")
+        else:
+            self.pro = None
+            logger.warning("TuShare adapter initialized without API token - will be disabled")
+
         self.source_name = "tushare"
+        # 设置默认优先级（TuShare 是主要数据源，优先级最高）
+        self._priority = 1
 
     def supports_market(self, market: MarketType) -> bool:
         return market == MarketType.A_STOCK
 
-    def get_priority(self) -> int:
-        return 1
-
     async def test_connection(self) -> bool:
+        if not self._has_token or self.pro is None:
+            logger.warning("TuShare adapter cannot test connection - no API token configured")
+            return False
         try:
             df = self.pro.stock_basic(exchange='', list_status='L', fields='ts_code')
             return df is not None and len(df) > 0
@@ -62,6 +69,8 @@ class TuShareAdapter(DataSourceAdapter):
         market: MarketType,
         status: str = "L"
     ) -> List[StockInfo]:
+        if not self._has_token or self.pro is None:
+            raise RuntimeError("TuShare API token not configured - cannot fetch data")
         try:
             df = self.pro.stock_basic(
                 exchange='',
@@ -96,6 +105,8 @@ class TuShareAdapter(DataSourceAdapter):
         end_date: Optional[str] = None,
         adjust_type: Optional[str] = None
     ) -> List[StockQuote]:
+        if not self._has_token or self.pro is None:
+            raise RuntimeError("TuShare API token not configured - cannot fetch data")
         try:
             adj = adjust_type if adjust_type in ['qfq', 'hfq'] else None
 

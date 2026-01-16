@@ -199,23 +199,15 @@ function resetConfigForm() {
 async function handleSaveConfig() {
   saving.value = true
   try {
-    // 表单验证
-    if (configFormRef.value) {
-      await configFormRef.value.validate()
-    }
-
     // 后端期望大写字段名
     await settingsStore.updateConfig({
       REQUIRE_APPROVAL: configForm.value.require_approval,
       ENABLE_REGISTRATION: configForm.value.registration_open,
     } as any)
     ElMessage.success('配置已保存')
-    // 刷新系统信息
     await fetchSystemInfo()
   } catch (error: any) {
-    if (error !== false) {  // 排除表单验证取消的情况
-      ElMessage.error(error.response?.data?.detail || '保存配置失败')
-    }
+    ElMessage.error(error.message || '保存失败')
   } finally {
     saving.value = false
   }

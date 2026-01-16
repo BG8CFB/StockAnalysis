@@ -5,7 +5,8 @@
 """
 
 import logging
-from typing import List, Optional, Dict, Any, Type
+import inspect
+from typing import Any
 from datetime import datetime
 
 from core.market_data.sources.base import DataSourceAdapter
@@ -13,6 +14,7 @@ from core.market_data.sources.a_stock import TuShareAdapter, AkShareAdapter
 from core.market_data.sources.us_stock import YahooFinanceAdapter, AlphaVantageAdapter
 from core.market_data.sources.hk_stock import YahooHKAdapter, AkShareHKAdapter
 from core.market_data.models import MarketType
+from core.config import DATA_SOURCE_MAX_FAILURES
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +26,10 @@ class DataSourceRouter:
     负责管理多个数据源，实现自动降级和故障转移
     """
 
-    def __init__(self, sources: Optional[List[DataSourceAdapter]] = None):
+    # 类级别的方法签名缓存，避免重复检查
+    _method_signature_cache: dict[str, bool] = {}
+
+    def __init__(self, sources: list[DataSourceAdapter] | None = None):
         """
         初始化路由器
 
@@ -50,7 +55,7 @@ class DataSourceRouter:
         self,
         market: MarketType,
         check_health: bool = True
-    ) -> List[DataSourceAdapter]:
+    ) -> list[DataSourceAdapter]:
         """
         获取指定市场的可用数据源
 
@@ -69,7 +74,7 @@ class DataSourceRouter:
                 continue
 
             # 检查是否被禁用
-            if source.should_disable():
+            if source.should_disable(max_failures=DATA_SOURCE_MAX_FAILURES):
                 logger.warning(f"Data source {source.source_name} is disabled due to repeated failures")
                 continue
 
@@ -123,13 +128,18 @@ class DataSourceRouter:
                 # 调用数据源方法
                 method = getattr(source, method_name)
 
-                # 检查方法签名，判断是否需要传递 market 参数
-                import inspect
-                sig = inspect.signature(method)
-                params = list(sig.parameters.keys())
+                # 使用缓存检查方法签名，判断是否需要传递 market 参数
+                method_key = f"{source.__class__.__name__}.{method_name}"
+                needs_market = DataSourceRouter._method_signature_cache.get(method_key)
 
-                # 如果第一个参数是 'market'，则传递 market，否则不传递
-                if params and params[0] == 'market':
+                if needs_market is None:
+                    sig = inspect.signature(method)
+                    params = list(sig.parameters.keys())
+                    needs_market = params and params[0] == 'market'
+                    DataSourceRouter._method_signature_cache[method_key] = needs_market
+
+                # 根据方法签名调用
+                if needs_market:
                     result = await method(market, *args, **kwargs)
                 else:
                     result = await method(*args, **kwargs)
@@ -156,7 +166,7 @@ class DataSourceRouter:
             f"Last error: {last_error}"
         )
 
-    async def check_all_sources_health(self) -> Dict[str, Dict[str, Any]]:
+    async def check_all_sources_health(self) -> dict[str, dict[str, Any]]:
         """
         检查所有数据源的健康状态
 
@@ -171,7 +181,7 @@ class DataSourceRouter:
 
         return health_report
 
-    async def _get_source_health(self, source: DataSourceAdapter) -> Dict[str, Any]:
+    async def _get_source_health(self, source: DataSourceAdapter) -> dict[str, Any]:
         """
         获取数据源健康状态（带缓存）
 
@@ -217,7 +227,7 @@ class DataSourceRouter:
         return router
 
     @classmethod
-    def create_us_stock_router(cls, alphavantage_api_key: Optional[str] = None) -> "DataSourceRouter":
+    def create_us_stock_router(cls, alphavantage_api_key: str | None = None) -> "DataSourceRouter":
         """
         创建美股数据源路由器
 
@@ -279,8 +289,8 @@ class DataSourceRouter:
     @classmethod
     def create_global_router(
         cls,
-        tushare_token: Optional[str] = None,
-        alphavantage_api_key: Optional[str] = None
+        tushare_token: str | None = None,
+        alphavantage_api_key: str | None = None
     ) -> "DataSourceRouter":
         """
         创建全球股票数据源路由器（支持A股、美股、港股）
@@ -344,7 +354,7 @@ class DataSourceRouter:
 # 全局单例
 # =============================================================================
 
-_source_router: Optional[DataSourceRouter] = None
+_source_router: DataSourceRouter | None = None
 
 
 def get_source_router() -> DataSourceRouter:

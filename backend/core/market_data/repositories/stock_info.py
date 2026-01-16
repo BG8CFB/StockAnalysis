@@ -2,11 +2,18 @@
 股票信息 Repository
 """
 
+import logging
 from typing import List, Optional
 from datetime import datetime
 
 from core.market_data.repositories.base import BaseRepository
 from core.market_data.models import StockInfo, MarketType
+from core.config import MONGODB_BULK_WRITE_BATCH_SIZE
+
+logger = logging.getLogger(__name__)
+
+# MongoDB 批量操作大小限制（从配置读取）
+BULK_WRITE_BATCH_SIZE = MONGODB_BULK_WRITE_BATCH_SIZE
 
 
 class StockInfoRepository(BaseRepository):
@@ -50,7 +57,8 @@ class StockInfoRepository(BaseRepository):
     async def get_by_market(
         self,
         market: MarketType,
-        status: str = "L"
+        status: str = "L",
+        limit: Optional[int] = None
     ) -> List[dict]:
         """
         根据市场类型查询
@@ -58,12 +66,15 @@ class StockInfoRepository(BaseRepository):
         Args:
             market: 市场类型
             status: 上市状态
+            limit: 返回数量限制（None表示不限制）
 
         Returns:
             股票信息列表
         """
         filter_query = {"market": market.value, "status": status}
-        return await self.find_many(filter_query)
+        # limit=0 表示不限制，None 也转换为 0
+        limit_value = limit if limit is not None else 0
+        return await self.find_many(filter_query, limit=limit_value)
 
     async def get_all_symbols(self, market: Optional[MarketType] = None) -> List[str]:
         """
@@ -88,14 +99,31 @@ class StockInfoRepository(BaseRepository):
         """
         批量更新或插入股票信息
 
+        使用 MongoDB bulk_write 操作提高性能，减少数据库往返次数。
+
         Args:
             stock_list: 股票信息列表
 
         Returns:
             处理的文档数量
         """
-        count = 0
+        if not stock_list:
+            return 0
+
+        from pymongo import UpdateOne
+
+        operations = []
         for stock_info in stock_list:
-            await self.upsert_stock_info(stock_info)
-            count += 1
-        return count
+            filter_query = {"symbol": stock_info.symbol}
+            data = {"$set": stock_info.model_dump()}
+            operations.append(UpdateOne(filter_query, data, upsert=True))
+
+        # 批量执行操作（每次最多 BULK_WRITE_BATCH_SIZE 条）
+        total_count = 0
+        for i in range(0, len(operations), BULK_WRITE_BATCH_SIZE):
+            batch = operations[i:i + BULK_WRITE_BATCH_SIZE]
+            result = await self.collection.bulk_write(batch, ordered=False)
+            total_count += result.upserted_count + result.modified_count
+
+        logger.info(f"Batch upserted {total_count} stock info records")
+        return total_count

@@ -9,10 +9,10 @@ import type { TaskEvent, AnalysisTask } from '../types'
 
 // 阶段定义
 export const PHASES = [
-  { id: 1, name: '分析师团队', description: '多角度并行分析' },
-  { id: 2, name: '研究员辩论', description: '多空观点交锋' },
-  { id: 3, name: '风险评估', description: '风险分析讨论' },
-  { id: 4, name: '总结输出', description: '生成投资建议' },
+  { id: 1, name: '信息收集与基础分析', description: '多角度并行分析' },
+  { id: 2, name: '多空博弈与投资决策', description: '多空观点交锋与决策' },
+  { id: 3, name: '策略风格与风险评估', description: '策略辩论与风险评估' },
+  { id: 4, name: '总结智能体', description: '生成最终投资建议' },
 ] as const
 
 // 智能体状态
@@ -101,6 +101,31 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
       }
     })
     return running
+  })
+
+  // 计算属性：已完成的智能体
+  const completedAgents = computed(() => {
+    const completed: AgentStatus[] = []
+    state.value.agents.forEach((agent) => {
+      if (agent.status === 'completed') {
+        completed.push(agent)
+      }
+    })
+    return completed
+  })
+
+  // 计算属性：所有智能体（按完成时间倒序）
+  const allAgents = computed(() => {
+    const all: AgentStatus[] = []
+    state.value.agents.forEach((agent) => {
+      all.push(agent)
+    })
+    // 按完成时间倒序排列（已完成的在前）
+    return all.sort((a, b) => {
+      if (a.status === 'completed' && b.status !== 'completed') return -1
+      if (a.status !== 'completed' && b.status === 'completed') return 1
+      return (b.endTime || 0) - (a.endTime || 0)
+    })
   })
 
   // 计算属性：已生成的报告
@@ -349,6 +374,8 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
     completedAgentsCount,
     totalAgentsCount,
     runningAgents,
+    completedAgents,
+    allAgents,
     generatedReports,
     recentToolCalls,
     elapsedSeconds,

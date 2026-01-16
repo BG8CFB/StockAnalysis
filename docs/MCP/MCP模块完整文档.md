@@ -89,7 +89,7 @@ MCP (Model Context Protocol) 模块是系统的**协议适配层**，负责：
 ## 二、模块目录结构
 
 ```
-backend/modules/mcp/              # MCP 独立模块
+backend/core/mcp/              # MCP 独立模块
 │
 ├── __init__.py                   # 模块初始化
 │
@@ -101,7 +101,7 @@ backend/modules/mcp/              # MCP 独立模块
 │   ├── connection.py             # MCPConnection 长连接对象
 │   └── queue.py                  # 请求队列管理
 │
-├── core/                         # 核心功能
+├── adapter/                     # MCP 适配器层
 │   ├── __init__.py
 │   ├── adapter.py                # MCP 适配器（基于 langchain-mcp-adapters）
 │   ├── session.py                # 会话管理
@@ -181,7 +181,7 @@ backend/modules/trading_agents/tools/  # TradingAgents 模块
 |------|---------|---------|
 | **连接池** | `pool/pool.py` | 管理所有 MCP 连接的创建、复用、销毁 |
 | **连接对象** | `pool/connection.py` | 封装单个 MCP 服务器的长连接 |
-| **协议适配** | `core/adapter.py` | 将服务器配置转换为 MCP 客户端配置 |
+| **协议适配** | `adapter/adapter.py` | 将服务器配置转换为 MCP 客户端配置 |
 | **会话管理** | `core/session.py` | 管理 MCP 会话生命周期 |
 | **拦截器** | `core/interceptors.py` | 工具调用的前置/后置处理链 |
 | **配置服务** | `service/mcp_service.py` | 服务器配置的 CRUD 操作 |
@@ -718,7 +718,7 @@ enabled_mcp_servers:
 
 ### 11.2 默认配置文件
 
-**位置**：`backend/modules/mcp/config/default_config.yaml`
+**位置**：`backend/core/mcp/config/default_config.yaml`
 
 **配置项分类**：
 
@@ -1730,21 +1730,21 @@ TradingAgents 模块过滤
 
 | 组件 | 文件路径 |
 |------|---------|
-| API 路由 | `backend/modules/mcp/api/routes.py` |
-| 连接池 | `backend/modules/mcp/pool/pool.py` |
-| 连接对象 | `backend/modules/mcp/pool/connection.py` |
-| 队列管理 | `backend/modules/mcp/pool/queue.py` |
-| 协议适配 | `backend/modules/mcp/core/adapter.py` |
-| 会话管理 | `backend/modules/mcp/core/session.py` |
-| 拦截器 | `backend/modules/mcp/core/interceptors.py` |
-| 异常定义 | `backend/modules/mcp/core/exceptions.py` |
-| MCP 服务 | `backend/modules/mcp/service/mcp_service.py` |
-| 健康检查 | `backend/modules/mcp/service/health_checker.py` |
-| 配置加载 | `backend/modules/mcp/config/loader.py` |
-| 设置服务 | `backend/modules/mcp/config/settings_service.py` |
-| 设置模型 | `backend/modules/mcp/config/settings_models.py` |
-| 默认配置 | `backend/modules/mcp/config/default_config.yaml` |
-| 数据模型 | `backend/modules/mcp/schemas.py` |
+| API 路由 | `backend/core/mcp/api/routes.py` |
+| 连接池 | `backend/core/mcp/pool/pool.py` |
+| 连接对象 | `backend/core/mcp/pool/connection.py` |
+| 队列管理 | `backend/core/mcp/pool/queue.py` |
+| 协议适配 | `backend/core/mcp/adapter/adapter.py` |
+| 会话管理 | `backend/core/mcp/adapter/session.py` |
+| 拦截器 | `backend/core/mcp/adapter/interceptors.py` |
+| 异常定义 | `backend/core/mcp/adapter/exceptions.py` |
+| MCP 服务 | `backend/core/mcp/service/mcp_service.py` |
+| 健康检查 | `backend/core/mcp/service/health_checker.py` |
+| 配置加载 | `backend/core/mcp/config/loader.py` |
+| 设置服务 | `backend/core/mcp/config/settings_service.py` |
+| 设置模型 | `backend/core/mcp/config/settings_models.py` |
+| 默认配置 | `backend/core/mcp/config/default_config.yaml` |
+| 数据模型 | `backend/core/mcp/schemas.py` |
 | 工具过滤器 | `backend/modules/trading_agents/tools/mcp_tool_filter.py` |
 | MCP 并发控制 | `backend/modules/trading_agents/tools/mcp_concurrency.py` |
 | 工具注册表 | `backend/modules/trading_agents/tools/registry.py` |

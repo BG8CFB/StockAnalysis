@@ -187,5 +187,5 @@ adapter_classes:
   tushare: core.market_data.sources.a_stock.tushare_adapter.TuShareAdapter
   akshare: core.market_data.sources.a_stock.akshare_adapter.AkShareAdapter
   yahoo_finance: core.market_data.sources.us_stock.yahoo_adapter.YahooFinanceAdapter  # 待实现
-  alpha_vantage: core.market_data.sources.us_stock.alpha_vantage_adapter.AlphaVantageAdapter  # 待实现
+  alpha_vantage: core.market_data.sources.us_stock.alphavantage_adapter.AlphaVantageAdapter  # 待实现
   itick: core.market_data.sources.hk_stock.itick_adapter.ITickAdapter  # 暂不实现

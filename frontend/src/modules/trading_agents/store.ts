@@ -1,19 +1,17 @@
 /**
  * TradingAgents 模块 Pinia Store
+ *
+ * 注意：AI 模型管理已移至核心设置模块 (@core/settings)
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
-  modelApi,
   mcpApi,
   agentConfigApi,
   taskApi,
 } from './api'
 import type {
-  AIModelConfig,
-  AIModelConfigCreate,
-  AIModelConfigUpdate,
   MCPServerConfig,
   MCPServerConfigCreate,
   MCPServerConfigUpdate,
@@ -27,11 +25,6 @@ export const useTradingAgentsStore = defineStore('tradingAgents', () => {
   // =========================================================================
   // 状态
   // =========================================================================
-
-  // AI 模型
-  const systemModels = ref<AIModelConfig[]>([])
-  const userModels = ref<AIModelConfig[]>([])
-  const modelsLoading = ref(false)
 
   // MCP 服务器
   const systemServers = ref<MCPServerConfig[]>([])
@@ -48,99 +41,12 @@ export const useTradingAgentsStore = defineStore('tradingAgents', () => {
   const tasksTotal = ref(0)
   const tasksLoading = ref(false)
 
-  // 报告（已移除 - 前端暂不需要报告管理功能）
-
   // =========================================================================
   // 计算属性
   // =========================================================================
 
-  const allModels = computed(() => [...systemModels.value, ...userModels.value])
   const allServers = computed(() => [...systemServers.value, ...userServers.value])
-  const enabledModels = computed(() => allModels.value.filter((m) => m.enabled))
   const enabledServers = computed(() => allServers.value.filter((s) => s.enabled))
-
-  // =========================================================================
-  // AI 模型操作
-  // =========================================================================
-
-  async function fetchModels() {
-    modelsLoading.value = true
-    try {
-      const result = await modelApi.listModels()
-      systemModels.value = result.system || []
-      userModels.value = result.user || []
-    } catch (error: any) {
-      ElMessage.error('获取模型列表失败')
-      throw error
-    } finally {
-      modelsLoading.value = false
-    }
-  }
-
-  async function createModel(data: AIModelConfigCreate) {
-    try {
-      const result = await modelApi.createModel(data)
-      await fetchModels()
-      ElMessage.success('模型配置已创建')
-      return result
-    } catch (error: any) {
-      ElMessage.error(error.response?.data?.detail || '创建模型配置失败')
-      throw error
-    }
-  }
-
-  async function updateModel(modelId: string, data: AIModelConfigUpdate) {
-    try {
-      const result = await modelApi.updateModel(modelId, data)
-      await fetchModels()
-      ElMessage.success('模型配置已更新')
-      return result
-    } catch (error: any) {
-      ElMessage.error(error.response?.data?.detail || '更新模型配置失败')
-      throw error
-    }
-  }
-
-  async function deleteModel(modelId: string) {
-    try {
-      await modelApi.deleteModel(modelId)
-      await fetchModels()
-      ElMessage.success('模型配置已删除')
-    } catch (error: any) {
-      ElMessage.error(error.response?.data?.detail || '删除模型配置失败')
-      throw error
-    }
-  }
-
-  async function testModel(modelId: string) {
-    try {
-      const result = await modelApi.testModel(modelId)
-      if (result.success) {
-        ElMessage.success(`连接成功，延迟 ${result.latency_ms}ms`)
-      } else {
-        ElMessage.error(result.message || '连接失败')
-      }
-      return result
-    } catch (error: any) {
-      ElMessage.error(error.response?.data?.detail || '测试连接失败')
-      throw error
-    }
-  }
-
-  async function testModelConnection(data: { api_base_url: string; api_key: string; model_id: string }) {
-    try {
-      const result = await modelApi.testModelConnection(data)
-      if (result.success) {
-        ElMessage.success(`连接成功，延迟 ${result.latency_ms}ms`)
-      } else {
-        ElMessage.error(result.message || '连接失败')
-      }
-      return result
-    } catch (error: any) {
-      ElMessage.error(error.response?.data?.detail || '测试连接失败')
-      throw error
-    }
-  }
 
   // =========================================================================
   // MCP 服务器操作
@@ -334,7 +240,6 @@ export const useTradingAgentsStore = defineStore('tradingAgents', () => {
   async function createTasks(data: UnifiedTaskCreate) {
     try {
       const result = await taskApi.createTasks(data)
-      // 单股返回 task_id，批量返回 batch_id
       const id = result.task_id || result.batch_id
       if (id) {
         ElMessage.success(result.message || '任务已创建')
@@ -373,7 +278,7 @@ export const useTradingAgentsStore = defineStore('tradingAgents', () => {
       const result = await taskApi.retryTask(taskId)
       await fetchTasks()
       ElMessage.success('任务已重新提交')
-      return result.id  // 从 AnalysisTaskResponse 提取 id
+      return result.id
     } catch (error: any) {
       ElMessage.error(error.response?.data?.detail || '重试任务失败')
       throw error
@@ -382,9 +287,6 @@ export const useTradingAgentsStore = defineStore('tradingAgents', () => {
 
   return {
     // 状态
-    systemModels,
-    userModels,
-    modelsLoading,
     systemServers,
     userServers,
     serversLoading,
@@ -396,18 +298,8 @@ export const useTradingAgentsStore = defineStore('tradingAgents', () => {
     tasksLoading,
 
     // 计算属性
-    allModels,
     allServers,
-    enabledModels,
     enabledServers,
-
-    // AI 模型操作
-    fetchModels,
-    createModel,
-    updateModel,
-    deleteModel,
-    testModel,
-    testModelConnection,
 
     // MCP 服务器操作
     fetchServers,

@@ -5,10 +5,8 @@
 """
 
 import logging
-from typing import List, Optional
+from typing import Any, Optional
 from datetime import datetime
-
-from motor.motor_asyncio import AsyncIOMotorClient
 
 from core.market_data.models.datasource import (
     SystemDataSourceConfig,
@@ -19,6 +17,7 @@ from core.market_data.repositories.datasource import (
     SystemDataSourceRepository,
     UserDataSourceRepository,
 )
+from core.config import SUPPORTED_MARKETS
 
 logger = logging.getLogger(__name__)
 
@@ -26,15 +25,10 @@ logger = logging.getLogger(__name__)
 class DataSourceConfigService:
     """数据源配置管理服务"""
 
-    def __init__(self, db: AsyncIOMotorClient):
-        """初始化服务
-
-        Args:
-            db: MongoDB 客户端
-        """
-        self.db = db
-        self.system_repo = SystemDataSourceRepository(db)
-        self.user_repo = UserDataSourceRepository(db)
+    def __init__(self):
+        """初始化服务"""
+        self.system_repo = SystemDataSourceRepository()
+        self.user_repo = UserDataSourceRepository()
 
     # ==================== 系统公共数据源配置 ====================
 
@@ -46,7 +40,7 @@ class DataSourceConfigService:
         priority: int = 1,
         config: dict = None,
         rate_limit: dict = None,
-        supported_data_types: List[str] = None,
+        supported_data_types: list[str] | None = None,
     ) -> SystemDataSourceConfig:
         """创建系统公共数据源配置
 
@@ -77,11 +71,11 @@ class DataSourceConfigService:
             updated_at=datetime.now(),
         )
 
-        await self.system_repo.create(source_config)
+        await self.system_repo.upsert_config(source_config)
         logger.info(f"系统公共数据源配置创建成功: {source_id}")
         return source_config
 
-    async def get_system_source(self, source_id: str, market: str) -> Optional[SystemDataSourceConfig]:
+    async def get_system_source(self, source_id: str, market: str) -> SystemDataSourceConfig | None:
         """获取系统公共数据源配置
 
         Args:
@@ -91,13 +85,16 @@ class DataSourceConfigService:
         Returns:
             配置对象，不存在时返回 None
         """
-        return await self.system_repo.get_by_source_and_market(source_id, market)
+        config_dict = await self.system_repo.get_config(source_id, market)
+        if config_dict:
+            return SystemDataSourceConfig(**config_dict)
+        return None
 
     async def list_system_sources(
         self,
-        market: Optional[str] = None,
+        market: str | None = None,
         enabled_only: bool = False,
-    ) -> List[SystemDataSourceConfig]:
+    ) -> list[SystemDataSourceConfig]:
         """列出系统公共数据源配置
 
         Args:
@@ -107,7 +104,16 @@ class DataSourceConfigService:
         Returns:
             配置列表
         """
-        return await self.system_repo.list(market=market, enabled_only=enabled_only)
+        if market:
+            config_dicts = await self.system_repo.get_enabled_configs(market, enabled_only)
+        else:
+            # 如果没有指定市场，需要查询所有市场
+            config_dicts = []
+            for m in SUPPORTED_MARKETS:
+                configs = await self.system_repo.get_enabled_configs(m, enabled_only)
+                config_dicts.extend(configs)
+
+        return [SystemDataSourceConfig(**c) for c in config_dicts]
 
     async def update_system_source(
         self,
@@ -128,14 +134,14 @@ class DataSourceConfigService:
         logger.info(f"更新系统公共数据源配置: {source_id} ({market})")
 
         updates["updated_at"] = datetime.now()
-        result = await self.system_repo.update_by_source_and_market(source_id, market, updates)
+        result = await self.system_repo.update_config(source_id, market, updates)
 
         if result:
             logger.info(f"系统公共数据源配置更新成功: {source_id}")
         else:
             logger.warning(f"系统公共数据源配置不存在: {source_id}")
 
-        return result
+        return result > 0
 
     async def delete_system_source(self, source_id: str, market: str) -> bool:
         """删除系统公共数据源配置
@@ -149,14 +155,14 @@ class DataSourceConfigService:
         """
         logger.info(f"删除系统公共数据源配置: {source_id} ({market})")
 
-        result = await self.system_repo.delete_by_source_and_market(source_id, market)
+        result = await self.system_repo.delete_config(source_id, market)
 
         if result:
             logger.info(f"系统公共数据源配置删除成功: {source_id}")
         else:
             logger.warning(f"系统公共数据源配置不存在: {source_id}")
 
-        return result
+        return result > 0
 
     # ==================== 用户个人数据源配置 ====================
 
@@ -195,11 +201,11 @@ class DataSourceConfigService:
             updated_at=datetime.now(),
         )
 
-        await self.user_repo.create(source_config)
+        await self.user_repo.upsert_config(source_config)
         logger.info(f"用户个人数据源配置创建成功: {source_id}")
         return source_config
 
-    async def get_user_source(self, user_id: str, source_id: str, market: str) -> Optional[UserDataSourceConfig]:
+    async def get_user_source(self, user_id: str, source_id: str, market: str) -> UserDataSourceConfig | None:
         """获取用户个人数据源配置
 
         Args:
@@ -210,14 +216,17 @@ class DataSourceConfigService:
         Returns:
             配置对象，不存在时返回 None
         """
-        return await self.user_repo.get_by_user_source_market(user_id, source_id, market)
+        config_dict = await self.user_repo.get_config(user_id, source_id, market)
+        if config_dict:
+            return UserDataSourceConfig(**config_dict)
+        return None
 
     async def list_user_sources(
         self,
         user_id: str,
-        market: Optional[str] = None,
+        market: str | None = None,
         enabled_only: bool = False,
-    ) -> List[UserDataSourceConfig]:
+    ) -> list[UserDataSourceConfig]:
         """列出用户个人数据源配置
 
         Args:
@@ -228,7 +237,8 @@ class DataSourceConfigService:
         Returns:
             配置列表
         """
-        return await self.user_repo.list_by_user(user_id, market=market, enabled_only=enabled_only)
+        config_dicts = await self.user_repo.get_user_configs(user_id, market, enabled_only)
+        return [UserDataSourceConfig(**c) for c in config_dicts]
 
     async def update_user_source(
         self,
@@ -250,15 +260,21 @@ class DataSourceConfigService:
         """
         logger.info(f"更新用户个人数据源配置: user_id={user_id}, source_id={source_id}")
 
+        # Repository 没有 update_config 方法，需要使用 upsert 或者直接操作 collection
+        filter_query = {
+            "user_id": user_id,
+            "source_id": source_id,
+            "market": market
+        }
         updates["updated_at"] = datetime.now()
-        result = await self.user_repo.update_by_user_source_market(user_id, source_id, market, updates)
+        result = await self.user_repo.collection.update_one(filter_query, {"$set": updates})
 
-        if result:
+        if result.modified_count > 0:
             logger.info(f"用户个人数据源配置更新成功: {source_id}")
+            return True
         else:
             logger.warning(f"用户个人数据源配置不存在: {source_id}")
-
-        return result
+            return False
 
     async def delete_user_source(self, user_id: str, source_id: str, market: str) -> bool:
         """删除用户个人数据源配置
@@ -273,14 +289,14 @@ class DataSourceConfigService:
         """
         logger.info(f"删除用户个人数据源配置: user_id={user_id}, source_id={source_id}")
 
-        result = await self.user_repo.delete_by_user_source_market(user_id, source_id, market)
+        result = await self.user_repo.delete_config(user_id, source_id, market)
 
         if result:
             logger.info(f"用户个人数据源配置删除成功: {source_id}")
         else:
             logger.warning(f"用户个人数据源配置不存在: {source_id}")
 
-        return result
+        return result > 0
 
     # ==================== 配置测试 ====================
 
@@ -294,6 +310,9 @@ class DataSourceConfigService:
         Returns:
             测试结果，包含 success, message, response_time 等字段
         """
+        import time
+        from core.market_data.models import MarketType
+
         logger.info(f"测试系统公共数据源连接: {source_id} ({market})")
 
         config = await self.get_system_source(source_id, market)
@@ -304,16 +323,44 @@ class DataSourceConfigService:
                 "response_time": None,
             }
 
-        # TODO: 实现具体的连接测试逻辑
-        # 这里需要根据不同的数据源类型调用相应的测试方法
+        # 根据数据源类型创建适配器并测试连接
+        try:
+            adapter = self._create_adapter_for_source(source_id, config.get("config", {}), market)
+            if adapter is None:
+                return {
+                    "success": False,
+                    "message": f"不支持的数据源类型: {source_id}",
+                    "response_time": None,
+                }
 
-        result = {
-            "success": True,
-            "message": "连接测试成功",
-            "response_time": 100,
-        }
+            # 执行连接测试
+            start_time = time.time()
+            is_connected = await adapter.test_connection()
+            response_time = int((time.time() - start_time) * 1000)
 
-        logger.info(f"系统公共数据源连接测试完成: {source_id}, success={result['success']}")
+            if is_connected:
+                result = {
+                    "success": True,
+                    "message": "连接测试成功",
+                    "response_time": response_time,
+                }
+                logger.info(f"系统公共数据源连接测试完成: {source_id}, success=True, response_time={response_time}ms")
+            else:
+                result = {
+                    "success": False,
+                    "message": "连接测试失败",
+                    "response_time": response_time,
+                }
+                logger.warning(f"系统公共数据源连接测试失败: {source_id}, response_time={response_time}ms")
+
+        except Exception as e:
+            result = {
+                "success": False,
+                "message": f"连接测试异常: {str(e)}",
+                "response_time": None,
+            }
+            logger.error(f"系统公共数据源连接测试异常: {source_id}, error={e}")
+
         return result
 
     async def test_user_source(self, user_id: str, source_id: str, market: str) -> dict:
@@ -327,6 +374,8 @@ class DataSourceConfigService:
         Returns:
             测试结果
         """
+        import time
+
         logger.info(f"测试用户个人数据源连接: user_id={user_id}, source_id={source_id}")
 
         config = await self.get_user_source(user_id, source_id, market)
@@ -337,26 +386,108 @@ class DataSourceConfigService:
                 "response_time": None,
             }
 
-        # TODO: 实现具体的连接测试逻辑
+        # 根据数据源类型创建适配器并测试连接
+        try:
+            adapter = self._create_adapter_for_source(source_id, config.get("config", {}), market)
+            if adapter is None:
+                return {
+                    "success": False,
+                    "message": f"不支持的数据源类型: {source_id}",
+                    "response_time": None,
+                }
 
-        result = {
-            "success": True,
-            "message": "连接测试成功",
-            "response_time": 100,
-        }
+            # 执行连接测试
+            start_time = time.time()
+            is_connected = await adapter.test_connection()
+            response_time = int((time.time() - start_time) * 1000)
 
-        logger.info(f"用户个人数据源连接测试完成: {source_id}, success={result['success']}")
+            if is_connected:
+                result = {
+                    "success": True,
+                    "message": "连接测试成功",
+                    "response_time": response_time,
+                }
+                logger.info(f"用户个人数据源连接测试完成: {source_id}, success=True, response_time={response_time}ms")
+            else:
+                result = {
+                    "success": False,
+                    "message": "连接测试失败",
+                    "response_time": response_time,
+                }
+                logger.warning(f"用户个人数据源连接测试失败: {source_id}, response_time={response_time}ms")
+
+        except Exception as e:
+            result = {
+                "success": False,
+                "message": f"连接测试异常: {str(e)}",
+                "response_time": None,
+            }
+            logger.error(f"用户个人数据源连接测试异常: {source_id}, error={e}")
+
         return result
+
+    def _create_adapter_for_source(
+        self,
+        source_id: str,
+        config: dict,
+        market: str
+    ):
+        """
+        根据数据源ID创建适配器实例
+
+        Args:
+            source_id: 数据源标识
+            config: 配置信息
+            market: 市场类型
+
+        Returns:
+            数据源适配器实例，不支持的数据源返回 None
+        """
+        from core.market_data.models import MarketType
+
+        try:
+            market_type = MarketType(market)
+
+            # A股数据源
+            if market_type == MarketType.A_STOCK:
+                if source_id == "tushare":
+                    from core.market_data.sources.a_stock.tushare_adapter import TuShareAdapter
+                    return TuShareAdapter(config=config)
+                elif source_id == "akshare":
+                    from core.market_data.sources.a_stock.akshare_adapter import AkShareAdapter
+                    return AkShareAdapter(config=config)
+
+            # 美股数据源
+            elif market_type == MarketType.US_STOCK:
+                if source_id == "yahoo":
+                    from core.market_data.sources.us_stock.yahoo_adapter import YahooFinanceAdapter
+                    return YahooFinanceAdapter(config=config)
+                elif source_id == "alpha_vantage":
+                    from core.market_data.sources.us_stock.alphavantage_adapter import AlphaVantageAdapter
+                    return AlphaVantageAdapter(config=config)
+
+            # 港股数据源
+            elif market_type == MarketType.HK_STOCK:
+                if source_id == "yahoo":
+                    from core.market_data.sources.hk_stock.yahoo_adapter import YahooHKAdapter
+                    return YahooHKAdapter(config=config)
+                elif source_id == "akshare":
+                    from core.market_data.sources.hk_stock.akshare_adapter import AkShareHKAdapter
+                    return AkShareHKAdapter(config=config)
+
+            logger.warning(f"Unsupported data source: {source_id} for market: {market}")
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to create adapter for {source_id}: {e}")
+            return None
 
 
 # 便捷函数：获取服务实例
-def get_config_service(db: AsyncIOMotorClient) -> DataSourceConfigService:
+def get_config_service() -> DataSourceConfigService:
     """获取配置服务实例
-
-    Args:
-        db: MongoDB 客户端
 
     Returns:
         配置服务实例
     """
-    return DataSourceConfigService(db)
+    return DataSourceConfigService()

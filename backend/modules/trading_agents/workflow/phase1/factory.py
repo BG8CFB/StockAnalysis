@@ -8,20 +8,19 @@ Phase 1 智能体工厂
 """
 
 import logging
-from typing import List, Dict, Any, Optional
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
-from langchain_core.language_models import BaseChatModel
-from langchain_core.tools import BaseTool
 from langchain.agents import create_agent
-from modules.trading_agents.models.state import (
-    WorkflowState,
-    AgentExecution,
-    TokenUsage,
-    TaskStatus,
-)
-from modules.trading_agents.config import get_enabled_agents
+from langchain_core.tools import BaseTool
+
 from core.ai.service import AIService
+from modules.trading_agents.config import get_enabled_agents
+from modules.trading_agents.models.state import (
+    AgentExecution,
+    TaskStatus,
+    WorkflowState,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -267,7 +266,11 @@ async def load_agent_tools(
 
             logger.info(f"[Phase 1] 为智能体 {agent_config['slug']} 加载 MCP 工具: {mcp_servers}")
 
-            async with MCPConnector(user_id=user_id, server_names=mcp_servers) as connector:
+            async with MCPConnector(
+                user_id=user_id,
+                task_id=state.task_id,
+                server_names=mcp_servers
+            ) as connector:
                 mcp_tools = await connector.get_tools()
                 tools.extend(mcp_tools)
                 logger.info(f"[Phase 1] 从 MCP 获取了 {len(mcp_tools)} 个工具")
@@ -278,8 +281,8 @@ async def load_agent_tools(
     local_tools = agent_config.get("local_tools", [])
     if local_tools:
         try:
-            from modules.trading_agents.tools.local_tools_adapter import create_local_tools
             from core.market_data.managers.source_router import get_source_router
+            from modules.trading_agents.tools.local_tools_adapter import create_local_tools
 
             logger.info(f"[Phase 1] 为智能体 {agent_config['slug']} 加载 Local 工具: {local_tools}")
 
@@ -310,10 +313,13 @@ async def execute_phase1(
     ai_service: AIService,
     config: Dict[str, Any],
     selected_agents: Optional[List[str]] = None,
-    model_id: str = "claude-sonnet-4-20250514"
+    model_id: str = "claude-sonnet-4-20250514",
+    max_concurrency: Optional[int] = None
 ) -> WorkflowState:
     """
     执行 Phase 1: 信息收集与基础分析
+
+    所有分析师智能体并行执行，并发数由模型配置的 task_concurrency 控制。
 
     Args:
         state: 工作流状态
@@ -321,10 +327,13 @@ async def execute_phase1(
         config: 智能体配置
         selected_agents: 用户选择的智能体 slug 列表
         model_id: 模型 ID
+        max_concurrency: 最大并发数（从模型配置的 task_concurrency 获取）
 
     Returns:
         更新后的工作流状态
     """
+    import asyncio
+
     logger.info(f"[Phase 1] 开始执行, 任务ID: {state.task_id}")
 
     # 更新状态
@@ -347,39 +356,38 @@ async def execute_phase1(
         state.status = TaskStatus.COMPLETED
         return state
 
-    logger.info(f"[Phase 1] 启用 {len(enabled_agents)} 个智能体")
+    concurrency_str = str(max_concurrency) if max_concurrency else "无限制"
+    logger.info(f"[Phase 1] 启用 {len(enabled_agents)} 个智能体, 并发数: {concurrency_str}")
 
     # 创建智能体工厂
     factory = Phase1AgentFactory(ai_service, config)
 
+    # 创建并发控制信号量
+    semaphore = asyncio.Semaphore(max_concurrency) if max_concurrency else None
+
+    async def execute_single_agent(agent_config: Dict[str, Any]) -> Dict[str, Any]:
+        """执行单个智能体（带并发控制）"""
+        if semaphore:
+            async with semaphore:
+                return await _execute_agent_internal(factory, agent_config, state, model_id)
+        else:
+            return await _execute_agent_internal(factory, agent_config, state, model_id)
+
     # 并发执行所有智能体
-    results = []
-    for agent_config in enabled_agents:
-        # 加载工具（MCP + Local）
-        tools = await load_agent_tools(agent_config, state.user_id, state)
+    tasks = [execute_single_agent(agent_config) for agent_config in enabled_agents]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # 创建智能体
-        agent = factory.create_agent(
-            agent_config,
-            tools,
-            model_id
-        )
+    # 处理结果
+    for result in results:
+        if isinstance(result, Exception):
+            logger.error(f"[Phase 1] 智能体执行异常: {result}")
+            continue
 
-        # 构建用户提示词
-        user_prompt = _build_user_prompt(state, agent_config)
-
-        # 执行智能体
-        result = await factory.execute_agent(
-            agent,
-            agent_config,
-            state,
-            user_prompt
-        )
-
-        results.append(result)
+        if not result:
+            continue
 
         # 更新状态中的分析师报告
-        if result["output"]:
+        if result.get("output"):
             state.analyst_reports.append({
                 "slug": result["slug"],
                 "name": result["name"],
@@ -401,7 +409,9 @@ async def execute_phase1(
                 from modules.trading_agents.models.state import PhaseExecution
                 phase1_execution = PhaseExecution(
                     phase=1,
-                    phase_name="信息收集与基础分析"
+                    phase_name="信息收集与基础分析",
+                    execution_mode="concurrent",
+                    max_concurrency=max_concurrency or len(enabled_agents)
                 )
                 state.phase_executions.append(phase1_execution)
 
@@ -410,9 +420,40 @@ async def execute_phase1(
     # 更新进度
     state.progress = 25.0  # Phase 1 完成后进度 25%
 
-    logger.info(f"[Phase 1] 完成, 完成 {len(results)} 个智能体")
+    logger.info(f"[Phase 1] 完成, 完成 {len(state.analyst_reports)} 个智能体")
 
     return state
+
+
+async def _execute_agent_internal(
+    factory: "Phase1AgentFactory",
+    agent_config: Dict[str, Any],
+    state: WorkflowState,
+    model_id: str
+) -> Dict[str, Any]:
+    """内部函数：执行单个智能体"""
+    # 加载工具（MCP + Local）
+    tools = await load_agent_tools(agent_config, state.user_id, state)
+
+    # 创建智能体
+    agent = factory.create_agent(
+        agent_config,
+        tools,
+        model_id
+    )
+
+    # 构建用户提示词
+    user_prompt = _build_user_prompt(state, agent_config)
+
+    # 执行智能体
+    result = await factory.execute_agent(
+        agent,
+        agent_config,
+        state,
+        user_prompt
+    )
+
+    return result
 
 
 def _build_user_prompt(state: WorkflowState, agent_config: Dict[str, Any]) -> str:

@@ -42,7 +42,6 @@ class LangChainAdapter:
         timeout_seconds: int = 60,
         max_retries: int = 3,
         thinking_enabled: bool = False,
-        thinking_mode: Optional[str] = None,
         reasoning_effort: Optional[str] = None,
         budget_tokens: Optional[int] = None,
         **kwargs,
@@ -58,8 +57,7 @@ class LangChainAdapter:
             temperature: 温度参数
             timeout_seconds: 超时时间
             max_retries: 最大重试次数
-            thinking_enabled: 是否启用思考能力
-            thinking_mode: 思考模式 (preserved/clear_on_new)
+            thinking_enabled: 启用思考模式（思考内容会返回给用户）
             reasoning_effort: 推理级别 (OpenAI o1/o3)
             budget_tokens: token 预算 (Claude)
             **kwargs: 其他参数
@@ -93,7 +91,6 @@ class LangChainAdapter:
             timeout_seconds=timeout_seconds,
             max_retries=max_retries,
             thinking_enabled=thinking_enabled,
-            thinking_mode=thinking_mode,
             reasoning_effort=reasoning_effort,
             **kwargs,
         )
@@ -109,7 +106,6 @@ class LangChainAdapter:
         timeout_seconds: int = 60,
         max_retries: int = 3,
         thinking_enabled: bool = False,
-        thinking_mode: Optional[str] = None,
         reasoning_effort: Optional[str] = None,
         **kwargs,
     ) -> ChatOpenAI:
@@ -123,7 +119,7 @@ class LangChainAdapter:
         # 添加思考参数
         if thinking_enabled:
             model_kwargs.update(
-                cls._build_thinking_params(model_id, thinking_mode, reasoning_effort)
+                cls._build_thinking_params(model_id, reasoning_effort)
             )
 
         logger.debug(
@@ -185,21 +181,20 @@ class LangChainAdapter:
     def _build_thinking_params(
         cls,
         model_id: str,
-        thinking_mode: Optional[str] = None,
         reasoning_effort: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         构建思考参数（支持多模型思考模式）
 
         统一支持以下思考能力：
-        - GLM-4.7: 交错式思考 + 保留式思考
+        - GLM-4.7: 交错式思考（思考内容会返回给用户）
+        - GLM-4.x: 基础思考模式
         - DeepSeek: 思考模式（V3.2+ 支持工具调用）
         - OpenAI o1/o3: 推理级别控制
         - Claude: 扩展思考模式
 
         Args:
             model_id: 模型 ID
-            thinking_mode: 思考模式 (preserved=保留式, clear_on_new=新轮次清除)
             reasoning_effort: 推理级别 (low/medium/high)
 
         Returns:
@@ -207,15 +202,12 @@ class LangChainAdapter:
         """
         model_id_lower = model_id.lower()
 
-        # GLM-4.7 思考模式（支持交错式和保留式思考）
+        # GLM-4.7 思考模式（思考内容会返回给用户）
         if "glm-4.7" in model_id_lower:
-            # preserved: 保留式思考（多轮对话保留思考块，提升缓存命中率）
-            # clear_on_new: 新轮次清除思考内容
-            clear_thinking = thinking_mode == "clear_on_new"
             return {
                 "thinking": {
                     "type": "enabled",
-                    "clear_thinking": clear_thinking,
+                    "clear_thinking": False,  # 保留思考内容并返回
                 }
             }
 
@@ -228,7 +220,6 @@ class LangChainAdapter:
             }
 
         # DeepSeek 思考模式（支持所有 DeepSeek 模型）
-        # 包括: deepseek-chat, deepseek-coder, deepseek-reasoner
         if "deepseek" in model_id_lower:
             return {
                 "thinking": {
@@ -246,7 +237,6 @@ class LangChainAdapter:
             }
 
         # 其他模型（Qwen、Moonshot 等）如果支持思考模式
-        # 使用通用格式，由各平台自行实现
         return {}
 
     @classmethod

@@ -12,14 +12,14 @@
       <div class="logo-wrapper">
         <div class="logo-icon">
           <el-icon :size="24">
-            <TrendCharts />
+            <DataAnalysis />
           </el-icon>
         </div>
         <h1
           v-if="!collapsed"
           class="logo-text"
         >
-          StockMind
+          股票分析
         </h1>
       </div>
     </div>
@@ -79,7 +79,7 @@
             <el-icon><DataAnalysis /></el-icon>
             <span>AI 深度分析</span>
           </template>
-          
+
           <el-menu-item index="/trading-agents/analysis/single">
             <span class="sub-dot" />
             <span>个股分析</span>
@@ -92,6 +92,10 @@
             <span class="sub-dot" />
             <span>任务队列</span>
           </el-menu-item>
+          <el-menu-item index="/trading-agents/compare">
+            <span class="sub-dot" />
+            <span>历史对比</span>
+          </el-menu-item>
         </el-sub-menu>
 
         <!-- Section: Configuration -->
@@ -103,21 +107,6 @@
         </div>
 
         <el-sub-menu
-          index="system-monitor"
-          popper-class="custom-popper"
-        >
-          <template #title>
-            <el-icon><Monitor /></el-icon>
-            <span>系统监控</span>
-          </template>
-
-          <el-menu-item index="/core/monitor/data-source-status">
-            <span class="sub-dot" />
-            <span>数据源状态</span>
-          </el-menu-item>
-        </el-sub-menu>
-
-        <el-sub-menu
           index="settings"
           popper-class="custom-popper"
         >
@@ -126,6 +115,7 @@
             <span>全局设置</span>
           </template>
 
+          <!-- 管理员专区 -->
           <template v-if="isAdmin">
             <el-menu-item index="/settings/users">
               <span class="sub-dot" />
@@ -137,24 +127,26 @@
             </el-menu-item>
           </template>
 
+          <!-- 核心基础设施 -->
+          <el-menu-item index="/settings/ai-models">
+            <span class="sub-dot" />
+            <span>AI 模型管理</span>
+          </el-menu-item>
+
           <el-menu-item index="/settings/mcp-servers">
             <span class="sub-dot" />
             <span>MCP 服务器管理</span>
           </el-menu-item>
 
-          <el-menu-item index="/settings/trading-agents/models">
+          <!-- 业务配置 -->
+          <el-menu-item index="/settings/data-sources">
             <span class="sub-dot" />
-            <span>AI 模型管理</span>
+            <span>数据源设置</span>
           </el-menu-item>
 
-          <el-menu-item index="/settings/trading-agents/agent-config">
+          <el-menu-item index="/settings/trading">
             <span class="sub-dot" />
-            <span>智能体配置</span>
-          </el-menu-item>
-
-          <el-menu-item index="/settings/trading-agents/analysis">
-            <span class="sub-dot" />
-            <span>分析设置</span>
+            <span>Trading Agent 设置</span>
           </el-menu-item>
         </el-sub-menu>
       </el-menu>
@@ -220,15 +212,52 @@ const roleLabel = computed(() => {
   return map[userStore.userInfo?.role || ''] || '访客'
 })
 
-function handleLogoClick() { router.push('/dashboard') }
-function showUserMenu() { /* Future feature */ }
+/**
+ * 处理 Logo 点击
+ */
+function handleLogoClick() {
+  router.push('/dashboard')
+}
+
+/**
+ * 显示用户菜单（预留功能）
+ */
+function showUserMenu() {
+  // TODO: 实现用户菜单（个人资料、设置等）
+}
+
+/**
+ * 处理用户登出
+ *
+ * 设计说明：
+ * 1. 显示确认对话框
+ * 2. 调用 userStore.logout() 清除状态并触发 USER_LOGOUT 事件
+ * 3. 路由守卫监听事件并自动跳转到登录页（router/index.ts:149-159）
+ * 4. 不需要手动调用 router.push，避免重复跳转
+ */
 async function handleLogout() {
   try {
-    await ElMessageBox.confirm('确认退出登录?', '提示', { confirmButtonText: '退出', cancelButtonText: '取消', type: 'warning' })
+    await ElMessageBox.confirm(
+      '确认退出登录?',
+      '提示',
+      {
+        confirmButtonText: '退出',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+
+    // userStore.logout() 会：
+    // 1. 清除本地认证状态（token, userInfo, preferences, localStorage）
+    // 2. 触发 USER_LOGOUT 事件
+    // 3. 路由守卫监听到事件后自动跳转到登录页
     await userStore.logout()
-    router.push('/login')
+
+    // 注意：不需要手动调用 router.push('/login')
+    // 路由守卫已经监听 USER_LOGOUT 事件并处理跳转
     ElMessage.success('已安全退出')
   } catch {
+    // 用户取消操作，不做任何事
   }
 }
 </script>
@@ -267,6 +296,7 @@ async function handleLogout() {
 .logo-wrapper {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 12px;
   width: 100%;
 }
@@ -281,6 +311,13 @@ async function handleLogout() {
   justify-content: center;
   color: white;
   flex-shrink: 0;
+}
+
+/* 优化图标居中 - 保持自然居中效果 */
+.logo-icon :deep(.el-icon) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .logo-text {
@@ -298,10 +335,17 @@ async function handleLogout() {
   overflow-y: auto;
   overflow-x: hidden;
   padding: 16px 12px;
+  /* 隐藏滚动条但保持可滚动功能 */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE 10+ */
 }
 
-.sidebar-scroll-area::-webkit-scrollbar { width: 4px; }
-.sidebar-scroll-area::-webkit-scrollbar-thumb { background: #374151; border-radius: 2px; }
+/* Chrome, Safari, Edge - 隐藏滚动条 */
+.sidebar-scroll-area::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
 
 /* Menu Reset & Base Styles */
 .custom-menu {
@@ -387,6 +431,24 @@ async function handleLogout() {
 :deep(.el-menu-item.is-active) .sub-dot {
   background-color: var(--sb-active-text);
   box-shadow: 0 0 8px rgba(96, 165, 250, 0.5);
+}
+
+/* Menu Divider */
+.menu-divider {
+  height: 1px;
+  background-color: #374151; /* Gray 700 */
+  margin: 12px 0;
+  opacity: 0.6;
+}
+
+/* Menu Section Label */
+.menu-section-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: #6b7280; /* Gray 500 */
+  font-weight: 600;
+  padding: 8px 12px 4px 44px;
+  letter-spacing: 0.05em;
 }
 
 /* Level 3 (Nested Submenu) */

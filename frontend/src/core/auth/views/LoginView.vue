@@ -150,6 +150,46 @@ const rules: FormRules = {
   ],
 }
 
+/**
+ * 安全的跳转目标验证
+ * 防止开放重定向（Open Redirect）漏洞
+ * @param redirect 用户提供的重定向路径
+ * @returns 安全的重定向路径
+ */
+function getSafeRedirect(redirect: string | null): string {
+  // 默认跳转到仪表板
+  const defaultRedirect = '/dashboard'
+
+  if (!redirect) {
+    return defaultRedirect
+  }
+
+  // 安全检查：只允许相对路径（以 / 开头）或命名路由
+  // 拒绝：
+  // - 协议相对 URL (//evil.com)
+  // - 绝对 URL (https://evil.com)
+  // - javascript: 协议
+  if (
+    redirect.startsWith('//') ||
+    redirect.startsWith('http:') ||
+    redirect.startsWith('https:') ||
+    redirect.startsWith('javascript:') ||
+    redirect.startsWith('data:')
+  ) {
+    console.warn('[LoginView] Unsafe redirect detected, using default:', redirect)
+    return defaultRedirect
+  }
+
+  // 允许的路径格式：/path 或 { name: 'RouteName', ... }
+  // 对于字符串路径，确保以 / 开头
+  if (typeof redirect === 'string' && !redirect.startsWith('/')) {
+    console.warn('[LoginView] Invalid redirect format, using default:', redirect)
+    return defaultRedirect
+  }
+
+  return redirect
+}
+
 async function handleLogin() {
   console.log('[LoginView] handleLogin triggered')
   if (!formRef.value) return
@@ -168,9 +208,11 @@ async function handleLogin() {
       )
       if (success) {
         ElMessage.success('登录成功')
-        const redirect = (route.query.redirect as string) || '/dashboard'
-        console.log('[LoginView] Login success, redirecting to:', redirect)
-        await router.push(redirect)
+        // 安全获取并验证重定向目标
+        const rawRedirect = route.query.redirect as string | null
+        const safeRedirect = getSafeRedirect(rawRedirect)
+        console.log('[LoginView] Login success, redirecting to:', safeRedirect)
+        await router.push(safeRedirect)
       }
     } catch (error: any) {
       const errorMessage = error?.response?.data?.detail || error?.message || '登录失败，请检查用户名和密码'

@@ -95,6 +95,10 @@ class AIModelService:
             "timeout_seconds": request.timeout_seconds,
             "temperature": request.temperature,
             "enabled": request.enabled,
+            "thinking_enabled": request.thinking_enabled,
+            "custom_input_price": request.custom_input_price,
+            "custom_output_price": request.custom_output_price,
+            "custom_thinking_price": request.custom_thinking_price,
             "is_system": request.is_system,
             "owner_id": None if request.is_system else user_id,
             "created_at": datetime.utcnow(),
@@ -313,6 +317,14 @@ class AIModelService:
             update_data["temperature"] = request.temperature
         if request.enabled is not None:
             update_data["enabled"] = request.enabled
+        if request.thinking_enabled is not None:
+            update_data["thinking_enabled"] = request.thinking_enabled
+        if request.custom_input_price is not None:
+            update_data["custom_input_price"] = request.custom_input_price
+        if request.custom_output_price is not None:
+            update_data["custom_output_price"] = request.custom_output_price
+        if request.custom_thinking_price is not None:
+            update_data["custom_thinking_price"] = request.custom_thinking_price
 
         update_data["updated_at"] = datetime.utcnow()
 

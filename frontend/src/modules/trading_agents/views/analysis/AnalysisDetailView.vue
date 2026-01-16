@@ -137,7 +137,7 @@
 
           <!-- 当前运行的智能体 -->
           <el-card
-            v-if="progress.runningAgents.length > 0"
+            v-if="progress.runningAgents.value.length > 0"
             shadow="never"
             class="agents-card"
           >
@@ -147,16 +147,39 @@
 
             <div class="running-agents">
               <AgentStatusCard
-                v-for="agent in progress.runningAgents"
+                v-for="agent in progress.runningAgents.value"
                 :key="agent.slug"
                 :agent="agent"
+                :show-thinking="true"
+                @show-thinking="handleShowThinking"
+              />
+            </div>
+          </el-card>
+
+          <!-- 已完成的智能体 -->
+          <el-card
+            v-if="progress.completedAgents.value.length > 0"
+            shadow="never"
+            class="agents-card"
+          >
+            <template #header>
+              <span>已完成的智能体 ({{ progress.completedAgents.value.length }})</span>
+            </template>
+
+            <div class="completed-agents">
+              <AgentStatusCard
+                v-for="agent in progress.completedAgents.value"
+                :key="agent.slug"
+                :agent="agent"
+                :show-thinking="true"
+                @show-thinking="handleShowThinking"
               />
             </div>
           </el-card>
 
           <!-- 已生成的报告 -->
           <el-card
-            v-if="progress.generatedReports.length > 0"
+            v-if="progress.generatedReports.value.length > 0"
             shadow="never"
             class="reports-card"
           >
@@ -244,6 +267,14 @@
         </el-col>
       </el-row>
     </div>
+
+    <!-- 智能体思考过程对话框 -->
+    <AgentThinkingDialog
+      v-model:visible="thinkingDialogVisible"
+      :agent-name="selectedAgentName"
+      :thinking-content="selectedAgentThinking"
+      :loading="thinkingLoading"
+    />
   </div>
 </template>
 
@@ -257,10 +288,12 @@ import { useAnalysisProgress, PHASES } from '../../composables/useAnalysisProgre
 import { useTokenUsage } from '../../composables/useTokenUsage'
 import { taskApi } from '../../api'
 import { TaskStatusEnum, type AnalysisTask } from '../../types'
+import type { AgentStatus } from '../../composables/useAnalysisProgress'
 import AgentStatusCard from '../../components/analysis/AgentStatusCard.vue'
 import ToolCallLog from '../../components/analysis/ToolCallLog.vue'
 import ReportCard from '../../components/analysis/ReportCard.vue'
 import StreamingReport from '../../components/analysis/StreamingReport.vue'
+import AgentThinkingDialog from '../../components/analysis/AgentThinkingDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -278,6 +311,12 @@ const progress = useAnalysisProgress()
 
 // Token 使用 - 初始化为空，在任务加载后更新
 const tokenUsage = useTokenUsage()
+
+// 思考过程对话框状态
+const thinkingDialogVisible = ref(false)
+const selectedAgentName = ref('')
+const selectedAgentThinking = ref('')
+const thinkingLoading = ref(false)
 
 // WebSocket 连接
 const ws = useWebSocket({
@@ -495,6 +534,61 @@ function goBack() {
   router.back()
 }
 
+/**
+ * 显示智能体思考过程
+ */
+async function handleShowThinking(agent: AgentStatus) {
+  selectedAgentName.value = agent.name
+  thinkingLoading.value = true
+  thinkingDialogVisible.value = true
+
+  try {
+    // TODO: 从后端获取智能体的思考过程
+    // 暂时使用模拟数据
+    selectedAgentThinking.value = generateMockThinking(agent.name)
+  } catch (error) {
+    ElMessage.error('加载思考过程失败')
+  } finally {
+    thinkingLoading.value = false
+  }
+}
+
+/**
+ * 生成模拟思考过程
+ */
+function generateMockThinking(agentName: string): string {
+  return `# ${agentName} 思考过程
+
+## 分析目标
+对当前股票进行深入分析，评估投资价值和风险。
+
+## 关键发现
+
+### 1. 基本面分析
+- 财务状况良好，营收稳定增长
+- 盈利能力持续提升
+- 负债率处于合理水平
+
+### 2. 技术面分析
+- 股价处于上升趋势
+- 成交量温和放大
+- 技术指标显示买入信号
+
+### 3. 市场情绪
+- 市场对该股票关注度较高
+- 投资者情绪整体偏正面
+- 机构持仓比例稳定
+
+## 结论
+基于以上分析，该股票具有良好的投资价值，建议**买入**。
+
+## 风险提示
+- 市场波动风险
+- 行业政策变化风险
+- 公司经营风险
+`
+}
+
 // 组件挂载
 onMounted(async () => {
   await loadTask()
@@ -598,7 +692,8 @@ watch(() => task.value?.status, (newStatus) => {
   margin-bottom: 20px;
 }
 
-.running-agents {
+.running-agents,
+.completed-agents {
   display: grid;
   gap: 12px;
 }

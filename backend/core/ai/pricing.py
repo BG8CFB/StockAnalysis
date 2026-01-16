@@ -87,15 +87,24 @@ class ModelPrice:
 # =============================================================================
 # 内置模型定价（2025年最新官方价格）
 # 所有价格统一使用 per_1M（每百万tokens）作为单位
+# 仅支持国内模型
 # =============================================================================
 
 BUILTIN_MODEL_PRICES: Dict[str, ModelPrice] = {
     # =========================================================================
     # 智谱 AI (GLM 系列) - 价格来源: https://bigmodel.cn/pricing
-    # 2025年4月大幅降价后价格
+    # 2025年7月 GLM-4.5 发布，价格进一步下降
     # =========================================================================
+    "glm-4.5": ModelPrice(
+        input_price=Decimal("0.8"),  # 0.8元/百万tokens (2025年7月新价格)
+        input_unit=PriceUnit.PER_1M_TOKENS,
+        output_price=Decimal("2"),  # 2元/百万tokens
+        output_unit=PriceUnit.PER_1M_TOKENS,
+        currency="CNY",
+        updated_at=datetime(2025, 7, 30),
+    ),
     "glm-4-plus": ModelPrice(
-        input_price=Decimal("5"),  # 5元/百万tokens (降价90%后)
+        input_price=Decimal("5"),  # 5元/百万tokens
         input_unit=PriceUnit.PER_1M_TOKENS,
         output_price=Decimal("15"),  # 15元/百万tokens
         output_unit=PriceUnit.PER_1M_TOKENS,
@@ -126,13 +135,13 @@ BUILTIN_MODEL_PRICES: Dict[str, ModelPrice] = {
         currency="CNY",
         updated_at=datetime(2025, 4, 24),
     ),
-    # GLM-4.7 编程套餐（用户提供的，暂无官方价格，使用估计值）
+    # GLM-4.7 编程套餐（智谱AI编程专用模型）
     "glm-4.7": ModelPrice(
-        input_price=Decimal("5"),  # 估计价格，与 glm-4-plus 相同
+        input_price=Decimal("5"),  # 估计价格
         input_unit=PriceUnit.PER_1M_TOKENS,
         output_price=Decimal("15"),
         output_unit=PriceUnit.PER_1M_TOKENS,
-        thinking_price=Decimal("15"),  # 思考token单独计价（估计）
+        thinking_price=Decimal("15"),  # 思考token单独计价
         thinking_unit=PriceUnit.PER_1M_TOKENS,
         currency="CNY",
         updated_at=datetime(2025, 1, 1),
@@ -147,146 +156,90 @@ BUILTIN_MODEL_PRICES: Dict[str, ModelPrice] = {
     ),
 
     # =========================================================================
-    # DeepSeek - 价格来源: https://api-docs.deepseek.com/quick_start/pricing
-    # 2025年9月新价格，按汇率约 1 USD = 7.7 CNY 换算
+    # DeepSeek - 价格来源: https://api-docs.deepseek.com/zh-cn/quick_start/pricing
+    # 2025年9月V3.2-Exp降价后价格
     # =========================================================================
     "deepseek-chat": ModelPrice(
-        input_price=Decimal("1.89"),  # 约 $0.27/百万 × 7 = 1.89元/百万 (缓存未命中)
+        input_price=Decimal("4"),  # 4元/百万tokens (缓存未命中，2025年9月价格)
         input_unit=PriceUnit.PER_1M_TOKENS,
-        output_price=Decimal("7.7"),  # 约 $1.10/百万 × 7 = 7.7元/百万
+        output_price=Decimal("12"),  # 12元/百万tokens
         output_unit=PriceUnit.PER_1M_TOKENS,
         currency="CNY",
         updated_at=datetime(2025, 9, 6),
     ),
     "deepseek-coder": ModelPrice(
-        input_price=Decimal("1.89"),
+        input_price=Decimal("4"),
         input_unit=PriceUnit.PER_1M_TOKENS,
-        output_price=Decimal("7.7"),
+        output_price=Decimal("12"),
         output_unit=PriceUnit.PER_1M_TOKENS,
         currency="CNY",
         updated_at=datetime(2025, 9, 6),
     ),
     "deepseek-reasoner": ModelPrice(
-        input_price=Decimal("5.5"),  # 约 $0.55/百万 × 10 = 5.5元/百万 (估计)
+        input_price=Decimal("4"),  # 4元/百万tokens (估计)
         input_unit=PriceUnit.PER_1M_TOKENS,
-        output_price=Decimal("21"),  # 约 $2.1/百万 × 10 = 21元/百万 (估计)
+        output_price=Decimal("12"),  # 12元/百万tokens (估计)
         output_unit=PriceUnit.PER_1M_TOKENS,
         currency="CNY",
-        updated_at=datetime(2025, 1, 1),
+        updated_at=datetime(2025, 9, 6),
     ),
 
     # =========================================================================
     # 通义千问 - 价格来源: https://help.aliyun.com/zh/model-studio/model-pricing
+    # 2025年价格
     # =========================================================================
     "qwen-max": ModelPrice(
-        input_price=Decimal("40"),  # 40元/百万tokens
+        input_price=Decimal("2.4"),  # 2.4元/百万tokens (0.0024元/千)
         input_unit=PriceUnit.PER_1M_TOKENS,
-        output_price=Decimal("120"),  # 120元/百万tokens
+        output_price=Decimal("9.6"),  # 9.6元/百万tokens (0.0096元/千)
         output_unit=PriceUnit.PER_1M_TOKENS,
         currency="CNY",
-        updated_at=datetime(2025, 1, 1),
+        updated_at=datetime(2025, 11, 13),
     ),
     "qwen-plus": ModelPrice(
-        input_price=Decimal("4"),  # 4元/百万tokens
+        input_price=Decimal("0.8"),  # 0.8元/百万tokens
         input_unit=PriceUnit.PER_1M_TOKENS,
-        output_price=Decimal("12"),  # 12元/百万tokens
+        output_price=Decimal("2"),  # 2元/百万tokens
         output_unit=PriceUnit.PER_1M_TOKENS,
         currency="CNY",
         updated_at=datetime(2025, 1, 1),
     ),
     "qwen-turbo": ModelPrice(
-        input_price=Decimal("0.8"),  # 0.8元/百万tokens (估计)
+        input_price=Decimal("0.4"),  # 0.4元/百万tokens (估计)
         input_unit=PriceUnit.PER_1M_TOKENS,
-        output_price=Decimal("2"),  # 2元/百万tokens (估计)
+        output_price=Decimal("1"),  # 1元/百万tokens (估计)
         output_unit=PriceUnit.PER_1M_TOKENS,
         currency="CNY",
         updated_at=datetime(2025, 1, 1),
     ),
 
     # =========================================================================
-    # OpenAI - 价格来源: https://openai.com/api/pricing
-    # 2025年 GPT-5 系列价格
+    # Moonshot AI (Kimi) - 价格来源: https://platform.moonshot.cn/docs/pricing/chat
+    # 2025年11月价格
     # =========================================================================
-    "gpt-5": ModelPrice(
-        input_price=Decimal("2.5"),  # $2.5/百万tokens
+    "moonshot-v1-8k": ModelPrice(
+        input_price=Decimal("1.2"),  # 1.2元/百万tokens
         input_unit=PriceUnit.PER_1M_TOKENS,
-        output_price=Decimal("10"),  # $10/百万tokens
+        output_price=Decimal("3"),  # 3元/百万tokens
         output_unit=PriceUnit.PER_1M_TOKENS,
-        currency="USD",
-        updated_at=datetime(2025, 1, 1),
+        currency="CNY",
+        updated_at=datetime(2025, 11, 13),
     ),
-    "gpt-5-mini": ModelPrice(
-        input_price=Decimal("0.25"),  # $0.25/百万tokens
+    "moonshot-v1-32k": ModelPrice(
+        input_price=Decimal("2.4"),  # 2.4元/百万tokens
         input_unit=PriceUnit.PER_1M_TOKENS,
-        output_price=Decimal("2"),  # $2/百万tokens
+        output_price=Decimal("6"),  # 6元/百万tokens
         output_unit=PriceUnit.PER_1M_TOKENS,
-        currency="USD",
-        updated_at=datetime(2025, 1, 1),
+        currency="CNY",
+        updated_at=datetime(2025, 11, 13),
     ),
-    "gpt-5-pro": ModelPrice(
-        input_price=Decimal("1.75"),  # $1.75/百万tokens
+    "moonshot-v1-128k": ModelPrice(
+        input_price=Decimal("10"),  # 10元/百万tokens
         input_unit=PriceUnit.PER_1M_TOKENS,
-        output_price=Decimal("14"),  # $14/百万tokens
+        output_price=Decimal("30"),  # 30元/百万tokens
         output_unit=PriceUnit.PER_1M_TOKENS,
-        currency="USD",
-        updated_at=datetime(2025, 1, 1),
-    ),
-    # 保留旧模型名称（向后兼容）
-    "gpt-4o": ModelPrice(
-        input_price=Decimal("2.5"),
-        input_unit=PriceUnit.PER_1M_TOKENS,
-        output_price=Decimal("10"),
-        output_unit=PriceUnit.PER_1M_TOKENS,
-        currency="USD",
-        updated_at=datetime(2025, 1, 1),
-    ),
-    "gpt-4o-mini": ModelPrice(
-        input_price=Decimal("0.15"),
-        input_unit=PriceUnit.PER_1M_TOKENS,
-        output_price=Decimal("0.6"),
-        output_unit=PriceUnit.PER_1M_TOKENS,
-        currency="USD",
-        updated_at=datetime(2025, 1, 1),
-    ),
-    "o1": ModelPrice(
-        input_price=Decimal("15"),  # $15/百万tokens
-        input_unit=PriceUnit.PER_1M_TOKENS,
-        output_price=Decimal("7.5"),  # $7.5/百万tokens
-        output_unit=PriceUnit.PER_1M_TOKENS,
-        currency="USD",
-        updated_at=datetime(2025, 1, 1),
-    ),
-
-    # =========================================================================
-    # Anthropic Claude - 价格来源: https://www.anthropic.com/api/pricing
-    # =========================================================================
-    "claude-sonnet-4-5-20250514": ModelPrice(
-        input_price=Decimal("3"),  # $3/百万tokens
-        input_unit=PriceUnit.PER_1M_TOKENS,
-        output_price=Decimal("15"),  # $15/百万tokens
-        output_unit=PriceUnit.PER_1M_TOKENS,
-        thinking_price=Decimal("15"),  # thinking tokens
-        thinking_unit=PriceUnit.PER_1M_TOKENS,
-        currency="USD",
-        updated_at=datetime(2025, 1, 1),
-    ),
-    "claude-opus-4-20250514": ModelPrice(
-        input_price=Decimal("15"),  # $15/百万tokens (估计)
-        input_unit=PriceUnit.PER_1M_TOKENS,
-        output_price=Decimal("75"),  # $75/百万tokens (估计)
-        output_unit=PriceUnit.PER_1M_TOKENS,
-        thinking_price=Decimal("75"),
-        thinking_unit=PriceUnit.PER_1M_TOKENS,
-        currency="USD",
-        updated_at=datetime(2025, 1, 1),
-    ),
-    "claude-3-5-haiku-20241022": ModelPrice(
-        input_price=Decimal("0.8"),  # $0.8/百万tokens
-        input_unit=PriceUnit.PER_1M_TOKENS,
-        output_price=Decimal("4"),  # $4/百万tokens
-        output_unit=PriceUnit.PER_1M_TOKENS,
-        currency="USD",
-        updated_at=datetime(2025, 1, 1),
+        currency="CNY",
+        updated_at=datetime(2025, 11, 13),
     ),
 }
 

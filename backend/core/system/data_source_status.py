@@ -94,28 +94,41 @@ HK_STOCK_DATA_TYPES = {
 }
 
 # 数据源配置（模拟数据，实际应从数据库读取）
+# 注意：TuShare 需要付费 token，AkShare 免费开源
+# 对于核心数据配置备用数据源，辅助数据只用免费源
 DATA_SOURCE_CONFIGS = {
     "A_STOCK": {
+        # 核心行情数据 - 配置备用
         "daily_quote": {"primary": "tushare", "fallback": "akshare"},
+        # 实时数据 - 只用免费源（AkShare 实时性好）
         "realtime_quote": {"primary": "akshare", "fallback": None},
         "minute_quote": {"primary": "akshare", "fallback": None},
+        # 财务数据 - 配置备用
         "financials": {"primary": "tushare", "fallback": "akshare"},
         "financial_indicator": {"primary": "akshare", "fallback": None},
+        # 公司信息 - 只用 TuShare（数据更权威）
         "company_info": {"primary": "tushare", "fallback": None},
+        # 参考数据 - 只用免费源
         "news": {"primary": "akshare", "fallback": None},
         "calendar": {"primary": "akshare", "fallback": None},
         "top_list": {"primary": "akshare", "fallback": None},
         "moneyflow": {"primary": "akshare", "fallback": None},
         "dividend": {"primary": "akshare", "fallback": None},
+        # 股东数据 - 只用 TuShare（数据更权威）
         "shareholder_num": {"primary": "tushare", "fallback": None},
         "top_shareholder": {"primary": "akshare", "fallback": None},
+        # 融资融券 - 只用免费源
         "margin": {"primary": "akshare", "fallback": None},
+        # 宏观数据 - 只用免费源
         "macro_economy": {"primary": "akshare", "fallback": None},
+        # 板块指数 - 只用免费源
         "sector": {"primary": "akshare", "fallback": None},
         "index": {"primary": "akshare", "fallback": None},
+        # 特殊数据 - 只用 TuShare（数据更权威）
         "ipo": {"primary": "akshare", "fallback": None},
         "pledge": {"primary": "tushare", "fallback": None},
         "repurchase": {"primary": "tushare", "fallback": None},
+        # 交易辅助 - 只用 TuShare
         "adj_factor": {"primary": "tushare", "fallback": None},
     },
     "US_STOCK": {
@@ -146,9 +159,14 @@ DATA_SOURCE_CONFIGS = {
 # 数据源显示名称
 SOURCE_DISPLAY_NAMES = {
     "tushare": "TuShare",
+    "tu": "TuShare",
     "akshare": "AkShare",
     "yahoo": "Yahoo Finance",
     "alpha_vantage": "Alpha Vantage",
+    "alphavantage": "Alpha Vantage",  # 兼容不同的大小写
+    # 备用数据源名称映射（处理未知或旧数据）
+    "unknown": "未知数据源",
+    "system": "系统数据源",
 }
 
 # 状态显示名称
@@ -156,7 +174,6 @@ STATUS_LABELS = {
     "healthy": "✅ 正常",
     "degraded": "⚠️ 已降级",
     "unavailable": "❌ 不可用",
-    "standby": "💤 待机",
 }
 
 # 下次更新说明（按数据类型）
@@ -210,7 +227,7 @@ def get_history_repo() -> DataSourceStatusHistoryRepository:
 
 
 # =============================================================================
-# 响应模型（按文档定义）
+# 响应模型（修改后：主备数据源分离显示）
 # =============================================================================
 
 class DashboardOverviewResponse(BaseModel):
@@ -220,37 +237,30 @@ class DashboardOverviewResponse(BaseModel):
     hk_stock: Optional[Dict[str, Any]] = None
 
 
-class CurrentSourceInfo(BaseModel):
-    """当前数据源信息"""
-    source_type: str
+class DataSourceInfo(BaseModel):
+    """数据源信息"""
     source_id: str
     source_name: str
-    status: str
+    is_current: bool  # 是否是当前使用的数据源
+    is_primary: bool  # 是否是主数据源
+    status: Optional[str] = None  # None 表示未使用/未检查
     last_check: Optional[str] = None
     last_check_relative: Optional[str] = None
     response_time_ms: Optional[int] = None
-
-
-class PrimarySourceInfo(BaseModel):
-    """主数据源信息（降级时使用）"""
-    source_id: str
-    status: str
-    can_retry: bool
+    failure_count: int = 0
+    error_message: Optional[str] = None  # 错误信息
 
 
 class DataTypeStatusItem(BaseModel):
-    """数据类型状态项（按文档 3.1.2）"""
+    """数据类型状态项（修改后：主备数据源分离显示）"""
     data_type: str
     data_type_name: str
-    current_source: CurrentSourceInfo
-    is_fallback: bool
-    can_retry: bool
-    primary_source: Optional[PrimarySourceInfo] = None
-    fallback_reason: Optional[str] = None
+    primary_source: DataSourceInfo
+    fallback_source: Optional[DataSourceInfo] = None
 
 
 class MarketDetailResponse(BaseModel):
-    """市场详细状态响应（按文档 3.1.2）"""
+    """市场详细状态响应（修改后）"""
     market: str
     market_name: str
     data_types: List[DataTypeStatusItem]
@@ -335,14 +345,14 @@ async def get_dashboard_overview(
                     default=None
                 )
 
-            # 确定整体状态（优先级：unavailable > degraded > healthy > standby）
-            overall_status = "standby"
+            # 确定整体状态（优先级：unavailable > degraded > healthy）
+            # 所有数据类型都会主动同步，不存在"从未检查"的情况
+            # 如果没有任何检查记录，默认为 healthy（系统启动时假设数据源可用）
+            overall_status = "healthy"
             if summary.get("unavailable", 0) > 0:
                 overall_status = "unavailable"
             elif summary.get("degraded", 0) > 0:
                 overall_status = "degraded"
-            elif summary.get("healthy", 0) > 0:
-                overall_status = "healthy"
 
             market_key = market.lower().replace("_", "_")
             result[market_key] = {
@@ -368,9 +378,9 @@ async def get_market_detail(
     system_source_repo: SystemDataSourceRepository = Depends(get_system_source_repo)
 ):
     """
-    获取市场详细状态（按文档 3.1.2）
+    获取市场详细状态（修改后：主备数据源分离显示）
 
-    返回该市场各数据类型的卡片信息
+    返回该市场各数据类型的主备数据源状态
     从数据库读取真实的健康检查状态
     """
     try:
@@ -403,7 +413,6 @@ async def get_market_detail(
 
         # 构建数据类型状态列表
         data_type_items = []
-        now = datetime.now()
 
         for data_type_key, data_type_name in data_types_map.items():
             config = source_configs.get(data_type_key, {})
@@ -415,68 +424,108 @@ async def get_market_detail(
             fallback_status = status_map.get((data_type_key, fallback_id)) if fallback_id else None
 
             # 确定当前使用的数据源（优先使用健康的主源，否则降级）
-            current_source_id = primary_id
-            current_status_record = primary_status
-            is_fallback = False
-            fallback_reason = None
+            is_primary_current = True
+            actual_fallback_id = fallback_id
 
-            # 如果主源不可用，检查备用源
+            # 如果主数据源不可用，尝试查找可用的备用数据源
             if primary_status and primary_status.get("status") in ("unavailable", "error"):
-                if fallback_id and fallback_status:
-                    if fallback_status.get("status") == "healthy":
-                        current_source_id = fallback_id
-                        current_status_record = fallback_status
-                        is_fallback = True
-                        fallback_reason = f"主数据源 {SOURCE_DISPLAY_NAMES.get(primary_id, primary_id)} 不可用，已切换到备用数据源"
+                # 首先尝试配置的 fallback
+                if fallback_id and fallback_status and fallback_status.get("status") == "healthy":
+                    is_primary_current = False
+                else:
+                    # 如果配置的 fallback 不可用或不存在，动态查找其他可用的数据源
+                    # 获取该数据类型的所有数据源状态
+                    available_sources = []
+                    for (dt, source_id), status_info in status_map.items():
+                        if dt == data_type_key and source_id != primary_id:
+                            if status_info.get("status") == "healthy":
+                                available_sources.append((source_id, status_info))
 
-            # 构建当前数据源信息
-            if current_status_record:
-                current_status = current_status_record.get("status", "standby")
-                last_check_at = current_status_record.get("last_check_at")
-                response_time_ms = current_status_record.get("response_time_ms")
-                avg_response_time_ms = current_status_record.get("avg_response_time_ms")
-                failure_count = current_status_record.get("failure_count", 0)
+                    # 按优先级排序：优先使用 akshare（免费且稳定）
+                    source_priority = {
+                        "akshare": 1,
+                        "yahoo": 2,
+                        "alpha_vantage": 3,
+                        "tushare": 4,
+                    }
+                    available_sources.sort(key=lambda x: source_priority.get(x[0], 99))
+
+                    if available_sources:
+                        actual_fallback_id = available_sources[0][0]
+                        fallback_status = available_sources[0][1]
+                        is_primary_current = False
+                        logger.info(f"Dynamic fallback for {market_upper}/{data_type_key}: {primary_id} -> {actual_fallback_id}")
+
+            # 构建主数据源信息
+            if primary_status:
+                last_check_at = primary_status.get("last_check_at")
+                time_relative = _get_relative_time(last_check_at) if last_check_at else "从未检查"
+                primary_source_info = {
+                    "source_id": primary_id,
+                    "source_name": SOURCE_DISPLAY_NAMES.get(primary_id, primary_id),
+                    "is_current": is_primary_current,
+                    "is_primary": True,
+                    "status": primary_status.get("status"),
+                    "last_check": last_check_at.isoformat() if last_check_at else None,
+                    "last_check_relative": time_relative,
+                    "response_time_ms": primary_status.get("response_time_ms"),
+                    "failure_count": primary_status.get("failure_count", 0),
+                    "error_message": primary_status.get("last_error", {}).get("message") if primary_status.get("last_error") else None,
+                }
             else:
-                # 没有检查记录，返回待机状态
-                current_status = "standby"
-                last_check_at = None
-                response_time_ms = None
-                avg_response_time_ms = None
-                failure_count = 0
-
-            # 计算相对时间
-            time_relative = _get_relative_time(last_check_at) if last_check_at else "从未检查"
-
-            current_source_info = {
-                "source_type": "system",
-                "source_id": current_source_id,
-                "source_name": SOURCE_DISPLAY_NAMES.get(current_source_id, current_source_id),
-                "status": current_status,
-                "last_check": last_check_at.isoformat() if last_check_at else None,
-                "last_check_relative": time_relative,
-                "response_time_ms": response_time_ms,
-                "avg_response_time_ms": avg_response_time_ms,
-            }
+                # 无检查记录，状态为 None
+                primary_source_info = {
+                    "source_id": primary_id,
+                    "source_name": SOURCE_DISPLAY_NAMES.get(primary_id, primary_id),
+                    "is_current": is_primary_current,
+                    "is_primary": True,
+                    "status": None,
+                    "last_check": None,
+                    "last_check_relative": None,
+                    "response_time_ms": None,
+                    "failure_count": 0,
+                    "error_message": None,
+                }
 
             # 构建数据类型项
             item = {
                 "data_type": data_type_key,
                 "data_type_name": data_type_name,
-                "current_source": current_source_info,
-                "is_fallback": is_fallback,
-                "can_retry": is_fallback  # 降级状态可以重试
+                "primary_source": primary_source_info,
             }
 
-            if fallback_reason:
-                item["fallback_reason"] = fallback_reason
-
-            # 如果处于降级状态，提供主数据源信息用于重试
-            if is_fallback and primary_status:
-                item["primary_source"] = {
-                    "source_id": primary_id,
-                    "status": primary_status.get("status", "unknown"),
-                    "can_retry": True
-                }
+            # 构建备用数据源信息（如果存在实际可用的备用数据源）
+            if actual_fallback_id:
+                if fallback_status:
+                    last_check_at = fallback_status.get("last_check_at")
+                    time_relative = _get_relative_time(last_check_at) if last_check_at else "从未检查"
+                    fallback_source_info = {
+                        "source_id": actual_fallback_id,
+                        "source_name": SOURCE_DISPLAY_NAMES.get(actual_fallback_id, actual_fallback_id),
+                        "is_current": not is_primary_current,
+                        "is_primary": False,
+                        "status": fallback_status.get("status") if not is_primary_current else None,
+                        "last_check": last_check_at.isoformat() if last_check_at else None,
+                        "last_check_relative": time_relative if not is_primary_current else None,
+                        "response_time_ms": fallback_status.get("response_time_ms"),
+                        "failure_count": fallback_status.get("failure_count", 0),
+                        "error_message": fallback_status.get("last_error", {}).get("message") if fallback_status.get("last_error") else None,
+                    }
+                else:
+                    # 无检查记录
+                    fallback_source_info = {
+                        "source_id": actual_fallback_id,
+                        "source_name": SOURCE_DISPLAY_NAMES.get(actual_fallback_id, actual_fallback_id),
+                        "is_current": not is_primary_current,
+                        "is_primary": False,
+                        "status": None,
+                        "last_check": None,
+                        "last_check_relative": None,
+                        "response_time_ms": None,
+                        "failure_count": 0,
+                        "error_message": None,
+                    }
+                item["fallback_source"] = fallback_source_info
 
             data_type_items.append(item)
 
@@ -524,15 +573,30 @@ async def get_data_type_detail(
         data_types_map = _get_data_types_for_market(market_upper)
         data_type_name = data_types_map.get(data_type, data_type)
 
+        # 检查数据类型是否存在
+        if data_type not in data_types_map:
+            logger.warning(f"Data type {data_type} not found in {market_upper}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"数据类型不存在: {data_type}"
+            )
+
         # 获取配置
         source_configs = DATA_SOURCE_CONFIGS.get(market_upper, {})
         config = source_configs.get(data_type, {})
         primary_id = config.get("primary", "tushare")
         fallback_id = config.get("fallback")
 
+        logger.info(f"Config for {market_upper}/{data_type}: primary={primary_id}, fallback={fallback_id}")
+
         # 从数据库获取所有相关数据源的状态
-        all_status = await status_repo.get_all_status(market=market_upper, data_type=data_type)
-        status_map = {s["source_id"]: s for s in all_status}
+        try:
+            all_status = await status_repo.get_all_status(market=market_upper, data_type=data_type)
+            status_map = {s["source_id"]: s for s in all_status}
+            logger.info(f"Found {len(status_map)} status records for {market_upper}/{data_type}")
+        except Exception as db_error:
+            logger.error(f"Database query failed for {market_upper}/{data_type}: {db_error}")
+            status_map = {}
 
         # 构建数据源列表
         sources = []
@@ -545,7 +609,7 @@ async def get_data_type_detail(
                 "source_type": "system",
                 "source_id": primary_id,
                 "source_name": SOURCE_DISPLAY_NAMES.get(primary_id, primary_id),
-                "status": primary_status.get("status", "standby"),
+                "status": primary_status.get("status", "healthy"),
                 "priority": 1,
                 "last_check": last_check.isoformat() if last_check else None,
                 "response_time_ms": primary_status.get("response_time_ms"),
@@ -555,52 +619,67 @@ async def get_data_type_detail(
                 "api_endpoints": _get_api_endpoints_for_source(primary_id, data_type)
             })
         else:
-            # 无检查记录
+            # 无检查记录 - 不返回状态（前端显示为"-"）
+            # 所有数据类型都会主动同步，此处仅用于系统刚启动时的初始化状态
             sources.append({
                 "source_type": "system",
                 "source_id": primary_id,
                 "source_name": SOURCE_DISPLAY_NAMES.get(primary_id, primary_id),
-                "status": "standby",
+                "status": None,
                 "priority": 1,
                 "last_check": None,
                 "response_time_ms": None,
                 "avg_response_time_ms": None,
                 "failure_count": 0,
-                "note": "尚未执行健康检查",
+                "note": "等待健康检查",
                 "api_endpoints": _get_api_endpoints_for_source(primary_id, data_type)
             })
 
         # 处理备用数据源
         if fallback_id:
+            # 判断当前是否正在使用备用数据源
+            primary_status = status_map.get(primary_id)
+            is_using_fallback = (
+                primary_status and
+                primary_status.get("status") in ("unavailable", "error") and
+                status_map.get(fallback_id) and
+                status_map.get(fallback_id).get("status") == "healthy"
+            )
+
             fallback_status = status_map.get(fallback_id)
             if fallback_status:
                 last_check = fallback_status.get("last_check_at")
+                # 只有在备用数据源正在被使用时才显示状态
                 sources.append({
                     "source_type": "system",
                     "source_id": fallback_id,
                     "source_name": SOURCE_DISPLAY_NAMES.get(fallback_id, fallback_id),
-                    "status": fallback_status.get("status", "standby"),
+                    "status": fallback_status.get("status") if is_using_fallback else None,
                     "priority": 2,
                     "last_check": last_check.isoformat() if last_check else None,
                     "response_time_ms": fallback_status.get("response_time_ms"),
                     "avg_response_time_ms": fallback_status.get("avg_response_time_ms"),
                     "failure_count": fallback_status.get("failure_count", 0),
-                    "note": fallback_status.get("last_error", {}).get("message") if fallback_status.get("last_error") else None,
+                    "note": (
+                        fallback_status.get("last_error", {}).get("message")
+                        if fallback_status.get("last_error") else
+                        ("当前使用" if is_using_fallback else "备用")
+                    ),
                     "api_endpoints": _get_api_endpoints_for_source(fallback_id, data_type)
                 })
             else:
-                # 无检查记录
+                # 无检查记录 - 备用数据源状态为 None
                 sources.append({
                     "source_type": "system",
                     "source_id": fallback_id,
                     "source_name": SOURCE_DISPLAY_NAMES.get(fallback_id, fallback_id),
-                    "status": "standby",
+                    "status": None,
                     "priority": 2,
                     "last_check": None,
                     "response_time_ms": None,
                     "avg_response_time_ms": None,
                     "failure_count": 0,
-                    "note": "尚未执行健康检查",
+                    "note": "备用（未使用）",
                     "api_endpoints": []
                 })
 

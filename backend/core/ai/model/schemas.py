@@ -11,6 +11,46 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field, model_validator
 
 
+# =============================================================================
+# 通用辅助函数
+# =============================================================================
+
+def _parse_datetime(value: Any) -> Optional[datetime]:
+    """
+    解析 datetime，兼容多种格式
+
+    支持格式：
+    - Python datetime 对象（直接返回）
+    - MongoDB 扩展 JSON 格式: {'$date': '2026-01-13T06:59:30.154Z'}
+    - ISO 8601 字符串
+
+    Args:
+        value: 输入值
+
+    Returns:
+        datetime 对象，解析失败返回 None
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, dict) and "$date" in value:
+        try:
+            from datetime import datetime as dt
+            from dateutil import parser
+            return parser.isoparse(value["$date"])
+        except Exception:
+            return None
+    if isinstance(value, str):
+        try:
+            from datetime import datetime as dt
+            from dateutil import parser
+            return parser.isoparse(value)
+        except Exception:
+            return None
+    return None
+
+
 class PlatformTypeEnum(str, Enum):
     """平台类型枚举"""
 
@@ -21,9 +61,6 @@ class PlatformTypeEnum(str, Enum):
 class PresetPlatformEnum(str, Enum):
     """预设平台枚举"""
 
-    OPENAI = "openai"
-    ANTHROPIC = "anthropic"
-    AZURE_OPENAI = "azure_openai"
     BAIDU = "baidu"
     ALIBABA = "alibaba"
     TENCENT = "tencent"
@@ -44,12 +81,14 @@ class ModelProviderEnum(str, Enum):
     CUSTOM = "custom"  # 自定义
 
 
+# 思考模式已简化：只使用 thinking_enabled 布尔值
+# 保留兼容性：旧的枚举值会被映射到布尔值
 class ThinkingModeEnum(str, Enum):
-    """思考模式类型枚举"""
+    """思考模式类型枚举（已弃用，保留向后兼容）"""
 
-    PRESERVED = "preserved"  # 保留式思考（GLM-4.7, Claude Opus 4.5）
-    CLEAR_ON_NEW = "clear_on_new"  # 新轮次清除（DeepSeek）
-    AUTO = "auto"  # 自动处理（OpenAI 等）
+    PRESERVED = "preserved"
+    CLEAR_ON_NEW = "clear_on_new"
+    AUTO = "auto"
 
 
 class AIModelConfigBase(BaseModel):
@@ -80,9 +119,11 @@ class AIModelConfigBase(BaseModel):
     timeout_seconds: int = Field(default=60, ge=10, le=600, description="超时时间（秒）")
     temperature: float = Field(default=0.5, ge=0.0, le=1.0, description="温度参数")
     enabled: bool = Field(default=True, description="是否启用")
-    thinking_enabled: bool = Field(default=False, description="是否支持思考模式")
+    thinking_enabled: bool = Field(default=False, description="启用思考模式（Chain of Thought）")
+    # 保留向后兼容：旧的 thinking_mode 字段
     thinking_mode: Optional[ThinkingModeEnum] = Field(
-        None, description="思考模式类型（仅支持思考的模型需要配置）"
+        None,
+        description="思考模式类型（已弃用，仅保留向后兼容）",
     )
 
     # 价格配置（用户自定义）
@@ -137,6 +178,7 @@ class AIModelConfigUpdate(BaseModel):
     temperature: Optional[float] = Field(None, ge=0.0, le=1.0)
     enabled: Optional[bool] = None
     thinking_enabled: Optional[bool] = None
+    # 保留向后兼容
     thinking_mode: Optional[ThinkingModeEnum] = None
 
     # 价格配置（用户自定义）
@@ -193,14 +235,20 @@ class AIModelConfigResponse(AIModelConfigBase):
         """从数据库数据创建响应对象"""
         api_key_encrypted = data.get("api_key", "")
 
-        # Base64 解码 API Key
+        # Base64 解码 API Key（先检查是否为有效 Base64）
         api_key = ""
-        try:
-            from core.security.encryption import decrypt_sensitive_data
-            api_key = decrypt_sensitive_data(api_key_encrypted)
-        except Exception:
-            # 解码失败，返回空字符串
-            api_key = ""
+        if api_key_encrypted:
+            try:
+                from core.security.encryption import is_encrypted, decrypt_sensitive_data
+                # 先检查是否为 Base64 格式
+                if is_encrypted(api_key_encrypted):
+                    api_key = decrypt_sensitive_data(api_key_encrypted)
+                else:
+                    # 不是 Base64，可能是明文存储的旧数据
+                    api_key = api_key_encrypted
+            except Exception:
+                # 解码失败，返回空字符串
+                api_key = ""
 
         masked = cls._mask_api_key(api_key)
 
@@ -236,11 +284,11 @@ class AIModelConfigResponse(AIModelConfigBase):
             temperature=data["temperature"],
             enabled=data["enabled"],
             thinking_enabled=data.get("thinking_enabled", False),
-            thinking_mode=data.get("thinking_mode"),
+            thinking_mode=data.get("thinking_mode"),  # 保留用于向后兼容
             is_system=data.get("is_system", False),
             owner_id=data.get("owner_id"),
-            created_at=data["created_at"],
-            updated_at=data["updated_at"],
+            created_at=_parse_datetime(data.get("created_at")) or datetime.utcnow(),
+            updated_at=_parse_datetime(data.get("updated_at")) or datetime.utcnow(),
             masked_api_key=masked,
         )
 

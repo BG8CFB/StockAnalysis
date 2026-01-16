@@ -121,7 +121,8 @@ class BaseRepository:
     async def find_one(
         self,
         filter_query: Dict[str, Any],
-        projection: Optional[Dict[str, int]] = None
+        projection: Optional[Dict[str, int]] = None,
+        sort: Optional[List[tuple]] = None
     ) -> Optional[Dict[str, Any]]:
         """
         查询单条数据
@@ -129,11 +130,20 @@ class BaseRepository:
         Args:
             filter_query: 查询条件
             projection: 投影字段（包含或排除）
+            sort: 排序，如 [("updated_at", -1)]，返回排序后的第一条
 
         Returns:
             查询结果，未找到返回None
         """
         try:
+            # 如果指定了排序，使用 find_many + limit(1) 实现
+            if sort:
+                cursor = self.collection.find(filter_query, projection)
+                cursor = cursor.sort(sort).limit(1)
+                results = await cursor.to_list(length=1)
+                return results[0] if results else None
+
+            # 普通查询
             if projection:
                 return await self.collection.find_one(filter_query, projection)
             return await self.collection.find_one(filter_query)

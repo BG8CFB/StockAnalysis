@@ -1,15 +1,10 @@
 /**
- * TradingAgents 模块 API 客户端
+ * TradingAgents 模块 API 客户线
+ *
+ * 注意：AI 模型管理 API 已移至核心设置模块 (@core/settings)
  */
 import { httpGet, httpPost, httpPut, httpDelete } from '@core/api/http'
 import type {
-  AIModelConfig,
-  AIModelConfigCreate,
-  AIModelConfigUpdate,
-  AIModelTestRequest,
-  ConnectionTestResponse,
-  ListModelsRequest,
-  ListModelsResponse,
   MCPServerConfig,
   MCPServerConfigCreate,
   MCPServerConfigUpdate,
@@ -28,69 +23,12 @@ import type {
   UnifiedTaskResponse,
 } from './types'
 
-// AI 模型管理使用核心模块路径
-const AI_BASE_URL = '/ai'
+const MCP_BASE_URL = '/mcp'
 const TRADING_AGENTS_BASE_URL = '/trading-agents'
-
-// =============================================================================
-// AI 模型管理 API
-// =============================================================================
-
-export const modelApi = {
-  /**
-   * 创建 AI 模型配置
-   */
-  createModel: (data: AIModelConfigCreate) =>
-    httpPost<AIModelConfig>(`${AI_BASE_URL}/models`, data),
-
-  /**
-   * 获取模型列表
-   */
-  listModels: () =>
-    httpGet<{ system: AIModelConfig[]; user: AIModelConfig[] }>(`${AI_BASE_URL}/models`),
-
-  /**
-   * 获取单个模型配置
-   */
-  getModel: (modelId: string) =>
-    httpGet<AIModelConfig>(`${AI_BASE_URL}/models/${modelId}`),
-
-  /**
-   * 更新模型配置
-   */
-  updateModel: (modelId: string, data: AIModelConfigUpdate) =>
-    httpPut<AIModelConfig>(`${AI_BASE_URL}/models/${modelId}`, data),
-
-  /**
-   * 删除模型配置
-   */
-  deleteModel: (modelId: string) =>
-    httpDelete<{ success: boolean; message: string }>(`${AI_BASE_URL}/models/${modelId}`),
-
-  /**
-   * 测试模型连接
-   */
-  testModel: (modelId: string) =>
-    httpPost<ConnectionTestResponse>(`${AI_BASE_URL}/models/${modelId}/test`, {}),
-
-  /**
-   * 测试模型连接（通用接口）
-   */
-  testModelConnection: (data: AIModelTestRequest) =>
-    httpPost<ConnectionTestResponse>(`${AI_BASE_URL}/models/test`, data),
-
-  /**
-   * 获取可用的模型列表
-   */
-  listAvailableModels: (data: ListModelsRequest) =>
-    httpPost<ListModelsResponse>(`${AI_BASE_URL}/models/list-available`, data),
-}
 
 // =============================================================================
 // MCP 服务器管理 API
 // =============================================================================
-
-const MCP_BASE_URL = '/mcp'
 
 export const mcpApi = {
   /**
@@ -125,12 +63,14 @@ export const mcpApi = {
 
   /**
    * 测试服务器连接
+   * 后端: POST /mcp/servers/{server_id}/test
    */
   testServer: (serverId: string) =>
-    httpPost<ConnectionTestResponse>(`${MCP_BASE_URL}/servers/${serverId}/test`, {}),
+    httpPost<{ success: boolean; message: string; latency_ms?: number }>(`${MCP_BASE_URL}/servers/${serverId}/test`, {}),
 
   /**
    * 获取服务器工具列表
+   * 后端: GET /mcp/servers/{server_id}/tools
    */
   getServerTools: (serverId: string) =>
     httpGet<{ tools: MCPTool[] }>(`${MCP_BASE_URL}/servers/${serverId}/tools`),
@@ -218,7 +158,6 @@ export const settingsApi = {
    * 注意：后端返回 UserSettingsResponse，需要从中提取 trading_agents_settings
    */
   getSettings: async (): Promise<TradingAgentsSettings> => {
-    // 后端返回完整的 UserSettingsResponse，我们提取 trading_agents_settings
     const response = await httpGet<{
       trading_agents_settings: TradingAgentsSettings
     }>(`/settings/trading-agents`)
@@ -232,7 +171,6 @@ export const settingsApi = {
    * 注意：后端返回 UserSettingsResponse，需要从中提取 trading_agents_settings
    */
   updateSettings: async (data: TradingAgentsSettings): Promise<TradingAgentsSettings> => {
-    // 后端返回完整的 UserSettingsResponse，我们提取 trading_agents_settings
     const response = await httpPut<{
       trading_agents_settings: TradingAgentsSettings
     }>(`/settings/trading-agents`, data)

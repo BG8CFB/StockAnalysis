@@ -1,245 +1,244 @@
 <template>
   <div class="analysis-settings">
-    <!-- 页面标题 -->
-    <div class="page-header">
-      <div class="header-content">
-        <el-icon
-          class="header-icon"
-          :size="28"
-        >
-          <Setting />
-        </el-icon>
-        <div>
-          <h2>分析设置</h2>
-          <p class="description">
-            配置 AI 分析的默认参数和行为
-          </p>
-        </div>
-      </div>
-    </div>
-
-    <!-- 设置卡片网格 -->
-    <div class="settings-grid">
-      <!-- AI 模型配置 -->
-      <el-card class="setting-card">
-        <template #header>
-          <div class="card-header">
-            <span class="header-title">
-              <el-icon><Cpu /></el-icon>
-              默认 AI 模型
-            </span>
+    <el-tabs
+      v-model="activeTab"
+      class="settings-tabs"
+    >
+      <!-- AI 模型 -->
+      <el-tab-pane
+        name="model"
+        label="AI 模型"
+      >
+        <template #label>
+          <div class="tab-label">
+            <el-icon><Cpu /></el-icon>
+            <span>AI 模型</span>
           </div>
         </template>
-        <el-form
-          ref="formRef1"
-          :model="formData"
-          label-position="top"
-        >
-          <el-form-item label="数据收集模型">
-            <el-select
-              v-model="formData.data_collection_model_id"
-              placeholder="使用默认模型"
-              clearable
-              style="width: 100%"
+        <div class="tab-content">
+          <el-card shadow="never">
+            <el-form
+              ref="formRef"
+              :model="formData"
+              label-width="140px"
             >
-              <el-option
-                v-for="model in availableModels"
-                :key="model.id"
-                :label="model.name"
-                :value="model.id"
-              >
-                <span>{{ model.name }}</span>
-                <el-tag
-                  size="small"
-                  style="margin-left: 8px"
-                  :type="model.provider === 'zhipu' ? 'primary' : 'info'"
+              <el-form-item label="数据收集模型">
+                <el-select
+                  v-model="formData.data_collection_model_id"
+                  placeholder="使用默认模型"
+                  clearable
+                  style="width: 320px"
                 >
-                  {{ getProviderLabel(model.provider) }}
-                </el-tag>
-              </el-option>
-            </el-select>
-            <span class="form-tip">数据收集、基本面分析等阶段</span>
-          </el-form-item>
+                  <el-option
+                    v-for="model in availableModels"
+                    :key="model.id"
+                    :label="model.name"
+                    :value="model.id"
+                  >
+                    <span class="option-name">{{ model.name }}</span>
+                    <el-tag
+                      size="small"
+                      style="margin-left: 8px"
+                      :type="model.provider === 'zhipu' ? 'primary' : 'info'"
+                    >
+                      {{ getProviderLabel(model.provider) }}
+                    </el-tag>
+                  </el-option>
+                </el-select>
+                <div class="form-desc">用于数据收集、基本面分析等阶段</div>
+              </el-form-item>
 
-          <el-form-item label="辩论阶段模型">
-            <el-select
-              v-model="formData.debate_model_id"
-              placeholder="使用默认模型"
-              clearable
-              style="width: 100%"
-            >
-              <el-option
-                v-for="model in availableModels"
-                :key="model.id"
-                :label="model.name"
-                :value="model.id"
-              >
-                <span>{{ model.name }}</span>
-                <el-tag
-                  size="small"
-                  style="margin-left: 8px"
-                  :type="model.provider === 'zhipu' ? 'primary' : 'info'"
+              <el-form-item label="辩论阶段模型">
+                <el-select
+                  v-model="formData.debate_model_id"
+                  placeholder="使用默认模型"
+                  clearable
+                  style="width: 320px"
                 >
-                  {{ getProviderLabel(model.provider) }}
-                </el-tag>
-              </el-option>
-            </el-select>
-            <span class="form-tip">看涨/看跌辩论、最终总结阶段</span>
-          </el-form-item>
-        </el-form>
-      </el-card>
+                  <el-option
+                    v-for="model in availableModels"
+                    :key="model.id"
+                    :label="model.name"
+                    :value="model.id"
+                  >
+                    <span class="option-name">{{ model.name }}</span>
+                    <el-tag
+                      size="small"
+                      style="margin-left: 8px"
+                      :type="model.provider === 'zhipu' ? 'primary' : 'info'"
+                    >
+                      {{ getProviderLabel(model.provider) }}
+                    </el-tag>
+                  </el-option>
+                </el-select>
+                <div class="form-desc">用于看涨/看跌辩论、最终总结阶段</div>
+              </el-form-item>
+            </el-form>
+          </el-card>
+        </div>
+      </el-tab-pane>
 
       <!-- 辩论配置 -->
-      <el-card class="setting-card">
-        <template #header>
-          <div class="card-header">
-            <span class="header-title">
-              <el-icon><ChatLineSquare /></el-icon>
-              辩论配置
-            </span>
+      <el-tab-pane
+        name="debate"
+        label="辩论配置"
+      >
+        <template #label>
+          <div class="tab-label">
+            <el-icon><ChatLineSquare /></el-icon>
+            <span>辩论配置</span>
           </div>
         </template>
-        <el-form
-          ref="formRef2"
-          :model="formData"
-          label-position="top"
-        >
-          <el-form-item label="默认辩论轮次">
-            <el-input-number
-              v-model="formData.default_debate_rounds"
-              :min="0"
-              :max="10"
-              controls-position="right"
-              style="width: 100%"
-            />
-            <span class="form-tip">辩论阶段默认进行多少轮辩论</span>
-          </el-form-item>
+        <div class="tab-content">
+          <el-card shadow="never">
+            <el-form
+              ref="formRef"
+              :model="formData"
+              label-width="140px"
+            >
+              <el-form-item label="默认辩论轮次">
+                <el-input-number
+                  v-model="formData.default_debate_rounds"
+                  :min="0"
+                  :max="10"
+                  controls-position="right"
+                />
+                <div class="form-desc">辩论阶段默认进行的辩论轮数</div>
+              </el-form-item>
 
-          <el-form-item label="最大辩论轮次">
-            <el-input-number
-              v-model="formData.max_debate_rounds"
-              :min="0"
-              :max="10"
-              controls-position="right"
-              style="width: 100%"
-            />
-            <span class="form-tip">用户可设置的最大辩论轮次限制</span>
-          </el-form-item>
-        </el-form>
-      </el-card>
+              <el-form-item label="最大辩论轮次">
+                <el-input-number
+                  v-model="formData.max_debate_rounds"
+                  :min="0"
+                  :max="10"
+                  controls-position="right"
+                />
+                <div class="form-desc">用户可设置的最大辩论轮次限制</div>
+              </el-form-item>
+            </el-form>
+          </el-card>
+        </div>
+      </el-tab-pane>
 
       <!-- 超时配置 -->
-      <el-card class="setting-card">
-        <template #header>
-          <div class="card-header">
-            <span class="header-title">
-              <el-icon><Clock /></el-icon>
-              超时配置
-            </span>
+      <el-tab-pane
+        name="timeout"
+        label="超时配置"
+      >
+        <template #label>
+          <div class="tab-label">
+            <el-icon><Clock /></el-icon>
+            <span>超时配置</span>
           </div>
         </template>
-        <el-form
-          ref="formRef3"
-          :model="formData"
-          label-position="top"
-        >
-          <el-form-item label="单阶段超时（分钟）">
-            <el-input-number
-              v-model="formData.phase_timeout_minutes"
-              :min="5"
-              :max="120"
-              controls-position="right"
-              style="width: 100%"
-            />
-            <span class="form-tip">单个阶段最大执行时间</span>
-          </el-form-item>
+        <div class="tab-content">
+          <el-card shadow="never">
+            <el-form
+              ref="formRef"
+              :model="formData"
+              label-width="140px"
+            >
+              <el-form-item label="单阶段超时">
+                <el-input-number
+                  v-model="formData.phase_timeout_minutes"
+                  :min="5"
+                  :max="120"
+                  controls-position="right"
+                />
+                <span class="form-unit">分钟</span>
+                <div class="form-desc">单个阶段最大执行时间</div>
+              </el-form-item>
 
-          <el-form-item label="单智能体超时（分钟）">
-            <el-input-number
-              v-model="formData.agent_timeout_minutes"
-              :min="1"
-              :max="60"
-              controls-position="right"
-              style="width: 100%"
-            />
-            <span class="form-tip">单个智能体最大执行时间</span>
-          </el-form-item>
+              <el-form-item label="单智能体超时">
+                <el-input-number
+                  v-model="formData.agent_timeout_minutes"
+                  :min="1"
+                  :max="60"
+                  controls-position="right"
+                />
+                <span class="form-unit">分钟</span>
+                <div class="form-desc">单个智能体最大执行时间</div>
+              </el-form-item>
 
-          <el-form-item label="工具调用超时（秒）">
-            <el-input-number
-              v-model="formData.tool_timeout_seconds"
-              :min="10"
-              :max="300"
-              controls-position="right"
-              style="width: 100%"
-            />
-            <span class="form-tip">单个工具调用最大等待时间</span>
-          </el-form-item>
-        </el-form>
-      </el-card>
+              <el-form-item label="工具调用超时">
+                <el-input-number
+                  v-model="formData.tool_timeout_seconds"
+                  :min="10"
+                  :max="300"
+                  controls-position="right"
+                />
+                <span class="form-unit">秒</span>
+                <div class="form-desc">单个工具调用最大等待时间</div>
+              </el-form-item>
+            </el-form>
+          </el-card>
+        </div>
+      </el-tab-pane>
 
       <!-- 其他配置 -->
-      <el-card class="setting-card">
-        <template #header>
-          <div class="card-header">
-            <span class="header-title">
-              <el-icon><Operation /></el-icon>
-              其他配置
-            </span>
+      <el-tab-pane
+        name="other"
+        label="其他配置"
+      >
+        <template #label>
+          <div class="tab-label">
+            <el-icon><Operation /></el-icon>
+            <span>其他配置</span>
           </div>
         </template>
-        <el-form
-          ref="formRef4"
-          :model="formData"
-          label-position="top"
-        >
-          <el-form-item label="任务过期时间（小时）">
-            <el-input-number
-              v-model="formData.task_expiry_hours"
-              :min="1"
-              :max="168"
-              controls-position="right"
-              style="width: 100%"
-            />
-            <span class="form-tip">任务执行超时自动标记为过期的时间</span>
-          </el-form-item>
+        <div class="tab-content">
+          <el-card shadow="never">
+            <el-form
+              ref="formRef"
+              :model="formData"
+              label-width="140px"
+            >
+              <el-form-item label="任务过期时间">
+                <el-input-number
+                  v-model="formData.task_expiry_hours"
+                  :min="1"
+                  :max="168"
+                  controls-position="right"
+                />
+                <span class="form-unit">小时</span>
+                <div class="form-desc">任务执行超时自动标记为过期</div>
+              </el-form-item>
 
-          <el-form-item label="报告归档天数">
-            <el-input-number
-              v-model="formData.archive_days"
-              :min="7"
-              :max="365"
-              controls-position="right"
-              style="width: 100%"
-            />
-            <span class="form-tip">超过此天数的报告将被自动归档</span>
-          </el-form-item>
+              <el-form-item label="报告归档天数">
+                <el-input-number
+                  v-model="formData.archive_days"
+                  :min="7"
+                  :max="365"
+                  controls-position="right"
+                />
+                <span class="form-unit">天</span>
+                <div class="form-desc">超过此天数的报告将被自动归档</div>
+              </el-form-item>
 
-          <el-form-item label="启用工具循环检测">
-            <el-switch v-model="formData.enable_loop_detection" />
-            <span class="form-tip">自动检测并禁用循环调用的工具</span>
-          </el-form-item>
+              <el-divider />
 
-          <el-form-item label="启用实时进度推送">
-            <el-switch v-model="formData.enable_progress_events" />
-            <span class="form-tip">通过 WebSocket 实时推送分析进度</span>
-          </el-form-item>
-        </el-form>
-      </el-card>
-    </div>
+              <el-form-item label="工具循环检测">
+                <el-switch v-model="formData.enable_loop_detection" />
+                <div class="form-desc">自动检测并禁用循环调用的工具</div>
+              </el-form-item>
 
-    <!-- 操作按钮 -->
+              <el-form-item label="实时进度推送">
+                <el-switch v-model="formData.enable_progress_events" />
+                <div class="form-desc">通过 WebSocket 实时推送分析进度</div>
+              </el-form-item>
+            </el-form>
+          </el-card>
+        </div>
+      </el-tab-pane>
+    </el-tabs>
+
+    <!-- 底部操作按钮 -->
     <div class="form-actions">
-      <el-button
-        size="large"
-        @click="handleReset"
-      >
+      <el-button @click="handleReset">
         重置
       </el-button>
       <el-button
         type="primary"
-        size="large"
-        class="action-btn"
         :loading="saving"
         @click="handleSave"
       >
@@ -252,18 +251,23 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Setting, Cpu, ChatLineSquare, Clock, Operation } from '@element-plus/icons-vue'
+import { Cpu, ChatLineSquare, Clock, Operation } from '@element-plus/icons-vue'
 import { useUserStore } from '@core/auth/store'
 import { useTradingAgentsStore } from '../../store'
+import { useAIModelStore } from '@core/settings/stores/ai-model'
 import { settingsApi } from '../../api'
 import { PROVIDER_PRESETS, type TradingAgentsSettings } from '../../types'
 
 const userStore = useUserStore()
 const agentsStore = useTradingAgentsStore()
+const aiModelStore = useAIModelStore()
+
+// 当前激活的标签
+const activeTab = ref('model')
 
 // 可用的 AI 模型列表
 const availableModels = computed(() => {
-  return agentsStore.enabledModels
+  return aiModelStore.enabledModels
 })
 
 // 获取提供商标签
@@ -285,7 +289,7 @@ const formData = reactive<TradingAgentsSettings>({
   debate_model_id: '',
 
   // 辩论配置
-  default_debate_rounds: 3, // 与单股分析和批量分析的默认值一致
+  default_debate_rounds: 3,
   max_debate_rounds: 5,
 
   // 超时配置
@@ -305,11 +309,9 @@ async function loadSettings() {
   loading.value = true
   try {
     const data = await settingsApi.getSettings()
-    // 从后端加载的设置映射到表单
     Object.assign(formData, data.settings)
   } catch (error) {
     console.error('Failed to load settings:', error)
-    // 如果加载失败，保持默认值
   } finally {
     loading.value = false
   }
@@ -318,9 +320,7 @@ async function loadSettings() {
 // 保存设置
 async function handleSave() {
   saving.value = true
-
   try {
-    // 保存到后端
     await settingsApi.updateSettings(formData)
     ElMessage.success('设置已保存')
   } catch (error) {
@@ -339,104 +339,121 @@ async function handleReset() {
 
 // 初始化
 onMounted(async () => {
-  // 加载模型列表
-  await agentsStore.fetchModels()
-  // 加载用户设置
+  await aiModelStore.fetchModels()
   await loadSettings()
 })
 </script>
 
 <style scoped>
-/* ==================== 基础布局 ==================== */
 .analysis-settings {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ==================== 标签页样式 ==================== */
+.settings-tabs {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-tabs :deep(.el-tabs__header) {
+  margin: 0;
+  padding: 0 20px;
+  background: #fff;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.settings-tabs :deep(.el-tabs__nav-wrap) {
+  padding: 12px 0;
+}
+
+.settings-tabs :deep(.el-tabs__item) {
+  padding: 0 20px;
+  height: 40px;
+  line-height: 40px;
+  font-size: 14px;
+  color: #606266;
+}
+
+.settings-tabs :deep(.el-tabs__item:hover) {
+  color: #409eff;
+}
+
+.settings-tabs :deep(.el-tabs__item.is-active) {
+  color: #409eff;
+  font-weight: 500;
+}
+
+.settings-tabs :deep(.el-tabs__active-bar) {
+  background-color: #409eff;
+}
+
+.tab-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tab-label .el-icon {
+  font-size: 16px;
+}
+
+/* ==================== 标签页内容 ==================== */
+.settings-tabs :deep(.el-tabs__content) {
+  flex: 1;
+  overflow-y: auto;
   padding: 20px;
-  max-width: 1400px;
+  background: #f5f7fa;
+}
+
+.tab-content {
+  max-width: 800px;
   margin: 0 auto;
 }
 
-/* ==================== 页面标题 ==================== */
-.page-header {
-  margin-bottom: 20px;
-  background: #fff;
-  padding: 16px 20px;
-  border-radius: 8px;
+.tab-content .el-card {
   border: 1px solid #e4e7ed;
 }
 
-.header-content {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.tab-content .el-card__body {
+  padding: 32px;
 }
 
-.header-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: #f0f9ff;
-  color: #409eff;
+/* ==================== 表单样式 ==================== */
+:deep(.el-form-item) {
+  margin-bottom: 28px;
 }
 
-.page-header h2 {
-  margin: 0 0 4px 0;
-  font-size: 20px;
-  font-weight: 600;
+:deep(.el-form-item__label) {
+  font-weight: 500;
   color: #303133;
+  font-size: 14px;
 }
 
-.description {
-  margin: 0;
-  font-size: 13px;
+:deep(.el-input-number) {
+  width: 180px;
+}
+
+.form-desc {
+  margin-top: 6px;
+  margin-left: 0;
   color: #909399;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
-/* ==================== 设置卡片网格 ==================== */
-.settings-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 20px;
-  margin-bottom: 20px;
-}
-
-.setting-card {
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
-}
-
-.card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.header-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 600;
-  color: #303133;
-  font-size: 15px;
-}
-
-.header-title .el-icon {
-  color: #409eff;
-}
-
-/* ==================== 响应式调整 ==================== */
-@media (max-width: 1024px) {
-  .settings-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* ==================== 表单区域 ==================== */
-.form-tip {
+.form-unit {
   margin-left: 12px;
   color: #909399;
-  font-size: 12px;
+  font-size: 13px;
+}
+
+/* ==================== 选项样式 ==================== */
+.option-name {
+  flex: 1;
 }
 
 /* ==================== 操作按钮 ==================== */
@@ -444,29 +461,13 @@ onMounted(async () => {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  padding-top: 20px;
+  padding: 16px 20px 20px 20px;
+  background: #fff;
   border-top: 1px solid #e4e7ed;
 }
 
-.action-btn {
-  height: 40px;
-  padding: 0 24px;
-  font-size: 15px;
-  font-weight: 600;
-  border-radius: 8px;
-}
-
-/* ==================== 深度样式调整 ==================== */
-:deep(.el-form-item__label) {
-  font-weight: 500;
-  color: #606266;
-}
-
-:deep(.el-input-number) {
-  width: 100%;
-}
-
-:deep(.el-select) {
-  --el-select-input-focus-border-color: #409eff;
+/* ==================== 分割线 ==================== */
+:deep(.el-divider) {
+  margin: 24px 0;
 }
 </style>

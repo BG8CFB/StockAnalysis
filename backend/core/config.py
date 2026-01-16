@@ -76,6 +76,20 @@ CORS_ORIGINS: list = os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",
 # 市场数据源配置
 TUSHARE_TOKEN: Optional[str] = os.getenv("TUSHARE_TOKEN")
 
+# 数据源限流配置
+DATA_SOURCE_RATE_LIMIT_WINDOW: int = int(os.getenv("DATA_SOURCE_RATE_LIMIT_WINDOW", "60"))
+DATA_SOURCE_RATE_LIMIT_MAX_REQUESTS: int = int(os.getenv("DATA_SOURCE_RATE_LIMIT_MAX_REQUESTS", "1"))
+
+# 数据源路由器配置
+DATA_SOURCE_MAX_FAILURES: int = int(os.getenv("DATA_SOURCE_MAX_FAILURES", "3"))
+DATA_SOURCE_HEALTH_CHECK_INTERVAL: int = int(os.getenv("DATA_SOURCE_HEALTH_CHECK_INTERVAL", "300"))
+
+# MongoDB 批量操作配置
+MONGODB_BULK_WRITE_BATCH_SIZE: int = int(os.getenv("MONGODB_BULK_WRITE_BATCH_SIZE", "1000"))
+
+# 支持的市场类型列表
+SUPPORTED_MARKETS: list = ["A_STOCK", "US_STOCK", "HK_STOCK"]
+
 # 用户审批
 REQUIRE_APPROVAL: bool = os.getenv("REQUIRE_APPROVAL", "false").lower() == "true"
 
@@ -183,6 +197,20 @@ class Settings:
 
     # 市场数据源
     TUSHARE_TOKEN: Optional[str] = TUSHARE_TOKEN
+
+    # 数据源限流配置
+    DATA_SOURCE_RATE_LIMIT_WINDOW: int = DATA_SOURCE_RATE_LIMIT_WINDOW
+    DATA_SOURCE_RATE_LIMIT_MAX_REQUESTS: int = DATA_SOURCE_RATE_LIMIT_MAX_REQUESTS
+
+    # 数据源路由器配置
+    DATA_SOURCE_MAX_FAILURES: int = DATA_SOURCE_MAX_FAILURES
+    DATA_SOURCE_HEALTH_CHECK_INTERVAL: int = DATA_SOURCE_HEALTH_CHECK_INTERVAL
+
+    # MongoDB 批量操作配置
+    MONGODB_BULK_WRITE_BATCH_SIZE: int = MONGODB_BULK_WRITE_BATCH_SIZE
+
+    # 支持的市场类型列表
+    SUPPORTED_MARKETS: list = SUPPORTED_MARKETS
 
     # 用户审批
     REQUIRE_APPROVAL: bool = REQUIRE_APPROVAL

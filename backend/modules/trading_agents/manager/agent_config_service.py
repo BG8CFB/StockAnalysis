@@ -7,20 +7,17 @@
 
 import logging
 from datetime import datetime
-from typing import Optional, Dict, Any
-from bson import ObjectId
-import yaml
+from typing import Any, Dict, Optional
 
 from core.db.mongodb import mongodb
 from modules.trading_agents.config.loader import AgentConfigLoader
 from modules.trading_agents.schemas import (
-    UserAgentConfigCreate,
-    UserAgentConfigUpdate,
-    UserAgentConfigResponse,
     Phase1Config,
     Phase2Config,
     Phase3Config,
     Phase4Config,
+    UserAgentConfigResponse,
+    UserAgentConfigUpdate,
 )
 
 logger = logging.getLogger(__name__)
@@ -68,7 +65,6 @@ class AgentConfigService:
         Raises:
             ValueError: 验证失败
         """
-        from modules.trading_agents.schemas import Phase2Config, Phase3Config, Phase4Config
 
         # phase1 允许所有修改
         if phase_key == "phase1":
@@ -79,7 +75,12 @@ class AgentConfigService:
             old_phase = old_doc.get(phase_key)
             if not old_phase:
                 # 如果旧配置不存在，不允许创建新的智能体列表
-                if new_phase_data and hasattr(new_phase_data, 'agents') and len(new_phase_data.agents) > 0:
+                has_agents = (
+                    new_phase_data and
+                    hasattr(new_phase_data, 'agents') and
+                    len(new_phase_data.agents) > 0
+                )
+                if has_agents:
                     raise ValueError(f"{phase_key} 不允许添加智能体，只能修改提示词")
                 return
 
@@ -103,14 +104,19 @@ class AgentConfigService:
 
                     # 检查其他字段是否被修改
                     allowed_fields = {"slug", "name", "role_definition", "enabled"}
-                    new_agent_dict = new_agent.model_dump(mode='json') if hasattr(new_agent, 'model_dump') else dict(new_agent)
+                    if hasattr(new_agent, 'model_dump'):
+                        new_agent_dict = new_agent.model_dump(mode='json')
+                    else:
+                        new_agent_dict = dict(new_agent)
 
                     for field in new_agent_dict:
                         if field not in allowed_fields:
                             old_value = old_agent.get(field)
                             new_value = new_agent_dict[field]
                             if old_value != new_value:
-                                raise ValueError(f"{phase_key} 不允许修改 {field} 字段，只能修改提示词")
+                                raise ValueError(
+                                    f"{phase_key} 不允许修改 {field} 字段，只能修改提示词"
+                                )
 
         logger.debug(f"阶段配置验证通过: {phase_key}")
 
@@ -346,13 +352,72 @@ class AgentConfigService:
         result = await collection.insert_one(doc)
         doc["_id"] = result.inserted_id
 
-        logger.info(f"初始化公共智能体配置")
+        logger.info("初始化公共智能体配置")
 
         return UserAgentConfigResponse.from_db(doc)
 
     # ========================================================================
     # 用户配置管理
     # ========================================================================
+
+    def _load_public_config_from_yaml(
+        self,
+        include_prompts: bool = False
+    ) -> Optional[UserAgentConfigResponse]:
+        """
+        从 YAML 文件加载公共配置（实时加载）
+
+        **重要**：此方法用于公共配置用户，确保修改 YAML 文件后实时生效。
+
+        Args:
+            include_prompts: 是否包含提示词
+
+        Returns:
+            公共配置对象
+        """
+        try:
+            # 从 YAML 文件加载公共配置
+            yaml_config = self._config_loader.load_public_config()
+
+            # 验证配置
+            validated_config = self._config_loader.validate_config(yaml_config)
+
+            # 构建响应对象
+            phase1 = Phase1Config(**validated_config.get("phase1", {}))
+            phase2 = (
+                Phase2Config(**validated_config["phase2"])
+                if validated_config.get("phase2") else None
+            )
+            phase3 = (
+                Phase3Config(**validated_config["phase3"])
+                if validated_config.get("phase3") else None
+            )
+            phase4 = (
+                Phase4Config(**validated_config["phase4"])
+                if validated_config.get("phase4") else None
+            )
+
+            # 构建伪文档对象
+            doc = {
+                "_id": "public_config",  # 使用固定的 ID 表示公共配置
+                "user_id": PUBLIC_USER_ID,
+                "is_public": True,
+                "is_customized": False,
+                "phase1": phase1.model_dump(mode='json'),
+                "phase2": phase2.model_dump(mode='json') if phase2 else None,
+                "phase3": phase3.model_dump(mode='json') if phase3 else None,
+                "phase4": phase4.model_dump(mode='json') if phase4 else None,
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+                "_source": "yaml",  # 标记来源
+            }
+
+            logger.debug(f"从 YAML 加载公共配置: include_prompts={include_prompts}")
+            return self._build_response(doc, include_prompts)
+
+        except Exception as e:
+            logger.error(f"从 YAML 加载公共配置失败: {e}", exc_info=True)
+            return None
 
     async def get_effective_config(
         self,
@@ -362,10 +427,20 @@ class AgentConfigService:
         """
         获取用户的生效配置
 
-        逻辑：
-        1. 如果用户未自定义过配置 → 返回公共配置
-        2. 如果用户已自定义 → 返回个人配置
-        3. 如果都没有 → 创建用户配置并返回
+        **配置加载逻辑**：
+        1. 如果用户已自定义配置 → 返回个人配置（从数据库，与模板合并）
+        2. 如果用户未自定义 → 返回公共配置（从 YAML 文件实时加载）
+
+        **配置合并机制**：
+        - 个人配置会与最新的 YAML 模板进行智能合并
+        - 保留用户自定义的 roleDefinition（提示词）
+        - 自动添加缺失的智能体（如新添加的 trader）
+        - 确保配置始终符合最新的结构要求
+
+        **重要**：
+        - 公共配置从 YAML 文件实时加载，修改 YAML 文件后立即生效
+        - 个人配置从数据库加载，通过 API 更新
+        - 合并后的配置会进行验证，确保符合固定智能体约束
 
         Args:
             user_id: 用户 ID
@@ -376,48 +451,47 @@ class AgentConfigService:
         Returns:
             生效配置
         """
+        from modules.trading_agents.config.merger import get_config_merger
+
         collection = self._get_collection()
 
         # 查询用户个人配置
         user_doc = await collection.find_one({"user_id": user_id})
 
-        # 如果用户有个人配置且已自定义，返回个人配置
+        # 如果用户有个人配置且已自定义，进行合并
         if user_doc and user_doc.get("is_customized", False):
-            logger.debug(f"用户使用个人配置: user_id={user_id}, include_prompts={include_prompts}")
-            return self._build_response(user_doc, include_prompts)
+            logger.debug(
+                f"用户使用个人配置（与模板合并）: "
+                f"user_id={user_id}, include_prompts={include_prompts}"
+            )
 
-        # 否则返回公共配置
-        public_doc = await collection.find_one({
-            "user_id": PUBLIC_USER_ID,
-            "is_public": True
-        })
+            # 使用配置合并器进行智能合并
+            merger = get_config_merger()
+            merged_config = await merger.merge_user_config(
+                user_config=user_doc,
+                include_prompts=include_prompts
+            )
 
-        if public_doc:
-            logger.debug(f"用户使用公共配置: user_id={user_id}, include_prompts={include_prompts}")
-            return self._build_response(public_doc, include_prompts)
+            # 构建响应
+            return self._build_response(merged_config, include_prompts)
 
-        # 公共配置不存在，创建它
-        await self._init_public_config()
-        public_doc = await collection.find_one({
-            "user_id": PUBLIC_USER_ID,
-            "is_public": True
-        })
-
-        if public_doc:
-            return self._build_response(public_doc, include_prompts)
-
-        return None
+        # 否则返回公共配置（从 YAML 文件实时加载）
+        logger.debug(
+            f"用户使用公共配置（从 YAML）: "
+            f"user_id={user_id}, include_prompts={include_prompts}"
+        )
+        return self._load_public_config_from_yaml(include_prompts)
 
     def _build_response(
         self,
-        doc: Dict[str, Any],
+        config: Dict[str, Any],
         include_prompts: bool = False
     ) -> UserAgentConfigResponse:
         """
         构建配置响应对象
 
         Args:
-            doc: 数据库文档
+            config: 配置字典（可能是从数据库或合并后的配置）
             include_prompts: 是否包含提示词
 
         Returns:
@@ -426,21 +500,38 @@ class AgentConfigService:
         import copy
 
         # 使用深拷贝避免修改原始数据
-        doc_copy = copy.deepcopy(doc)
+        config_copy = copy.deepcopy(config)
+
+        # 处理 _id 到 id 的转换（MongoDB 使用 _id，Pydantic 需要 id）
+        if "_id" in config_copy and "id" not in config_copy:
+            config_copy["id"] = str(config_copy.pop("_id"))
+        elif "id" not in config_copy:
+            # 如果既没有 _id 也没有 id，生成一个
+            import uuid
+            config_copy["id"] = str(uuid.uuid4())
+
+        # 确保必需字段存在
+        if "user_id" not in config_copy:
+            raise ValueError("配置缺少 user_id 字段")
+        if "created_at" not in config_copy:
+            raise ValueError("配置缺少 created_at 字段")
+        if "updated_at" not in config_copy:
+            raise ValueError("配置缺少 updated_at 字段")
 
         # 如果需要包含提示词，直接返回
         if include_prompts:
-            return UserAgentConfigResponse.from_db(doc_copy)
+            return UserAgentConfigResponse(**config_copy)
 
         # 否则，移除 role_definition 字段
         for phase_key in ["phase1", "phase2", "phase3", "phase4"]:
-            phase_data = doc_copy.get(phase_key)
+            phase_data = config_copy.get(phase_key)
             if phase_data and "agents" in phase_data:
                 for agent in phase_data["agents"]:
                     # 移除 role_definition 字段
+                    agent.pop("roleDefinition", None)
                     agent.pop("role_definition", None)
 
-        return UserAgentConfigResponse.from_db(doc_copy)
+        return UserAgentConfigResponse(**config_copy)
 
     async def get_user_config(
         self,
@@ -544,11 +635,20 @@ class AgentConfigService:
             logger.info(f"[DEBUG] Saved phase1 data: {updated_doc['phase1']}")
             if 'agents' in updated_doc['phase1'] and updated_doc['phase1']['agents']:
                 first_agent = updated_doc['phase1']['agents'][0]
-                logger.info(f"[DEBUG] First agent enabled_mcp_servers: {first_agent.get('enabled_mcp_servers', 'MISSING')}")
-                logger.info(f"[DEBUG] Type of enabled_mcp_servers: {type(first_agent.get('enabled_mcp_servers'))}")
+                logger.info(
+                    f"[DEBUG] First agent enabled_mcp_servers: "
+                    f"{first_agent.get('enabled_mcp_servers', 'MISSING')}"
+                )
+                logger.info(
+                    f"[DEBUG] Type of enabled_mcp_servers: "
+                    f"{type(first_agent.get('enabled_mcp_servers'))}"
+                )
 
         # 调试：打印 update_data
-        logger.info(f"[DEBUG] update_data phase1 agents: {update_data.get('phase1', {}).get('agents', [])}")
+        logger.info(
+            f"[DEBUG] update_data phase1 agents: "
+            f"{update_data.get('phase1', {}).get('agents', [])}"
+        )
 
         logger.info(f"更新用户智能体配置: user_id={user_id}, is_customized=True")
 

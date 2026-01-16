@@ -10,9 +10,6 @@ export enum PlatformType {
 
 /** 预设平台枚举 */
 export enum PresetPlatform {
-  OPENAI = 'openai',
-  ANTHROPIC = 'anthropic',
-  AZURE_OPENAI = 'azure_openai',
   BAIDU = 'baidu',
   ALIBABA = 'alibaba',
   TENCENT = 'tencent',
@@ -44,63 +41,6 @@ export interface PlatformMetadata {
 
 /** 预设平台配置 */
 export const PRESET_PLATFORMS: Record<PresetPlatform, PlatformMetadata> = {
-  [PresetPlatform.OPENAI]: {
-    id: PresetPlatform.OPENAI,
-    name: 'OpenAI',
-    icon: 'OpenAI',
-    baseUrl: 'https://api.openai.com/v1',
-    supportListModels: true,
-    modelsEndpoint: '/models',
-    fallbackModels: [
-      'gpt-4o',
-      'gpt-4o-mini',
-      'o1-preview',
-      'o1-mini',
-      'gpt-4-turbo',
-      'gpt-4'
-    ],
-    defaultHeaders: {
-      'Content-Type': 'application/json'
-    }
-  },
-
-  [PresetPlatform.ANTHROPIC]: {
-    id: PresetPlatform.ANTHROPIC,
-    name: 'Anthropic (Claude)',
-    icon: 'ChatDotRound',
-    baseUrl: 'https://api.anthropic.com',
-    supportListModels: false, // Anthropic 不提供 /models 端点
-    fallbackModels: [
-      'claude-sonnet-4-5-20250514',
-      'claude-opus-4-20250514',
-      'claude-3-5-haiku-20241022',
-      'claude-3-haiku-20240307'
-    ],
-    defaultHeaders: {
-      'Content-Type': 'application/json',
-      'anthropic-version': '2023-06-01'
-    }
-  },
-
-  [PresetPlatform.AZURE_OPENAI]: {
-    id: PresetPlatform.AZURE_OPENAI,
-    name: 'Azure OpenAI',
-    icon: 'Azure',
-    baseUrl: 'https://{your-resource-name}.openai.azure.com/openai/deployments/{deployment-id}',
-    supportListModels: true,
-    modelsEndpoint: '/openai/deployments?api-version=2024-02-01',
-    fallbackModels: [
-      'gpt-4o',
-      'gpt-4o-mini',
-      'gpt-4-turbo',
-      'gpt-35-turbo'
-    ],
-    defaultHeaders: {
-      'Content-Type': 'application/json',
-      'api-key': '{your-api-key}'
-    }
-  },
-
   [PresetPlatform.BAIDU]: {
     id: PresetPlatform.BAIDU,
     name: '百度千帆',

@@ -75,7 +75,7 @@ export const adminApi = {
 
   /**
    * 通过用户审核
-   * 后端: PUT /admin/users/{id}/approve
+   * 后端: PUT /admin/users/{user_id}/approve
    */
   approveUser: (userId: string) =>
     httpPut<{ success: boolean; message: string; user: UserListItemResponse }>(
@@ -85,7 +85,7 @@ export const adminApi = {
 
   /**
    * 拒绝用户审核
-   * 后端: PUT /admin/users/{id}/reject
+   * 后端: PUT /admin/users/{user_id}/reject
    */
   rejectUser: (userId: string, reason: string) =>
     httpPut<{ success: boolean; message: string; user: UserListItemResponse }>(
@@ -95,7 +95,7 @@ export const adminApi = {
 
   /**
    * 禁用用户
-   * 后端: PUT /admin/users/{id}/disable
+   * 后端: PUT /admin/users/{user_id}/disable
    */
   disableUser: (userId: string, reason?: string) =>
     httpPut<{ success: boolean; message: string; user: UserListItemResponse }>(
@@ -105,7 +105,7 @@ export const adminApi = {
 
   /**
    * 启用用户
-   * 后端: PUT /admin/users/{id}/enable
+   * 后端: PUT /admin/users/{user_id}/enable
    */
   enableUser: (userId: string) =>
     httpPut<{ success: boolean; message: string; user: UserListItemResponse }>(
@@ -115,7 +115,7 @@ export const adminApi = {
 
   /**
    * 管理员触发密码重置
-   * 后端: POST /admin/users/{id}/reset-password
+   * 后端: POST /admin/users/{user_id}/reset-password
    */
   adminResetPassword: (userId: string) =>
     httpPost<{ success: boolean; message: string; token?: string }>(
@@ -138,7 +138,7 @@ export const adminApi = {
 
   /**
    * 获取单个用户
-   * 后端: GET /admin/users/{id}
+   * 后端: GET /admin/users/{user_id}
    */
   getUser: (id: string) =>
     httpGet<UserListItemResponse>(`/admin/users/${id}`),
@@ -153,7 +153,7 @@ export const adminApi = {
 
   /**
    * 更新用户
-   * 后端: PUT /admin/users/{id}
+   * 后端: PUT /admin/users/{user_id}
    * 注意：后端返回包装对象 { success, message, user }
    */
   updateUser: (id: string, data: UpdateUserRequest) =>
@@ -161,7 +161,7 @@ export const adminApi = {
 
   /**
    * 修改用户角色（使用 Query 参数）
-   * 后端: PUT /admin/users/{id}/role?new_role={role}
+   * 后端: PUT /admin/users/{user_id}/role?new_role={role}
    * 注意：后端返回包装对象 { success, message, user }
    */
   changeUserRole: (id: string, role: string) =>
@@ -169,7 +169,7 @@ export const adminApi = {
 
   /**
    * 删除用户
-   * 后端: DELETE /admin/users/{id}
+   * 后端: DELETE /admin/users/{user_id}
    */
   deleteUser: (id: string) =>
     httpDelete(`/admin/users/${id}`),

@@ -85,7 +85,7 @@ async def cleanup_expired_watchlist_data_task():
 async def cleanup_mcp_connection_pool_task():
     """定时清理 MCP 连接池任务"""
     try:
-        from modules.mcp.pool.pool import get_mcp_connection_pool
+        from core.mcp.pool.pool import get_mcp_connection_pool
 
         logger.info("开始执行清理 MCP 连接池任务")
 

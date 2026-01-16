@@ -1,21 +1,21 @@
 <template>
   <div class="phase-config-panel">
-    <!-- 阶段标题 -->
-    <div class="section-header">
-      <h3>{{ phaseTitle }}</h3>
-    </div>
-
-    <el-divider />
-
-    <!-- 智能体列表 -->
-    <div class="agents-section">
-      <div class="section-header">
-        <h4>智能体列表 ({{ localConfig.agents.length }})</h4>
+    <!-- 智能体列表区域 -->
+    <div class="agents-container">
+      <!-- 头部操作栏 -->
+      <div class="agents-header">
+        <div class="header-info">
+          <h3>智能体配置</h3>
+          <p class="stats">
+            <span>共 {{ localConfig.agents.length }} 个智能体</span>
+            <span class="divider">|</span>
+            <span class="enabled-count">{{ enabledAgentsCount }} 个已启用</span>
+          </p>
+        </div>
         <!-- 只有第一阶段才显示添加按钮 -->
         <el-button
           v-if="phase === 1"
           type="primary"
-          size="small"
           :icon="Plus"
           @click="handleAddAgent"
         >
@@ -23,59 +23,108 @@
         </el-button>
       </div>
 
-      <el-table
-        :data="localConfig.agents"
-        stripe
-        size="small"
+      <!-- 智能体卡片网格 -->
+      <div
+        v-if="localConfig.agents.length > 0"
+        class="agents-grid"
       >
-        <el-table-column
-          prop="name"
-          label="名称"
-          width="180"
-        />
-        <el-table-column
-          prop="slug"
-          label="标识符"
-          width="150"
-        />
-        <el-table-column
-          prop="enabled"
-          label="启用"
-          width="80"
+        <div
+          v-for="(agent, index) in localConfig.agents"
+          :key="agent.slug"
+          class="agent-card"
+          :class="{ 'is-disabled': !agent.enabled }"
         >
-          <template #default="{ row }">
+          <!-- 卡片头部 -->
+          <div class="agent-card-header">
+            <div class="agent-avatar">
+              <el-icon :size="22">
+                <component :is="getAgentIcon(agent.slug)" />
+              </el-icon>
+            </div>
+            <div class="agent-header-info">
+              <h4 class="agent-name">{{ agent.name }}</h4>
+              <p class="agent-slug">{{ agent.slug }}</p>
+            </div>
             <el-switch
-              v-model="row.enabled"
+              v-model="agent.enabled"
               size="small"
+              @change="handleToggleAgent(agent)"
             />
-          </template>
-        </el-table-column>
-        <el-table-column
-          label="操作"
-          width="200"
-        >
-          <template #default="{ row, $index }">
+          </div>
+
+          <!-- 卡片内容 -->
+          <div class="agent-card-body">
+            <div
+              v-if="agent.when_to_use"
+              class="agent-description"
+            >
+              <el-icon class="desc-icon"><InfoFilled /></el-icon>
+              <span>{{ agent.when_to_use }}</span>
+            </div>
+
+            <!-- MCP 服务器标签 -->
+            <div
+              v-if="agent.enabled_mcp_servers && agent.enabled_mcp_servers.length > 0"
+              class="agent-servers"
+            >
+              <el-icon class="servers-icon"><Connection /></el-icon>
+              <el-tag
+                v-for="server in agent.enabled_mcp_servers.slice(0, 2)"
+                :key="server"
+                size="small"
+                effect="plain"
+              >
+                {{ server }}
+              </el-tag>
+              <el-tag
+                v-if="agent.enabled_mcp_servers.length > 2"
+                size="small"
+                effect="plain"
+              >
+                +{{ agent.enabled_mcp_servers.length - 2 }}
+              </el-tag>
+            </div>
+          </div>
+
+          <!-- 卡片操作 -->
+          <div class="agent-card-footer">
             <el-button
               link
               type="primary"
-              size="small"
-              @click="handleEditAgent(row)"
+              :icon="Edit"
+              @click="handleEditAgent(agent, index)"
             >
               {{ isPhase1 ? '编辑' : '修改提示词' }}
             </el-button>
-            <!-- 只有第一阶段才显示删除按钮 -->
             <el-button
               v-if="isPhase1"
               link
               type="danger"
-              size="small"
-              @click="handleDeleteAgent($index)"
+              :icon="Delete"
+              @click="handleDeleteAgent(index)"
             >
               删除
             </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 空状态 -->
+      <div
+        v-else
+        class="empty-state"
+      >
+        <el-empty description="暂无智能体配置">
+          <el-button
+            v-if="phase === 1"
+            type="primary"
+            :icon="Plus"
+            @click="handleAddAgent"
+          >
+            添加第一个智能体
+          </el-button>
+        </el-empty>
+      </div>
     </div>
 
     <!-- 智能体编辑对话框 -->
@@ -223,7 +272,21 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import {
+  Plus,
+  Edit,
+  Delete,
+  InfoFilled,
+  Connection,
+  User,
+  TrendCharts,
+  ChatLineSquare,
+  Money,
+  DataAnalysis,
+  Document,
+  Monitor,
+  Wallet,
+} from '@element-plus/icons-vue'
 import type { AgentConfig, Phase1Config, Phase2Config, Phase3Config, Phase4Config, AIModelConfig, MCPServerConfig } from '../types'
 
 interface Props {
@@ -243,9 +306,33 @@ const emit = defineEmits<Emits>()
 // 是否为第一阶段
 const isPhase1 = computed(() => props.phase === 1)
 
+// 已启用的智能体数量
+const enabledAgentsCount = computed(() => {
+  return localConfig.agents.filter(a => a.enabled).length
+})
+
+// 获取智能体图标
+function getAgentIcon(slug: string) {
+  const s = slug.toLowerCase()
+  if (s.includes('news') || s.includes('新闻')) return Document
+  if (s.includes('financial') || s.includes('fundamental') || s.includes('财务') || s.includes('基本面')) return Money
+  if (s.includes('market') || s.includes('market') || s.includes('市场') || s.includes('技术')) return TrendCharts
+  if (s.includes('social') || s.includes('sentiment') || s.includes('情绪')) return ChatLineSquare
+  if (s.includes('capital') || s.includes('fund') || s.includes('short') || s.includes('资金')) return Wallet
+  if (s.includes('bull') || s.includes('bear') || s.includes('debate') || s.includes('辩论')) return ChatLineSquare
+  if (s.includes('risk') || s.includes('manager') || s.includes('conservative') || s.includes('risk')) return Monitor
+  return User
+}
+
+// 切换智能体启用状态
+function handleToggleAgent(agent: AgentConfig) {
+  // 状态切换会自动更新，这里可以添加额外的逻辑
+  ElMessage.success(`${agent.name} 已${agent.enabled ? '启用' : '禁用'}`)
+}
+
 // 阶段标题
 const phaseTitle = computed(() => {
-  const titles = ['', '分析师团队', '研究辩论', '风险评估', '总结输出']
+  const titles = ['', '信息收集与基础分析', '多空博弈与投资决策', '策略风格与风险评估', '总结智能体']
   return titles[props.phase] || ''
 })
 
@@ -268,12 +355,15 @@ watch(() => props.config, (newConfig) => {
   if (newConfig) {
     // 使用深拷贝避免引用问题
     localConfig.enabled = newConfig.enabled
-    localConfig.max_rounds = newConfig.max_rounds
     // 深拷贝 agents 数组，确保引用变化时能触发更新
     localConfig.agents = newConfig.agents.map(agent => ({ ...agent }))
-    // max_concurrency 是第一阶段特有的属性
-    if ('max_concurrency' in newConfig) {
+    // Phase 1 特有属性
+    if (props.phase === 1 && 'max_concurrency' in newConfig) {
       (localConfig as any).max_concurrency = newConfig.max_concurrency
+    }
+    // Phase 2 特有属性
+    if (props.phase === 2 && 'debate_rounds' in newConfig) {
+      (localConfig as any).debate_rounds = newConfig.debate_rounds
     }
   }
 }, { deep: true, immediate: true })
@@ -282,7 +372,6 @@ watch(() => props.config, (newConfig) => {
 function getDefaultConfig(): Phase1Config | Phase2Config | Phase3Config | Phase4Config {
   return {
     enabled: true,
-    max_rounds: 1,
     agents: [],
   }
 }
@@ -412,39 +501,255 @@ function handleAgentDialogClose() {
 </script>
 
 <style scoped>
+/* ==================== 智能体容器 ==================== */
 .phase-config-panel {
-  padding: 20px;
+  /* padding 由父容器控制 */
 }
 
-.section-header {
+.agents-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ==================== 头部操作栏 ==================== */
+.agents-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  padding: 16px 20px;
+  background: #fff;
+  border-bottom: 1px solid #e4e7ed;
 }
 
-.section-header h3 {
+.header-info h3 {
   margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.stats {
+  margin: 4px 0 0 0;
+  font-size: 13px;
+  color: #909399;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stats .divider {
+  color: #dcdfe6;
+}
+
+.stats .enabled-count {
+  color: #67c23a;
+  font-weight: 500;
+}
+
+/* ==================== 智能体卡片网格 ==================== */
+.agents-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+  padding: 20px;
+}
+
+.agent-card {
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: all 0.25s;
+}
+
+.agent-card:hover {
+  border-color: #409eff;
+  box-shadow: 0 4px 16px rgba(64, 158, 255, 0.12);
+  transform: translateY(-2px);
+}
+
+.agent-card.is-disabled {
+  opacity: 0.6;
+  background: #fafbfc;
+}
+
+.agent-card.is-disabled:hover {
+  border-color: #e4e7ed;
+  box-shadow: none;
+  transform: none;
+}
+
+/* ==================== 卡片头部 ==================== */
+.agent-card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.agent-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #409eff 0%, #5dadff 100%);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.25);
+}
+
+.agent-card.is-disabled .agent-avatar {
+  background: #e4e7ed;
+  color: #909399;
+  box-shadow: none;
+}
+
+.agent-header-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.agent-name {
+  margin: 0 0 2px 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-slug {
+  margin: 0;
+  font-size: 12px;
+  color: #909399;
+  font-family: 'Monaco', 'Courier New', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ==================== 卡片内容 ==================== */
+.agent-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.agent-description {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.6;
+  padding: 12px;
+  background: #f5f7fa;
+  border-radius: 8px;
+}
+
+.agent-description .desc-icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: #909399;
+  font-size: 16px;
+}
+
+.agent-description span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.agent-servers {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.agent-servers .servers-icon {
+  color: #909399;
+  font-size: 16px;
+}
+
+/* ==================== 卡片操作 ==================== */
+.agent-card-footer {
+  display: flex;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px dashed #e4e7ed;
+}
+
+/* ==================== 空状态 ==================== */
+.empty-state {
+  padding: 60px 20px;
+  text-align: center;
+  background: #fff;
+}
+
+/* ==================== 对话框样式优化 ==================== */
+:deep(.el-dialog) {
+  border-radius: 12px;
+}
+
+:deep(.el-dialog__header) {
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+:deep(.el-dialog__title) {
   font-size: 16px;
   font-weight: 600;
+  color: #303133;
 }
 
-.section-header h4 {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
+:deep(.el-dialog__body) {
+  padding: 24px;
 }
 
-.agents-section {
-  margin-top: 24px;
-  padding: 16px;
-  background: #f5f7fa;
-  border-radius: 4px;
+:deep(.el-dialog__footer) {
+  padding: 16px 24px 20px;
+  border-top: 1px solid #e4e7ed;
 }
 
+/* ==================== 表单提示 ==================== */
 .form-tip {
   margin-left: 12px;
   color: #909399;
   font-size: 12px;
+}
+
+/* ==================== 响应式 ==================== */
+@media (max-width: 768px) {
+  .agents-grid {
+    grid-template-columns: 1fr;
+    padding: 16px;
+    gap: 12px;
+  }
+
+  .agents-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 16px;
+  }
+
+  .agent-card {
+    padding: 14px;
+  }
+
+  .agent-avatar {
+    width: 42px;
+    height: 42px;
+  }
 }
 </style>

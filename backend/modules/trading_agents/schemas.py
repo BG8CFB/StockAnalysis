@@ -12,9 +12,51 @@ TradingAgents 数据模型
 
 from datetime import datetime
 from enum import Enum
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, List, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator, field_serializer
+from pydantic import BaseModel, Field, field_serializer, field_validator
+
+
+# =============================================================================
+# 通用辅助函数
+# =============================================================================
+
+def parse_datetime(value: Any) -> Optional[datetime]:
+    """
+    解析 datetime，兼容多种格式
+
+    支持格式：
+    - Python datetime 对象（直接返回）
+    - MongoDB 扩展 JSON 格式: {'$date': '2026-01-13T06:59:30.154Z'}
+    - ISO 8601 字符串
+
+    Args:
+        value: 输入值
+
+    Returns:
+        datetime 对象，解析失败返回 None
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, dict) and "$date" in value:
+        # MongoDB 扩展 JSON 格式
+        try:
+            from datetime import datetime as dt
+            from dateutil import parser
+            return parser.isoparse(value["$date"])
+        except Exception:
+            return None
+    if isinstance(value, str):
+        # ISO 8601 字符串
+        try:
+            from datetime import datetime as dt
+            from dateutil import parser
+            return parser.isoparse(value)
+        except Exception:
+            return None
+    return None
 
 
 # =============================================================================
@@ -93,7 +135,6 @@ class MessageResponse(BaseModel):
 
 # ConnectionTestResponse 已迁移到核心 AI 模块
 from core.ai.model.schemas import ConnectionTestResponse
-
 
 # =============================================================================
 # MCP 服务器配置模型
@@ -250,10 +291,10 @@ class AnalysisTaskResponse(BaseModel):
             token_usage=data.get("token_usage", {}),
             error_message=data.get("error_message"),
             error_details=data.get("error_details"),
-            created_at=data["created_at"],
-            started_at=data.get("started_at"),
-            completed_at=data.get("completed_at"),
-            expired_at=data.get("expired_at"),
+            created_at=parse_datetime(data.get("created_at")) or datetime.utcnow(),
+            started_at=parse_datetime(data.get("started_at")),
+            completed_at=parse_datetime(data.get("completed_at")),
+            expired_at=parse_datetime(data.get("expired_at")),
             batch_id=data.get("batch_id"),
         )
 
@@ -341,7 +382,7 @@ class AnalysisReportResponse(BaseModel):
             buy_price=data.get("buy_price"),
             sell_price=data.get("sell_price"),
             token_usage=data.get("token_usage", {}),
-            created_at=data["created_at"],
+            created_at=parse_datetime(data.get("created_at")) or datetime.utcnow(),
         )
 
 
@@ -465,27 +506,19 @@ class AgentConfigSlim(BaseModel):
 
 
 class PhaseConfigBase(BaseModel):
-    """阶段配置基础模型（不含model_id，模型选择与智能体配置分离）"""
+    """阶段配置基础模型（包含公共字段）"""
     enabled: bool = Field(default=True, description="是否启用该阶段")
-    max_rounds: int = Field(default=1, ge=0, le=10, description="最大轮次（辩论/讨论）")
     agents: List[AgentConfig] = Field(default_factory=list, description="智能体列表")
-
-    # 第一阶段专用
-    max_concurrency: Optional[int] = Field(None, ge=1, le=10, description="智能体最大并发数")
 
 
 class PhaseConfigBaseSlim(BaseModel):
     """阶段配置基础模型（精简版，不含提示词）"""
     enabled: bool = Field(default=True, description="是否启用该阶段")
-    max_rounds: int = Field(default=1, ge=0, le=10, description="最大轮次（辩论/讨论）")
     agents: List[AgentConfigSlim] = Field(default_factory=list, description="智能体列表（精简版）")
-
-    # 第一阶段专用
-    max_concurrency: Optional[int] = Field(None, ge=1, le=10, description="智能体最大并发数")
 
 
 class Phase1Config(PhaseConfigBase):
-    """第一阶段配置"""
+    """第一阶段配置（信息收集与基础分析）"""
     max_concurrency: int = Field(default=3, ge=1, le=10, description="智能体最大并发数")
 
 
@@ -495,17 +528,17 @@ class Phase1ConfigSlim(PhaseConfigBaseSlim):
 
 
 class Phase2Config(PhaseConfigBase):
-    """第二阶段配置（辩论）"""
-    pass
+    """第二阶段配置（多空博弈与投资决策）"""
+    debate_rounds: Optional[int] = Field(None, ge=1, le=10, description="辩论轮数")
 
 
 class Phase2ConfigSlim(PhaseConfigBaseSlim):
     """第二阶段配置（精简版）"""
-    pass
+    debate_rounds: Optional[int] = Field(None, ge=1, le=10, description="辩论轮数")
 
 
 class Phase3Config(PhaseConfigBase):
-    """第三阶段配置（风险评估）"""
+    """第三阶段配置（策略风格与风险评估）"""
     pass
 
 
@@ -515,13 +548,21 @@ class Phase3ConfigSlim(PhaseConfigBaseSlim):
 
 
 class Phase4Config(PhaseConfigBase):
-    """第四阶段配置（总结）"""
-    pass
+    """第四阶段配置（总结智能体 - 必须执行）"""
+    enabled: bool = Field(default=True, description="第四阶段必须执行（固定为true）")
+
+    # 禁止修改 enabled 的验证
+    @field_validator('enabled')
+    @classmethod
+    def phase4_must_be_enabled(cls, v: bool) -> bool:
+        if not v:
+            raise ValueError("第四阶段（总结智能体）必须启用，不能禁用")
+        return v
 
 
 class Phase4ConfigSlim(PhaseConfigBaseSlim):
     """第四阶段配置（精简版）"""
-    pass
+    enabled: bool = Field(default=True, description="第四阶段必须执行（固定为true）")
 
 
 class UserAgentConfigCreate(BaseModel):
@@ -595,8 +636,8 @@ class UserAgentConfigResponse(BaseModel):
             phase2=phase2,
             phase3=phase3,
             phase4=phase4,
-            created_at=data["created_at"],
-            updated_at=data["updated_at"],
+            created_at=parse_datetime(data.get("created_at")) or datetime.utcnow(),
+            updated_at=parse_datetime(data.get("updated_at")) or datetime.utcnow(),
         )
 
 
@@ -645,8 +686,8 @@ class TradingAgentsSettingsResponse(BaseModel):
             id=str(data["_id"]),
             user_id=data["user_id"],
             settings=settings,
-            created_at=data["created_at"],
-            updated_at=data["updated_at"],
+            created_at=parse_datetime(data.get("created_at")) or datetime.utcnow(),
+            updated_at=parse_datetime(data.get("updated_at")) or datetime.utcnow(),
         )
 
 

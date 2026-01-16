@@ -62,7 +62,7 @@ addopts = [
     "-v",
     "--strict-markers",
     "--tb=short",
-    "--cov=modules/mcp",
+    "--cov=core/mcp",
     "--cov=modules/trading_agents/tools",
     "--cov-report=html",
     "--cov-report=term-missing",

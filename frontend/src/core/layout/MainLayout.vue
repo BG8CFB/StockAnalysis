@@ -45,7 +45,10 @@
             separator="/"
             class="breadcrumb"
           >
-            <el-breadcrumb-item :to="{ path: '/dashboard' }">
+            <el-breadcrumb-item
+              :class="{ 'is-link': isLoggedIn }"
+              @click="handleBreadcrumbHomeClick"
+            >
               <el-icon><HomeFilled /></el-icon>
               首页
             </el-breadcrumb-item>
@@ -67,16 +70,16 @@
 
       <!-- 主内容 -->
       <el-main class="main-content">
-        <router-view v-slot="{ Component, route }">
+        <router-view v-slot="{ Component, route: currentRouteSlot }">
           <transition
-            :name="getTransitionName(route)"
+            :name="getTransitionName(currentRouteSlot)"
             mode="out-in"
             @before-enter="handleBeforeEnter"
             @after-enter="handleAfterEnter"
           >
             <component
               :is="Component"
-              :key="route.path"
+              :key="currentRouteSlot.path"
             />
           </transition>
         </router-view>
@@ -114,6 +117,7 @@ const isMobile = ref(false)
 
 const currentRoute = computed(() => route.path)
 const currentRouteName = computed(() => route.meta.title as string)
+const isLoggedIn = computed(() => userStore.isLoggedIn)
 
 // 检查屏幕尺寸
 const checkScreenSize = () => {
@@ -135,6 +139,21 @@ function toggleSidebar() {
 // 关闭移动端侧边栏
 function closeSidebar() {
   sidebarOpen.value = false
+}
+
+/**
+ * 处理面包屑首页点击
+ * 设计说明：检查登录状态后再决定是否跳转
+ * - 已登录：跳转到 /dashboard
+ * - 未登录：不跳转（因为 /dashboard 需要 auth，会触发路由守卫跳转到登录页）
+ */
+function handleBreadcrumbHomeClick() {
+  if (!isLoggedIn.value) {
+    // 未登录状态，不跳转
+    return
+  }
+  // 已登录，跳转到仪表板
+  router.push('/dashboard')
 }
 
 // 获取页面过渡动画名称
@@ -248,9 +267,15 @@ onUnmounted(() => {
   gap: var(--space-1);
   color: var(--color-text-secondary);
   font-weight: var(--font-weight-normal);
+  cursor: default;
 }
 
-.breadcrumb :deep(.el-breadcrumb__inner:hover) {
+/* 只有 is-link 类时才显示为可点击 */
+.breadcrumb :deep(.is-link .el-breadcrumb__inner) {
+  cursor: pointer;
+}
+
+.breadcrumb :deep(.is-link .el-breadcrumb__inner:hover) {
   color: var(--color-primary);
 }
 

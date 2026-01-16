@@ -16,8 +16,8 @@ except ImportError:
     yf = None
     logging.warning("yfinance not installed. Install with: pip install yfinance")
 
-from ...sources.base import DataSourceAdapter
-from ...models import (
+from core.market_data.sources.base import DataSourceAdapter
+from core.market_data.models import (
     StockInfo,
     StockQuote,
     StockKLine,
@@ -26,7 +26,7 @@ from ...models import (
     StockCompany,
     MarketType,
 )
-from ...tools.field_mapper import FieldMapper
+from core.market_data.tools.field_mapper import FieldMapper
 
 logger = logging.getLogger(__name__)
 
@@ -214,12 +214,11 @@ class YahooFinanceAdapter(DataSourceAdapter):
 
         self.source_name = "yahoo"
         self._session = None
+        # 设置默认优先级（Yahoo Finance 是美股主要数据源）
+        self._priority = 1
 
     def supports_market(self, market: MarketType) -> bool:
         return market == MarketType.US_STOCK
-
-    def get_priority(self) -> int:
-        return 1
 
     async def test_connection(self) -> bool:
         try:

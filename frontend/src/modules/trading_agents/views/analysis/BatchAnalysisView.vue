@@ -213,10 +213,10 @@
                   <span class="stage-number">02</span>
                   <div>
                     <h4 class="stage-title">
-                      双向辩论
+                      多空博弈与投资决策
                     </h4>
                     <p class="stage-desc">
-                      看涨/看跌分析师对抗辩论
+                      看涨/看跌研究员、投资组合经理、交易员共同参与决策
                     </p>
                   </div>
                 </div>
@@ -231,7 +231,7 @@
               >
                 <div class="stage-tags">
                   <el-tag
-                    v-for="role in ['看涨分析师', '看跌分析师', '研究部主管']"
+                    v-for="role in ['看涨研究员', '看跌研究员', '投资组合经理', '交易员']"
                     :key="role"
                     size="small"
                   >
@@ -261,10 +261,10 @@
                   <span class="stage-number">03</span>
                   <div>
                     <h4 class="stage-title">
-                      风险管理
+                      策略风格与风险评估
                     </h4>
                     <p class="stage-desc">
-                      三方风险评估与风控方案
+                      激进/中性/保守派辩论与风险管理主席评估
                     </p>
                   </div>
                 </div>
@@ -279,7 +279,7 @@
               >
                 <div class="stage-tags">
                   <el-tag
-                    v-for="role in ['激进派', '保守派', '中性派']"
+                    v-for="role in ['激进派', '中性派', '保守派', '风险管理主席']"
                     :key="role"
                     size="small"
                   >
@@ -306,10 +306,10 @@
                   <span class="stage-number">04</span>
                   <div>
                     <h4 class="stage-title">
-                      最终总结
+                      总结智能体
                     </h4>
                     <p class="stage-desc">
-                      综合所有分析结果生成报告
+                      综合所有分析结果生成最终报告
                     </p>
                   </div>
                 </div>
@@ -366,20 +366,20 @@
                   type="success"
                   size="small"
                 >
-                  多维度分析
+                  多空博弈与投资决策
                 </el-tag>
                 <el-tag
                   v-if="stagesConfig.stage3.enabled"
                   type="warning"
                   size="small"
                 >
-                  风险管理
+                  策略风格与风险评估
                 </el-tag>
                 <el-tag
                   type="info"
                   size="small"
                 >
-                  最终总结
+                  总结智能体
                 </el-tag>
               </div>
             </div>
@@ -459,7 +459,7 @@
                     </el-tag>
                   </el-option>
                 </el-select>
-                <span class="model-tip">用于看涨/看跌辩论、最终总结阶段</span>
+                <span class="model-tip">用于多空博弈、策略评估与总结阶段</span>
               </div>
             </div>
           </el-card>
@@ -583,6 +583,7 @@ import {
   Timer,
 } from '@element-plus/icons-vue'
 import { useTradingAgentsStore } from '../../store'
+import { useAIModelStore } from '@core/settings/stores/ai-model'
 import { agentConfigApi, settingsApi, taskApi } from '../../api'
 import { PROVIDER_PRESETS } from '../../types'
 import {
@@ -597,6 +598,7 @@ import {
 
 const router = useRouter()
 const store = useTradingAgentsStore()
+const aiModelStore = useAIModelStore()
 
 // 表单引用
 const formRef = ref<FormInstance>()
@@ -614,7 +616,7 @@ const activeAnalysts = computed(() => {
 
 // 可用的 AI 模型列表
 const availableModels = computed(() => {
-  return store.enabledModels
+  return aiModelStore.enabledModels
 })
 
 // 计算预计耗时
@@ -666,8 +668,7 @@ async function loadAgentConfig() {
     }
 
     // 从 TradingAgents 设置 API 加载默认配置
-    const settingsResponse = await settingsApi.getSettings()
-    const tradingAgentsSettings = settingsResponse.settings
+    const tradingAgentsSettings = await settingsApi.getSettings()
     const defaultDebateRounds = tradingAgentsSettings.default_debate_rounds ?? 3
 
     // 设置默认辩论轮次
@@ -1118,7 +1119,7 @@ onMounted(async () => {
 
   await loadAgentConfig()
   // 加载模型列表
-  await store.fetchModels()
+  await aiModelStore.fetchModels()
 })
 
 onUnmounted(() => {

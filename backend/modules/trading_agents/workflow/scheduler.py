@@ -1,13 +1,22 @@
 """
 TradingAgents 工作流调度器
 
-**版本**: v3.0 (LangChain create_agent 重构版)
-**最后更新**: 2026-01-15
+**版本**: v4.0 (重构版)
+**最后更新**: 2026-01-16
 
 使用函数式调用 + LangChain create_agent 实现四阶段工作流。
 
-调度流程:
-Phase 1 (并发) → Phase 2 (串行) → Phase 3 (串行) → Phase 4 (串行)
+调度流程（并发设计）:
+- Phase 1 (所有分析师并发, 受 task_concurrency 控制)
+- Phase 2 (看涨+看跌并发, 投资组合经理+交易员串行)
+- Phase 3 (策略分析师并发, 风险管理委员会主席串行)
+- Phase 4 (总结智能体串行, 必须执行)
+
+阶段说明:
+- Phase 1: 信息收集与基础分析（必需，最少1-2个分析师）
+- Phase 2: 多空博弈与投资决策（看涨+看跌+投资组合经理+交易员）
+- Phase 3: 策略风格与风险评估（激进+中性+保守+风险管理委员会主席）
+- Phase 4: 总结智能体（必须执行，提供最终投资建议和价格预测）
 """
 
 import asyncio
@@ -66,6 +75,7 @@ class WorkflowScheduler:
         data_collection_model: str = "claude-sonnet-4-20250514",
         debate_model: str = "claude-haiku-4-20250514",
         stages: Optional[Dict[str, Any]] = None,
+        data_collection_task_concurrency: Optional[int] = None,
     ) -> WorkflowState:
         """
         运行完整工作流
@@ -81,6 +91,7 @@ class WorkflowScheduler:
             data_collection_model: 数据收集模型 ID
             debate_model: 辩论模型 ID
             stages: 阶段配置
+            data_collection_task_concurrency: Phase 1 最大并发数（从模型配置获取）
 
         Returns:
             最终状态
@@ -111,7 +122,7 @@ class WorkflowScheduler:
             data_collection_model_instance = self.ai_service.get_model(data_collection_model)
             debate_model_instance = self.ai_service.get_model(debate_model)
 
-            # Phase 1: 信息收集与基础分析（并发）
+            # Phase 1: 信息收集与基础分析（所有分析师并发，受 task_concurrency 控制）
             if phase1_config.get("enabled", True):
                 self._notify_progress(state, "phase1_start", "开始 Phase 1: 信息收集与基础分析")
 
@@ -120,13 +131,14 @@ class WorkflowScheduler:
                     self.ai_service,
                     self.agent_config,
                     selected_agents=selected_agents,
-                    model_id=data_collection_model
+                    model_id=data_collection_model,
+                    max_concurrency=data_collection_task_concurrency
                 )
 
                 logger.info(f"[调度器] Phase 1 完成: {len(state.analyst_reports)} 份报告")
                 self._notify_progress(state, "phase1_complete", "Phase 1 完成")
 
-            # Phase 2: 多空博弈与投资决策（串行）
+            # Phase 2: 多空博弈与投资决策（看涨+看跌并发，投资组合经理+交易员串行）
             if phase2_config.get("enabled", True) and should_continue(state):
                 self._notify_progress(state, "phase2_start", "开始 Phase 2: 多空博弈与投资决策")
 
@@ -142,9 +154,9 @@ class WorkflowScheduler:
                 logger.info(f"[调度器] Phase 2 完成: {len(state.debate_turns)} 轮辩论")
                 self._notify_progress(state, "phase2_complete", "Phase 2 完成")
 
-            # Phase 3: 交易执行策划（串行）
+            # Phase 3: 策略风格与风险评估（策略分析师并发，风险管理委员会主席串行）
             if phase3_config.get("enabled", True) and should_continue(state):
-                self._notify_progress(state, "phase3_start", "开始 Phase 3: 交易执行策划")
+                self._notify_progress(state, "phase3_start", "开始 Phase 3: 策略风格与风险评估")
 
                 state = await phase3.execute_phase3(
                     state,
@@ -152,12 +164,12 @@ class WorkflowScheduler:
                     self.agent_config
                 )
 
-                logger.info(f"[调度器] Phase 3 完成")
+                logger.info(f"[调度器] Phase 3 完成, 推荐: {state.final_recommendation}")
                 self._notify_progress(state, "phase3_complete", "Phase 3 完成")
 
-            # Phase 4: 策略风格与风险评估（串行）
-            if phase4_config.get("enabled", True) and should_continue(state):
-                self._notify_progress(state, "phase4_start", "开始 Phase 4: 策略风格与风险评估")
+            # Phase 4: 总结智能体（必须执行，提供最终投资建议和价格预测）
+            if should_continue(state):
+                self._notify_progress(state, "phase4_start", "开始 Phase 4: 总结智能体")
 
                 state = await phase4.execute_phase4(
                     state,
@@ -373,15 +385,20 @@ class WorkflowScheduler:
 
         # 添加交易计划
         if state.trading_plan:
-            report += "\n---\n\n## Phase 3: 交易执行计划\n\n"
+            report += "\n---\n\n## Phase 2: 交易执行计划\n\n"
             report += f"{state.trading_plan.get('content', '')[:500]}...\n\n"
 
         # 添加策略报告
         if state.strategy_reports:
-            report += "\n---\n\n## Phase 4: 策略风格分析\n\n"
+            report += "\n---\n\n## Phase 3: 策略风格分析\n\n"
             for strategy_report in state.strategy_reports:
                 report += f"\n### {strategy_report['name']}\n\n"
                 report += f"{strategy_report['content'][:300]}...\n\n"
+
+        # 添加总结报告
+        if state.summary_report:
+            report += "\n---\n\n## Phase 4: 总结报告\n\n"
+            report += f"{state.summary_report.get('content', '')}\n\n"
 
         # 添加风险提示
         report += "\n---\n\n## 风险提示\n\n"

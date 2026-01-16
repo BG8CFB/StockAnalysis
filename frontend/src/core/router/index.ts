@@ -141,6 +141,20 @@ router.beforeEach(async (to, from, next) => {
   }
 
   // ==================== 通过所有检查 ====================
+  // 特殊处理：如果访问 /settings（没有子路径），重定向到第一个设置页面
+  // 这是因为我们移除了 /settings 的静态重定向路由，避免与菜单导航冲突
+  if (to.path === '/settings') {
+    // 根据用户权限重定向到合适的设置页面
+    const role = userStore.userInfo?.role
+    const hasAdminPermission = role === 'ADMIN' || role === 'SUPER_ADMIN'
+    if (hasAdminPermission) {
+      next('/settings/system')
+    } else {
+      next('/settings/mcp-servers')
+    }
+    return
+  }
+
   next()
 })
 

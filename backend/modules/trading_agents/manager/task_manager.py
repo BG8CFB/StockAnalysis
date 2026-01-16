@@ -36,7 +36,7 @@ from modules.trading_agents.workflow.events import (
     create_task_failed_event,
 )
 # MCP 连接释放支持
-from modules.mcp.pool.pool import get_mcp_connection_pool
+from core.mcp.pool.pool import get_mcp_connection_pool
 
 logger = logging.getLogger(__name__)
 
@@ -926,7 +926,7 @@ class TaskManager:
         try:
             # 1. 加载用户智能体配置
             logger.info(f"[{task_id}] 步骤1: 加载用户智能体配置...")
-            from modules.trading_agents.services.agent_config_service import get_agent_config_service
+            from modules.trading_agents.manager.agent_config_service import get_agent_config_service
             config_service = get_agent_config_service()
             agent_config = await config_service.get_user_config(user_id, create_if_missing=True)
 
@@ -1077,6 +1077,10 @@ class TaskManager:
                 stages_config = request.stages.model_dump() if request.stages else {}
                 selected_agents = stages_config.get("stage1", {}).get("selected_agents")
 
+                # 获取数据收集模型的 task_concurrency 配置
+                task_concurrency = data_collection_model_obj.task_concurrency if data_collection_model_obj else None
+                logger.info(f"任务 {task_id} Phase 1 并发数: {task_concurrency or '无限制'}")
+
                 # 执行工作流
                 final_state = await scheduler.run(
                     task_id=task_id,
@@ -1089,6 +1093,7 @@ class TaskManager:
                     data_collection_model=data_collection_model_id or "claude-sonnet-4-20250514",
                     debate_model=debate_model_id or "claude-haiku-4-20250514",
                     stages=stages_config,
+                    data_collection_task_concurrency=task_concurrency,
                 )
 
                 logger.info(f"任务 {task_id} 工作流执行完成，状态: {final_state.status}")
@@ -1178,11 +1183,11 @@ class TaskManager:
             except Exception as e:
                 logger.error(f"减少并发任务计数失败: task_id={task_id}, user_id={user_id}, error={e}")
 
-            # 释放 MCP 连接
+            # 释放 MCP 连接（标记任务失败）
             try:
                 pool = get_mcp_connection_pool()
-                await pool.release_task_connections(task_id)
-                logger.info(f"已释放任务 {task_id} 的 MCP 连接")
+                await pool.mark_task_failed(task_id)
+                logger.info(f"已释放任务 {task_id} 的 MCP 连接（失败状态）")
             except Exception as e:
                 logger.error(f"释放 MCP 连接失败: task_id={task_id}, error={e}")
 

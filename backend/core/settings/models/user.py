@@ -190,9 +190,30 @@ class UserSettingsResponse(BaseModel):
         处理可能存在的无效数据：
         - 确保 concurrent_tasks >= 0（修复历史负数问题）
         - 确保其他数值字段 >= 0
+        - 处理缓存数据缺失 _id 的情况
+        - 处理 MongoDB 扩展 JSON 格式的 datetime
         """
+        # 辅助函数：处理 datetime 字段（兼容 MongoDB 扩展 JSON 格式）
+        def parse_datetime(value: Any) -> datetime:
+            """解析 datetime，兼容 Python datetime 和 MongoDB 扩展 JSON 格式"""
+            if isinstance(value, datetime):
+                return value
+            if isinstance(value, dict) and "$date" in value:
+                # MongoDB 扩展 JSON 格式: {'$date': '2026-01-13T06:59:30.154Z'}
+                from datetime import datetime as dt
+                from dateutil import parser
+                return parser.isoparse(value["$date"])
+            # 默认返回当前时间
+            return datetime.utcnow()
+
         # 获取并清理 quota_info 数据
         quota_data = data.get("quota_info", {})
+
+        # 兼容缓存数据：如果没有 _id，使用生成的 UUID
+        doc_id = data.get("_id")
+        if doc_id is None:
+            import uuid
+            doc_id = str(uuid.uuid4())
 
         # 修复可能存在的负数值（确保 >= 0）
         if "concurrent_tasks" in quota_data and quota_data["concurrent_tasks"] < 0:
@@ -205,14 +226,14 @@ class UserSettingsResponse(BaseModel):
             quota_data["storage_used_mb"] = 0.0
 
         return cls(
-            id=str(data["_id"]),
+            id=str(doc_id),
             user_id=str(data["user_id"]),
             core_settings=CoreSettings(**data.get("core_settings", {})),
             notification_settings=NotificationSettings(**data.get("notification_settings", {})),
             trading_agents_settings=TradingAgentsSettings(**data.get("trading_agents_settings", {})),
             quota_info=UserQuotaInfo(**quota_data),
-            created_at=data["created_at"],
-            updated_at=data["updated_at"],
+            created_at=parse_datetime(data.get("created_at")),
+            updated_at=parse_datetime(data.get("updated_at")),
         )
 
 

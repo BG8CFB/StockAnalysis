@@ -9,7 +9,7 @@ Alpha Vantage 美股数据源适配器
 import logging
 import asyncio
 from typing import List, Optional, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime
 import pandas as pd
 
 try:
@@ -18,12 +18,12 @@ except ImportError:
     requests = None
     logging.warning("requests not installed. Install with: pip install requests")
 
-from ...sources.base import DataSourceAdapter
-from ...models import (
+from core.market_data.sources.base import DataSourceAdapter
+from core.market_data.models import (
     StockQuote,
     MarketType,
 )
-from ...tools.field_mapper import FieldMapper
+from core.market_data.tools.field_mapper import FieldMapper
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +117,8 @@ class AlphaVantageAdapter(DataSourceAdapter):
 
         self.api_key = api_key
         self.source_name = "alphavantage"
+        # 设置默认优先级（Alpha Vantage 作为美股备用数据源）
+        self._priority = 2
 
         # 限流控制：免费版 5 次/分钟
         self.request_times = []
@@ -125,9 +127,6 @@ class AlphaVantageAdapter(DataSourceAdapter):
 
     def supports_market(self, market: MarketType) -> bool:
         return market == MarketType.US_STOCK
-
-    def get_priority(self) -> int:
-        return 2  # 比 Yahoo Finance 优先级低
 
     async def _check_rate_limit(self):
         """检查并执行限流控制"""
@@ -337,7 +336,7 @@ class AlphaVantageAdapter(DataSourceAdapter):
             klines = []
             for date, values in time_series.items():
                 try:
-                    from ....models import StockKLine
+                    from core.market_data.models import StockKLine
 
                     trade_dt = date.replace("-", "").replace(" ", "").replace(":", "")
 

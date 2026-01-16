@@ -149,7 +149,7 @@ async def delete_model(
 
 
 # =============================================================================
-# MCP 服务器管理端点已迁移到 modules/mcp/api/routes.py
+# MCP 服务器管理端点已迁移到 core/mcp/api/routes.py
 # =============================================================================
 
 # =============================================================================
@@ -531,7 +531,7 @@ async def restore_public_config(
     Returns:
         恢复后的公共配置
     """
-    from modules.trading_agents.services.agent_config_service import get_agent_config_service
+    from modules.trading_agents.manager.agent_config_service import get_agent_config_service
 
     service = get_agent_config_service()
     config = await service.restore_public_config()

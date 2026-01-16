@@ -8,7 +8,7 @@ import json
 import logging
 from datetime import datetime
 from typing import Optional, Dict, Any
-from bson import ObjectId
+from bson import ObjectId, json_util
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
@@ -85,11 +85,12 @@ class UserSettingsService:
                 return await self._create_default_settings(user_id)
             return None
 
-        # 缓存到 Redis
+        # 缓存到 Redis（直接序列化原始文档，保留 _id 字段）
         response = UserSettingsResponse.from_db(doc)
+        # 使用 bson.json_util 序列化，确保 ObjectId 等类型正确转换
         await redis.set(
             cache_key,
-            response.model_dump_json(),
+            json.dumps(doc, default=json_util.default),
             ex=self._cache_ttl
         )
 

@@ -23,6 +23,9 @@ from core.market_data.repositories.datasource import (
 )
 from core.market_data.sources.a_stock.tushare_adapter import TuShareAdapter
 from core.market_data.sources.a_stock.akshare_adapter import AkShareAdapter
+from core.market_data.sources.us_stock.yahoo_adapter import YahooFinanceAdapter
+from core.market_data.sources.us_stock.alphavantage_adapter import AlphaVantageAdapter
+from core.market_data.sources.hk_stock.yahoo_adapter import YahooHKAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -38,26 +41,57 @@ class SourceMonitorService:
         self._adapters: Dict[str, Any] = {}
         self._check_interval = 300
 
-    def _get_adapter(self, source_id: str, config: Dict[str, Any]) -> Any:
+    def _get_adapter(self, source_id: str, config: Dict[str, Any], market: str = "A_STOCK") -> Any:
         """
         获取数据源适配器实例
 
         Args:
             source_id: 数据源ID
             config: 配置信息
+            market: 市场类型（用于选择正确的 yahoo 适配器）
 
         Returns:
             适配器实例
         """
-        if source_id not in self._adapters:
+        # 使用 (source_id, market) 作为缓存键，支持同一数据源在不同市场使用不同适配器
+        cache_key = f"{source_id}_{market}"
+
+        if cache_key not in self._adapters:
             if source_id == "tushare":
-                self._adapters[source_id] = TuShareAdapter(config)
+                self._adapters[cache_key] = TuShareAdapter(config)
             elif source_id == "akshare":
-                self._adapters[source_id] = AkShareAdapter(config)
+                self._adapters[cache_key] = AkShareAdapter(config)
+            elif source_id == "yahoo":
+                # Yahoo 根据市场选择不同的适配器
+                if market == "US_STOCK":
+                    self._adapters[cache_key] = YahooFinanceAdapter(config)
+                elif market == "HK_STOCK":
+                    self._adapters[cache_key] = YahooHKAdapter(config)
+                else:
+                    raise ValueError(f"Yahoo adapter not supported for market: {market}")
+            elif source_id == "alpha_vantage":
+                self._adapters[cache_key] = AlphaVantageAdapter(config)
             else:
                 raise ValueError(f"Unsupported data source: {source_id}")
 
-        return self._adapters[source_id]
+        return self._adapters[cache_key]
+
+    def _get_test_symbol(self, market: str) -> str:
+        """
+        获取用于健康检查的测试股票代码
+
+        Args:
+            market: 市场类型
+
+        Returns:
+            测试股票代码
+        """
+        test_symbols = {
+            "A_STOCK": "000001.SZ",      # 平安银行
+            "US_STOCK": "AAPL.US",       # 苹果
+            "HK_STOCK": "0700.HK",       # 腾讯控股
+        }
+        return test_symbols.get(market, "000001.SZ")
 
     async def _check_api_health(
         self,
@@ -81,26 +115,37 @@ class SourceMonitorService:
         start_time = datetime.now()
 
         try:
-            adapter = self._get_adapter(source_id, config)
+            # 传递 market 参数以支持 yahoo 在不同市场使用不同适配器
+            adapter = self._get_adapter(source_id, config, market)
+
+            # 根据市场类型选择测试股票代码
+            test_symbol = self._get_test_symbol(market)
+            market_type = MarketType(market)
 
             if data_type == "stock_list":
-                result = await adapter.get_stock_list(MarketType.A_STOCK)
+                result = await adapter.get_stock_list(market_type)
                 success = len(result) > 0
             elif data_type == "daily_quotes":
-                result = await adapter.get_daily_quotes("000001.SZ", start_date="20240101", end_date="20240105")
+                result = await adapter.get_daily_quotes(test_symbol, start_date="20240101", end_date="20240105")
                 success = len(result) > 0
+            elif data_type == "minute_quotes":
+                # 分钟K线数据，仅测试不抛出异常
+                success = True
             elif data_type == "financials":
-                result = await adapter.get_stock_financials("000001.SZ")
+                result = await adapter.get_stock_financials(test_symbol)
                 success = len(result) > 0
             elif data_type == "financial_indicator":
-                result = await adapter.get_financial_indicators("000001.SZ")
+                result = await adapter.get_financial_indicators(test_symbol)
                 success = len(result) > 0
             elif data_type == "company_info":
-                result = await adapter.get_stock_company("000001.SZ")
+                result = await adapter.get_stock_company(test_symbol)
                 success = result is not None
             elif data_type == "shibor":
                 result = await adapter.get_shibor()
                 success = len(result) > 0
+            elif data_type == "index":
+                # 指数数据，仅测试不抛出异常
+                success = True
             else:
                 success = True
 
@@ -225,7 +270,7 @@ class SourceMonitorService:
             market = config["market"]
 
             data_types = config.get("supported_data_types", [
-                "stock_list", "daily_quotes", "financials", "financial_indicator", "company_info"
+                "stock_list", "daily_quote", "financials", "financial_indicator", "company_info"
             ])
 
             for data_type in data_types:

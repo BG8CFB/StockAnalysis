@@ -3,14 +3,14 @@ import pandas as pd
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
-from ...models import (
+from core.market_data.models import (
     StockInfo, StockQuote, StockKLine, StockFinancial,
     StockCompany, StockNews, StockDividend, StockMargin,
     MacroEconomic, StockSector, StockTopList,
     MarketType, Exchange
 )
-from ...tools.field_mapper import FieldMapper, AkShareFieldMapper
-from ..base import DataSourceAdapter
+from core.market_data.tools.field_mapper import FieldMapper, AkShareFieldMapper
+from core.market_data.sources.base import DataSourceAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +23,8 @@ class AkShareAdapter(DataSourceAdapter):
         import akshare as ak
         self.ak = ak
         self.source_name = "akshare"
+        # 设置默认优先级（AkShare 作为 A股的备用数据源）
+        self._priority = 2
 
     async def connect(self) -> bool:
         """测试连接"""
@@ -40,10 +42,6 @@ class AkShareAdapter(DataSourceAdapter):
     def supports_market(self, market: MarketType) -> bool:
         """检查数据源是否支持指定市场"""
         return market == MarketType.A_STOCK
-
-    def get_priority(self) -> int:
-        """获取数据源优先级"""
-        return 2  # AkShare 作为 A股的备用数据源
 
     async def get_stock_list(self, market: MarketType, status: str = "L") -> List[StockInfo]:
         """
@@ -876,6 +874,52 @@ class AkShareAdapter(DataSourceAdapter):
         except Exception as e:
             logger.error(f"Failed to get new stocks: {e}")
             return []
+
+    async def get_stock_company(self, symbol: str) -> Optional[StockCompany]:
+        """
+        获取公司信息
+        
+        Args:
+            symbol: 股票代码
+            
+        Returns:
+            公司信息
+        """
+        try:
+            code = symbol.split('.')[0]
+            # 使用个股信息接口
+            df = self.ak.stock_individual_info_em(symbol=code)
+            
+            if df is None or df.empty:
+                return None
+            
+            # 转换为字典
+            info = dict(zip(df['item'], df['value']))
+            
+            # 解析上市日期 (YYYYMMDD)
+            listing_date = str(info.get('上市时间', ''))
+            if len(listing_date) == 8:
+                pass
+            else:
+                # 尝试格式化，如果不是8位，可能需要处理
+                pass
+            
+            return StockCompany(
+                symbol=symbol,
+                market=MarketType.A_STOCK,
+                company_name=str(info.get('股票名称', '')),
+                industry=str(info.get('行业', '')),
+                listing_date=listing_date,
+                capital_structure={
+                    'total_share': info.get('总股本'),
+                    'float_share': info.get('流通股')
+                },
+                data_source=self.source_name
+            )
+            
+        except Exception as e:
+            logger.warning(f"Failed to get company info for {symbol} from AkShare: {e}")
+            return None
 
     async def get_stock_suspend(
         self,

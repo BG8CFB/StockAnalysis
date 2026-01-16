@@ -98,6 +98,16 @@ class MarketDataApi {
     const response = await request.post<RefreshStatusResponse>('/core/system/data-source-status/refresh', params)
     return response.data
   }
+
+  /**
+   * 手动触发全量同步
+   */
+  async triggerFullSync(market: string = 'A_STOCK'): Promise<any> {
+    const response = await request.post('/market-data/sync/trigger-full', null, {
+      params: { market }
+    })
+    return response.data
+  }
 }
 
 export default new MarketDataApi()

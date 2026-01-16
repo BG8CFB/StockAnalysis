@@ -13,7 +13,6 @@ class DataSourceStatus(str, Enum):
     HEALTHY = "healthy"
     DEGRADED = "degraded"
     UNAVAILABLE = "unavailable"
-    STANDBY = "standby"
 
 
 class DataSourceType(str, Enum):

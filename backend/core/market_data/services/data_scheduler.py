@@ -337,9 +337,9 @@ class DataScheduler:
             symbols = [s["symbol"] for s in stocks]
 
             # 同步财务指标
-            result = await self.data_sync_service.sync_financials(
-                symbols=symbols,
-                source_id="tushare"
+            # 使用带自动降级的同步方法
+            result = await self.data_sync_service.sync_financials_with_fallback(
+                symbols=symbols
             )
 
             logger.info(f"A stock financial indicators sync completed: {result}")
@@ -461,7 +461,8 @@ class DataScheduler:
                 symbols=list(hk_symbols),
                 start_date=today,
                 end_date=today,
-                source_id="akshare"
+                source_id="akshare",
+                market="HK_STOCK"
             )
 
             logger.info(f"HK stock daily quote sync completed: {result}")

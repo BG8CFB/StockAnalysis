@@ -73,6 +73,21 @@
         <span>执行失败</span>
       </div>
     </div>
+
+    <!-- 查看思考过程按钮 -->
+    <div
+      v-if="agent.status === 'completed' && showThinking"
+      class="card-footer"
+    >
+      <el-button
+        link
+        type="primary"
+        size="small"
+        @click="handleShowThinking"
+      >
+        查看思考过程
+      </el-button>
+    </div>
   </div>
 </template>
 
@@ -83,9 +98,23 @@ import type { AgentStatus } from '../../composables/useAnalysisProgress'
 
 interface Props {
   agent: AgentStatus
+  showThinking?: boolean
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  showThinking: false
+})
+
+const emit = defineEmits<{
+  showThinking: [agent: AgentStatus]
+}>()
+
+/**
+ * 显示思考过程
+ */
+function handleShowThinking() {
+  emit('showThinking', props.agent)
+}
 
 // 状态对应的类名
 const statusClass = computed(() => {
@@ -242,5 +271,12 @@ function formatDuration(ms: number): string {
 .duration-info {
   margin-top: 4px;
   color: var(--el-text-color-secondary);
+}
+
+.card-footer {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--el-border-color-lighter);
+  text-align: center;
 }
 </style>

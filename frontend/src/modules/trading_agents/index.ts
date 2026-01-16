@@ -3,8 +3,6 @@
  */
 
 // 设置模块
-export { default as ModelManagementView } from './views/ModelManagementView.vue'
-export { default as MCPServerManagementView } from './views/MCPServerManagementView.vue'
 export { default as AgentConfigView } from './views/AgentConfigView.vue'
 export { default as AnalysisSettingsView } from './views/AnalysisSettingsView.vue'
 
@@ -17,7 +15,6 @@ export { default as AnalysisDetailView } from './views/analysis/AnalysisDetailVi
 export { default as TaskCenterView } from './views/task/TaskCenterView.vue'
 
 // 管理员页面
-export { default as AdminSystemModelsView } from './views/admin/SystemModelView.vue'
 export { default as AdminAllTasksView } from './views/admin/AllTasksView.vue'
 
 // Composables

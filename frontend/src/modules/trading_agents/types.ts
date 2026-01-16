@@ -288,26 +288,23 @@ export interface AgentConfig {
  */
 export interface Phase1Config {
   enabled: boolean
-  max_rounds: number
-  max_concurrency: number
+  max_concurrency: number  // Phase 1: 最大并发数
   agents: AgentConfig[]
 }
 
 export interface Phase2Config {
   enabled: boolean
-  max_rounds: number
+  debate_rounds?: number  // Phase 2: 辩论轮数
   agents: AgentConfig[]
 }
 
 export interface Phase3Config {
   enabled: boolean
-  max_rounds: number
   agents: AgentConfig[]
 }
 
 export interface Phase4Config {
-  enabled: boolean
-  max_rounds: number
+  enabled: true  // Phase 4: 必须执行（固定为 true）
   agents: AgentConfig[]
 }
 

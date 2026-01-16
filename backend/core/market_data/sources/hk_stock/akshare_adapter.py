@@ -16,13 +16,13 @@ except ImportError:
     ak = None
     logging.warning("akshare not installed. Install with: pip install akshare")
 
-from ...sources.base import DataSourceAdapter
-from ...models import (
+from core.market_data.sources.base import DataSourceAdapter
+from core.market_data.models import (
     StockInfo,
     StockQuote,
     MarketType,
 )
-from ...tools.field_mapper import FieldMapper
+from core.market_data.tools.field_mapper import FieldMapper
 
 logger = logging.getLogger(__name__)
 
@@ -117,12 +117,11 @@ class AkShareHKAdapter(DataSourceAdapter):
             raise ImportError("akshare is not installed. Install with: pip install akshare")
 
         self.source_name = "akshare"
+        # 设置默认优先级（AkShare 是港股主要数据源）
+        self._priority = 1
 
     def supports_market(self, market: MarketType) -> bool:
         return market == MarketType.HK_STOCK
-
-    def get_priority(self) -> int:
-        return 1  # AkShare 港股数据优先级比 Yahoo Finance 高
 
     async def test_connection(self) -> bool:
         try:

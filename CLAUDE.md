@@ -59,7 +59,7 @@ cd backend
 poetry run pytest                    # 运行所有测试
 poetry run pytest -v                # 详细输出
 poetry run pytest --cov=modules     # 覆盖率报告
-poetry run pytest tests/modules/mcp/  # 运行特定模块测试
+poetry run pytest tests/core/mcp/  # 运行核心模块测试
 
 # 后端代码检查
 poetry run black .                  # 代码格式化(line-length: 100)
@@ -91,6 +91,7 @@ npm run build:check                 # 类型检查 + 构建
 - **auth/** - 认证核心(JWT、RBAC、用户模型)
 - **db/** - 数据库连接(MongoDB motor + Redis)
 - **ai/** - AI 基础设施(模型管理、LLM Provider、定价)
+- **mcp/** - MCP 协议核心(连接池、适配器、配置管理)
 - **security/** - 安全模块(滑块验证码、限流器、IP 信任)
 - **settings/** - 统一设置(系统设置、用户设置)
 - **market_data/** - 市场数据核心(多数据源统一接入)
@@ -104,10 +105,6 @@ npm run build:check                 # 类型检查 + 构建
   - **manager/** - 任务管理器与并发控制
   - **websocket/** - WebSocket 实时推送
   - **tools/** - MCP 工具集成
-- **mcp/** - MCP 模块(完整实现)
-  - **pool/** - 连接池管理
-  - **core/** - 适配器/会话/拦截器
-  - **config/** - 配置管理
 - **screener/ask_stock/dashboard/** - 预留框架
 
 ### 前端架构
@@ -177,9 +174,11 @@ MCP (Model Context Protocol) 是统一的工具调用协议。
 
 ### 关键组件
 
-- **MCP 连接池** (`backend/modules/mcp/pool/pool.py`) - 连接池管理
-- **MCP 适配器** (`backend/modules/mcp/core/adapter.py`) - MCP 适配器
-- **默认配置** (`backend/modules/mcp/config/default_config.yaml`) - 默认配置
+- **MCP 连接池** (`backend/core/mcp/pool/pool.py`) - 连接池管理
+- **MCP 适配器** (`backend/core/mcp/adapter/adapter.py`) - LangChain MCP 适配器
+- **默认配置** (`backend/core/mcp/config/default_config.yaml`) - 默认配置
+- **MCP 服务** (`backend/core/mcp/service/mcp_service.py`) - MCP 服务器管理服务
+- **健康检查** (`backend/core/mcp/service/health_checker.py`) - 定期健康检查
 
 ## 市场数据模块关键概念
 
@@ -240,9 +239,11 @@ Vite 配置中定义的路径别名:
 | Redis 连接 | `backend/core/db/redis.py` |
 | AI 模型管理 | `backend/core/ai/` |
 | 安全服务 | `backend/core/security/` |
+| MCP 连接池 | `backend/core/mcp/pool/pool.py` |
+| MCP 适配器 | `backend/core/mcp/adapter/adapter.py` |
+| MCP 服务 | `backend/core/mcp/service/mcp_service.py` |
 | TradingAgents 工作流调度器 | `backend/modules/trading_agents/scheduler/workflow_scheduler.py` |
 | TradingAgents 任务管理器 | `backend/modules/trading_agents/manager/task_manager.py` |
-| MCP 连接池 | `backend/modules/mcp/pool/pool.py` |
 | 数据源路由器 | `backend/core/market_data/managers/source_router.py` |
 
 ### 前端

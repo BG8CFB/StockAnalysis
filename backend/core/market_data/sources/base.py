@@ -5,7 +5,7 @@
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Callable
 from datetime import datetime
 
 from core.market_data.models import (
@@ -36,6 +36,7 @@ class DataSourceAdapter(ABC):
         self.is_available = True  # 数据源是否可用
         self.last_check_time = None  # 最后检查时间
         self.failure_count = 0  # 连续失败次数
+        self._priority = 100  # 默认优先级（数字越小优先级越高）
 
     @abstractmethod
     async def test_connection(self) -> bool:
@@ -138,7 +139,6 @@ class DataSourceAdapter(ABC):
         """
         pass
 
-    @abstractmethod
     def get_priority(self) -> int:
         """
         获取数据源优先级
@@ -146,7 +146,18 @@ class DataSourceAdapter(ABC):
         Returns:
             int: 优先级（数字越小优先级越高）
         """
-        pass
+        return self._priority
+
+    def set_priority(self, priority: int) -> None:
+        """
+        设置数据源优先级
+
+        Args:
+            priority: 优先级值（数字越小优先级越高）
+        """
+        if not isinstance(priority, int) or priority < 0:
+            raise ValueError(f"Priority must be a non-negative integer, got {priority}")
+        self._priority = priority
 
     async def check_health(self) -> Dict[str, Any]:
         """
@@ -200,3 +211,72 @@ class DataSourceAdapter(ABC):
     def reset_failure_count(self) -> None:
         """重置失败计数"""
         self.failure_count = 0
+
+    # ==================== 监控相关方法 ====================
+
+    async def _call_with_monitoring(
+        self,
+        func: Callable,
+        market: str,
+        data_type: str,
+        *args,
+        **kwargs
+    ) -> Any:
+        """
+        执行带监控的API调用
+
+        自动记录API调用的成功/失败状态到数据库。
+
+        Args:
+            func: 要执行的异步函数
+            market: 市场类型
+            data_type: 数据类型
+            *args: 位置参数
+            **kwargs: 关键字参数
+
+        Returns:
+            函数执行结果
+
+        Raises:
+            Exception: 函数执行失败时抛出原始异常
+
+        使用方式:
+            result = await self._call_with_monitoring(
+                self._actual_api_method,
+                "A_STOCK",
+                "daily_quote",
+                symbol="000001.SZ",
+                start_date="20240101",
+                end_date="20240131"
+            )
+        """
+        from core.market_data.services.source_call_monitor import monitor_api_context
+
+        # 获取source_id
+        source_id = self._get_source_id()
+
+        async with monitor_api_context(market, data_type, source_id, check_type="api_call"):
+            return await func(*args, **kwargs)
+
+    def _get_source_id(self) -> str:
+        """
+        获取数据源ID
+
+        Returns:
+            数据源ID字符串
+        """
+        class_name = self.__class__.__name__.lower()
+
+        if 'tushare' in class_name:
+            return 'tushare'
+        elif 'akshare' in class_name:
+            return 'akshare'
+        elif 'yahoo' in class_name:
+            # 区分Yahoo US和Yahoo HK
+            if 'hk' in class_name:
+                return 'yahoo'
+            return 'yahoo'
+        elif 'alpha' in class_name or 'vantage' in class_name:
+            return 'alpha_vantage'
+        else:
+            return 'unknown'
