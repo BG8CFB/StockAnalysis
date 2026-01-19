@@ -52,8 +52,8 @@ class StockQuoteRepository(BaseRepository):
 
         Args:
             symbol: 股票代码
-            start_date: 开始日期（YYYYMMDD）
-            end_date: 结束日期（YYYYMMDD）
+            start_date: 开始日期（YYYY-MM-DD）
+            end_date: 结束日期（YYYY-MM-DD）
             limit: 返回数量限制
 
         Returns:
@@ -99,7 +99,7 @@ class StockQuoteRepository(BaseRepository):
 
         Args:
             symbol: 股票代码
-            before_date: 日期（YYYYMMDD），删除此日期之前的数据
+            before_date: 指定日期
 
         Returns:
             删除的文档数量

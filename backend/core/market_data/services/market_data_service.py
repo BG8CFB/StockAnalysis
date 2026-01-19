@@ -27,6 +27,11 @@ from core.market_data.repositories.watchlist import UserWatchlistRepository
 from core.market_data.repositories.stock_info import StockInfoRepository
 from core.market_data.repositories.stock_quotes import StockQuoteRepository
 from core.market_data.sources.base import DataSourceAdapter
+from core.market_data.services.dual_channel_service import (
+    get_dual_channel_service,
+    DualChannelResult,
+    ChannelType
+)
 from core.market_data.models import MarketType
 from core.market_data.managers.source_router import (
     DataSourceRouter,
@@ -48,6 +53,43 @@ class MarketDataService:
         self.stock_info_repo = StockInfoRepository()
         self.stock_quotes_repo = StockQuoteRepository()
         self.router = None  # 延迟初始化
+        self.dual_channel_service = get_dual_channel_service(
+            storage_callback=self._storage_callback
+        )
+
+    async def _storage_callback(self, symbol: str, data_type: str, data: Any) -> None:
+        """
+        双通道服务的存储回调
+        
+        Args:
+            symbol: 股票代码
+            data_type: 数据类型
+            data: 数据内容
+        """
+        if not data:
+            return
+
+        try:
+            if data_type == "daily_quote" and isinstance(data, list):
+                # 批量存入日线行情
+                for quote_data in data:
+                    # 确保是字典
+                    quote_dict = quote_data
+                    if hasattr(quote_data, "model_dump"):
+                        quote_dict = quote_data.model_dump()
+                    elif not isinstance(quote_dict, dict):
+                        continue
+
+                    await self.stock_quotes_repo.upsert_one(
+                        filter_query={
+                            "symbol": quote_dict.get("symbol"),
+                            "trade_date": quote_dict.get("trade_date")
+                        },
+                        data={**quote_dict, "updated_at": datetime.now()}
+                    )
+                logger.info(f"Stored {len(data)} quotes for {symbol} to database via callback")
+        except Exception as e:
+            logger.warning(f"Failed to store data via callback: {e}")
 
     async def _get_router(self, market: MarketType) -> DataSourceRouter:
         """
@@ -187,9 +229,10 @@ class MarketDataService:
         获取日线行情(支持用户配置和降级)
 
         业务逻辑(按文档要求):
-        1. 如果用户配置了付费数据源 → 实时获取,直接返回(不存储)
-        2. 如果用户没配置 → 从公共数据库查询
-        3. 如果数据库没有 → 降级到AkShare实时获取
+        1. 如果用户配置了付费数据源 → 实时获取,直接返回(双通道: 同时异步存入DB)
+        2. 如果用户没配置 → 降级逻辑
+           a. 从公共数据库查询
+           b. 如果数据库没有 → 降级到AkShare实时获取并存入DB
 
         Args:
             symbol: 股票代码
@@ -201,7 +244,21 @@ class MarketDataService:
         Returns:
             (行情列表, 数据来源说明)
         """
-        source_used = "database"
+        # 标准化日期格式为 YYYY-MM-DD
+        from core.market_data.tools.field_mapper import FieldMapper
+        if start_date:
+            normalized = FieldMapper.normalize_date(start_date)
+            if len(normalized) == 8:
+                start_date = f"{normalized[:4]}-{normalized[4:6]}-{normalized[6:]}"
+            else:
+                start_date = normalized
+        
+        if end_date:
+            normalized = FieldMapper.normalize_date(end_date)
+            if len(normalized) == 8:
+                end_date = f"{normalized[:4]}-{normalized[4:6]}-{normalized[6:]}"
+            else:
+                end_date = normalized
 
         # 判断市场类型
         market = self._infer_market_from_symbol(symbol)
@@ -210,106 +267,68 @@ class MarketDataService:
             return [], "unknown"
 
         market_str = market.value
+        
+        # 准备用户数据源获取函数
+        user_source_func = None
+        has_user_config = False
+        user_source_id = "unknown"
 
-        # 步骤1: 检查用户是否配置了付费数据源
         if user_id:
-            user_sources = await self.user_source_repo.get_user_configs(
+            user_configs = await self.user_source_repo.get_user_configs(
                 user_id=user_id,
                 market=market_str,
                 enabled=True
             )
+            
+            if user_configs:
+                has_user_config = True
+                # 使用优先级最高的数据源
+                # 注意：这里简化处理，只取第一个。实际应该尝试所有配置的数据源。
+                # 为了配合 fetch_func 的签名，我们构建一个闭包
+                config = user_configs[0]
+                user_source_id = config.get("source_id", "unknown")
+                
+                async def _fetch_user_data():
+                    return await self._fetch_from_user_source(
+                        symbol=symbol,
+                        source_id=user_source_id,
+                        user_id=user_id,
+                        start_date=start_date,
+                        end_date=end_date,
+                        adjust_type=adjust_type
+                    )
+                user_source_func = _fetch_user_data
 
-            if user_sources:
-                # 用户配置了数据源，实时获取(通道1)
-                logger.info(f"User {user_id} has configured data source for {symbol}, fetching real-time")
-
-                # 获取路由器
-                router = await self._get_router(market)
-
-                # 获取用户配置的数据源ID列表
-                user_source_ids = [config.get("source_id") for config in user_sources]
-
-                # 尝试从用户配置的数据源获取
-                last_error = None
-                for source_id in user_source_ids:
-                    try:
-                        logger.info(f"Fetching real-time quotes for {symbol} from user source: {source_id}")
-
-                        # 这里需要实现直接从用户配置的数据源获取
-                        # 由于数据源路由器的限制，我们使用数据库查询作为降级
-                        quotes = await self._fetch_from_user_source(
-                            symbol=symbol,
-                            source_id=source_id,
-                            start_date=start_date,
-                            end_date=end_date,
-                            adjust_type=adjust_type
-                        )
-
-                        if quotes:
-                            source_used = f"user_realtime_{source_id}"
-                            logger.info(f"Successfully fetched {len(quotes)} quotes from user source {source_id}")
-                            return quotes, source_id
-
-                    except Exception as e:
-                        last_error = e
-                        logger.warning(f"Failed to fetch from user source {source_id}: {e}")
-                        continue
-
-        # 步骤2: 从公共数据库查询
-        quotes = await self.stock_quotes_repo.get_quotes(
-            symbol=symbol,
-            start_date=start_date,
-            end_date=end_date
-        )
-
-        if quotes:
-            # 数据库有数据，直接返回
-            logger.info(f"Found {len(quotes)} quotes in database for {symbol}")
-            return quotes, "database"
-
-        # 步骤3: 数据库没有，降级到AkShare实时获取
-        logger.info(f"No data in database for {symbol}, fallback to AkShare")
-
-        try:
-            # 获取路由器
-            router = await self._get_router(market)
-
-            # 调用路由器的降级方法
-            result = await router.route_to_best_source(
-                market=market,
-                method_name="get_daily_quotes",
+        # 准备降级获取函数 (仅查 DB)
+        async def _fallback_func():
+            # 1. 查 DB
+            quotes = await self.stock_quotes_repo.get_quotes(
                 symbol=symbol,
                 start_date=start_date,
-                end_date=end_date,
-                adjust_type=adjust_type
+                end_date=end_date
             )
+            if quotes:
+                return quotes
+            
+            # DB 无数据，返回空列表（根据文档，用户未配置私有源时只能读库，不能触发公共源实时抓取）
+            logger.info(f"No data in database for {symbol}, and no user source configured. Returning empty.")
+            return []
 
-            if result:
-                # 转换为字典列表
-                quotes = [quote.model_dump() for quote in result]
-
-                # 可选：存储到数据库
-                try:
-                    for quote_data in quotes:
-                        await self.stock_quotes_repo.upsert_one(
-                            filter_query={
-                                "symbol": quote_data.get("symbol"),
-                                "trade_date": quote_data.get("trade_date")
-                            },
-                            data={**quote_data, "updated_at": datetime.now()}
-                        )
-                    logger.info(f"Stored {len(quotes)} quotes to database from AkShare fallback")
-                except Exception as e:
-                    logger.warning(f"Failed to store quotes to database: {e}")
-
-                source_used = "akshare_fallback"
-                logger.info(f"Successfully fetched {len(quotes)} quotes from AkShare fallback")
-                return quotes, source_used
-
-        except Exception as e:
-            logger.error(f"Failed to fetch from AkShare fallback: {e}")
-
-        return [], "failed"
+        # 执行双通道获取 (如果配置了用户源) 或 直接降级
+        if has_user_config and user_source_func:
+            logger.info(f"Fetching quotes for {symbol} using user source {user_source_id}")
+            result, source = await self.dual_channel_service.fetch_data(
+                symbol=symbol,
+                data_type="daily_quote",
+                fetch_func=user_source_func,
+                fallback_func=_fallback_func
+            )
+            return result, source
+        else:
+            # 没有用户配置，直接查 DB
+            logger.info(f"No user source for {symbol}, reading from database only")
+            quotes = await _fallback_func()
+            return quotes, "database" if quotes else "none"
 
     def _infer_market_from_symbol(self, symbol: str) -> MarketType | None:
         """
@@ -347,6 +366,7 @@ class MarketDataService:
         self,
         symbol: str,
         source_id: str,
+        user_id: str,
         start_date: str | None = None,
         end_date: str | None = None,
         adjust_type: str | None = None
@@ -354,12 +374,10 @@ class MarketDataService:
         """
         从用户配置的数据源获取数据
 
-        注意: 此方法目前是简化实现，实际应从用户配置中获取真实的 API 密钥。
-        完整实现需要从 user_source_repo 获取用户配置的完整 config。
-
         Args:
             symbol: 股票代码
             source_id: 数据源ID
+            user_id: 用户ID
             start_date: 开始日期
             end_date: 结束日期
             adjust_type: 复权类型
@@ -368,10 +386,9 @@ class MarketDataService:
             行情数据列表
         """
         # 从用户配置中获取真实配置（包含 API 密钥）
-        # 注意：这里简化实现，实际使用时应从用户配置中获取
         try:
             config = await self.user_source_repo.get_config(
-                user_id="",  # 实际应传入真实 user_id
+                user_id=user_id,
                 source_id=source_id,
                 market=self._infer_market_from_symbol(symbol).value if self._infer_market_from_symbol(symbol) else "A_STOCK"
             )

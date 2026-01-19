@@ -5,6 +5,9 @@ description = "股票分析平台后端 - FastAPI + MongoDB + Redis"
 authors = ["Your Name <your.email@example.com>"]
 readme = "README.md"
 
+# 禁用包模式，仅用于依赖管理
+package-mode = false
+
 [tool.poetry.dependencies]
 python = "^3.11"
 fastapi = "^0.109.0"
@@ -23,17 +26,13 @@ colorama = "^0.4.6"
 pyyaml = "^6.0.0"
 httpx-sse = "^0.4.0"
 anyio = "^4.0.0"
-langchain-core = "^0.3.37"
-langchain = "^0.3.0"
-langchain-openai = "^0.2.0"
-langchain-anthropic = "^0.2.0"
+# LangChain - 使用最新 v1.0+ 版本
+langchain-core = "^1.0.0"
+langchain = "^1.0.0"
+langchain-openai = "^1.0.0"
+langchain-anthropic = "^1.0.0"
 langchain-mcp-adapters = "^0.1.0"
-# LangGraph: 有状态多智能体工作流编排框架
-langgraph = "^0.2.0"
-# 从 GitHub 源码安装最新版本（支持所有传输协议）
-# langchain-mcp-adapters = {git = "https://github.com/langchain-ai/langchain-mcp-adapters.git", branch = "main"}
-# MCP SDK 最新版本
-mcp = ">=1.9.2,<2.0.0"
+langchain-community = "^0.3.0"
 # 市场数据源
 tushare = "^1.2.60"
 akshare = "^1.12.0"

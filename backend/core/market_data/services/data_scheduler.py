@@ -29,6 +29,8 @@ class ScheduleTime(str, Enum):
     A_STOCK_DAILY_QUOTE = "15:30"  # A股日线行情
     A_STOCK_COMPANY_INFO = "16:00"  # A股公司信息（每周一次）
     A_STOCK_FINANCIAL = "16:30"  # A股财务指标
+    MARKET_NEWS = "*/30"  # 市场新闻（每30分钟）
+    STOCK_LIST = "09:00"  # 股票列表（每天09:00）
 
     # 美股市场（仅同步自选股和核心指数）
     US_STOCK_DAILY_QUOTE = "06:00"  # 美股日线行情（美股收盘后，北京时间第二天早上）
@@ -126,6 +128,40 @@ class DataScheduler:
         )
         logger.info(f"Scheduled job: {job_id} at 16:30 on weekdays")
 
+    def schedule_market_news(self):
+        """调度市场新闻同步"""
+        job_id = "market_news"
+
+        if self.scheduler.get_job(job_id):
+            self.scheduler.remove_job(job_id)
+            logger.info(f"Removed existing job: {job_id}")
+
+        self.scheduler.add_job(
+            self._sync_market_news,
+            CronTrigger.from_crontab("*/30 * * * *"),  # 每30分钟
+            id=job_id,
+            name="市场新闻同步",
+            replace_existing=True
+        )
+        logger.info(f"Scheduled job: {job_id} every 30 minutes")
+
+    def schedule_stock_list(self):
+        """调度股票列表同步"""
+        job_id = "stock_list"
+
+        if self.scheduler.get_job(job_id):
+            self.scheduler.remove_job(job_id)
+            logger.info(f"Removed existing job: {job_id}")
+
+        self.scheduler.add_job(
+            self._sync_stock_list,
+            CronTrigger.from_crontab("0 9 * * 1-5"),  # 周一到周五 09:00
+            id=job_id,
+            name="股票列表同步",
+            replace_existing=True
+        )
+        logger.info(f"Scheduled job: {job_id} at 09:00 on weekdays")
+
     def schedule_us_stock_daily_quote(self):
         """调度美股日线行情同步（仅自选股和核心指数）"""
         job_id = "us_stock_daily_quote"
@@ -216,9 +252,11 @@ class DataScheduler:
         logger.info("Scheduling all data sync jobs...")
 
         # A股市场（全量同步）
+        self.schedule_stock_list()
         self.schedule_a_stock_daily_quote()
         self.schedule_a_stock_company_info()
         self.schedule_a_stock_financial()
+        self.schedule_market_news()
 
         # 美股市场（仅自选股）
         self.schedule_us_stock_daily_quote()
@@ -263,7 +301,8 @@ class DataScheduler:
             # 获取所有 A 股股票列表
             from ...repositories.stock_info import StockInfoRepository
             stock_repo = StockInfoRepository()
-            stocks = await stock_repo.get_by_market(MarketType.A_STOCK, limit=5000)
+            # 移除 limit=5000 限制，获取所有股票
+            stocks = await stock_repo.get_by_market(MarketType.A_STOCK)
 
             if not stocks:
                 logger.warning("No A stocks found for daily quote sync")
@@ -273,17 +312,63 @@ class DataScheduler:
 
             # 同步当日行情
             today = datetime.now().strftime("%Y%m%d")
-            result = await self.data_sync_service.sync_daily_quotes(
+            # 使用带自动降级的同步方法
+            result = await self.data_sync_service.sync_daily_quotes_with_fallback(
                 symbols=symbols,
                 start_date=today,
-                end_date=today,
-                source_id="tushare"
+                end_date=today
             )
 
             logger.info(f"A stock daily quote sync completed: {result}")
 
         except Exception as e:
             logger.error(f"Failed to sync A stock daily quotes: {e}")
+
+    async def _sync_market_news(self):
+        """执行市场新闻同步"""
+        try:
+            if not self.data_sync_service:
+                logger.warning("Data sync service not set, skipping market news sync")
+                return
+
+            logger.info("Starting market news sync")
+
+            # 优先使用 TuShare (sina源)
+            result = await self.data_sync_service.sync_market_news(
+                source_id="tushare",
+                limit=100
+            )
+            
+            # 如果 TuShare 失败或数据为空，尝试 AkShare (eastmoney/cls)
+            if result.get("status") == "failed" or result.get("result", {}).get("upserted", 0) == 0:
+                logger.info("TuShare news sync empty or failed, trying AkShare")
+                result = await self.data_sync_service.sync_market_news(
+                    source_id="akshare",
+                    limit=50
+                )
+
+            logger.info(f"Market news sync completed: {result}")
+
+        except Exception as e:
+            logger.error(f"Failed to sync market news: {e}")
+
+    async def _sync_stock_list(self):
+        """执行股票列表同步"""
+        try:
+            if not self.data_sync_service:
+                logger.warning("Data sync service not set, skipping stock list sync")
+                return
+
+            logger.info("Starting stock list sync")
+
+            result = await self.data_sync_service.sync_stock_list_with_fallback(
+                market=MarketType.A_STOCK
+            )
+
+            logger.info(f"Stock list sync completed: {result}")
+
+        except Exception as e:
+            logger.error(f"Failed to sync stock list: {e}")
 
     async def _sync_a_stock_company_info(self):
         """执行 A 股公司信息同步"""

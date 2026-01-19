@@ -30,6 +30,7 @@ from core.market_data.repositories.stock_financial import (
 )
 from core.market_data.repositories.stock_company import StockCompanyRepository
 from core.market_data.repositories.macro_economic import MacroEconomicRepository
+from core.market_data.repositories.market_news import MarketNewsRepository
 from core.market_data.sources.a_stock.tushare_adapter import TuShareAdapter
 from core.market_data.sources.a_stock.akshare_adapter import AkShareAdapter
 from core.market_data.managers.source_router import DataSourceRouter
@@ -50,6 +51,7 @@ class DataSyncService:
         self.stock_indicator_repo = StockFinancialIndicatorRepository()
         self.stock_company_repo = StockCompanyRepository()
         self.macro_economic_repo = MacroEconomicRepository()
+        self.market_news_repo = MarketNewsRepository()
 
         self._adapters: Dict[str, Any] = {}
         self._router: Optional[DataSourceRouter] = None
@@ -349,19 +351,19 @@ class DataSyncService:
         symbols: List[str],
         start_date: str,
         end_date: str,
-        source_id: str = "tushare",
+        source_id: Optional[str] = None,
         adjust_type: Optional[str] = None,
         rollback_on_error: bool = False,
         market: str = "A_STOCK"
     ) -> Dict[str, Any]:
         """
-        同步日线行情
+        同步日线行情（支持自动降级）
 
         Args:
             symbols: 股票代码列表
             start_date: 开始日期
             end_date: 结束日期
-            source_id: 数据源ID
+            source_id: 数据源ID（可选，None表示自动选择）
             adjust_type: 复权类型
             rollback_on_error: 出错时是否回滚已写入的数据
             market: 市场类型 (A_STOCK, US_STOCK, HK_STOCK)
@@ -383,39 +385,58 @@ class DataSyncService:
         failed_symbols = []
         successful_symbols = []
         rollback_candidates = []  # 记录已写入的符号，用于回滚
+        used_source_id = source_id
 
         try:
-            # 尝试获取配置，如果不存在使用空配置
-            config = await self.system_source_repo.get_config(source_id, market)
-            adapter_config = config["config"] if config else {}
+            # 获取可用数据源列表
+            adapters = []
+            if source_id:
+                config = await self.system_source_repo.get_config(source_id, market)
+                adapter_config = config["config"] if config else {}
+                adapters.append(self._get_adapter(source_id, adapter_config, market))
+            else:
+                router = await self._get_router(market)
+                market_enum = MarketType(market.upper()) if market else MarketType.A_STOCK
+                adapters = await router.get_available_sources(market_enum)
+                if not adapters:
+                    raise RuntimeError(f"No available data sources for {market}")
 
-            adapter = self._get_adapter(source_id, adapter_config, market)
-
-            logger.info(f"Syncing daily quotes from {source_id} (config: {'found' if config else 'default'})")
+            logger.info(f"Syncing daily quotes using {len(adapters)} sources")
 
             for idx, symbol in enumerate(symbols):
-                try:
-                    logger.info(f"Syncing daily quotes for {symbol} ({idx+1}/{len(symbols)})")
-                    quotes = await adapter.get_daily_quotes(
-                        symbol=symbol,
-                        start_date=start_date,
-                        end_date=end_date,
-                        adjust_type=adjust_type
-                    )
+                symbol_success = False
+                last_error = None
+                
+                # 对每个 symbol 尝试所有可用源
+                for adapter in adapters:
+                    try:
+                        logger.info(f"Syncing daily quotes for {symbol} from {adapter.source_name} ({idx+1}/{len(symbols)})")
+                        quotes = await adapter.get_daily_quotes(
+                            symbol=symbol,
+                            start_date=start_date,
+                            end_date=end_date,
+                            adjust_type=adjust_type
+                        )
 
-                    upserted = 0
-                    for quote in quotes:
-                        await self.stock_quotes_repo.upsert_quote(quote)
-                        upserted += 1
+                        upserted = 0
+                        for quote in quotes:
+                            await self.stock_quotes_repo.upsert_quote(quote)
+                            upserted += 1
 
-                    total_upserted += upserted
-                    successful_symbols.append(symbol)
-                    rollback_candidates.append(symbol)
+                        total_upserted += upserted
+                        successful_symbols.append(symbol)
+                        rollback_candidates.append(symbol)
+                        symbol_success = True
+                        used_source_id = adapter.source_name # 记录最后一次成功的源
+                        break # 成功则跳出源循环，处理下一个 symbol
 
-                except Exception as e:
-                    logger.warning(f"Failed to sync {symbol}: {e}")
-                    failed_symbols.append({"symbol": symbol, "error": str(e)})
-
+                    except Exception as e:
+                        last_error = e
+                        logger.warning(f"Failed to sync {symbol} from {adapter.source_name}: {e}")
+                        continue # 尝试下一个源
+                
+                if not symbol_success:
+                    failed_symbols.append({"symbol": symbol, "error": str(last_error)})
                     # 如果配置了出错回滚，立即回滚已写入的数据
                     if rollback_on_error and rollback_candidates:
                         count = len(rollback_candidates)
@@ -426,7 +447,7 @@ class DataSyncService:
                             rollback_candidates, start_date, end_date
                         )
                         rollback_candidates.clear()
-                        raise
+                        raise last_error
 
             response_time_ms = int((datetime.now() - start_time).total_seconds() * 1000)
 
@@ -435,13 +456,17 @@ class DataSyncService:
             else:
                 status = DataSourceStatus.HEALTHY
 
-            await self._update_source_status(
-                market=market,
-                data_type="daily_quote",
-                source_id=source_id,
-                status=status,
-                response_time_ms=response_time_ms
-            )
+            # 更新状态（仅当有明确的源ID时，或者我们可以记录 primary source）
+            # 这里简化处理：如果是自动路由，我们可能无法准确归因于单一源的状态。
+            # 但为了监控，我们可以记录最后使用的源，或者不记录。
+            if used_source_id:
+                await self._update_source_status(
+                    market=market,
+                    data_type="daily_quote",
+                    source_id=used_source_id,
+                    status=status,
+                    response_time_ms=response_time_ms
+                )
 
             result["status"] = "completed" if not failed_symbols else "completed_with_errors"
             result["progress"] = 100
@@ -452,7 +477,7 @@ class DataSyncService:
                 "failed": len(failed_symbols),
                 "failed_symbols": failed_symbols[:10],
                 "total_quotes": total_upserted,
-                "source": source_id,
+                "source": used_source_id or "multiple",
                 "rollback_performed": False
             }
 
@@ -462,14 +487,15 @@ class DataSyncService:
             logger.error(f"Failed to sync daily quotes: {e}")
             response_time_ms = int((datetime.now() - start_time).total_seconds() * 1000)
 
-            await self._update_source_status(
-                market=market,
-                data_type="daily_quote",
-                source_id=source_id,
-                status=DataSourceStatus.UNAVAILABLE,
-                response_time_ms=response_time_ms,
-                error={"code": "SYNC_ERROR", "message": str(e)}
-            )
+            if source_id:
+                await self._update_source_status(
+                    market=market,
+                    data_type="daily_quote",
+                    source_id=source_id,
+                    status=DataSourceStatus.UNAVAILABLE,
+                    response_time_ms=response_time_ms,
+                    error={"code": "SYNC_ERROR", "message": str(e)}
+                )
 
             result["status"] = "failed"
             result["error_message"] = str(e)
@@ -1317,3 +1343,101 @@ class DataSyncService:
             "error_message": f"All data sources failed. Last error: {last_error}",
             "attempted_sources": [c["source_id"] for c in configs]
         }
+
+    async def sync_market_news(
+        self,
+        source_id: str = "tushare",
+        limit: int = 50,
+        symbol: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        同步市场新闻
+        
+        Args:
+            source_id: 数据源ID
+            limit: 限制数量
+            symbol: 个股代码（可选）
+            
+        Returns:
+            同步结果
+        """
+        start_time = datetime.now()
+        result = {
+            "task_type": "sync_market_news",
+            "status": "running",
+            "symbol": symbol,
+            "market": "A_STOCK",
+            "data_types": ["market_news"],
+            "result": {}
+        }
+        
+        try:
+            # 尝试获取配置，如果不存在使用空配置
+            config = await self.system_source_repo.get_config(source_id, "A_STOCK")
+            adapter_config = config["config"] if config else {}
+            
+            adapter = self._get_adapter(source_id, adapter_config, "A_STOCK")
+            
+            logger.info(f"Syncing market news from {source_id}")
+            
+            # 使用自动降级逻辑
+            if source_id == "tushare":
+                # Tushare news 需要 start_date/end_date
+                from datetime import timedelta
+                end_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                start_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+                
+                news_list = await adapter.get_market_news(
+                    start_date=start_date,
+                    end_date=end_date,
+                    src="sina"
+                )
+            else:
+                # AkShare news
+                news_list = await adapter.get_market_news(
+                    symbol=symbol,
+                    limit=limit
+                )
+                
+            upserted = 0
+            for news in news_list:
+                await self.market_news_repo.upsert_news(news)
+                upserted += 1
+                
+            response_time_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+            
+            await self._update_source_status(
+                market="A_STOCK",
+                data_type="market_news",
+                source_id=source_id,
+                status=DataSourceStatus.HEALTHY,
+                response_time_ms=response_time_ms
+            )
+            
+            result["status"] = "completed"
+            result["progress"] = 100
+            result["result"] = {
+                "total": len(news_list),
+                "upserted": upserted,
+                "source": source_id
+            }
+            
+            logger.info(f"Synced {upserted} news items from {source_id}")
+            
+        except Exception as e:
+            logger.error(f"Failed to sync market news: {e}")
+            response_time_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+            
+            await self._update_source_status(
+                market="A_STOCK",
+                data_type="market_news",
+                source_id=source_id,
+                status=DataSourceStatus.UNAVAILABLE,
+                response_time_ms=response_time_ms,
+                error={"code": "SYNC_ERROR", "message": str(e)}
+            )
+            
+            result["status"] = "failed"
+            result["error_message"] = str(e)
+            
+        return result

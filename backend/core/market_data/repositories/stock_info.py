@@ -24,7 +24,10 @@ class StockInfoRepository(BaseRepository):
 
     async def init_indexes(self) -> None:
         """初始化索引"""
+        # symbol 是全局唯一的主键 (Standardized: 600000.SH)
         await self.create_index([("symbol", 1)], unique=True)
+        # code 是原始代码 (600000)
+        await self.create_index([("code", 1), ("market", 1)])
         await self.create_index([("market", 1)])
         await self.create_index([("exchange", 1)])
 
@@ -47,7 +50,7 @@ class StockInfoRepository(BaseRepository):
         根据股票代码查询
 
         Args:
-            symbol: 股票代码
+            symbol: 标准化股票代码
 
         Returns:
             股票信息字典，未找到返回None

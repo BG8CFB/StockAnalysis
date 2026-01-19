@@ -1,10 +1,10 @@
 """
 Phase 1 智能体工厂
 
-动态创建分析师智能体，使用 LangChain 1.1.0 create_agent 接口。
+动态创建分析师智能体，使用 LangChain 0.3+ create_agent 接口。
 
-**版本**: v4.0 (LangChain 1.1.0 create_agent 重构版)
-**最后更新**: 2026-01-15
+**版本**: v6.0 (LangChain 0.3+ create_agent 重构版)
+**最后更新**: 2025-01-19
 """
 
 import logging
@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 
 from langchain.agents import create_agent
 from langchain_core.tools import BaseTool
+from langchain_core.messages import HumanMessage
 
 from core.ai.service import AIService
 from modules.trading_agents.config import get_enabled_agents
@@ -58,7 +59,7 @@ class Phase1AgentFactory:
         model_id: str
     ):
         """
-        创建单个智能体 (LangChain 1.1.0 create_agent API)
+        创建单个智能体 (LangChain 0.3+ create_agent API)
 
         Args:
             agent_config: 智能体配置
@@ -66,7 +67,7 @@ class Phase1AgentFactory:
             model_id: 模型 ID
 
         Returns:
-            CompiledStateGraph 实例
+            AgentExecutor 实例
         """
         # 获取 LLM 模型
         model = self.ai_service.get_model(model_id)
@@ -74,12 +75,11 @@ class Phase1AgentFactory:
         # 构建系统提示词
         system_prompt_str = self._build_system_prompt(agent_config)
 
-        # 使用 LangChain 1.1.0 的 create_agent
-        graph = create_agent(
-            model=model,
-            tools=tools,
-            system_prompt=system_prompt_str,
-            debug=False
+        # 使用 LangChain 0.3+ 的 create_agent
+        agent = create_agent(
+            model,
+            tools,
+            system_prompt=system_prompt_str
         )
 
         logger.debug(
@@ -89,7 +89,7 @@ class Phase1AgentFactory:
             f"模型: {model_id}"
         )
 
-        return graph
+        return agent
 
     def _build_system_prompt(self, agent_config: Dict[str, Any]) -> str:
         """
@@ -133,7 +133,7 @@ class Phase1AgentFactory:
         执行智能体
 
         Args:
-            agent: CompiledStateGraph 实例 (LangChain 1.1.0 create_agent)
+            agent: AgentExecutor 实例 (LangChain 0.3+ create_agent)
             agent_config: 智能体配置
             state: 工作流状态
             user_prompt: 用户提示词
@@ -153,17 +153,17 @@ class Phase1AgentFactory:
         )
 
         try:
-            # 调用 agent (LangChain 1.1.0 create_agent 使用 messages 格式)
+            # 调用 agent (LangChain 0.3+ 使用 messages 格式)
             logger.info(f"[Phase 1] 执行智能体: {agent_slug} ({agent_name})")
 
-            # LangChain 1.1.0 使用 messages 格式
+            # LangChain 0.3+ 使用 messages 格式
             inputs = {
                 "messages": [
-                    {"role": "user", "content": user_prompt}
+                    HumanMessage(content=user_prompt)
                 ]
             }
 
-            result = await agent.ainvoke(inputs, config={"recursion_limit": 10})
+            result = await agent.ainvoke(inputs)
 
             # 提取输出
             output = self._extract_output(result)
@@ -215,7 +215,7 @@ class Phase1AgentFactory:
             输出文本
         """
         if isinstance(result, dict):
-            # LangChain 1.1.0 create_agent 返回格式: {"messages": [...]}
+            # LangChain 0.3+ 返回格式: {"messages": [...]}
             messages = result.get("messages", [])
             if messages:
                 # 获取最后一条消息

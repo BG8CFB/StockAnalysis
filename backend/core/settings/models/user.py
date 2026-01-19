@@ -8,19 +8,24 @@
 - 配额信息
 """
 
+import logging
 from datetime import datetime
 from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field
 
 from core.db.models import PyObjectId
 
+logger = logging.getLogger(__name__)
+
 
 # =============================================================================
 # 核心设置
 # =============================================================================
 
+
 class CoreSettings(BaseModel):
     """核心 UI 设置"""
+
     theme: str = Field(default="light", description="主题：light, dark, auto")
     language: str = Field(default="zh-CN", description="语言")
     timezone: str = Field(default="Asia/Shanghai", description="时区")
@@ -33,8 +38,10 @@ class CoreSettings(BaseModel):
 # 通知设置
 # =============================================================================
 
+
 class NotificationSettings(BaseModel):
     """通知设置"""
+
     enabled: bool = Field(default=True, description="是否启用通知")
     email_alerts: bool = Field(default=False, description="邮件提醒")
     browser_notifications: bool = Field(default=True, description="浏览器通知")
@@ -46,6 +53,7 @@ class NotificationSettings(BaseModel):
 # =============================================================================
 # TradingAgents 模块设置
 # =============================================================================
+
 
 class TradingAgentsSettings(BaseModel):
     """TradingAgents 模块的用户设置"""
@@ -74,8 +82,10 @@ class TradingAgentsSettings(BaseModel):
 # 配额信息
 # =============================================================================
 
+
 class UserQuotaInfo(BaseModel):
     """用户配额信息"""
+
     tasks_used: int = Field(default=0, ge=0, description="本月已使用任务数")
     tasks_limit: int = Field(default=100, ge=0, description="每月任务限制")
     reports_count: int = Field(default=0, ge=0, description="总报告数")
@@ -107,18 +117,17 @@ class UserQuotaInfo(BaseModel):
     @property
     def is_near_quota_limit(self) -> bool:
         """是否接近配额限制（80%）"""
-        return (
-            self.tasks_usage_percent >= 80 or
-            self.storage_usage_percent >= 80
-        )
+        return self.tasks_usage_percent >= 80 or self.storage_usage_percent >= 80
 
 
 # =============================================================================
 # 统一用户配置
 # =============================================================================
 
+
 class UserSettings(BaseModel):
     """统一用户配置"""
+
     user_id: PyObjectId
 
     # 各模块配置
@@ -138,8 +147,10 @@ class UserSettings(BaseModel):
 # 请求/响应模型
 # =============================================================================
 
+
 class CoreSettingsUpdate(BaseModel):
     """更新核心设置请求"""
+
     theme: Optional[str] = None
     language: Optional[str] = None
     timezone: Optional[str] = None
@@ -148,6 +159,7 @@ class CoreSettingsUpdate(BaseModel):
 
 class NotificationSettingsUpdate(BaseModel):
     """更新通知设置请求"""
+
     enabled: Optional[bool] = None
     email_alerts: Optional[bool] = None
     browser_notifications: Optional[bool] = None
@@ -158,6 +170,7 @@ class NotificationSettingsUpdate(BaseModel):
 
 class TradingAgentsSettingsUpdate(BaseModel):
     """更新 TradingAgents 设置请求"""
+
     data_collection_model_id: Optional[str] = None
     debate_model_id: Optional[str] = None
     default_debate_rounds: Optional[int] = None
@@ -173,6 +186,7 @@ class TradingAgentsSettingsUpdate(BaseModel):
 
 class UserSettingsResponse(BaseModel):
     """用户配置响应"""
+
     id: str
     user_id: str
     core_settings: CoreSettings
@@ -193,6 +207,7 @@ class UserSettingsResponse(BaseModel):
         - 处理缓存数据缺失 _id 的情况
         - 处理 MongoDB 扩展 JSON 格式的 datetime
         """
+
         # 辅助函数：处理 datetime 字段（兼容 MongoDB 扩展 JSON 格式）
         def parse_datetime(value: Any) -> datetime:
             """解析 datetime，兼容 Python datetime 和 MongoDB 扩展 JSON 格式"""
@@ -202,6 +217,7 @@ class UserSettingsResponse(BaseModel):
                 # MongoDB 扩展 JSON 格式: {'$date': '2026-01-13T06:59:30.154Z'}
                 from datetime import datetime as dt
                 from dateutil import parser
+
                 return parser.isoparse(value["$date"])
             # 默认返回当前时间
             return datetime.utcnow()
@@ -213,7 +229,16 @@ class UserSettingsResponse(BaseModel):
         doc_id = data.get("_id")
         if doc_id is None:
             import uuid
+
             doc_id = str(uuid.uuid4())
+
+        # 处理缺失 user_id 的情况（兼容旧版缓存）
+        user_id = data.get("user_id")
+        if user_id is None:
+            logger.error("缓存数据缺少 user_id 字段，这可能是旧版缓存数据")
+            raise ValueError(
+                "Invalid cached data: missing user_id field. Please clear cache and reload."
+            )
 
         # 修复可能存在的负数值（确保 >= 0）
         if "concurrent_tasks" in quota_data and quota_data["concurrent_tasks"] < 0:
@@ -227,10 +252,12 @@ class UserSettingsResponse(BaseModel):
 
         return cls(
             id=str(doc_id),
-            user_id=str(data["user_id"]),
+            user_id=str(user_id),
             core_settings=CoreSettings(**data.get("core_settings", {})),
             notification_settings=NotificationSettings(**data.get("notification_settings", {})),
-            trading_agents_settings=TradingAgentsSettings(**data.get("trading_agents_settings", {})),
+            trading_agents_settings=TradingAgentsSettings(
+                **data.get("trading_agents_settings", {})
+            ),
             quota_info=UserQuotaInfo(**quota_data),
             created_at=parse_datetime(data.get("created_at")),
             updated_at=parse_datetime(data.get("updated_at")),
@@ -241,8 +268,10 @@ class UserSettingsResponse(BaseModel):
 # 配置导入导出模型
 # =============================================================================
 
+
 class SettingsExport(BaseModel):
     """配置导出格式（不包含敏感信息）"""
+
     version: str = Field(default="1.0", description="配置版本")
     exported_at: datetime = Field(default_factory=datetime.utcnow)
     core_settings: CoreSettings
@@ -253,8 +282,11 @@ class SettingsExport(BaseModel):
 
 class SettingsImport(BaseModel):
     """配置导入请求"""
+
     version: str = Field(..., description="配置版本")
     core_settings: Optional[CoreSettings] = None
     notification_settings: Optional[NotificationSettings] = None
     trading_agents_settings: Optional[TradingAgentsSettings] = None
-    merge_strategy: str = Field(default="merge", description="合并策略：merge=合并, replace=完全覆盖")
+    merge_strategy: str = Field(
+        default="merge", description="合并策略：merge=合并, replace=完全覆盖"
+    )

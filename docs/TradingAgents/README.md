@@ -35,10 +35,10 @@
 
 | 文档 | 描述 |
 |------|------|
-| [Phase 1: 信息收集与基础分析](./agents/phase1-信息收集与基础分析.yaml) | 分析师团队配置 |
-| [Phase 2: 多空博弈与投资决策](./agents/phase2-多空博弈与投资决策.yaml) | 观点辩论配置 |
-| [Phase 3: 交易执行策划](./agents/phase3-交易执行策划.yaml) | 风险评估配置 |
-| [Phase 4: 策略风格与风险评估](./agents/phase4-策略风格与风险评估.yaml) | 综合报告配置 |
+| [Phase 1: 信息收集与基础分析](./agents/phase1-信息收集与基础分析.yaml) | 分析师团队配置（6个分析师） |
+| [Phase 2: 多空博弈与投资决策](./agents/phase2-多空博弈与投资决策.yaml) | 观点辩论配置（含交易员） |
+| [Phase 3: 策略风格与风险评估](./agents/phase3-策略风格与风险评估.yaml) | 风险评估配置（4个策略分析师） |
+| [Phase 4: 总结](./agents/phase4-总结.yaml) | 综合报告配置（总结智能体） |
 
 ### 🔌 工具集成 (tools/)
 
@@ -128,30 +128,71 @@ TradingAgents 采用简单的函数式调度架构，通过单一调度文件协
 
 ```
 backend/modules/trading_agents/
-├── scheduler/
-│   └── workflow_scheduler.py   # 单一调度文件
-├── phases/
-│   ├── __init__.py
-│   ├── phase1/                 # Phase 1: 信息收集与基础分析
-│   │   ├── template.py         # 智能体模板
-│   │   └── factory.py          # 动态创建智能体
-│   ├── phase2/                 # Phase 2: 多空博弈与投资决策
+├── workflow/                  # 工作流调度器（v3.0 精简优化）
+│   ├── scheduler.py            # 工作流调度器
+│   ├── events.py              # 事件定义
+│   ├── state.py               # 状态管理
+│   ├── phase1/                # Phase 1: 信息收集与基础分析
+│   │   ├── template.py        # 智能体模板
+│   │   └── factory.py         # 动态创建智能体
+│   ├── phase2/                # Phase 2: 多空博弈与投资决策
 │   │   ├── bull_researcher.py
 │   │   ├── bear_researcher.py
 │   │   └── research_manager.py
-│   ├── phase3/                 # Phase 3: 交易执行策划
+│   ├── phase3/                # Phase 3: 交易执行策划
 │   │   └── trader.py
-│   └── phase4/                 # Phase 4: 策略风格与风险评估
+│   └── phase4/                # Phase 4: 策略风格与风险评估
 │       ├── aggressive_debator.py
 │       ├── neutral_debator.py
 │       ├── conservative_debator.py
 │       └── risk_manager.py
-├── manager/
-│   ├── task_manager.py         # 任务管理器
-│   └── concurrency_controller.py  # 并发控制器
-└── services/
-    └── agent_config_service.py  # 智能体配置服务
+├── manager/                   # 任务管理器与并发控制
+│   ├── task_manager.py        # 任务管理器
+│   ├── task_manager_restore.py # 任务恢复管理器
+│   ├── concurrency_controller.py # 并发控制器
+│   ├── concurrency.py         # 并发控制实现
+│   ├── batch_manager.py       # 批量任务管理
+│   ├── database.py            # 数据库操作
+│   ├── report_service.py      # 报告服务
+│   ├── settings_service.py    # 设置服务
+│   ├── agent_config_service.py # 智能体配置服务
+│   ├── alerts.py              # 告警管理
+│   ├── report_archival.py     # 报告归档
+│   └── task_expiry.py         # 任务过期管理
+├── api/                       # API 接口与 WebSocket 推送
+│   ├── websocket.py           # WebSocket 接口
+│   ├── websocket_manager.py   # WebSocket 管理器
+│   ├── tasks.py               # 任务 API
+│   └── reports.py             # 报告 API
+├── config/                    # 配置管理
+│   ├── merger.py              # 配置合并服务
+│   └── loader.py              # 配置加载器
+└── tools/                     # 工具集成
+    ├── local_tools_adapter.py # 本地工具适配器
+    └── mcp/                   # MCP 工具
+        ├── connector.py       # MCP 连接器
+        └── tool_filter.py     # 工具过滤器
 ```
+
+### v3.0 架构优化说明
+
+**v3.0 版本进行了架构精简优化**：
+
+1. **目录结构优化**
+   - `phases/` → `workflow/`：统一工作流目录，包含调度器和所有阶段实现
+   - `services/` → `manager/`：配置服务合并到任务管理器目录
+   - `infra/` → `manager/`：基础设施服务合并到任务管理器目录
+   - `pusher/` → `workflow/`：推送事件合并到工作流事件系统
+   - `websocket/` → `api/`：WebSocket 相关文件移至 API 目录
+
+2. **文件命名优化**
+   - `task_restore.py` → `task_manager_restore.py`：更明确的命名
+   - `service.py` → `merger.py`：配置服务重命名为合并服务，更体现职责
+
+3. **核心变化**
+   - 所有核心功能集中在 `workflow/` 和 `manager/` 两个目录
+   - 减少目录层级，提高代码可维护性
+   - 保持功能实现与设计文档完全一致
 
 ### 版本演进
 
@@ -178,5 +219,7 @@ backend/modules/trading_agents/
 
 ---
 
-**最后更新**: 2026-01-14
+**最后更新**: 2026-01-17
 **维护者**: StockAnalysis 开发团队
+
+**v3.0 更新说明**: 文档已更新以反映 v3.0 架构优化，包括目录结构调整和文件重命名。

@@ -45,7 +45,7 @@ class YahooHKFieldMapper(FieldMapper):
         Returns:
             标准化代码，如 0700.HK
         """
-        if '.' in code:
+        if "." in code:
             return code
 
         # 港股代码需要补0到4位
@@ -64,19 +64,19 @@ class YahooHKFieldMapper(FieldMapper):
         Returns:
             统一格式行情数据字典
         """
-        trade_date = str(row.name) if hasattr(row, 'name') else str(row.get('Date', ''))
+        trade_date = str(row.name) if hasattr(row, "name") else str(row.get("Date", ""))
         trade_date = FieldMapper.normalize_date(trade_date)
 
         return {
             "symbol": symbol,
             "market": MarketType.HK_STOCK,
             "trade_date": trade_date,
-            "open": FieldMapper.safe_float(row.get('Open')),
-            "high": FieldMapper.safe_float(row.get('High')),
-            "low": FieldMapper.safe_float(row.get('Low')),
-            "close": FieldMapper.safe_float(row.get('Close')),
+            "open": FieldMapper.safe_float(row.get("Open")),
+            "high": FieldMapper.safe_float(row.get("High")),
+            "low": FieldMapper.safe_float(row.get("Low")),
+            "close": FieldMapper.safe_float(row.get("Close")),
             "pre_close": None,
-            "volume": FieldMapper.safe_int(row.get('Volume')),
+            "volume": FieldMapper.safe_int(row.get("Volume")),
             "amount": None,
             "change": None,
             "change_pct": None,
@@ -108,25 +108,39 @@ class YahooHKFieldMapper(FieldMapper):
                     report_date = FieldMapper.normalize_date(date_str)
 
                     income_statement = {
-                        "total_revenue": FieldMapper.safe_float(financials.loc['Total Revenue', date]) if 'Total Revenue' in financials.index else None,
-                        "revenue": FieldMapper.safe_float(financials.loc['Total Revenue', date]) if 'Total Revenue' in financials.index else None,
+                        "total_revenue": FieldMapper.safe_float(
+                            financials.loc["Total Revenue", date]
+                        )
+                        if "Total Revenue" in financials.index
+                        else None,
+                        "revenue": FieldMapper.safe_float(financials.loc["Total Revenue", date])
+                        if "Total Revenue" in financials.index
+                        else None,
                         "operating_cost": None,
-                        "net_income": FieldMapper.safe_float(financials.loc['Net Income', date]) if 'Net Income' in financials.index else None,
+                        "net_income": FieldMapper.safe_float(financials.loc["Net Income", date])
+                        if "Net Income" in financials.index
+                        else None,
                         "basic_eps": None,
-                        "operating_profit": FieldMapper.safe_float(financials.loc['Operating Income', date]) if 'Operating Income' in financials.index else None,
+                        "operating_profit": FieldMapper.safe_float(
+                            financials.loc["Operating Income", date]
+                        )
+                        if "Operating Income" in financials.index
+                        else None,
                     }
 
-                    results.append({
-                        "symbol": symbol,
-                        "market": MarketType.HK_STOCK,
-                        "report_date": report_date,
-                        "report_type": "quarterly",
-                        "publish_date": None,
-                        "income_statement": income_statement,
-                        "balance_sheet": {},
-                        "cash_flow": {},
-                        "data_source": "yahoo",
-                    })
+                    results.append(
+                        {
+                            "symbol": symbol,
+                            "market": MarketType.HK_STOCK,
+                            "report_date": report_date,
+                            "report_type": "quarterly",
+                            "publish_date": None,
+                            "income_statement": income_statement,
+                            "balance_sheet": {},
+                            "cash_flow": {},
+                            "data_source": "yahoo",
+                        }
+                    )
                 except Exception as e:
                     logger.warning(f"Failed to parse financial row: {e}")
                     continue
@@ -162,11 +176,7 @@ class YahooHKAdapter(DataSourceAdapter):
             logger.error(f"Yahoo Finance HK connection test failed: {e}")
             return False
 
-    async def get_stock_list(
-        self,
-        market: MarketType,
-        status: str = "L"
-    ) -> List[StockInfo]:
+    async def get_stock_list(self, market: MarketType, status: str = "L") -> List[StockInfo]:
         """
         获取港股股票列表
 
@@ -185,7 +195,12 @@ class YahooHKAdapter(DataSourceAdapter):
             popular_stocks = [
                 ("0700", "Tencent Holdings Limited", "Technology", "Internet Services"),
                 ("9988", "Alibaba Group Holding Limited", "Technology", "Internet Services"),
-                ("0941", "China Mobile Limited", "Telecommunications", "Wireless Telecommunications"),
+                (
+                    "0941",
+                    "China Mobile Limited",
+                    "Telecommunications",
+                    "Wireless Telecommunications",
+                ),
                 ("1299", "AIA Group Limited", "Financial Services", "Insurance"),
                 ("0939", "CCB", "Financial Services", "Banks"),
                 ("1398", "ICBC", "Financial Services", "Banks"),
@@ -202,7 +217,7 @@ class YahooHKAdapter(DataSourceAdapter):
                 ("0202", "ESPRIT", "Consumer Cyclical", "Apparel Retail"),
                 ("1177", "Sino Biopharm", "Healthcare", "Pharmaceuticals"),
                 ("0669", "Techtronic Ind", "Industrials", "Tools"),
-                ("0688)", "China Overseas", "Real Estate", "Real Estate"),
+                ("0688", "China Overseas", "Real Estate", "Real Estate"),
             ]
 
             stock_list = []
@@ -237,7 +252,7 @@ class YahooHKAdapter(DataSourceAdapter):
         symbol: str,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-        adjust_type: Optional[str] = None
+        adjust_type: Optional[str] = None,
     ) -> List[StockQuote]:
         """
         获取港股日线行情
@@ -252,22 +267,24 @@ class YahooHKAdapter(DataSourceAdapter):
             日线行情列表
         """
         try:
-            code = symbol.replace('.HK', '')
+            code = symbol.replace(".HK", "")
             code = code.zfill(4)
             ticker_symbol = f"{code}.HK"
 
             if end_date is None:
-                end_date = datetime.now().strftime('%Y%m%d')
+                end_date = datetime.now().strftime("%Y%m%d")
             if start_date is None:
-                start_date = (datetime.now() - timedelta(days=365)).strftime('%Y%m%d')
+                start_date = (datetime.now() - timedelta(days=365)).strftime("%Y%m%d")
 
             start = FieldMapper.normalize_date(start_date)
             end = FieldMapper.normalize_date(end_date)
 
-            start_dt = datetime.strptime(start, '%Y%m%d')
-            end_dt = datetime.strptime(end, '%Y%m%d')
+            start_dt = datetime.strptime(start, "%Y%m%d")
+            end_dt = datetime.strptime(end, "%Y%m%d")
 
-            logger.info(f"Fetching HK daily quotes: symbol={ticker_symbol}, start={start}, end={end}")
+            logger.info(
+                f"Fetching HK daily quotes: symbol={ticker_symbol}, start={start}, end={end}"
+            )
 
             ticker = yf.Ticker(ticker_symbol)
             df = ticker.history(start=start_dt, end=end_dt)
@@ -294,10 +311,7 @@ class YahooHKAdapter(DataSourceAdapter):
             raise
 
     async def get_minute_quotes(
-        self,
-        symbol: str,
-        trade_date: Optional[str] = None,
-        freq: str = "1min"
+        self, symbol: str, trade_date: Optional[str] = None, freq: str = "1min"
     ) -> List[StockKLine]:
         """
         获取港股分钟K线数据
@@ -311,21 +325,21 @@ class YahooHKAdapter(DataSourceAdapter):
             分钟K线数据列表
         """
         try:
-            code = symbol.replace('.HK', '')
+            code = symbol.replace(".HK", "")
             code = code.zfill(4)
             ticker_symbol = f"{code}.HK"
 
             interval_map = {
-                '1min': '1m',
-                '5min': '5m',
-                '15min': '15m',
-                '30min': '30m',
-                '60min': '1h',
+                "1min": "1m",
+                "5min": "5m",
+                "15min": "15m",
+                "30min": "30m",
+                "60min": "1h",
             }
-            interval = interval_map.get(freq, '1m')
+            interval = interval_map.get(freq, "1m")
 
             if trade_date:
-                dt = datetime.strptime(trade_date, '%Y%m%d')
+                dt = datetime.strptime(trade_date, "%Y%m%d")
                 start_dt = dt
                 end_dt = dt + timedelta(days=1)
             else:
@@ -346,19 +360,19 @@ class YahooHKAdapter(DataSourceAdapter):
                 try:
                     trade_dt = str(idx)
                     if len(trade_dt) > 10:
-                        trade_dt = trade_dt.replace('-', '').replace(' ', '').replace(':', '')
+                        trade_dt = trade_dt.replace("-", "").replace(" ", "").replace(":", "")
 
                     kline = StockKLine(
                         symbol=symbol,
                         market=MarketType.HK_STOCK,
                         trade_date=trade_dt[:8] if len(trade_dt) >= 8 else trade_dt,
-                        open=float(row['Open']) if pd.notna(row['Open']) else 0,
-                        high=float(row['High']) if pd.notna(row['High']) else 0,
-                        low=float(row['Low']) if pd.notna(row['Low']) else 0,
-                        close=float(row['Close']) if pd.notna(row['Close']) else 0,
-                        volume=int(row['Volume']) if pd.notna(row['Volume']) else 0,
+                        open=float(row["Open"]) if pd.notna(row["Open"]) else 0,
+                        high=float(row["High"]) if pd.notna(row["High"]) else 0,
+                        low=float(row["Low"]) if pd.notna(row["Low"]) else 0,
+                        close=float(row["Close"]) if pd.notna(row["Close"]) else 0,
+                        volume=int(row["Volume"]) if pd.notna(row["Volume"]) else 0,
                         amount=None,
-                        data_source=self.source_name
+                        data_source=self.source_name,
                     )
                     klines.append(kline)
                 except Exception as e:
@@ -373,10 +387,7 @@ class YahooHKAdapter(DataSourceAdapter):
             raise
 
     async def get_stock_financials(
-        self,
-        symbol: str,
-        report_date: Optional[str] = None,
-        report_type: Optional[str] = None
+        self, symbol: str, report_date: Optional[str] = None, report_type: Optional[str] = None
     ) -> List[StockFinancial]:
         """
         获取港股财务报表
@@ -390,7 +401,7 @@ class YahooHKAdapter(DataSourceAdapter):
             财务报表列表
         """
         try:
-            code = symbol.replace('.HK', '')
+            code = symbol.replace(".HK", "")
             code = code.zfill(4)
             ticker_symbol = f"{code}.HK"
 
@@ -404,7 +415,9 @@ class YahooHKAdapter(DataSourceAdapter):
                 return []
 
             if report_date:
-                financials_list = [f for f in financials_list if f.get('report_date') == report_date]
+                financials_list = [
+                    f for f in financials_list if f.get("report_date") == report_date
+                ]
 
             result = []
             for fin_data in financials_list:
@@ -423,13 +436,11 @@ class YahooHKAdapter(DataSourceAdapter):
             return []
 
     async def get_financial_indicators(
-        self,
-        symbol: str,
-        report_date: Optional[str] = None
+        self, symbol: str, report_date: Optional[str] = None
     ) -> List[StockFinancialIndicator]:
         """获取港股财务指标（Yahoo Finance 支持）"""
         try:
-            code = symbol.replace('.HK', '')
+            code = symbol.replace(".HK", "")
             code = code.zfill(4)
             ticker_symbol = f"{code}.HK"
 
@@ -448,15 +459,15 @@ class YahooHKAdapter(DataSourceAdapter):
                     market=MarketType.HK_STOCK,
                     report_date="",
                     publish_date=None,
-                    roe=FieldMapper.safe_float(info.get('returnOnEquity')),
-                    roa=FieldMapper.safe_float(info.get('returnOnAssets')),
+                    roe=FieldMapper.safe_float(info.get("returnOnEquity")),
+                    roa=FieldMapper.safe_float(info.get("returnOnAssets")),
                     debt_to_assets=None,
-                    current_ratio=FieldMapper.safe_float(info.get('currentRatio')),
+                    current_ratio=FieldMapper.safe_float(info.get("currentRatio")),
                     quick_ratio=None,
-                    eps=FieldMapper.safe_float(info.get('trailingEps')),
+                    eps=FieldMapper.safe_float(info.get("trailingEps")),
                     bps=None,
-                    gross_profit_margin=FieldMapper.safe_float(info.get('grossMargins')),
-                    net_profit_margin=FieldMapper.safe_float(info.get('profitMargins')),
+                    gross_profit_margin=FieldMapper.safe_float(info.get("grossMargins")),
+                    net_profit_margin=FieldMapper.safe_float(info.get("profitMargins")),
                     data_source=self.source_name,
                 )
                 logger.info(f"Retrieved financial indicator for {symbol}")
@@ -469,10 +480,7 @@ class YahooHKAdapter(DataSourceAdapter):
             logger.error(f"Failed to get financial indicators: {e}")
             return []
 
-    async def get_stock_company(
-        self,
-        symbol: str
-    ) -> Optional[StockCompany]:
+    async def get_stock_company(self, symbol: str) -> Optional[StockCompany]:
         """
         获取港股公司信息
 
@@ -483,7 +491,7 @@ class YahooHKAdapter(DataSourceAdapter):
             公司详细信息
         """
         try:
-            code = symbol.replace('.HK', '')
+            code = symbol.replace(".HK", "")
             code = code.zfill(4)
             ticker_symbol = f"{code}.HK"
 
@@ -499,23 +507,23 @@ class YahooHKAdapter(DataSourceAdapter):
             company = StockCompany(
                 symbol=symbol,
                 market=MarketType.HK_STOCK,
-                company_name=info.get('longName', info.get('shortName', '')),
-                company_name_en=info.get('longName', ''),
-                industry=info.get('industry', ''),
-                sector=info.get('sector', ''),
+                company_name=info.get("longName", info.get("shortName", "")),
+                company_name_en=info.get("longName", ""),
+                industry=info.get("industry", ""),
+                sector=info.get("sector", ""),
                 listing_date="",
                 contact={
-                    'website': info.get('website'),
+                    "website": info.get("website"),
                 },
                 business={
-                    'business_summary': info.get('longBusinessSummary'),
-                    'industry': info.get('industry'),
-                    'sector': info.get('sector'),
+                    "business_summary": info.get("longBusinessSummary"),
+                    "industry": info.get("industry"),
+                    "sector": info.get("sector"),
                 },
                 capital_structure={
-                    'market_cap': info.get('marketCap'),
+                    "market_cap": info.get("marketCap"),
                 },
-                data_source=self.source_name
+                data_source=self.source_name,
             )
 
             logger.info(f"Retrieved company info for {symbol}")
@@ -525,10 +533,7 @@ class YahooHKAdapter(DataSourceAdapter):
             logger.error(f"Failed to get company info: {e}")
             raise
 
-    async def get_realtime_quote(
-        self,
-        symbol: str
-    ) -> Optional[Dict[str, Any]]:
+    async def get_realtime_quote(self, symbol: str) -> Optional[Dict[str, Any]]:
         """
         获取港股实时行情
 
@@ -539,7 +544,7 @@ class YahooHKAdapter(DataSourceAdapter):
             实时行情字典
         """
         try:
-            code = symbol.replace('.HK', '')
+            code = symbol.replace(".HK", "")
             code = code.zfill(4)
             ticker_symbol = f"{code}.HK"
 
@@ -555,15 +560,17 @@ class YahooHKAdapter(DataSourceAdapter):
             quote = {
                 "symbol": symbol,
                 "market": MarketType.HK_STOCK,
-                "price": FieldMapper.safe_float(info.get('currentPrice') or info.get('regularMarketPrice')),
-                "change": FieldMapper.safe_float(info.get('regularMarketChange')),
-                "change_pct": FieldMapper.safe_float(info.get('regularMarketChangePercent')),
-                "open": FieldMapper.safe_float(info.get('regularMarketOpen')),
-                "high": FieldMapper.safe_float(info.get('regularMarketDayHigh')),
-                "low": FieldMapper.safe_float(info.get('regularMarketDayLow')),
-                "close": FieldMapper.safe_float(info.get('previousClose')),
-                "volume": FieldMapper.safe_int(info.get('regularMarketVolume')),
-                "market_cap": info.get('marketCap'),
+                "price": FieldMapper.safe_float(
+                    info.get("currentPrice") or info.get("regularMarketPrice")
+                ),
+                "change": FieldMapper.safe_float(info.get("regularMarketChange")),
+                "change_pct": FieldMapper.safe_float(info.get("regularMarketChangePercent")),
+                "open": FieldMapper.safe_float(info.get("regularMarketOpen")),
+                "high": FieldMapper.safe_float(info.get("regularMarketDayHigh")),
+                "low": FieldMapper.safe_float(info.get("regularMarketDayLow")),
+                "close": FieldMapper.safe_float(info.get("previousClose")),
+                "volume": FieldMapper.safe_int(info.get("regularMarketVolume")),
+                "market_cap": info.get("marketCap"),
                 "data_source": self.source_name,
             }
 

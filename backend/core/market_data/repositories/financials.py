@@ -80,9 +80,9 @@ class StockFinancialIndicatorRepository(BaseRepository):
         """初始化索引"""
         await self.create_index([
             ("symbol", 1),
-            ("report_date", 1)
+            ("end_date", 1)
         ], unique=True)
-        await self.create_index([("symbol", 1), ("report_date", -1)])
+        await self.create_index([("symbol", 1), ("end_date", -1)])
 
     async def upsert_indicator(self, indicator: StockFinancialIndicator) -> int:
         """
@@ -96,7 +96,7 @@ class StockFinancialIndicatorRepository(BaseRepository):
         """
         filter_query = {
             "symbol": indicator.symbol,
-            "report_date": indicator.report_date
+            "end_date": indicator.end_date
         }
         data = indicator.model_dump()
         return await self.upsert_one(filter_query, data)

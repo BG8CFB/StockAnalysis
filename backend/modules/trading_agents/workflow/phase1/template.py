@@ -1,8 +1,8 @@
 """
 Phase 1 智能体模板
 
-**版本**: v4.0 (LangChain 1.1.0 create_agent 重构版)
-**最后更新**: 2026-01-15
+**版本**: v6.0 (LangChain 0.3+ create_agent 兼容版)
+**最后更新**: 2025-01-19
 
 智能体模板，用于动态创建分析师智能体。
 """
@@ -12,6 +12,7 @@ from typing import Dict, Any, Optional, List
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import BaseTool
+from langchain_core.messages import HumanMessage
 from langchain.agents import create_agent
 from modules.trading_agents.models.state import WorkflowState, AgentExecution, TaskStatus
 
@@ -47,19 +48,17 @@ class Phase1AgentTemplate:
         self.agent = self._create_agent()
 
     def _create_agent(self):
-        """创建智能体实例 (LangChain 1.1.0 create_agent API)"""
+        """创建智能体实例 (LangChain 0.3+ create_agent API)"""
         system_prompt_str = self._build_system_prompt()
 
-        # 使用 LangChain 1.1.0 的 create_agent
-        # 返回 CompiledStateGraph
-        graph = create_agent(
-            model=self.model,
-            tools=self.tools,
-            system_prompt=system_prompt_str,
-            debug=False
+        # 使用 LangChain 0.3+ 的 create_agent
+        agent = create_agent(
+            self.model,
+            self.tools,
+            system_prompt=system_prompt_str
         )
 
-        return graph
+        return agent
 
     def _build_system_prompt(self) -> str:
         """
@@ -114,17 +113,17 @@ class Phase1AgentTemplate:
         )
 
         try:
-            # 调用 agent (LangChain 1.1.0 create_agent 格式)
+            # 调用 agent (LangChain 0.3+ create_agent 格式)
             logger.info(f"[Phase 1] 执行智能体: {self.slug} ({self.name})")
 
-            # LangChain 1.1.0 使用 messages 格式
+            # LangChain 0.3+ 使用 messages 格式
             inputs = {
                 "messages": [
-                    {"role": "user", "content": user_prompt}
+                    HumanMessage(content=user_prompt)
                 ]
             }
 
-            result = await self.agent.ainvoke(inputs, config={"recursion_limit": 10})
+            result = await self.agent.ainvoke(inputs)
 
             # 提取输出
             output = self._extract_output(result)
@@ -171,7 +170,7 @@ class Phase1AgentTemplate:
             输出文本
         """
         if isinstance(result, dict):
-            # LangChain 1.1.0 create_agent 返回格式: {"messages": [...]}
+            # LangChain 0.3+ 返回格式: {"messages": [...]}
             messages = result.get("messages", [])
             if messages:
                 # 获取最后一条消息

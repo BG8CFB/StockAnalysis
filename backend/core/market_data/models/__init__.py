@@ -19,23 +19,38 @@ class Exchange(str, Enum):
     """交易所枚举"""
     SSE = "SSE"  # 上交所
     SZSE = "SZSE"  # 深交所
+    HKEX = "HKEX"  # 港交所
     NASDAQ = "NASDAQ"
     NYSE = "NYSE"
 
 
 # 从子模块导入股票数据模型
-from core.market_data.models.stock_info import StockInfo
-from core.market_data.models.stock_quote import StockQuote, StockKLine
-from core.market_data.models.stock_financials import StockFinancial, StockFinancialIndicator
+from core.market_data.models.stock_info import StockInfo, TradeCalendar
+from core.market_data.models.stock_quote import (
+    StockQuote,
+    StockMinuteQuote,
+    StockKLine,
+    StockDailyIndicator,
+    MarketBoardDaily
+)
+from core.market_data.models.stock_financials import (
+    StockFinancial,
+    FinancialIncome,
+    FinancialBalance,
+    FinancialCashFlow,
+    StockFinancialIndicator
+)
 from core.market_data.models.stock_company import StockCompany
-from core.market_data.models.stock_macro import MacroEconomic
+from core.market_data.models.stock_macro import MacroEconomy, MacroEconomic
 from core.market_data.models.stock_other import (
-    StockSector,
+    StockMoneyFlow,
+    StockHSGTMoneyFlow,
     StockTopList,
     StockDividend,
     StockMargin,
-    StockNews,
+    MarketNews,
 )
+from core.market_data.models.api_monitor import ApiMonitor
 
 # 从子模块导入其他模型
 from core.market_data.models.datasource import (
@@ -59,17 +74,27 @@ __all__ = [
     "MarketType",
     "Exchange",
     "StockInfo",
+    "TradeCalendar",
     "StockQuote",
+    "StockMinuteQuote",
     "StockKLine",
+    "StockDailyIndicator",
+    "MarketBoardDaily",
     "StockFinancial",
+    "FinancialIncome",
+    "FinancialBalance",
+    "FinancialCashFlow",
     "StockFinancialIndicator",
     "StockCompany",
+    "MacroEconomy",
     "MacroEconomic",
-    "StockSector",
+    "StockMoneyFlow",
+    "StockHSGTMoneyFlow",
     "StockTopList",
     "StockDividend",
     "StockMargin",
-    "StockNews",
+    "MarketNews",
+    "ApiMonitor",
     # DataSource
     "DataSourceStatus",
     "DataSourceType",

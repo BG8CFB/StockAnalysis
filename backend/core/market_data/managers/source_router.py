@@ -14,6 +14,7 @@ from core.market_data.sources.a_stock import TuShareAdapter, AkShareAdapter
 from core.market_data.sources.us_stock import YahooFinanceAdapter, AlphaVantageAdapter
 from core.market_data.sources.hk_stock import YahooHKAdapter, AkShareHKAdapter
 from core.market_data.models import MarketType
+from core.market_data.models.api_monitor import ApiMonitor
 from core.config import DATA_SOURCE_MAX_FAILURES
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,8 @@ class DataSourceRouter:
         # 按优先级排序数据源
         self.sources = sorted(sources or [], key=lambda s: s.get_priority())
         self.source_health = {}  # 数据源健康状态缓存
+        # 简单内存缓存 API Monitor 状态 (实际应从DB加载)
+        self.api_monitors: dict[str, ApiMonitor] = {}
 
     def add_source(self, source: DataSourceAdapter) -> None:
         """
@@ -88,6 +91,71 @@ class DataSourceRouter:
             available.append(source)
 
         return available
+
+    async def get_source_for_data_type(self, data_type: str, market: MarketType) -> DataSourceAdapter | None:
+        """
+        根据数据类型获取最佳数据源 (Failover Logic)
+
+        Args:
+            data_type: 数据类型 (e.g. 'minute_data', 'daily_data')
+            market: 市场类型
+
+        Returns:
+            DataSourceAdapter or None
+        """
+        # 1. 获取该类型的 Monitor 状态
+        monitor = self.api_monitors.get(data_type)
+        
+        # 默认首选 TU (如果存在)
+        primary_source_name = monitor.primary_source if monitor else "TU"
+        backup_source_name = monitor.backup_source if monitor else "AK"
+        use_backup = monitor.is_using_backup if monitor else False
+
+        target_source_name = backup_source_name if use_backup else primary_source_name
+
+        # 2. 查找对应的数据源实例
+        target_source = next((s for s in self.sources if s.source_name == target_source_name), None)
+        
+        # 如果目标源不可用或不支持该市场，尝试降级到另一个
+        if not target_source or not target_source.supports_market(market):
+            fallback_name = primary_source_name if use_backup else backup_source_name
+            target_source = next((s for s in self.sources if s.source_name == fallback_name), None)
+        
+        return target_source
+
+    async def record_failure(self, data_type: str, source_name: str):
+        """记录调用失败，触发切换逻辑"""
+        if data_type not in self.api_monitors:
+            self.api_monitors[data_type] = ApiMonitor(
+                data_type=data_type,
+                primary_source="TU", # 默认
+                backup_source="AK"
+            )
+        
+        monitor = self.api_monitors[data_type]
+        if monitor.primary_source == source_name:
+            monitor.fail_count += 1
+            if monitor.fail_count >= 3: # 阈值
+                monitor.is_using_backup = True
+                logger.warning(f"Data type {data_type} failover to backup source {monitor.backup_source}")
+        
+        monitor.last_check_time = datetime.now()
+        # TODO: Save to DB
+
+    async def record_success(self, data_type: str, source_name: str):
+        """记录调用成功"""
+        if data_type in self.api_monitors:
+            monitor = self.api_monitors[data_type]
+            if monitor.is_using_backup and source_name == monitor.primary_source:
+                # 如果主源成功了（可能是探测），切回主源
+                monitor.is_using_backup = False
+                monitor.fail_count = 0
+                logger.info(f"Data type {data_type} recovered to primary source {monitor.primary_source}")
+            elif source_name == monitor.primary_source:
+                monitor.fail_count = 0
+            
+            monitor.last_check_time = datetime.now()
+            # TODO: Save to DB
 
     async def route_to_best_source(
         self,

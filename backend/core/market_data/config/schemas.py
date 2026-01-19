@@ -20,8 +20,8 @@ class StockListRequest(BaseModel):
 class QuoteQueryRequest(BaseModel):
     """行情查询请求"""
     symbol: str = Field(..., description="股票代码")
-    start_date: Optional[str] = Field(None, description="开始日期（YYYYMMDD）")
-    end_date: Optional[str] = Field(None, description="结束日期（YYYYMMDD）")
+    start_date: Optional[str] = Field(None, description="开始日期（YYYY-MM-DD）")
+    end_date: Optional[str] = Field(None, description="结束日期（YYYY-MM-DD）")
     limit: int = Field(default=0, description="返回数量限制，0表示不限制")
 
 

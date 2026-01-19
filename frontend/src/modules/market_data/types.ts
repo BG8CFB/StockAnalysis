@@ -152,7 +152,7 @@ export interface SourceDetail {
   source_type: string
   source_id: string
   source_name: string
-  status: DataSourceStatus
+  status: DataSourceStatus | null  // null 表示未检查
   priority: number
   last_check: string | null
   response_time_ms: number | null

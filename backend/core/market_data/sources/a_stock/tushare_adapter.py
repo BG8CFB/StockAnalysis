@@ -16,15 +16,21 @@ from core.market_data.sources.base import DataSourceAdapter
 from core.market_data.models import (
     StockInfo,
     StockQuote,
-    StockKLine,
+    StockMinuteQuote,
     StockFinancial,
+    FinancialIncome,
+    FinancialBalance,
+    FinancialCashFlow,
     StockFinancialIndicator,
     StockCompany,
     MacroEconomic,
     MarketType,
     Exchange,
+    StockMoneyFlow,
+    StockHSGTMoneyFlow,
+    MarketNews,
 )
-from core.market_data.tools.field_mapper import TuShareFieldMapper
+from core.market_data.tools.data_cleaner import DataCleaner
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +150,7 @@ class TuShareAdapter(DataSourceAdapter):
         symbol: str,
         trade_date: Optional[str] = None,
         freq: str = "1min"
-    ) -> List[StockKLine]:
+    ) -> List[StockMinuteQuote]:
         """
         获取分钟K线数据
 
@@ -169,19 +175,10 @@ class TuShareAdapter(DataSourceAdapter):
             klines = []
             for _, row in df.iterrows():
                 try:
-                    kline = StockKLine(
-                        symbol=symbol,
-                        market=MarketType.A_STOCK,
-                        trade_date=str(row['trade_date']),
-                        open=float(row['open']) if pd.notna(row['open']) else 0,
-                        high=float(row['high']) if pd.notna(row['high']) else 0,
-                        low=float(row['low']) if pd.notna(row['low']) else 0,
-                        close=float(row['close']) if pd.notna(row['close']) else 0,
-                        volume=int(row['vol']) if pd.notna(row['vol']) else 0,
-                        amount=float(row['amount']) / 1000 if pd.notna(row['amount']) else None,
-                        data_source=self.source_name
-                    )
-                    klines.append(kline)
+                    mapped = DataCleaner.clean_minute_quote(row.to_dict(), "tushare")
+                    if mapped:
+                        kline = StockMinuteQuote(**mapped)
+                        klines.append(kline)
                 except Exception as e:
                     logger.warning(f"Failed to parse kline: {e}")
                     continue
@@ -272,7 +269,7 @@ class TuShareAdapter(DataSourceAdapter):
         self,
         symbol: str,
         report_date: Optional[str] = None
-    ) -> List[StockFinancial]:
+    ) -> List[FinancialCashFlow]:
         """
         获取现金流量表
 
@@ -296,9 +293,10 @@ class TuShareAdapter(DataSourceAdapter):
             financials = []
             for _, row in df.iterrows():
                 try:
-                    mapped = TuShareFieldMapper.map_financial_cashflow(row, symbol)
-                    financial = StockFinancial(**mapped)
-                    financials.append(financial)
+                    mapped = DataCleaner.clean_financial_cashflow(row.to_dict(), "tushare")
+                    if mapped:
+                        financial = FinancialCashFlow(**mapped)
+                        financials.append(financial)
                 except Exception as e:
                     logger.warning(f"Failed to parse cashflow: {e}")
                     continue
@@ -429,23 +427,9 @@ class TuShareAdapter(DataSourceAdapter):
 
             result = []
             for _, row in df.iterrows():
-                result.append({
-                    'symbol': symbol,
-                    'trade_date': str(row['trade_date']),
-                    'pe': float(row['pe']) if pd.notna(row['pe']) else None,
-                    'pe_ttm': float(row['pe_ttm']) if pd.notna(row['pe_ttm']) else None,
-                    'pb': float(row['pb']) if pd.notna(row['pb']) else None,
-                    'ps': float(row['ps']) if pd.notna(row['ps']) else None,
-                    'ps_ttm': float(row['ps_ttm']) if pd.notna(row['ps_ttm']) else None,
-                    'dv_ratio': float(row['dv_ratio']) if pd.notna(row['dv_ratio']) else None,
-                    'dv_ttm': float(row['dv_ttm']) if pd.notna(row['dv_ttm']) else None,
-                    'total_share': float(row['total_share']) if pd.notna(row['total_share']) else None,
-                    'float_share': float(row['float_share']) if pd.notna(row['float_share']) else None,
-                    'free_share': float(row['free_share']) if pd.notna(row['free_share']) else None,
-                    'total_mv': float(row['total_mv']) if pd.notna(row['total_mv']) else None,
-                    'circ_mv': float(row['circ_mv']) if pd.notna(row['circ_mv']) else None,
-                    'data_source': self.source_name,
-                })
+                mapped = DataCleaner.clean_daily_indicator(row.to_dict(), "tushare")
+                if mapped:
+                    result.append(mapped)
 
             logger.info(f"Retrieved {len(result)} daily basics for {symbol}")
             return result
@@ -882,12 +866,12 @@ class TuShareAdapter(DataSourceAdapter):
     ) -> List[Dict[str, Any]]:
         """
         获取个股资金流向
-
+        
         Args:
             symbol: 股票代码
             start_date: 开始日期
             end_date: 结束日期
-
+            
         Returns:
             个股资金流向列表
         """
@@ -899,41 +883,82 @@ class TuShareAdapter(DataSourceAdapter):
                 params['start_date'] = start_date
             if end_date:
                 params['end_date'] = end_date
-
+                
             df = self.pro.moneyflow(**params)
-
+            
             if df is None or df.empty:
                 return []
-
+                
             result = []
             for _, row in df.iterrows():
-                result.append({
-                    'symbol': row.get('ts_code'),
-                    'trade_date': str(row['trade_date']),
-                    'buy_elg_vol': float(row['buy_elg_vol']) if pd.notna(row.get('buy_elg_vol')) else None,
-                    'buy_elg_amount': float(row['buy_elg_amount']) if pd.notna(row.get('buy_elg_amount')) else None,
-                    'sell_elg_vol': float(row['sell_elg_vol']) if pd.notna(row.get('sell_elg_vol')) else None,
-                    'sell_elg_amount': float(row['sell_elg_amount']) if pd.notna(row.get('sell_elg_amount')) else None,
-                    'buy_lg_vol': float(row['buy_lg_vol']) if pd.notna(row.get('buy_lg_vol')) else None,
-                    'buy_lg_amount': float(row['buy_lg_amount']) if pd.notna(row.get('buy_lg_amount')) else None,
-                    'sell_lg_vol': float(row['sell_lg_vol']) if pd.notna(row.get('sell_lg_vol')) else None,
-                    'sell_lg_amount': float(row['sell_lg_amount']) if pd.notna(row.get('sell_lg_amount')) else None,
-                    'buy_md_vol': float(row['buy_md_vol']) if pd.notna(row.get('buy_md_vol')) else None,
-                    'buy_md_amount': float(row['buy_md_amount']) if pd.notna(row.get('buy_md_amount')) else None,
-                    'sell_md_vol': float(row['sell_md_vol']) if pd.notna(row.get('sell_md_vol')) else None,
-                    'sell_md_amount': float(row['sell_md_amount']) if pd.notna(row.get('sell_md_amount')) else None,
-                    'buy_sm_vol': float(row['buy_sm_vol']) if pd.notna(row.get('buy_sm_vol')) else None,
-                    'buy_sm_amount': float(row['buy_sm_amount']) if pd.notna(row.get('buy_sm_amount')) else None,
-                    'sell_sm_vol': float(row['sell_sm_vol']) if pd.notna(row.get('sell_sm_vol')) else None,
-                    'sell_sm_amount': float(row['sell_sm_amount']) if pd.notna(row.get('sell_sm_amount')) else None,
-                    'net_mf_vol': float(row['net_mf_vol']) if pd.notna(row.get('net_mf_vol')) else None,
-                    'net_mf_amount': float(row['net_mf_amount']) if pd.notna(row.get('net_mf_amount')) else None,
-                    'data_source': self.source_name,
-                })
-
+                mapped = DataCleaner.clean_stock_money_flow(row.to_dict(), "tushare")
+                if mapped:
+                    result.append(mapped)
+                    
             logger.info(f"Retrieved {len(result)} individual money flow")
             return result
-
+            
         except Exception as e:
             logger.error(f"Failed to get individual money flow: {e}")
             raise
+
+    async def get_market_news(
+        self,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        src: str = "sina"
+    ) -> List[MarketNews]:
+        """
+        获取市场新闻
+        
+        Args:
+            start_date: 开始日期 (YYYY-MM-DD HH:MM:SS)
+            end_date: 结束日期 (YYYY-MM-DD HH:MM:SS)
+            src: 新闻来源 (sina/10jqka/eastmoney/yuncaijing)
+            
+        Returns:
+            新闻列表
+        """
+        try:
+            params = {'src': src}
+            if start_date:
+                params['start_date'] = start_date
+            if end_date:
+                params['end_date'] = end_date
+                
+            # TuShare news 接口
+            df = self.pro.news(**params)
+            
+            if df is None or df.empty:
+                return []
+                
+            news_list = []
+            for _, row in df.iterrows():
+                try:
+                    news_id = str(row.get('news_id', ''))
+                    if not news_id:
+                        # 如果没有ID，使用来源+时间+标题生成一个
+                        import hashlib
+                        content_str = f"{src}_{row.get('datetime')}_{row.get('title')}"
+                        news_id = hashlib.md5(content_str.encode()).hexdigest()
+                        
+                    news = MarketNews(
+                        news_id=news_id,
+                        ts_code=None,  # Tushare news 接口通常不返回关联股票
+                        datetime=str(row.get('datetime', '')),
+                        title=str(row.get('title', '')),
+                        content=str(row.get('content', '')),
+                        source=src,
+                        data_source=self.source_name
+                    )
+                    news_list.append(news)
+                except Exception as e:
+                    logger.warning(f"Failed to parse news: {e}")
+                    continue
+                    
+            logger.info(f"Retrieved {len(news_list)} news items from {src}")
+            return news_list
+            
+        except Exception as e:
+            logger.error(f"Failed to get market news: {e}")
+            return []

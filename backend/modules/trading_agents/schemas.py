@@ -407,10 +407,15 @@ class AgentConfig(BaseModel):
 
     role_definition 可选，以支持精简模式（不暴露提示词给普通用户）
     """
+    # 配置支持字段别名（驼峰命名与蛇形命名兼容）
+    model_config = {"populate_by_name": True}
+
     slug: str = Field(..., min_length=1, max_length=50, description="唯一标识符")
     name: str = Field(..., min_length=1, max_length=100, description="显示名称")
-    role_definition: Optional[str] = Field(None, min_length=1, max_length=10000, description="角色定义（系统提示词）")
-    when_to_use: Optional[str] = Field(default="", max_length=500, description="使用场景说明")
+    # 支持驼峰命名 (roleDefinition) 和蛇形命名 (role_definition)
+    role_definition: Optional[str] = Field(None, min_length=1, max_length=10000, description="角色定义（系统提示词）", alias="roleDefinition")
+    # 支持驼峰命名 (whenToUse) 和蛇形命名 (when_to_use)
+    when_to_use: Optional[str] = Field(default="", max_length=500, description="使用场景说明", alias="whenToUse")
     enabled_mcp_servers: List[MCPServerConfig] = Field(
         default_factory=list,
         description="启用的 MCP 服务器（支持配置必需性）"
@@ -461,9 +466,13 @@ class AgentConfigSlim(BaseModel):
     用于分析页面，不暴露敏感的 role_definition。
     普通用户不应看到系统提示词，避免泄露业务逻辑。
     """
+    # 配置支持字段别名（驼峰命名与蛇形命名兼容）
+    model_config = {"populate_by_name": True}
+
     slug: str = Field(..., min_length=1, max_length=50, description="唯一标识符")
     name: str = Field(..., min_length=1, max_length=100, description="显示名称")
-    when_to_use: Optional[str] = Field(default="", max_length=500, description="使用场景说明")
+    # 支持驼峰命名 (whenToUse) 和蛇形命名 (when_to_use)
+    when_to_use: Optional[str] = Field(default="", max_length=500, description="使用场景说明", alias="whenToUse")
     enabled_mcp_servers: List[MCPServerConfig] = Field(
         default_factory=list,
         description="启用的 MCP 服务器（支持配置必需性）"

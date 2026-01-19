@@ -285,7 +285,16 @@ class StartupDataService:
             if not last_trade_date_str:
                 return
 
-            last_trade_date = datetime.strptime(last_trade_date_str, "%Y%m%d").date()
+            # 支持 YYYY-MM-DD 格式
+            try:
+                if "-" in last_trade_date_str:
+                    last_trade_date = datetime.strptime(last_trade_date_str, "%Y-%m-%d").date()
+                else:
+                    last_trade_date = datetime.strptime(last_trade_date_str, "%Y%m%d").date()
+            except ValueError:
+                logger.warning(f"无法解析日期格式: {last_trade_date_str}")
+                return
+
             today = date_type.today()
 
             # 计算缺失的交易日
@@ -436,6 +445,7 @@ class StartupDataService:
 
         为所有配置的数据源创建初始状态记录，确保数据源状态监控页面能正常显示。
         只有当状态记录不存在时才会创建，避免覆盖已有状态。
+        注意：健康检查被移至后台异步执行，不阻塞启动流程。
         """
         try:
             logger.info("🔍 初始化数据源状态记录...")
@@ -448,7 +458,6 @@ class StartupDataService:
 
             status_repo = DataSourceStatusRepository()
             system_source_repo = SystemDataSourceRepository()
-            monitor_service = self.data_sync_service._get_monitor_service()
 
             # 定义数据源配置映射（与 data_source_status.py 中的配置保持一致）
             # 简化并合并数据类型
@@ -479,6 +488,7 @@ class StartupDataService:
 
             initialized_count = 0
             skipped_count = 0
+            health_check_tasks = []  # 收集需要执行健康检查的任务
 
             # 遍历所有市场和数据类型
             for market, data_types in DATA_SOURCE_CONFIGS.items():
@@ -523,12 +533,20 @@ class StartupDataService:
                                 last_check_type="initialization",
                                 failure_count=0,
                                 is_fallback=False,
-                                note="未配置凭证" if not is_available else "初始状态"
+                                note="未配置凭证" if not is_available else "初始状态，待健康检查"
                             )
 
                             await status_repo.upsert_status(initial_status)
                             initialized_count += 1
-                            logger.info(f"  初始化数据源状态: {market}/{data_type}/{source_id} -> {initial_status.status} (可用: {is_available})")
+                            logger.debug(f"  初始化数据源状态: {market}/{data_type}/{source_id} -> {initial_status.status} (可用: {is_available})")
+
+                            # 收集需要执行健康检查的数据源（跳过已知不可用的）
+                            if is_available:
+                                health_check_tasks.append({
+                                    "market": market,
+                                    "data_type": data_type,
+                                    "source_id": source_id
+                                })
 
                         except Exception as e:
                             logger.warning(f"  ⚠️ 初始化数据源状态失败 {market}/{data_type}/{source_id}: {e}")
@@ -541,47 +559,10 @@ class StartupDataService:
             })
 
             logger.info(f"  ✅ 数据源状态初始化完成: 新增 {initialized_count} 条，跳过 {skipped_count} 条")
+            logger.info(f"  ℹ️ 健康检查将在后台异步执行，共 {len(health_check_tasks)} 个检查项")
 
-            # 执行健康检查以验证数据源可用性
-            logger.info("  🔍 执行数据源健康检查...")
-            health_check_count = 0
-            health_check_passed = 0
-            health_check_failed = 0
-
-            for market, data_types in DATA_SOURCE_CONFIGS.items():
-                for data_type, source_ids in data_types.items():
-                    for source_id in source_ids:
-                        try:
-                            # 跳过已知不可用的数据源（如未配置 Token 的 TuShare）
-                            source_config = await system_source_repo.get_config(source_id, market)
-                            config = source_config.get("config", {}) if source_config else {}
-
-                            # TuShare 无 Token 或 AlphaVantage 无 Key，跳过检查
-                            if source_id == "tushare" and not config.get("api_token"):
-                                logger.debug(f"  跳过健康检查: {market}/{data_type}/{source_id} (未配置 API Token)")
-                                continue
-                            elif source_id == "alpha_vantage" and not config.get("api_key"):
-                                logger.debug(f"  跳过健康检查: {market}/{data_type}/{source_id} (未配置 API Key)")
-                                continue
-
-                            # 执行健康检查
-                            check_result = await monitor_service.check_single_source(
-                                source_id=source_id,
-                                market=market,
-                                data_type=data_type,
-                                check_type="initialization"
-                            )
-
-                            health_check_count += 1
-                            if check_result.get("status") == "healthy":
-                                health_check_passed += 1
-                            else:
-                                health_check_failed += 1
-
-                        except Exception as e:
-                            logger.warning(f"  ⚠️ 健康检查失败 {market}/{data_type}/{source_id}: {e}")
-
-            logger.info(f"  ✅ 健康检查完成: 总计 {health_check_count} 个，通过 {health_check_passed} 个，失败 {health_check_failed} 个")
+            # 将健康检查任务添加到结果中，供调用者启动后台任务
+            result["health_check_tasks"] = health_check_tasks
 
         except Exception as e:
             logger.error(f"  ❌ 数据源状态初始化失败: {e}")
@@ -590,3 +571,93 @@ class StartupDataService:
                 "status": "failed",
                 "error": str(e)
             })
+
+    async def run_health_checks_parallel(
+        self,
+        health_check_tasks: List[Dict[str, str]]
+    ) -> Dict[str, Any]:
+        """
+        并行执行数据源健康检查
+
+        Args:
+            health_check_tasks: 健康检查任务列表，每个任务包含 market, data_type, source_id
+
+        Returns:
+            健康检查结果汇总
+        """
+        import asyncio
+
+        logger.info("=" * 60)
+        logger.info("📊 数据源健康检查开始")
+        logger.info(f"📋 共 {len(health_check_tasks)} 个检查项")
+        logger.info("=" * 60)
+
+        monitor_service = self.data_sync_service._get_monitor_service()
+        total = len(health_check_tasks)
+        completed = 0
+
+        async def check_single(task: Dict[str, str]) -> Dict[str, Any]:
+            """执行单个健康检查"""
+            nonlocal completed
+
+            market = task["market"]
+            data_type = task["data_type"]
+            source_id = task["source_id"]
+
+            try:
+                logger.info(f"  🔍 [{completed + 1}/{total}] 检查 {market}/{data_type}/{source_id}...")
+                result = await monitor_service.check_single_source(
+                    source_id=source_id,
+                    market=market,
+                    data_type=data_type,
+                    check_type="initialization"
+                )
+
+                completed += 1
+                status_icon = "✅" if result.get("status") == "healthy" else "❌"
+                logger.info(
+                    f"  {status_icon} [{completed}/{total}] {market}/{data_type}/{source_id} - "
+                    f"{result.get('status', 'unknown')} ({result.get('response_time_ms', 0)}ms)"
+                )
+
+                return {
+                    "success": result.get("status") == "healthy",
+                    "market": market,
+                    "data_type": data_type,
+                    "source_id": source_id,
+                    "status": result.get("status"),
+                    "response_time_ms": result.get("response_time_ms", 0)
+                }
+            except Exception as e:
+                completed += 1
+                logger.warning(f"  ⚠️ [{completed}/{total}] {market}/{data_type}/{source_id} - 失败: {e}")
+                return {
+                    "success": False,
+                    "market": market,
+                    "data_type": data_type,
+                    "source_id": source_id,
+                    "error": str(e)
+                }
+
+        # 并行执行所有健康检查
+        results = await asyncio.gather(
+            *[check_single(task) for task in health_check_tasks],
+            return_exceptions=True
+        )
+
+        # 统计结果
+        passed = sum(1 for r in results if isinstance(r, dict) and r.get("success"))
+        failed = sum(1 for r in results if isinstance(r, dict) and not r.get("success"))
+        errors = sum(1 for r in results if isinstance(r, Exception))
+
+        logger.info("=" * 60)
+        logger.info(f"✅ 健康检查完成: 通过 {passed} 个，失败 {failed} 个，异常 {errors} 个")
+        logger.info("=" * 60)
+
+        return {
+            "total": len(health_check_tasks),
+            "passed": passed,
+            "failed": failed,
+            "errors": errors,
+            "results": results
+        }

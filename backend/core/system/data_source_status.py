@@ -427,8 +427,8 @@ async def get_market_detail(
             is_primary_current = True
             actual_fallback_id = fallback_id
 
-            # 如果主数据源不可用，尝试查找可用的备用数据源
-            if primary_status and primary_status.get("status") in ("unavailable", "error"):
+            # 如果主数据源不可用或从未检查，尝试查找可用的备用数据源
+            if not primary_status or primary_status.get("status") in ("unavailable", "error"):
                 # 首先尝试配置的 fallback
                 if fallback_id and fallback_status and fallback_status.get("status") == "healthy":
                     is_primary_current = False
@@ -605,6 +605,15 @@ async def get_data_type_detail(
         primary_status = status_map.get(primary_id)
         if primary_status:
             last_check = primary_status.get("last_check_at")
+            # 安全获取错误消息
+            last_error = primary_status.get("last_error")
+            note = None
+            if last_error:
+                if isinstance(last_error, dict):
+                    note = last_error.get("message")
+                else:
+                    note = str(last_error)
+
             sources.append({
                 "source_type": "system",
                 "source_id": primary_id,
@@ -615,7 +624,7 @@ async def get_data_type_detail(
                 "response_time_ms": primary_status.get("response_time_ms"),
                 "avg_response_time_ms": primary_status.get("avg_response_time_ms"),
                 "failure_count": primary_status.get("failure_count", 0),
-                "note": primary_status.get("last_error", {}).get("message") if primary_status.get("last_error") else None,
+                "note": note,
                 "api_endpoints": _get_api_endpoints_for_source(primary_id, data_type)
             })
         else:
@@ -649,6 +658,15 @@ async def get_data_type_detail(
             fallback_status = status_map.get(fallback_id)
             if fallback_status:
                 last_check = fallback_status.get("last_check_at")
+                # 安全获取错误消息
+                last_error = fallback_status.get("last_error")
+                error_note = None
+                if last_error:
+                    if isinstance(last_error, dict):
+                        error_note = last_error.get("message")
+                    else:
+                        error_note = str(last_error)
+
                 # 只有在备用数据源正在被使用时才显示状态
                 sources.append({
                     "source_type": "system",
@@ -660,11 +678,7 @@ async def get_data_type_detail(
                     "response_time_ms": fallback_status.get("response_time_ms"),
                     "avg_response_time_ms": fallback_status.get("avg_response_time_ms"),
                     "failure_count": fallback_status.get("failure_count", 0),
-                    "note": (
-                        fallback_status.get("last_error", {}).get("message")
-                        if fallback_status.get("last_error") else
-                        ("当前使用" if is_using_fallback else "备用")
-                    ),
+                    "note": error_note if error_note else ("当前使用" if is_using_fallback else "备用"),
                     "api_endpoints": _get_api_endpoints_for_source(fallback_id, data_type)
                 })
             else:
@@ -680,7 +694,7 @@ async def get_data_type_detail(
                     "avg_response_time_ms": None,
                     "failure_count": 0,
                     "note": "备用（未使用）",
-                    "api_endpoints": []
+                    "api_endpoints": _get_api_endpoints_for_source(fallback_id, data_type)
                 })
 
         # 获取最近事件（从历史表）

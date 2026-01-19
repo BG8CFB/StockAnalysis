@@ -304,12 +304,33 @@ const formData = reactive<TradingAgentsSettings>({
   enable_progress_events: true,
 })
 
+// 获取第一个启用的模型 ID
+function getFirstEnabledModelId(): string {
+  const models = aiModelStore.enabledModels
+  return models.length > 0 ? models[0].id : ''
+}
+
 // 加载用户设置
 async function loadSettings() {
   loading.value = true
   try {
     const data = await settingsApi.getSettings()
-    Object.assign(formData, data.settings)
+    // API 客户端已经提取了 trading_agents_settings，data 就是 TradingAgentsSettings 对象
+    Object.assign(formData, data)
+
+    // 如果模型 ID 为空，自动使用第一个启用的模型
+    if (!formData.data_collection_model_id) {
+      const defaultModelId = getFirstEnabledModelId()
+      if (defaultModelId) {
+        formData.data_collection_model_id = defaultModelId
+      }
+    }
+    if (!formData.debate_model_id) {
+      const defaultModelId = getFirstEnabledModelId()
+      if (defaultModelId) {
+        formData.debate_model_id = defaultModelId
+      }
+    }
   } catch (error) {
     console.error('Failed to load settings:', error)
   } finally {

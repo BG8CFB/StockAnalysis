@@ -199,7 +199,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, markRaw, onMounted, ref } from 'vue'
 import {
   TrendCharts,
   DataLine,
@@ -257,28 +257,28 @@ const quickLinks = ref([
     title: '单股分析',
     description: 'AI 智能分析单只股票',
     path: '/trading-agents/analysis/single',
-    icon: DataAnalysis,
+    icon: markRaw(DataAnalysis),
     color: 'primary',
   },
   {
     title: '批量分析',
     description: '批量分析多只股票',
     path: '/trading-agents/analysis/batch',
-    icon: Grid,
+    icon: markRaw(Grid),
     color: 'success',
   },
   {
     title: '智能选股',
     description: 'AI 辅助选股工具',
     path: '/screener',
-    icon: Search,
+    icon: markRaw(Search),
     color: 'warning',
   },
   {
     title: 'AI 问股',
     description: '智能问答助手',
     path: '/ask-stock',
-    icon: ChatDotRound,
+    icon: markRaw(ChatDotRound),
     color: 'info',
   },
 ])

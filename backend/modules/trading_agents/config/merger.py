@@ -1,8 +1,8 @@
 """
 配置合并器
 
-**版本**: v1.0
-**最后更新**: 2026-01-16
+**版本**: v1.1
+**最后更新**: 2026-01-17
 
 负责将用户个人配置与最新的 YAML 模板配置进行智能合并，
 确保用户配置始终包含完整的智能体结构，同时保留用户自定义的提示词。
@@ -12,6 +12,7 @@
 2. 自定义保留：保留用户修改的 roleDefinition
 3. 新增处理：自动添加用户新配置中缺失的智能体
 4. 验证保护：确保合并后的配置符合验证规则
+5. Slug 标准化：处理下划线和连字符的 slug 格式差异
 """
 
 import logging
@@ -22,6 +23,83 @@ from modules.trading_agents.config.loader import AgentConfigLoader, get_config_l
 from modules.trading_agents.exceptions import ConfigurationError
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Slug 标准化工具
+# =============================================================================
+
+
+def _normalize_slug(slug: str) -> str:
+    """
+    标准化智能体 slug（统一使用连字符格式）
+
+    处理历史遗留的 slug 格式差异：
+    - 下划线格式: bull_researcher → bull-researcher
+    - 连字符格式: bull-researcher → bull-researcher (保持不变)
+
+    Args:
+        slug: 原始 slug
+
+    Returns:
+        标准化后的 slug（使用连字符）
+    """
+    if not slug:
+        return slug
+    # 将所有下划线替换为连字符
+    return slug.replace("_", "-")
+
+
+# Phase 2-3 slug 别名映射（兼容旧数据）
+# 处理历史遗留的简写 slug 格式：
+# - bull → bull-researcher
+# - manager → research-manager
+# - planner → trader
+# - cro → risk-manager
+_PHASE2_SLUG_ALIASES = {
+    "bull": "bull-researcher",
+    "bear": "bear-researcher",
+    "manager": "research-manager",
+    "planner": "trader",
+}
+
+_PHASE3_SLUG_ALIASES = {
+    "aggressive": "aggressive-debator",
+    "conservative": "conservative-debator",
+    "neutral": "neutral-debator",
+    "cro": "risk-manager",
+}
+
+
+def _normalize_slug_with_aliases(slug: str, phase: str) -> str:
+    """
+    标准化智能体 slug（使用连字符格式 + 别名映射）
+
+    兼容历史遗留的简写 slug 格式：
+    - bull → bull-researcher
+    - manager → research-manager
+    - planner → trader
+
+    Args:
+        slug: 原始 slug
+        phase: 阶段名称 (phase2, phase3)
+
+    Returns:
+        标准化后的 slug
+    """
+    if not slug:
+        return slug
+
+    # 先替换下划线为连字符
+    normalized = slug.replace("_", "-")
+
+    # 应用别名映射
+    if phase == "phase2":
+        normalized = _PHASE2_SLUG_ALIASES.get(normalized, normalized)
+    elif phase == "phase3":
+        normalized = _PHASE3_SLUG_ALIASES.get(normalized, normalized)
+
+    return normalized
 
 
 class ConfigMerger:
@@ -41,9 +119,7 @@ class ConfigMerger:
         self.loader = loader or get_config_loader()
 
     async def merge_user_config(
-        self,
-        user_config: Dict[str, Any],
-        include_prompts: bool = True
+        self, user_config: Dict[str, Any], include_prompts: bool = True
     ) -> Dict[str, Any]:
         """
         合并用户配置与最新的 YAML 模板
@@ -80,7 +156,7 @@ class ConfigMerger:
                 phase=phase,
                 user_agents=merged_config[phase].get("agents", []),
                 template_agents=template_config[phase].get("agents", []),
-                include_prompts=include_prompts
+                include_prompts=include_prompts,
             )
 
         # Phase 4 强制启用
@@ -100,7 +176,7 @@ class ConfigMerger:
             fallback_config = self._build_fallback_config(
                 user_config=user_config,
                 template_config=template_config,
-                include_prompts=include_prompts
+                include_prompts=include_prompts,
             )
             return fallback_config
 
@@ -111,7 +187,7 @@ class ConfigMerger:
         phase: str,
         user_agents: List[Dict[str, Any]],
         template_agents: List[Dict[str, Any]],
-        include_prompts: bool
+        include_prompts: bool,
     ) -> Dict[str, Any]:
         """
         合并单个阶段的智能体列表
@@ -125,11 +201,11 @@ class ConfigMerger:
         Returns:
             合并后的阶段配置
         """
-        # 创建 slug -> agent 的映射
-        template_map = {agent["slug"]: agent for agent in template_agents}
+        # 创建 slug -> agent 的映射（使用标准化后的 slug 作为键）
+        template_map = {_normalize_slug(agent["slug"]): agent for agent in template_agents}
 
         merged_agents = []
-        processed_slugs = set()
+        processed_slugs = set()  # 存储标准化后的 slug
 
         # 首先处理用户已有的智能体（保留自定义内容）
         for user_agent in user_agents:
@@ -137,36 +213,55 @@ class ConfigMerger:
             if not slug:
                 continue
 
-            processed_slugs.add(slug)
+            # 标准化 slug（处理下划线/连字符差异 + 别名映射）
+            normalized_slug = _normalize_slug_with_aliases(slug, phase)
+            processed_slugs.add(normalized_slug)
 
-            if slug in template_map:
+            if normalized_slug in template_map:
                 # 智能体存在于模板中，合并
-                template_agent = template_map[slug]
+                template_agent = template_map[normalized_slug]
                 merged_agent = deepcopy(template_agent)
 
                 # 保留用户自定义的 roleDefinition
                 if "roleDefinition" in user_agent and include_prompts:
                     merged_agent["roleDefinition"] = user_agent["roleDefinition"]
+                elif "role_definition" in user_agent and include_prompts:
+                    merged_agent["roleDefinition"] = user_agent["role_definition"]
 
                 # 保留用户的 enabled 状态（Phase 2-3 可以禁用阶段，但智能体本身的状态）
                 if "enabled" in user_agent:
                     merged_agent["enabled"] = user_agent["enabled"]
 
                 merged_agents.append(merged_agent)
-                logger.debug(f"[{phase}] 合并智能体: {slug}（保留用户自定义）")
+                logger.debug(
+                    f"[{phase}] 合并智能体: {normalized_slug}（保留用户自定义，原始: {slug}）"
+                )
 
             else:
                 # 智能体不存在于模板中（Phase 1 允许自定义智能体）
                 merged_agent = deepcopy(user_agent)
                 merged_agents.append(merged_agent)
-                logger.debug(f"[{phase}] 保留用户自定义智能体: {slug}")
+                logger.debug(f"[{phase}] 保留用户自定义智能体: {normalized_slug}（原始: {slug}）")
 
         # 添加模板中存在但用户配置中缺失的智能体
+        # 修复：使用标准化后的 slug 进行比较
+        existing_slugs = [_normalize_slug(agent.get("slug", "")) for agent in merged_agents]
         for template_slug, template_agent in template_map.items():
-            if template_slug not in processed_slugs:
+            # 智能体不存在于用户配置中，也不在已处理的列表中，才添加
+            # 使用标准化后的 slug 进行比较
+            if template_slug not in existing_slugs and template_slug not in processed_slugs:
                 merged_agent = deepcopy(template_agent)
                 merged_agents.append(merged_agent)
                 logger.debug(f"[{phase}] 添加缺失的智能体: {template_slug}")
+            elif template_slug in existing_slugs and template_slug not in processed_slugs:
+                # 智能体已存在于 merged_agents 中但不在已处理列表中（异常情况）
+                logger.warning(
+                    f"[{phase}] 智能体 {template_slug} 已存在，跳过添加。"
+                    f"用户配置中可能存在重复的 slug。"
+                )
+            else:
+                # 智能体已在 processed_slugs 中（正常情况）
+                logger.debug(f"[{phase}] 智能体 {template_slug} 已处理，跳过添加")
 
         # 获取 enabled 状态：优先使用用户的，否则使用模板的
         if user_agents:
@@ -179,16 +274,10 @@ class ConfigMerger:
             if "role_definition" in agent and "roleDefinition" not in agent:
                 agent["roleDefinition"] = agent.pop("role_definition")
 
-        return {
-            "enabled": enabled,
-            "agents": merged_agents
-        }
+        return {"enabled": enabled, "agents": merged_agents}
 
     def _build_fallback_config(
-        self,
-        user_config: Dict[str, Any],
-        template_config: Dict[str, Any],
-        include_prompts: bool
+        self, user_config: Dict[str, Any], template_config: Dict[str, Any], include_prompts: bool
     ) -> Dict[str, Any]:
         """
         构建兜底配置（保留用户元数据，使用模板的配置）

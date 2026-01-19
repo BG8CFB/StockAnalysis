@@ -7,7 +7,7 @@
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from core.db.mongodb import mongodb
 from modules.trading_agents.config.loader import AgentConfigLoader
@@ -43,6 +43,35 @@ class AgentConfigService:
     # ========================================================================
     # 阶段配置验证
     # ========================================================================
+
+    def _deduplicate_agents_by_slug(
+        self,
+        agents: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        根据 slug 去重智能体列表（保留第一次出现的）
+
+        Args:
+            agents: 智能体列表
+
+        Returns:
+            去重后的智能体列表
+        """
+        seen_slugs = set()
+        deduplicated_agents = []
+
+        for agent in agents:
+            slug = agent.get("slug")
+            if not slug:
+                continue
+
+            if slug not in seen_slugs:
+                seen_slugs.add(slug)
+                deduplicated_agents.append(agent)
+            else:
+                logger.warning(f"发现重复的智能体 slug: {slug}，已自动去重")
+
+        return deduplicated_agents
 
     def _validate_phase_update(
         self,
@@ -190,19 +219,27 @@ class AgentConfigService:
         update_data = {}
         if request.phase1 is not None:
             phase1_data = request.phase1.model_dump(mode='json')
-            # 保留用户选择的 enabled 状态
+            # 去重：根据 slug 去除重复的智能体
+            if "agents" in phase1_data:
+                phase1_data["agents"] = self._deduplicate_agents_by_slug(phase1_data["agents"])
             update_data["phase1"] = phase1_data
         if request.phase2 is not None:
             phase2_data = request.phase2.model_dump(mode='json')
-            # 保留用户选择的 enabled 状态
+            # 去重：根据 slug 去除重复的智能体
+            if "agents" in phase2_data:
+                phase2_data["agents"] = self._deduplicate_agents_by_slug(phase2_data["agents"])
             update_data["phase2"] = phase2_data
         if request.phase3 is not None:
             phase3_data = request.phase3.model_dump(mode='json')
-            # 保留用户选择的 enabled 状态
+            # 去重：根据 slug 去除重复的智能体
+            if "agents" in phase3_data:
+                phase3_data["agents"] = self._deduplicate_agents_by_slug(phase3_data["agents"])
             update_data["phase3"] = phase3_data
         if request.phase4 is not None:
             phase4_data = request.phase4.model_dump(mode='json')
-            # 保留用户选择的 enabled 状态
+            # 去重：根据 slug 去除重复的智能体
+            if "agents" in phase4_data:
+                phase4_data["agents"] = self._deduplicate_agents_by_slug(phase4_data["agents"])
             update_data["phase4"] = phase4_data
 
         update_data["updated_at"] = datetime.utcnow()
@@ -602,19 +639,27 @@ class AgentConfigService:
         update_data = {}
         if request.phase1 is not None:
             phase1_data = request.phase1.model_dump(mode='json')
-            # 保留用户选择的 enabled 状态
+            # 去重：根据 slug 去除重复的智能体
+            if "agents" in phase1_data:
+                phase1_data["agents"] = self._deduplicate_agents_by_slug(phase1_data["agents"])
             update_data["phase1"] = phase1_data
         if request.phase2 is not None:
             phase2_data = request.phase2.model_dump(mode='json')
-            # 保留用户选择的 enabled 状态
+            # 去重：根据 slug 去除重复的智能体
+            if "agents" in phase2_data:
+                phase2_data["agents"] = self._deduplicate_agents_by_slug(phase2_data["agents"])
             update_data["phase2"] = phase2_data
         if request.phase3 is not None:
             phase3_data = request.phase3.model_dump(mode='json')
-            # 保留用户选择的 enabled 状态
+            # 去重：根据 slug 去除重复的智能体
+            if "agents" in phase3_data:
+                phase3_data["agents"] = self._deduplicate_agents_by_slug(phase3_data["agents"])
             update_data["phase3"] = phase3_data
         if request.phase4 is not None:
             phase4_data = request.phase4.model_dump(mode='json')
-            # 保留用户选择的 enabled 状态
+            # 去重：根据 slug 去除重复的智能体
+            if "agents" in phase4_data:
+                phase4_data["agents"] = self._deduplicate_agents_by_slug(phase4_data["agents"])
             update_data["phase4"] = phase4_data
 
         # 标记为已自定义

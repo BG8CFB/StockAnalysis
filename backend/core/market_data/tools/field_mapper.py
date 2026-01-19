@@ -157,299 +157,138 @@ class FieldMapper:
             logger.warning(f"Unsupported unit: {from_unit} -> {to_unit}")
             return value
 
-        factor = unit_map[from_unit] / unit_map[to_unit]
-        return value * factor
-
 
 class TuShareFieldMapper(FieldMapper):
-    """TuShare字段映射器"""
+    """Tushare 字段映射器"""
 
     @staticmethod
-    def map_stock_info(row: pd.Series) -> Dict[str, Any]:
+    def map_stock_quote(row: pd.Series, symbol: str) -> Dict[str, Any]:
         """
-        映射TuShare股票基本信息
+        映射 Tushare 行情数据
 
         Args:
-            row: DataFrame行
-
-        Returns:
-            统一格式股票信息字典
-        """
-        ts_code = row.get('ts_code', '')
-        symbol = ts_code
-
-        exchange_map = {
-            'SSE': 'SSE',
-            'SZSE': 'SZSE',
-        }
-
-        return {
-            "symbol": symbol,
-            "market": "A_STOCK",
-            "name": row.get('name', ''),
-            "industry": row.get('industry'),
-            "sector": row.get('area'),
-            "listing_date": FieldMapper.normalize_date(row.get('list_date', '')),
-            "exchange": exchange_map.get(row.get('exchange', ''), 'SSE'),
-            "status": row.get('list_status', 'L'),
-            "data_source": "tushare",
-        }
-
-    @staticmethod
-    def map_stock_quote(row: pd.Series, symbol: str = None) -> Dict[str, Any]:
-        """
-        映射TuShare行情数据
-
-        Args:
-            row: DataFrame行
+            row: DataFrame 行
             symbol: 股票代码
 
         Returns:
             统一格式行情数据字典
         """
-        trade_date = FieldMapper.normalize_date(row.get('trade_date') or row.get('cal_date', ''))
+        # Tushare 返回的是手，需要转换为股 (*100)
+        vol = FieldMapper.safe_float(row.get('vol'))
+        volume = int(vol * 100) if vol is not None else 0
+        
+        # Tushare 返回的是千元，需要转换为元 (*1000)
+        amt = FieldMapper.safe_float(row.get('amount'))
+        amount = amt * 1000 if amt is not None else None
 
         return {
-            "symbol": symbol or row.get('ts_code', ''),
-            "market": "A_STOCK",
-            "trade_date": trade_date,
+            "symbol": symbol,
+            "market": MarketType.A_STOCK,
+            "trade_date": FieldMapper.normalize_date(str(row.get('trade_date'))),
             "open": FieldMapper.safe_float(row.get('open')),
             "high": FieldMapper.safe_float(row.get('high')),
             "low": FieldMapper.safe_float(row.get('low')),
             "close": FieldMapper.safe_float(row.get('close')),
             "pre_close": FieldMapper.safe_float(row.get('pre_close')),
-            "volume": FieldMapper.safe_int(row.get('vol')),
-            "amount": FieldMapper.convert_amount(FieldMapper.safe_float(row.get('amount')), "yuan", "wanyuan"),
-            "change": FieldMapper.safe_float(row.get('change')),
             "change_pct": FieldMapper.safe_float(row.get('pct_chg')),
-            "turnover_rate": FieldMapper.safe_float(row.get('turnover_rate')),
+            "volume": volume,
+            "amount": amount,
+            "turnover_rate": None, # Tushare pro_bar 不一定返回换手率，或者字段名不同
             "data_source": "tushare",
         }
 
+    @staticmethod
+    def map_stock_info(row: pd.Series) -> Dict[str, Any]:
+        """映射股票基本信息"""
+        ts_code = str(row.get('ts_code'))
+        return {
+            "symbol": ts_code,
+            "code": str(row.get('symbol')),
+            "market": MarketType.A_STOCK,
+            "name": str(row.get('name')),
+            "area": str(row.get('area')),
+            "industry": str(row.get('industry')),
+            "list_date": FieldMapper.normalize_date(str(row.get('list_date'))),
+            "exchange": row.get('exchange') or FieldMapper.infer_exchange(ts_code),
+            "status": "L", # 默认为上市
+            "data_source": "tushare"
+        }
+        
     @staticmethod
     def map_financial_income(row: pd.Series, symbol: str) -> Dict[str, Any]:
-        """
-        映射TuShare利润表数据
-
-        Args:
-            row: DataFrame行
-            symbol: 股票代码
-
-        Returns:
-            统一格式财务数据字典
-        """
-        income_statement = {
-            "total_revenue": FieldMapper.convert_amount(FieldMapper.safe_float(row.get('total_revenue')), "yuan", "wanyuan"),
-            "revenue": FieldMapper.convert_amount(FieldMapper.safe_float(row.get('revenue')), "yuan", "wanyuan"),
-            "operating_cost": FieldMapper.convert_amount(FieldMapper.safe_float(row.get('oper_cost')), "yuan", "wanyuan"),
-            "net_income": FieldMapper.convert_amount(FieldMapper.safe_float(row.get('n_income')), "yuan", "wanyuan"),
-            "basic_eps": FieldMapper.safe_float(row.get('basic_eps')),
-            "operating_profit": FieldMapper.convert_amount(FieldMapper.safe_float(row.get('oper_profit')), "yuan", "wanyuan"),
-            "total_profit": FieldMapper.convert_amount(FieldMapper.safe_float(row.get('total_profit')), "yuan", "wanyuan"),
-        }
-
+        """映射利润表"""
+        # 这里需要根据 StockFinancial 模型调整
+        # 暂时只做基本映射，后续可能需要完善
         return {
             "symbol": symbol,
-            "market": "A_STOCK",
-            "report_date": FieldMapper.normalize_date(row.get('end_date', '')),
-            "report_type": row.get('report_type', 'annual'),
-            "publish_date": FieldMapper.normalize_date(row.get('ann_date', '')),
-            "income_statement": income_statement,
-            "balance_sheet": {},
-            "cash_flow": {},
+            "market": MarketType.A_STOCK,
+            "report_date": FieldMapper.normalize_date(str(row.get('end_date'))),
+            "report_type": "annual", # 需根据 comp_type 判断
             "data_source": "tushare",
+            # ... 其他字段需要根据 FinancialIncome 模型填充
         }
-
+        
     @staticmethod
     def map_financial_balance(row: pd.Series, symbol: str) -> Dict[str, Any]:
-        """
-        映射TuShare资产负债表数据
-
-        Args:
-            row: DataFrame行
-            symbol: 股票代码
-
-        Returns:
-            统一格式资产负债表字典
-        """
-        balance_sheet = {
-            "total_assets": FieldMapper.convert_amount(FieldMapper.safe_float(row.get('total_assets')), "yuan", "wanyuan"),
-            "total_liabilities": FieldMapper.convert_amount(FieldMapper.safe_float(row.get('total_liab')), "yuan", "wanyuan"),
-            "total_equity": FieldMapper.convert_amount(FieldMapper.safe_float(row.get('total_hldr_eqy_exc_min_int')), "yuan", "wanyuan"),
-            "current_assets": FieldMapper.convert_amount(FieldMapper.safe_float(row.get('total_cur_assets')), "yuan", "wanyuan"),
-            "current_liabilities": FieldMapper.convert_amount(FieldMapper.safe_float(row.get('total_cur_liab')), "yuan", "wanyuan"),
-        }
-
         return {
             "symbol": symbol,
-            "market": "A_STOCK",
-            "report_date": FieldMapper.normalize_date(row.get('end_date', '')),
-            "report_type": row.get('report_type', 'annual'),
-            "publish_date": FieldMapper.normalize_date(row.get('ann_date', '')),
-            "income_statement": {},
-            "balance_sheet": balance_sheet,
-            "cash_flow": {},
+            "market": MarketType.A_STOCK,
+            "report_date": FieldMapper.normalize_date(str(row.get('end_date'))),
             "data_source": "tushare",
         }
-
-    @staticmethod
-    def map_financial_cashflow(row: pd.Series, symbol: str) -> Dict[str, Any]:
-        """
-        映射TuShare现金流量表数据
-
-        Args:
-            row: DataFrame行
-            symbol: 股票代码
-
-        Returns:
-            统一格式现金流量表字典
-        """
-        cash_flow = {
-            "operating_cash_flow": FieldMapper.convert_amount(FieldMapper.safe_float(row.get('n_cashflow_act')), "yuan", "wanyuan"),
-            "investing_cash_flow": FieldMapper.convert_amount(FieldMapper.safe_float(row.get('n_cashflow_inv_act')), "yuan", "wanyuan"),
-            "financing_cash_flow": FieldMapper.convert_amount(FieldMapper.safe_float(row.get('n_cash_flows_fnc_act')), "yuan", "wanyuan"),
-        }
-
-        return {
-            "symbol": symbol,
-            "market": "A_STOCK",
-            "report_date": FieldMapper.normalize_date(row.get('end_date', '')),
-            "report_type": row.get('report_type', 'annual'),
-            "publish_date": FieldMapper.normalize_date(row.get('ann_date', '')),
-            "income_statement": {},
-            "balance_sheet": {},
-            "cash_flow": cash_flow,
-            "data_source": "tushare",
-        }
-
+        
     @staticmethod
     def map_financial_indicator(row: pd.Series, symbol: str) -> Dict[str, Any]:
-        """
-        映射TuShare财务指标
-
-        Args:
-            row: DataFrame行
-            symbol: 股票代码
-
-        Returns:
-            统一格式财务指标字典
-        """
         return {
             "symbol": symbol,
-            "market": "A_STOCK",
-            "report_date": FieldMapper.normalize_date(row.get('end_date', '')),
-            "publish_date": FieldMapper.normalize_date(row.get('ann_date', '')),
-            "roe": FieldMapper.safe_float(row.get('roe')),
-            "roa": FieldMapper.safe_float(row.get('roa')),
-            "debt_to_assets": FieldMapper.safe_float(row.get('debt_to_assets')),
-            "current_ratio": FieldMapper.safe_float(row.get('current_ratio')),
-            "quick_ratio": FieldMapper.safe_float(row.get('quick_ratio')),
-            "eps": FieldMapper.safe_float(row.get('basic_eps')),
+            "report_date": FieldMapper.normalize_date(str(row.get('end_date'))),
+            "eps": FieldMapper.safe_float(row.get('eps')),
+            "dt_eps": FieldMapper.safe_float(row.get('dt_eps')),
             "bps": FieldMapper.safe_float(row.get('bps')),
-            "gross_profit_margin": FieldMapper.safe_float(row.get('grossprofit_margin')),
-            "net_profit_margin": FieldMapper.safe_float(row.get('netprofit_margin')),
-            "data_source": "tushare",
+            "roe": FieldMapper.safe_float(row.get('roe')),
+            "data_source": "tushare"
         }
 
 
 class AkShareFieldMapper(FieldMapper):
-    """AkShare字段映射器"""
+    """AkShare 字段映射器"""
 
     @staticmethod
     def map_stock_quote(row: pd.Series, symbol: str) -> Dict[str, Any]:
         """
-        映射AkShare行情数据
-
-        Args:
-            row: DataFrame行（字段名为中文）
-            symbol: 股票代码
-
-        Returns:
-            统一格式行情数据字典
+        映射 AkShare A股行情数据
         """
-        trade_date = str(row.get('日期', row.get('trade_date', '')))
-        trade_date = FieldMapper.normalize_date(trade_date)
+        # AkShare 返回的是日期字符串 YYYY-MM-DD
+        trade_date = str(row.get('日期'))
+        
         return {
             "symbol": symbol,
-            "market": "A_STOCK",
-            "trade_date": trade_date,
-            "open": FieldMapper.safe_float(row.get('开盘', row.get('open'))),
-            "high": FieldMapper.safe_float(row.get('最高', row.get('high'))),
-            "low": FieldMapper.safe_float(row.get('最低', row.get('low'))),
-            "close": FieldMapper.safe_float(row.get('收盘', row.get('close'))),
-            "pre_close": FieldMapper.safe_float(row.get('昨收', row.get('pre_close'))),
-            "volume": FieldMapper.safe_int(row.get('成交量', row.get('volume'))),
-            "amount": FieldMapper.safe_float(row.get('成交额') or row.get('amount')),
-            "change": FieldMapper.safe_float(row.get('涨跌额') or row.get('change')),
-            "change_pct": FieldMapper.safe_float(row.get('涨跌幅') or row.get('change_pct')),
-            "turnover_rate": FieldMapper.safe_float(row.get('换手率') or row.get('turnover_rate')),
-            "data_source": "akshare",
-        }
-
-    @staticmethod
-    def map_financial_income(row: pd.Series, symbol: str) -> Dict[str, Any]:
-        """
-        映射AkShare利润表数据
-
-        Args:
-            row: DataFrame行（字段名为中文）
-            symbol: 股票代码
-
-        Returns:
-            统一格式财务数据字典
-        """
-        income_statement = {
-            "total_revenue": None,
-            "revenue": FieldMapper.safe_float(row.get('营业收入') or row.get('revenue')),
-            "operating_cost": FieldMapper.safe_float(row.get('营业成本') or row.get('operating_cost')),
-            "net_income": FieldMapper.safe_float(row.get('净利润') or row.get('net_income')),
-            "basic_eps": None,
-            "operating_profit": FieldMapper.safe_float(row.get('营业利润') or row.get('operating_profit')),
-        }
-
-        return {
-            "symbol": symbol,
-            "market": "A_STOCK",
-            "report_date": FieldMapper.normalize_date(row.get('报告期') or row.get('report_date', '')),
-            "report_type": 'annual',
-            "publish_date": None,
-            "income_statement": income_statement,
-            "balance_sheet": {},
-            "cash_flow": {},
+            "market": MarketType.A_STOCK,
+            "trade_date": FieldMapper.normalize_date(trade_date),
+            "open": FieldMapper.safe_float(row.get('开盘')),
+            "high": FieldMapper.safe_float(row.get('最高')),
+            "low": FieldMapper.safe_float(row.get('最低')),
+            "close": FieldMapper.safe_float(row.get('收盘')),
+            "volume": FieldMapper.safe_int(row.get('成交量')), # AkShare 单位通常是股
+            "amount": FieldMapper.safe_float(row.get('成交额')), # 元
+            "change_pct": FieldMapper.safe_float(row.get('涨跌幅')),
+            "turnover_rate": FieldMapper.safe_float(row.get('换手率')),
+            "pre_close": None, # AkShare hist 接口通常不返回昨收
             "data_source": "akshare",
         }
 
     @staticmethod
     def map_stock_spot(row: pd.Series) -> Dict[str, Any]:
-        """
-        映射AkShare实时行情数据
-
-        Args:
-            row: DataFrame行
-
-        Returns:
-            统一格式股票信息字典
-        """
-        code = str(row.get('代码', ''))
+        """映射实时行情/列表"""
+        code = str(row.get('代码'))
         symbol = FieldMapper.normalize_symbol(code)
-
-        listing_date = row.get('上市日期', '')
-        if listing_date:
-            listing_date = FieldMapper.normalize_date(str(listing_date))
-        else:
-            listing_date = ""
-
-        exchange_str = FieldMapper.infer_exchange(code)
-        exchange = Exchange.SSE if exchange_str == 'SSE' else Exchange.SZSE
-
+        
         return {
             "symbol": symbol,
+            "code": code,
             "market": MarketType.A_STOCK,
-            "name": row.get('名称', ''),
-            "industry": None,
-            "sector": None,
-            "listing_date": listing_date,
-            "exchange": exchange,
-            "status": "L",
+            "name": str(row.get('名称')),
             "data_source": "akshare",
+            # ...
         }
+

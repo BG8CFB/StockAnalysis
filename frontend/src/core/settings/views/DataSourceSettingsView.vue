@@ -2,8 +2,8 @@
 import { ref, defineAsyncComponent, shallowRef } from 'vue'
 import { Setting, Refresh, Monitor, DataLine, ArrowRight } from '@element-plus/icons-vue'
 
-// 当前激活的导航项（默认第一个）
-const activeTab = ref('config')
+// 当前激活的导航项（默认第一个：数据源状态监控）
+const activeTab = ref('status')
 
 // 异步组件定义
 const UserDataSourceConfigView = defineAsyncComponent(() =>
@@ -17,13 +17,13 @@ const DataSourceHealthView = defineAsyncComponent(() =>
 )
 
 // 当前显示的组件
-const currentComponent = shallowRef(UserDataSourceConfigView)
+const currentComponent = shallowRef(DataSourceHealthView)
 
-// 菜单配置
+// 菜单配置（数据源状态监控放在第一位）
 const menuItems = [
+  { key: 'status', label: '数据源状态监控', icon: Monitor, component: DataSourceHealthView },
   { key: 'config', label: '数据源配置', icon: Setting, component: UserDataSourceConfigView },
   { key: 'sync', label: '数据同步', icon: Refresh, component: DataSyncView },
-  { key: 'status', label: '数据源状态监控', icon: Monitor, component: DataSourceHealthView },
 ]
 
 // 切换标签

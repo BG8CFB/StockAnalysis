@@ -378,8 +378,40 @@ async def _run_startup_check(startup_service: StartupDataService):
                 logger.info(f"✅ 启动数据补录完成，触发 {tasks_count} 个补录任务")
             else:
                 logger.info("✅ 数据完整性检查通过，无需补录")
+
+        # 启动健康检查后台任务（并行执行，不阻塞启动）
+        health_check_tasks = catchup_result.get("health_check_tasks", [])
+        if health_check_tasks:
+            logger.info(f"📊 启动后台健康检查任务，共 {len(health_check_tasks)} 个检查项...")
+            # 使用 create_task 在后台并行执行健康检查
+            asyncio.create_task(_run_health_checks(startup_service, health_check_tasks))
+
     except Exception as e:
         logger.error(f"❌ 后台启动检查任务失败: {e}", exc_info=True)
+
+
+async def _run_health_checks(startup_service: StartupDataService, health_check_tasks: list):
+    """后台并行执行健康检查"""
+    logger.info("=" * 60)
+    logger.info("🚀 启动后台健康检查任务")
+    logger.info(f"📋 待检查项: {len(health_check_tasks)} 个")
+    logger.info("ℹ️ 健康检查在后台执行，不阻塞应用启动")
+    logger.info("=" * 60)
+
+    try:
+        result = await startup_service.run_health_checks_parallel(health_check_tasks)
+        logger.info("=" * 60)
+        logger.info("🎉 后台健康检查全部完成")
+        logger.info(
+            f"📊 统计: 总计 {result['total']} 个，"
+            f"✅ 通过 {result['passed']} 个，"
+            f"❌ 失败 {result['failed']} 个"
+        )
+        logger.info("=" * 60)
+    except Exception as e:
+        logger.error("=" * 60)
+        logger.error(f"❌ 后台健康检查任务失败: {e}")
+        logger.error("=" * 60, exc_info=True)
 
 
 async def init_market_data_scheduler() -> None:
@@ -415,8 +447,8 @@ async def init_market_data_scheduler() -> None:
         for job in jobs:
             logger.info(f"  - {job['name']}: 下次执行时间 {job['next_run_time']}")
 
-        # 执行启动时数据检查和补录（后台运行，不阻塞启动）
-        logger.info("📊 启动后台数据检查和补录任务...")
+        # 启动时数据检查和补录（异步后台执行，不阻塞启动）
+        logger.info("📊 启动后台数据检查和补录任务（异步）...")
         startup_service = StartupDataService(_data_sync_service)
         # 使用 create_task 在后台运行，不阻塞主程序启动
         asyncio.create_task(_run_startup_check(startup_service))

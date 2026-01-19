@@ -3,13 +3,19 @@
 
 负责加载、验证和管理智能体配置。
 
-**版本**: v3.0 (LangChain create_agent 重构版)
-**最后更新**: 2026-01-15
+**版本**: v4.0 (分文件配置重构版)
+**最后更新**: 2026-01-17
 
 配置层级结构：
-1. 默认配置 (agents_default.yaml) - 项目内置，永不修改
+1. 默认配置 (分文件) - 项目内置，永不修改
 2. 公共配置 (agents_public.yaml) - 管理员可修改，所有用户共享
 3. 用户个人配置 (MongoDB) - 用户自定义，优先级最高
+
+**分文件结构**：
+- phase1-default.yaml - Phase 1 默认配置
+- phase2-default.yaml - Phase 2 默认配置
+- phase3-default.yaml - Phase 3 默认配置
+- phase4-default.yaml - Phase 4 默认配置
 """
 
 import logging
@@ -43,8 +49,18 @@ class ConfigPaths:
 
         self.base_dir = Path(base_dir)
         self.config_dir = self.base_dir / "config" / "agents"
+
+        # 合并配置文件（向后兼容）
         self.default_config_path = self.config_dir / "agents_default.yaml"
         self.public_config_path = self.config_dir / "agents_public.yaml"
+
+        # 分阶段配置文件（新结构）
+        self.phase_default_configs = {
+            "phase1": self.config_dir / "phase1-default.yaml",
+            "phase2": self.config_dir / "phase2-default.yaml",
+            "phase3": self.config_dir / "phase3-default.yaml",
+            "phase4": self.config_dir / "phase4-default.yaml",
+        }
 
     def ensure_public_config(self) -> None:
         """
@@ -56,6 +72,60 @@ class ConfigPaths:
             logger.info("公共配置不存在，从默认配置复制")
             shutil.copy(self.default_config_path, self.public_config_path)
             logger.info(f"创建公共配置: {self.public_config_path}")
+
+    def get_phase_config_path(self, phase: str) -> Path:
+        """
+        获取指定阶段的默认配置文件路径
+
+        Args:
+            phase: 阶段名称 (phase1/phase2/phase3/phase4)
+
+        Returns:
+            配置文件路径
+
+        Raises:
+            ValueError: 阶段名称无效
+        """
+        if phase not in self.phase_default_configs:
+            raise ValueError(f"无效的阶段名称: {phase}，必须是 phase1/phase2/phase3/phase4")
+        return self.phase_default_configs[phase]
+
+    def ensure_phase_configs_exist(self) -> None:
+        """
+        确保所有阶段的配置文件存在
+
+        如果公共配置不存在，从默认配置复制
+        """
+        if not self.public_config_path.exists():
+            logger.info("公共配置不存在，从分文件默认配置合并生成")
+            self._generate_public_config_from_phases()
+
+    def _generate_public_config_from_phases(self) -> None:
+        """
+        从4个阶段文件生成公共配置
+
+        合并4个阶段配置为单一的 YAML 文件
+        """
+        logger.info("从4个阶段文件合并生成公共配置")
+        merged_config = {}
+
+        for phase_key, phase_path in self.phase_default_configs.items():
+            if not phase_path.exists():
+                logger.warning(f"阶段默认配置文件不存在: {phase_path}")
+                continue
+            phase_config = self._load_yaml_file(phase_path)
+            merged_config[phase_key] = phase_config
+
+        # 写入公共配置文件
+        with open(self.public_config_path, "w", encoding="utf-8") as f:
+            yaml.dump(
+                merged_config,
+                f,
+                allow_unicode=True,
+                default_flow_style=False,
+                sort_keys=False
+            )
+        logger.info(f"生成公共配置: {self.public_config_path}")
 
 
 # =============================================================================

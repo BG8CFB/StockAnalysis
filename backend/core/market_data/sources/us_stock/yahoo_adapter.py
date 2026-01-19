@@ -5,8 +5,9 @@ Yahoo Finance 美股数据源适配器
 使用 yfinance 库与 Yahoo Finance API 交互。
 """
 
+import asyncio
 import logging
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Callable
 from datetime import datetime, timedelta
 import pandas as pd
 
@@ -45,12 +46,12 @@ class YahooFinanceFieldMapper(FieldMapper):
         Returns:
             标准化代码，如 AAPL.US
         """
-        if '.' in code:
-            if code.endswith('.US'):
+        if "." in code:
+            if code.endswith(".US"):
                 return code
             # Yahoo Finance uses .SS for Shanghai, convert to .SH
-            if code.endswith('.SS'):
-                return code[:-3] + '.SH'
+            if code.endswith(".SS"):
+                return code[:-3] + ".SH"
             return code
 
         # 美股代码统一添加 .US 后缀
@@ -71,11 +72,11 @@ class YahooFinanceFieldMapper(FieldMapper):
         return {
             "symbol": YahooFinanceFieldMapper.normalize_us_symbol(code),
             "market": MarketType.US_STOCK,
-            "name": row.get('longName', row.get('shortName', '')),
-            "industry": row.get('industry', ''),
-            "sector": row.get('sector', ''),
+            "name": row.get("longName", row.get("shortName", "")),
+            "industry": row.get("industry", ""),
+            "sector": row.get("sector", ""),
             "listing_date": "",
-            "exchange": row.get('exchange', ''),
+            "exchange": row.get("exchange", ""),
             "status": "L",
             "data_source": "yahoo",
         }
@@ -93,19 +94,19 @@ class YahooFinanceFieldMapper(FieldMapper):
             统一格式行情数据字典
         """
         # yfinance returns index as date
-        trade_date = str(row.name) if hasattr(row, 'name') else str(row.get('Date', ''))
+        trade_date = str(row.name) if hasattr(row, "name") else str(row.get("Date", ""))
         trade_date = FieldMapper.normalize_date(trade_date)
 
         return {
             "symbol": symbol,
             "market": MarketType.US_STOCK,
             "trade_date": trade_date,
-            "open": FieldMapper.safe_float(row.get('Open')),
-            "high": FieldMapper.safe_float(row.get('High')),
-            "low": FieldMapper.safe_float(row.get('Low')),
-            "close": FieldMapper.safe_float(row.get('Close')),
+            "open": FieldMapper.safe_float(row.get("Open")),
+            "high": FieldMapper.safe_float(row.get("High")),
+            "low": FieldMapper.safe_float(row.get("Low")),
+            "close": FieldMapper.safe_float(row.get("Close")),
             "pre_close": None,
-            "volume": FieldMapper.safe_int(row.get('Volume')),
+            "volume": FieldMapper.safe_int(row.get("Volume")),
             "amount": None,
             "change": None,
             "change_pct": None,
@@ -137,25 +138,39 @@ class YahooFinanceFieldMapper(FieldMapper):
                     report_date = FieldMapper.normalize_date(date_str)
 
                     income_statement = {
-                        "total_revenue": FieldMapper.safe_float(financials.loc['Total Revenue', date]) if 'Total Revenue' in financials.index else None,
-                        "revenue": FieldMapper.safe_float(financials.loc['Total Revenue', date]) if 'Total Revenue' in financials.index else None,
+                        "total_revenue": FieldMapper.safe_float(
+                            financials.loc["Total Revenue", date]
+                        )
+                        if "Total Revenue" in financials.index
+                        else None,
+                        "revenue": FieldMapper.safe_float(financials.loc["Total Revenue", date])
+                        if "Total Revenue" in financials.index
+                        else None,
                         "operating_cost": None,
-                        "net_income": FieldMapper.safe_float(financials.loc['Net Income', date]) if 'Net Income' in financials.index else None,
+                        "net_income": FieldMapper.safe_float(financials.loc["Net Income", date])
+                        if "Net Income" in financials.index
+                        else None,
                         "basic_eps": None,
-                        "operating_profit": FieldMapper.safe_float(financials.loc['Operating Income', date]) if 'Operating Income' in financials.index else None,
+                        "operating_profit": FieldMapper.safe_float(
+                            financials.loc["Operating Income", date]
+                        )
+                        if "Operating Income" in financials.index
+                        else None,
                     }
 
-                    results.append({
-                        "symbol": symbol,
-                        "market": MarketType.US_STOCK,
-                        "report_date": report_date,
-                        "report_type": "quarterly",
-                        "publish_date": None,
-                        "income_statement": income_statement,
-                        "balance_sheet": {},
-                        "cash_flow": {},
-                        "data_source": "yahoo",
-                    })
+                    results.append(
+                        {
+                            "symbol": symbol,
+                            "market": MarketType.US_STOCK,
+                            "report_date": report_date,
+                            "report_type": "quarterly",
+                            "publish_date": None,
+                            "income_statement": income_statement,
+                            "balance_sheet": {},
+                            "cash_flow": {},
+                            "data_source": "yahoo",
+                        }
+                    )
                 except Exception as e:
                     logger.warning(f"Failed to parse financial row: {e}")
                     continue
@@ -187,15 +202,15 @@ class YahooFinanceFieldMapper(FieldMapper):
                 "market": MarketType.US_STOCK,
                 "report_date": "",
                 "publish_date": None,
-                "roe": FieldMapper.safe_float(info.get('returnOnEquity')),
-                "roa": FieldMapper.safe_float(info.get('returnOnAssets')),
+                "roe": FieldMapper.safe_float(info.get("returnOnEquity")),
+                "roa": FieldMapper.safe_float(info.get("returnOnAssets")),
                 "debt_to_assets": None,
-                "current_ratio": FieldMapper.safe_float(info.get('currentRatio')),
+                "current_ratio": FieldMapper.safe_float(info.get("currentRatio")),
                 "quick_ratio": None,
-                "eps": FieldMapper.safe_float(info.get('trailingEps')),
+                "eps": FieldMapper.safe_float(info.get("trailingEps")),
                 "bps": None,
-                "gross_profit_margin": FieldMapper.safe_float(info.get('grossMargins')),
-                "net_profit_margin": FieldMapper.safe_float(info.get('profitMargins')),
+                "gross_profit_margin": FieldMapper.safe_float(info.get("grossMargins")),
+                "net_profit_margin": FieldMapper.safe_float(info.get("profitMargins")),
                 "data_source": "yahoo",
             }
         except Exception as e:
@@ -217,6 +232,49 @@ class YahooFinanceAdapter(DataSourceAdapter):
         # 设置默认优先级（Yahoo Finance 是美股主要数据源）
         self._priority = 1
 
+    async def _fetch_with_retry(
+        self, fetch_func: Callable, *args, max_retries: int = 3, base_wait: int = 1, **kwargs
+    ) -> Optional[Any]:
+        """
+        带指数退避的重试机制
+
+        Args:
+            fetch_func: 要执行的函数
+            *args: 位置参数
+            max_retries: 最大重试次数
+            base_wait: 基础等待时间（秒）
+            **kwargs: 关键字参数
+
+        Returns:
+            函数执行结果
+
+        Raises:
+            Exception: 所有重试都失败后抛出原始异常
+        """
+        for attempt in range(max_retries):
+            try:
+                return fetch_func(*args, **kwargs)
+            except Exception as e:
+                error_msg = str(e)
+                # 检测速率限制错误
+                if (
+                    "Too Many Requests" in error_msg
+                    or "429" in error_msg
+                    or "Rate limited" in error_msg
+                ):
+                    if attempt < max_retries - 1:
+                        # 指数退避：1s, 2s, 4s
+                        wait_time = base_wait * (2**attempt)
+                        logger.warning(
+                            f"Yahoo Finance rate limited, waiting {wait_time}s "
+                            f"(attempt {attempt + 1}/{max_retries})"
+                        )
+                        await asyncio.sleep(wait_time)
+                        continue
+                # 如果不是速率限制，或者已达到最大重试次数，直接抛出
+                raise
+        return None
+
     def supports_market(self, market: MarketType) -> bool:
         return market == MarketType.US_STOCK
 
@@ -230,11 +288,7 @@ class YahooFinanceAdapter(DataSourceAdapter):
             logger.error(f"Yahoo Finance connection test failed: {e}")
             return False
 
-    async def get_stock_list(
-        self,
-        market: MarketType,
-        status: str = "L"
-    ) -> List[StockInfo]:
+    async def get_stock_list(self, market: MarketType, status: str = "L") -> List[StockInfo]:
         """
         获取美股股票列表
 
@@ -305,7 +359,7 @@ class YahooFinanceAdapter(DataSourceAdapter):
         symbol: str,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-        adjust_type: Optional[str] = None
+        adjust_type: Optional[str] = None,
     ) -> List[StockQuote]:
         """
         获取美股日线行情
@@ -321,28 +375,28 @@ class YahooFinanceAdapter(DataSourceAdapter):
         """
         try:
             # 去掉 .US 后缀获取原始代码
-            code = symbol.replace('.US', '')
+            code = symbol.replace(".US", "")
 
             # 设置默认日期范围
             if end_date is None:
-                end_date = datetime.now().strftime('%Y%m%d')
+                end_date = datetime.now().strftime("%Y%m%d")
             if start_date is None:
-                start_date = (datetime.now() - timedelta(days=365)).strftime('%Y%m%d')
+                start_date = (datetime.now() - timedelta(days=365)).strftime("%Y%m%d")
 
             start = FieldMapper.normalize_date(start_date)
             end = FieldMapper.normalize_date(end_date)
 
             # 转换为 yfinance 需要的格式
-            start_dt = datetime.strptime(start, '%Y%m%d')
-            end_dt = datetime.strptime(end, '%Y%m%d')
+            start_dt = datetime.strptime(start, "%Y%m%d")
+            end_dt = datetime.strptime(end, "%Y%m%d")
 
             logger.info(f"Fetching daily quotes: symbol={code}, start={start}, end={end}")
 
             ticker = yf.Ticker(code)
-            df = ticker.history(start=start_dt, end=end_dt)
+            df = await self._fetch_with_retry(ticker.history, start=start_dt, end=end_dt)
 
             if df is None or df.empty:
-                logger.warning(f"No daily quotes returned for {symbol}")
+                logger.warning(f"No daily quotes returned for {symbol} after retries")
                 return []
 
             quotes = []
@@ -363,10 +417,7 @@ class YahooFinanceAdapter(DataSourceAdapter):
             raise
 
     async def get_minute_quotes(
-        self,
-        symbol: str,
-        trade_date: Optional[str] = None,
-        freq: str = "1min"
+        self, symbol: str, trade_date: Optional[str] = None, freq: str = "1min"
     ) -> List[StockKLine]:
         """
         获取美股分钟K线数据
@@ -380,22 +431,22 @@ class YahooFinanceAdapter(DataSourceAdapter):
             分钟K线数据列表
         """
         try:
-            code = symbol.replace('.US', '')
+            code = symbol.replace(".US", "")
 
             # Yahoo Finance 支持的间隔
             interval_map = {
-                '1min': '1m',
-                '5min': '5m',
-                '15min': '15m',
-                '30min': '30m',
-                '60min': '1h',
-                '90min': '90m',
+                "1min": "1m",
+                "5min": "5m",
+                "15min": "15m",
+                "30min": "30m",
+                "60min": "1h",
+                "90min": "90m",
             }
-            interval = interval_map.get(freq, '1m')
+            interval = interval_map.get(freq, "1m")
 
             # 设置日期范围
             if trade_date:
-                dt = datetime.strptime(trade_date, '%Y%m%d')
+                dt = datetime.strptime(trade_date, "%Y%m%d")
                 start_dt = dt
                 end_dt = dt + timedelta(days=1)
             else:
@@ -416,19 +467,19 @@ class YahooFinanceAdapter(DataSourceAdapter):
                 try:
                     trade_dt = str(idx)
                     if len(trade_dt) > 10:
-                        trade_dt = trade_dt.replace('-', '').replace(' ', '').replace(':', '')
+                        trade_dt = trade_dt.replace("-", "").replace(" ", "").replace(":", "")
 
                     kline = StockKLine(
                         symbol=symbol,
                         market=MarketType.US_STOCK,
                         trade_date=trade_dt[:8] if len(trade_dt) >= 8 else trade_dt,
-                        open=float(row['Open']) if pd.notna(row['Open']) else 0,
-                        high=float(row['High']) if pd.notna(row['High']) else 0,
-                        low=float(row['Low']) if pd.notna(row['Low']) else 0,
-                        close=float(row['Close']) if pd.notna(row['Close']) else 0,
-                        volume=int(row['Volume']) if pd.notna(row['Volume']) else 0,
+                        open=float(row["Open"]) if pd.notna(row["Open"]) else 0,
+                        high=float(row["High"]) if pd.notna(row["High"]) else 0,
+                        low=float(row["Low"]) if pd.notna(row["Low"]) else 0,
+                        close=float(row["Close"]) if pd.notna(row["Close"]) else 0,
+                        volume=int(row["Volume"]) if pd.notna(row["Volume"]) else 0,
                         amount=None,
-                        data_source=self.source_name
+                        data_source=self.source_name,
                     )
                     klines.append(kline)
                 except Exception as e:
@@ -443,10 +494,7 @@ class YahooFinanceAdapter(DataSourceAdapter):
             raise
 
     async def get_stock_financials(
-        self,
-        symbol: str,
-        report_date: Optional[str] = None,
-        report_type: Optional[str] = None
+        self, symbol: str, report_date: Optional[str] = None, report_type: Optional[str] = None
     ) -> List[StockFinancial]:
         """
         获取美股财务报表
@@ -460,7 +508,7 @@ class YahooFinanceAdapter(DataSourceAdapter):
             财务报表列表
         """
         try:
-            code = symbol.replace('.US', '')
+            code = symbol.replace(".US", "")
 
             logger.info(f"Fetching financials: symbol={code}")
 
@@ -473,7 +521,9 @@ class YahooFinanceAdapter(DataSourceAdapter):
 
             # 过滤报告日期
             if report_date:
-                financials_list = [f for f in financials_list if f.get('report_date') == report_date]
+                financials_list = [
+                    f for f in financials_list if f.get("report_date") == report_date
+                ]
 
             result = []
             for fin_data in financials_list:
@@ -492,9 +542,7 @@ class YahooFinanceAdapter(DataSourceAdapter):
             return []
 
     async def get_financial_indicators(
-        self,
-        symbol: str,
-        report_date: Optional[str] = None
+        self, symbol: str, report_date: Optional[str] = None
     ) -> List[StockFinancialIndicator]:
         """
         获取美股财务指标
@@ -507,7 +555,7 @@ class YahooFinanceAdapter(DataSourceAdapter):
             财务指标列表
         """
         try:
-            code = symbol.replace('.US', '')
+            code = symbol.replace(".US", "")
 
             logger.info(f"Fetching financial indicators: symbol={code}")
 
@@ -530,10 +578,7 @@ class YahooFinanceAdapter(DataSourceAdapter):
             logger.error(f"Failed to get financial indicators: {e}")
             return []
 
-    async def get_stock_company(
-        self,
-        symbol: str
-    ) -> Optional[StockCompany]:
+    async def get_stock_company(self, symbol: str) -> Optional[StockCompany]:
         """
         获取美股公司信息
 
@@ -544,40 +589,40 @@ class YahooFinanceAdapter(DataSourceAdapter):
             公司详细信息，未找到返回None
         """
         try:
-            code = symbol.replace('.US', '')
+            code = symbol.replace(".US", "")
 
             logger.info(f"Fetching company info: symbol={code}")
 
             ticker = yf.Ticker(code)
-            info = ticker.info
+            info = await self._fetch_with_retry(lambda: ticker.info, max_retries=3, base_wait=1)
 
             if not info:
-                logger.warning(f"No company info returned for {symbol}")
+                logger.warning(f"No company info returned for {symbol} after retries")
                 return None
 
             company = StockCompany(
                 symbol=symbol,
                 market=MarketType.US_STOCK,
-                company_name=info.get('longName', info.get('shortName', '')),
-                company_name_en=info.get('longName', ''),
-                industry=info.get('industry', ''),
-                sector=info.get('sector', ''),
+                company_name=info.get("longName", info.get("shortName", "")),
+                company_name_en=info.get("longName", ""),
+                industry=info.get("industry", ""),
+                sector=info.get("sector", ""),
                 listing_date="",
                 contact={
-                    'website': info.get('website'),
-                    'phone': info.get('phone'),
-                    'address': info.get('address1'),
+                    "website": info.get("website"),
+                    "phone": info.get("phone"),
+                    "address": info.get("address1"),
                 },
                 business={
-                    'business_summary': info.get('longBusinessSummary'),
-                    'industry': info.get('industry'),
-                    'sector': info.get('sector'),
+                    "business_summary": info.get("longBusinessSummary"),
+                    "industry": info.get("industry"),
+                    "sector": info.get("sector"),
                 },
                 capital_structure={
-                    'market_cap': info.get('marketCap'),
-                    'enterprise_value': info.get('enterpriseValue'),
+                    "market_cap": info.get("marketCap"),
+                    "enterprise_value": info.get("enterpriseValue"),
                 },
-                data_source=self.source_name
+                data_source=self.source_name,
             )
 
             logger.info(f"Retrieved company info for {symbol}")
@@ -587,10 +632,7 @@ class YahooFinanceAdapter(DataSourceAdapter):
             logger.error(f"Failed to get company info: {e}")
             raise
 
-    async def get_realtime_quote(
-        self,
-        symbol: str
-    ) -> Optional[Dict[str, Any]]:
+    async def get_realtime_quote(self, symbol: str) -> Optional[Dict[str, Any]]:
         """
         获取美股实时行情
 
@@ -601,7 +643,7 @@ class YahooFinanceAdapter(DataSourceAdapter):
             实时行情字典
         """
         try:
-            code = symbol.replace('.US', '')
+            code = symbol.replace(".US", "")
 
             logger.info(f"Fetching realtime quote: symbol={code}")
 
@@ -615,15 +657,17 @@ class YahooFinanceAdapter(DataSourceAdapter):
             quote = {
                 "symbol": symbol,
                 "market": MarketType.US_STOCK,
-                "price": FieldMapper.safe_float(info.get('currentPrice') or info.get('regularMarketPrice')),
-                "change": FieldMapper.safe_float(info.get('regularMarketChange')),
-                "change_pct": FieldMapper.safe_float(info.get('regularMarketChangePercent')),
-                "open": FieldMapper.safe_float(info.get('regularMarketOpen')),
-                "high": FieldMapper.safe_float(info.get('regularMarketDayHigh')),
-                "low": FieldMapper.safe_float(info.get('regularMarketDayLow')),
-                "close": FieldMapper.safe_float(info.get('previousClose')),
-                "volume": FieldMapper.safe_int(info.get('regularMarketVolume')),
-                "market_cap": info.get('marketCap'),
+                "price": FieldMapper.safe_float(
+                    info.get("currentPrice") or info.get("regularMarketPrice")
+                ),
+                "change": FieldMapper.safe_float(info.get("regularMarketChange")),
+                "change_pct": FieldMapper.safe_float(info.get("regularMarketChangePercent")),
+                "open": FieldMapper.safe_float(info.get("regularMarketOpen")),
+                "high": FieldMapper.safe_float(info.get("regularMarketDayHigh")),
+                "low": FieldMapper.safe_float(info.get("regularMarketDayLow")),
+                "close": FieldMapper.safe_float(info.get("previousClose")),
+                "volume": FieldMapper.safe_int(info.get("regularMarketVolume")),
+                "market_cap": info.get("marketCap"),
                 "data_source": self.source_name,
             }
 
@@ -634,10 +678,7 @@ class YahooFinanceAdapter(DataSourceAdapter):
             logger.error(f"Failed to get realtime quote: {e}")
             return None
 
-    async def get_stock_dividends(
-        self,
-        symbol: str
-    ) -> List[Dict[str, Any]]:
+    async def get_stock_dividends(self, symbol: str) -> List[Dict[str, Any]]:
         """
         获取美股股息数据
 
@@ -648,7 +689,7 @@ class YahooFinanceAdapter(DataSourceAdapter):
             股息数据列表
         """
         try:
-            code = symbol.replace('.US', '')
+            code = symbol.replace(".US", "")
 
             logger.info(f"Fetching dividends: symbol={code}")
 
@@ -661,12 +702,14 @@ class YahooFinanceAdapter(DataSourceAdapter):
 
             result = []
             for date, value in dividends.items():
-                result.append({
-                    "symbol": symbol,
-                    "ex_dividend_date": str(date.date()),
-                    "dividend_amount": float(value),
-                    "data_source": self.source_name,
-                })
+                result.append(
+                    {
+                        "symbol": symbol,
+                        "ex_dividend_date": str(date.date()),
+                        "dividend_amount": float(value),
+                        "data_source": self.source_name,
+                    }
+                )
 
             logger.info(f"Retrieved {len(result)} dividends for {symbol}")
             return result
@@ -675,10 +718,7 @@ class YahooFinanceAdapter(DataSourceAdapter):
             logger.error(f"Failed to get dividends: {e}")
             return []
 
-    async def get_stock_splits(
-        self,
-        symbol: str
-    ) -> List[Dict[str, Any]]:
+    async def get_stock_splits(self, symbol: str) -> List[Dict[str, Any]]:
         """
         获取美股股票拆分数据
 
@@ -689,7 +729,7 @@ class YahooFinanceAdapter(DataSourceAdapter):
             股票拆分数据列表
         """
         try:
-            code = symbol.replace('.US', '')
+            code = symbol.replace(".US", "")
 
             logger.info(f"Fetching splits: symbol={code}")
 
@@ -702,12 +742,14 @@ class YahooFinanceAdapter(DataSourceAdapter):
 
             result = []
             for date, ratio in splits.items():
-                result.append({
-                    "symbol": symbol,
-                    "split_date": str(date.date()),
-                    "split_ratio": float(ratio),
-                    "data_source": self.source_name,
-                })
+                result.append(
+                    {
+                        "symbol": symbol,
+                        "split_date": str(date.date()),
+                        "split_ratio": float(ratio),
+                        "data_source": self.source_name,
+                    }
+                )
 
             logger.info(f"Retrieved {len(result)} splits for {symbol}")
             return result

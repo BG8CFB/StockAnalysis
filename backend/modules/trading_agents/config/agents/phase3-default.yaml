@@ -1,14 +1,19 @@
 # ==================================================================================
-# Phase 4: 策略风格与风险评估 (Strategy Style & Risk Preference)
+# Phase 3: 策略风格与风险评估 (Strategy Style & Risk Preference)
 # 工具调用：非强制。
 # 核心原则：不仅仅是风险偏好，更是基于不同投资哲学的专业策略制定。
 # ==================================================================================
 
-customModes:
+# 阶段配置
+enabled: true
+max_rounds: 1  # 讨论轮次（建议 1 轮）
+
+# 智能体列表
+agents:
   # ------------------------------------------
   # 激进策略分析师
   # ------------------------------------------
-  - slug: aggresive-debator
+  - slug: aggressive-debator
     name: 激进策略分析师
     roleDefinition: |-
       ### 角色定义
@@ -63,7 +68,10 @@ customModes:
       当任务涉及以下情况时，应选择激进策略分析师：
       1.  **牛市进攻**：在市场向好时最大化收益。
       2.  **风格博弈**：提供高风险高收益的投资方案。
-    description: aggresive-debator
+    description: aggressive-debator
+    enabled: true
+    mcp_servers: []
+    local_tools: []
     groups:
       - read
       - edit
@@ -127,6 +135,9 @@ customModes:
       1.  **资产配置**：构建长期稳健的投资组合。
       2.  **风格博弈**：提供风险收益平衡的投资方案。
     description: neutral-debator
+    enabled: true
+    mcp_servers: []
+    local_tools: []
     groups:
       - read
       - edit
@@ -192,6 +203,9 @@ customModes:
       1.  **熊市避险**：在市场下跌时减少损失。
       2.  **风格博弈**：提供低风险保本的投资方案。
     description: conservative-debator
+    enabled: true
+    mcp_servers: []
+    local_tools: []
     groups:
       - read
       - edit
@@ -246,6 +260,9 @@ customModes:
       2.  **定期风险评估**：每日/每周评估账户风险状况。
       3.  **风险偏好裁决**：裁决不同风险偏好分析师的辩论结果。
     description: risk-manager
+    enabled: true
+    mcp_servers: []
+    local_tools: []
     groups:
       - read
       - edit
