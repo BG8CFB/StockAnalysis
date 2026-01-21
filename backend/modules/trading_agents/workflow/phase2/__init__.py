@@ -33,6 +33,11 @@ from modules.trading_agents.models.state import (
     TaskStatus,
 )
 from modules.trading_agents.config import get_enabled_agents
+from modules.trading_agents.workflow.events import (
+    create_phase_agents_event,
+    create_agent_started_event,
+    create_agent_completed_event,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +68,9 @@ async def execute_phase2(
     """
     import asyncio
 
+    # 获取 WebSocket 管理器
+    from modules.trading_agents.api.websocket_manager import websocket_manager
+
     logger.info(f"[Phase 2] 开始执行, 任务ID: {state.task_id}")
 
     # 更新状态
@@ -78,6 +86,18 @@ async def execute_phase2(
 
     # 获取智能体配置
     agents_config = get_enabled_agents(config, "phase2")
+
+    # 发送阶段智能体列表事件
+    phase_agents_event = create_phase_agents_event(
+        task_id=state.task_id,
+        phase=2,
+        phase_name="多空博弈与投资决策",
+        execution_mode="hybrid",  # 混合模式（部分并发，部分串行）
+        max_concurrency=2,  # 辩论阶段最大并发为2
+        agents=agents_config
+    )
+    await websocket_manager.broadcast_event(state.task_id, phase_agents_event)
+    logger.info(f"[Phase 2] 已发送智能体列表事件, 智能体数量: {len(agents_config)}")
 
     # 创建智能体实例
     agents = {}
@@ -124,23 +144,81 @@ async def execute_phase2(
 
         if round_idx == 0:
             # 第一轮：看涨和看跌完全并行执行（无依赖）
+            # 发送看涨分析师开始事件
+            await websocket_manager.broadcast_event(state.task_id, create_agent_started_event(
+                task_id=state.task_id,
+                agent_slug="bull-researcher",
+                agent_name="看涨分析师"
+            ))
+            # 发送看跌分析师开始事件
+            await websocket_manager.broadcast_event(state.task_id, create_agent_started_event(
+                task_id=state.task_id,
+                agent_slug="bear-researcher",
+                agent_name="看跌分析师"
+            ))
+
             bull_task = agents["bull"].analyze(state, analyst_reports)
             bear_task = agents["bear"].analyze(state, analyst_reports, None)
 
             bull_result, bear_result = await asyncio.gather(bull_task, bear_task)
             bull_view = bull_result["output"]
             bear_view = bear_result["output"]
+
+            # 发送看涨分析师完成事件
+            if bull_result.get("output"):
+                await websocket_manager.broadcast_event(state.task_id, create_agent_completed_event(
+                    task_id=state.task_id,
+                    agent_slug="bull-researcher",
+                    agent_name="看涨分析师",
+                    token_usage={}  # 暂无 token 用量
+                ))
+            # 发送看跌分析师完成事件
+            if bear_result.get("output"):
+                await websocket_manager.broadcast_event(state.task_id, create_agent_completed_event(
+                    task_id=state.task_id,
+                    agent_slug="bear-researcher",
+                    agent_name="看跌分析师",
+                    token_usage={}  # 暂无 token 用量
+                ))
         else:
             # 第二轮及以后：串行执行（看跌需要看涨观点进行反驳）
+            # 发送看涨分析师开始事件
+            await websocket_manager.broadcast_event(state.task_id, create_agent_started_event(
+                task_id=state.task_id,
+                agent_slug="bull-researcher",
+                agent_name="看涨分析师"
+            ))
             bull_result = await agents["bull"].analyze(state, analyst_reports)
             bull_view = bull_result["output"]
+            # 发送看涨分析师完成事件
+            if bull_result.get("output"):
+                await websocket_manager.broadcast_event(state.task_id, create_agent_completed_event(
+                    task_id=state.task_id,
+                    agent_slug="bull-researcher",
+                    agent_name="看涨分析师",
+                    token_usage={}  # 暂无 token 用量
+                ))
 
+            # 发送看跌分析师开始事件
+            await websocket_manager.broadcast_event(state.task_id, create_agent_started_event(
+                task_id=state.task_id,
+                agent_slug="bear-researcher",
+                agent_name="看跌分析师"
+            ))
             bear_result = await agents["bear"].analyze(
                 state,
                 analyst_reports,
                 bull_view  # 看跌分析师基于看涨观点进行反驳
             )
             bear_view = bear_result["output"]
+            # 发送看跌分析师完成事件
+            if bear_result.get("output"):
+                await websocket_manager.broadcast_event(state.task_id, create_agent_completed_event(
+                    task_id=state.task_id,
+                    agent_slug="bear-researcher",
+                    agent_name="看跌分析师",
+                    token_usage={}  # 暂无 token 用量
+                ))
 
         # 记录辩论轮次
         debate_turns.append({
@@ -150,7 +228,21 @@ async def execute_phase2(
         })
 
     # 研究经理做出最终决策（串行，等待所有辩论完成）
+    # 发送研究经理开始事件
+    await websocket_manager.broadcast_event(state.task_id, create_agent_started_event(
+        task_id=state.task_id,
+        agent_slug="research-manager",
+        agent_name="研究经理"
+    ))
     manager_result = await agents["manager"].decide(state, bull_view, bear_view)
+    # 发送研究经理完成事件
+    if manager_result.get("output"):
+        await websocket_manager.broadcast_event(state.task_id, create_agent_completed_event(
+            task_id=state.task_id,
+            agent_slug="research-manager",
+            agent_name="研究经理",
+            token_usage={}  # 暂无 token 用量
+        ))
 
     # 更新状态
     state.debate_turns = debate_turns
@@ -166,6 +258,12 @@ async def execute_phase2(
     # 交易员制定执行计划（串行，等待研究经理完成）
     if "trader" in agents:
         logger.info(f"[Phase 2] 交易员开始制定计划")
+        # 发送交易员开始事件
+        await websocket_manager.broadcast_event(state.task_id, create_agent_started_event(
+            task_id=state.task_id,
+            agent_slug="trader",
+            agent_name="专业交易员"
+        ))
         trader_result = await agents["trader"].plan(state, state.investment_decision)
 
         # 更新交易计划
@@ -174,6 +272,13 @@ async def execute_phase2(
                 "content": trader_result["output"],
                 "timestamp": datetime.utcnow().isoformat()
             }
+            # 发送交易员完成事件
+            await websocket_manager.broadcast_event(state.task_id, create_agent_completed_event(
+                task_id=state.task_id,
+                agent_slug="trader",
+                agent_name="专业交易员",
+                token_usage={}  # 暂无 token 用量
+            ))
 
     # 更新执行记录
     phase2_execution.completed_at = datetime.utcnow()

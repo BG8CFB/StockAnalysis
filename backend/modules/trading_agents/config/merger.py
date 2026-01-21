@@ -204,8 +204,8 @@ class ConfigMerger:
         # 创建 slug -> agent 的映射（使用标准化后的 slug 作为键）
         template_map = {_normalize_slug(agent["slug"]): agent for agent in template_agents}
 
-        merged_agents = []
-        processed_slugs = set()  # 存储标准化后的 slug
+        # 用于追踪已处理的 slug，避免重复添加
+        merged_agents_map = {}  # {normalized_slug: merged_agent}
 
         # 首先处理用户已有的智能体（保留自定义内容）
         for user_agent in user_agents:
@@ -215,7 +215,14 @@ class ConfigMerger:
 
             # 标准化 slug（处理下划线/连字符差异 + 别名映射）
             normalized_slug = _normalize_slug_with_aliases(slug, phase)
-            processed_slugs.add(normalized_slug)
+
+            # 如果这个 slug 已经处理过，跳过（避免重复）
+            if normalized_slug in merged_agents_map:
+                logger.warning(
+                    f"[{phase}] 用户配置中发现重复的智能体 slug: {slug} "
+                    f"(标准化后: {normalized_slug})，已跳过"
+                )
+                continue
 
             if normalized_slug in template_map:
                 # 智能体存在于模板中，合并
@@ -232,7 +239,7 @@ class ConfigMerger:
                 if "enabled" in user_agent:
                     merged_agent["enabled"] = user_agent["enabled"]
 
-                merged_agents.append(merged_agent)
+                merged_agents_map[normalized_slug] = merged_agent
                 logger.debug(
                     f"[{phase}] 合并智能体: {normalized_slug}（保留用户自定义，原始: {slug}）"
                 )
@@ -240,28 +247,22 @@ class ConfigMerger:
             else:
                 # 智能体不存在于模板中（Phase 1 允许自定义智能体）
                 merged_agent = deepcopy(user_agent)
-                merged_agents.append(merged_agent)
+                # 确保使用标准化的 slug
+                merged_agent["slug"] = normalized_slug
+                merged_agents_map[normalized_slug] = merged_agent
                 logger.debug(f"[{phase}] 保留用户自定义智能体: {normalized_slug}（原始: {slug}）")
 
         # 添加模板中存在但用户配置中缺失的智能体
-        # 修复：使用标准化后的 slug 进行比较
-        existing_slugs = [_normalize_slug(agent.get("slug", "")) for agent in merged_agents]
         for template_slug, template_agent in template_map.items():
-            # 智能体不存在于用户配置中，也不在已处理的列表中，才添加
-            # 使用标准化后的 slug 进行比较
-            if template_slug not in existing_slugs and template_slug not in processed_slugs:
+            if template_slug not in merged_agents_map:
                 merged_agent = deepcopy(template_agent)
-                merged_agents.append(merged_agent)
+                merged_agents_map[template_slug] = merged_agent
                 logger.debug(f"[{phase}] 添加缺失的智能体: {template_slug}")
-            elif template_slug in existing_slugs and template_slug not in processed_slugs:
-                # 智能体已存在于 merged_agents 中但不在已处理列表中（异常情况）
-                logger.warning(
-                    f"[{phase}] 智能体 {template_slug} 已存在，跳过添加。"
-                    f"用户配置中可能存在重复的 slug。"
-                )
             else:
-                # 智能体已在 processed_slugs 中（正常情况）
                 logger.debug(f"[{phase}] 智能体 {template_slug} 已处理，跳过添加")
+
+        # 将映射转换为列表
+        merged_agents = list(merged_agents_map.values())
 
         # 获取 enabled 状态：优先使用用户的，否则使用模板的
         if user_agents:

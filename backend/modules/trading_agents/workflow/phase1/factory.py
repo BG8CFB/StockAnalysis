@@ -7,6 +7,7 @@ Phase 1 智能体工厂
 **最后更新**: 2025-01-19
 """
 
+import asyncio
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -21,6 +22,14 @@ from modules.trading_agents.models.state import (
     AgentExecution,
     TaskStatus,
     WorkflowState,
+)
+from modules.trading_agents.workflow.events import (
+    EventType,
+    create_event,
+    create_phase_agents_event,
+    create_agent_started_event,
+    create_agent_completed_event,
+    create_progress_update_event,
 )
 
 logger = logging.getLogger(__name__)
@@ -334,6 +343,9 @@ async def execute_phase1(
     """
     import asyncio
 
+    # 获取 WebSocket 管理器
+    from modules.trading_agents.api.websocket_manager import websocket_manager
+
     logger.info(f"[Phase 1] 开始执行, 任务ID: {state.task_id}")
 
     # 更新状态
@@ -359,6 +371,18 @@ async def execute_phase1(
     concurrency_str = str(max_concurrency) if max_concurrency else "无限制"
     logger.info(f"[Phase 1] 启用 {len(enabled_agents)} 个智能体, 并发数: {concurrency_str}")
 
+    # 发送阶段智能体列表事件
+    phase_agents_event = create_phase_agents_event(
+        task_id=state.task_id,
+        phase=1,
+        phase_name="信息收集与基础分析",
+        execution_mode="concurrent",
+        max_concurrency=max_concurrency or 0,
+        agents=enabled_agents
+    )
+    await websocket_manager.broadcast_event(state.task_id, phase_agents_event)
+    logger.info(f"[Phase 1] 已发送智能体列表事件, 智能体数量: {len(enabled_agents)}")
+
     # 创建智能体工厂
     factory = Phase1AgentFactory(ai_service, config)
 
@@ -366,12 +390,38 @@ async def execute_phase1(
     semaphore = asyncio.Semaphore(max_concurrency) if max_concurrency else None
 
     async def execute_single_agent(agent_config: Dict[str, Any]) -> Dict[str, Any]:
-        """执行单个智能体（带并发控制）"""
-        if semaphore:
-            async with semaphore:
-                return await _execute_agent_internal(factory, agent_config, state, model_id)
-        else:
-            return await _execute_agent_internal(factory, agent_config, state, model_id)
+        """执行单个智能体（带并发控制和事件发送）"""
+        # 发送智能体开始事件
+        agent_started_event = create_agent_started_event(
+            task_id=state.task_id,
+            agent_slug=agent_config["slug"],
+            agent_name=agent_config["name"]
+        )
+        await websocket_manager.broadcast_event(state.task_id, agent_started_event)
+        logger.info(f"[Phase 1] 智能体开始: {agent_config['slug']} ({agent_config['name']})")
+
+        try:
+            if semaphore:
+                async with semaphore:
+                    result = await _execute_agent_internal(factory, agent_config, state, model_id)
+            else:
+                result = await _execute_agent_internal(factory, agent_config, state, model_id)
+
+            # 发送智能体完成事件
+            if result and result.get("output"):
+                agent_completed_event = create_agent_completed_event(
+                    task_id=state.task_id,
+                    agent_slug=agent_config["slug"],
+                    agent_name=agent_config["name"],
+                    token_usage={}  # 暂无 token 用量
+                )
+                await websocket_manager.broadcast_event(state.task_id, agent_completed_event)
+                logger.info(f"[Phase 1] 智能体完成: {agent_config['slug']}")
+
+            return result
+        except Exception as e:
+            logger.error(f"[Phase 1] 智能体执行失败: {agent_config['slug']}, error={e}")
+            return {"slug": agent_config["slug"], "error": str(e)}
 
     # 并发执行所有智能体
     tasks = [execute_single_agent(agent_config) for agent_config in enabled_agents]

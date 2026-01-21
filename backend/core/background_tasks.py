@@ -25,16 +25,22 @@ async def create_analysis_task_background(
     此函数会在后台异步执行，避免阻塞 HTTP 响应。
     实际执行逻辑委托给 task_manager。
     """
+    logger.info(f"[BackgroundTasks] ============ create_analysis_task_background CALLED ============")
+    logger.info(f"[BackgroundTasks] user_id={user_id}, stock_code={request.stock_code}")
+
     # 延迟导入避免循环依赖
     from modules.trading_agents.manager.task_manager import get_task_manager
 
     task_manager = get_task_manager()
+    logger.info(f"[BackgroundTasks] task_manager obtained: {task_manager}")
 
     # 委托给 task_manager 执行
+    logger.info(f"[BackgroundTasks] calling task_manager.create_task_background...")
     task_id = await task_manager.create_task_background(
         user_id=user_id,
         request=request,
         config=config
     )
+    logger.info(f"[BackgroundTasks] task_id returned: {task_id}")
 
     return task_id

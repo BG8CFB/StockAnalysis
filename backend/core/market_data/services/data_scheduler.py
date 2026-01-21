@@ -1,4 +1,4 @@
-"""
+﻿"""
 市场数据定时任务调度器
 
 实现定时数据同步任务，支持 A 股、美股、港股的数据定时同步。
@@ -299,7 +299,7 @@ class DataScheduler:
             logger.info("Starting A stock daily quote sync")
 
             # 获取所有 A 股股票列表
-            from ...repositories.stock_info import StockInfoRepository
+            from ..repositories.stock_info import StockInfoRepository
             stock_repo = StockInfoRepository()
             # 移除 limit=5000 限制，获取所有股票
             stocks = await stock_repo.get_by_market(MarketType.A_STOCK)
@@ -380,7 +380,7 @@ class DataScheduler:
             logger.info("Starting A stock company info sync")
 
             # 获取所有 A 股股票列表
-            from ...repositories.stock_info import StockInfoRepository
+            from ..repositories.stock_info import StockInfoRepository
             stock_repo = StockInfoRepository()
             stocks = await stock_repo.get_by_market(MarketType.A_STOCK, limit=5000)
 
@@ -411,7 +411,7 @@ class DataScheduler:
             logger.info("Starting A stock financial indicators sync")
 
             # 获取所有 A 股股票列表
-            from ...repositories.stock_info import StockInfoRepository
+            from ..repositories.stock_info import StockInfoRepository
             stock_repo = StockInfoRepository()
             stocks = await stock_repo.get_by_market(MarketType.A_STOCK, limit=1000)
 
@@ -442,7 +442,7 @@ class DataScheduler:
             logger.info("Starting US stock daily quote sync (watchlist only)")
 
             # 获取自选股列表
-            from ...repositories.watchlist import UserWatchlistRepository
+            from ..repositories.watchlist import UserWatchlistRepository
             watchlist_repo = UserWatchlistRepository()
 
             # 获取所有用户的自选股
@@ -518,7 +518,7 @@ class DataScheduler:
             logger.info("Starting HK stock daily quote sync (watchlist only)")
 
             # 获取自选股列表
-            from ...repositories.watchlist import UserWatchlistRepository
+            from ..repositories.watchlist import UserWatchlistRepository
             watchlist_repo = UserWatchlistRepository()
 
             # 获取所有用户的自选股
@@ -610,7 +610,7 @@ class DataScheduler:
             days: 保留天数
         """
         try:
-            from ...repositories.stock_quotes import StockQuoteRepository
+            from ..repositories.stock_quotes import StockQuoteRepository
             quote_repo = StockQuoteRepository()
 
             cutoff_date = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
@@ -631,7 +631,7 @@ class DataScheduler:
             days: 保留天数
         """
         try:
-            from ...repositories.stock_quotes import StockQuoteRepository
+            from ..repositories.stock_quotes import StockQuoteRepository
             quote_repo = StockQuoteRepository()
 
             cutoff_date = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
@@ -652,7 +652,7 @@ class DataScheduler:
             days: 保留天数
         """
         try:
-            from ...repositories.datasource import DataSourceStatusHistoryRepository
+            from ..repositories.datasource import DataSourceStatusHistoryRepository
             history_repo = DataSourceStatusHistoryRepository()
 
             deleted_count = await history_repo.cleanup_old_history(days=days)

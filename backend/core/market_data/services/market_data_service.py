@@ -8,34 +8,25 @@
 """
 
 import logging
-from typing import Any
 from datetime import datetime
+from typing import Any
 
-from core.market_data.models.datasource import (
-    DataSourceType,
-    DataSourceHealthStatus,
-    DataSourceStatus,
-)
-from core.market_data.models.watchlist import UserWatchlist
-from core.market_data.repositories.datasource import (
-    SystemDataSourceRepository,
-    UserDataSourceRepository,
-    DataSourceStatusRepository,
-    DataSourceStatusHistoryRepository,
-)
-from core.market_data.repositories.watchlist import UserWatchlistRepository
-from core.market_data.repositories.stock_info import StockInfoRepository
-from core.market_data.repositories.stock_quotes import StockQuoteRepository
-from core.market_data.sources.base import DataSourceAdapter
-from core.market_data.services.dual_channel_service import (
-    get_dual_channel_service,
-    DualChannelResult,
-    ChannelType
-)
-from core.market_data.models import MarketType
 from core.market_data.managers.source_router import (
     DataSourceRouter,
     get_source_router,
+)
+from core.market_data.models import MarketType
+from core.market_data.repositories.datasource import (
+    DataSourceStatusHistoryRepository,
+    DataSourceStatusRepository,
+    SystemDataSourceRepository,
+    UserDataSourceRepository,
+)
+from core.market_data.repositories.stock_info import StockInfoRepository
+from core.market_data.repositories.stock_quotes import StockQuoteRepository
+from core.market_data.repositories.watchlist import UserWatchlistRepository
+from core.market_data.services.dual_channel_service import (
+    get_dual_channel_service,
 )
 
 logger = logging.getLogger(__name__)
@@ -60,7 +51,7 @@ class MarketDataService:
     async def _storage_callback(self, symbol: str, data_type: str, data: Any) -> None:
         """
         双通道服务的存储回调
-        
+
         Args:
             symbol: 股票代码
             data_type: 数据类型
@@ -83,9 +74,9 @@ class MarketDataService:
                     await self.stock_quotes_repo.upsert_one(
                         filter_query={
                             "symbol": quote_dict.get("symbol"),
-                            "trade_date": quote_dict.get("trade_date")
+                            "trade_date": quote_dict.get("trade_date"),
                         },
-                        data={**quote_dict, "updated_at": datetime.now()}
+                        data={**quote_dict, "updated_at": datetime.now()},
                     )
                 logger.info(f"Stored {len(data)} quotes for {symbol} to database via callback")
         except Exception as e:
@@ -106,10 +97,7 @@ class MarketDataService:
         return self.router
 
     async def get_stock_list_with_fallback(
-        self,
-        market: MarketType,
-        user_id: str | None = None,
-        status: str = "L"
+        self, market: MarketType, user_id: str | None = None, status: str = "L"
     ) -> tuple[list[dict[str, Any]], str]:
         """
         获取股票列表(支持用户配置和降级)
@@ -134,19 +122,18 @@ class MarketDataService:
 
         # 获取系统公共数据源配置
         system_sources = await self.system_source_repo.get_enabled_configs(
-            market=market_str,
-            enabled_only=True
+            market=market_str, enabled_only=True
         )
 
         # 如果有用户ID，获取用户配置
         user_configs = []
         if user_id:
             user_configs = await self.user_source_repo.get_user_configs(
-                user_id=user_id,
-                market=market_str,
-                enabled=True
+                user_id=user_id, market=market_str, enabled=True
             )
-            logger.info(f"User {user_id} has {len(user_configs)} configured data sources for {market_str}")
+            logger.info(
+                f"User {user_id} has {len(user_configs)} configured data sources for {market_str}"
+            )
         else:
             logger.info(f"No user_id provided, using system sources only for {market_str}")
 
@@ -158,24 +145,28 @@ class MarketDataService:
         for config in user_configs:
             source_id = config.get("source_id")
             if source_id and source_id not in added_sources:
-                all_sources.append({
-                    "source_id": source_id,
-                    "priority": config.get("priority", 999),
-                    "config": config.get("config", {}),
-                    "is_user": True
-                })
+                all_sources.append(
+                    {
+                        "source_id": source_id,
+                        "priority": config.get("priority", 999),
+                        "config": config.get("config", {}),
+                        "is_user": True,
+                    }
+                )
                 added_sources.add(source_id)
 
         # 再添加系统数据源（排除已添加的）
         for config in system_sources:
             source_id = config.get("source_id")
             if source_id and source_id not in added_sources:
-                all_sources.append({
-                    "source_id": source_id,
-                    "priority": config.get("priority", 999),
-                    "config": config.get("config", {}),
-                    "is_user": False
-                })
+                all_sources.append(
+                    {
+                        "source_id": source_id,
+                        "priority": config.get("priority", 999),
+                        "config": config.get("config", {}),
+                        "is_user": False,
+                    }
+                )
                 added_sources.add(source_id)
 
         # 按优先级排序
@@ -185,7 +176,10 @@ class MarketDataService:
             logger.warning(f"No available data sources for {market_str}")
             return [], "none"
 
-        logger.info(f"Trying {len(all_sources)} data sources for {market_str}: {[s['source_id'] for s in all_sources]}")
+        source_ids = [s['source_id'] for s in all_sources]
+        logger.info(
+            f"Trying {len(all_sources)} data sources for {market_str}: {source_ids}"
+        )
 
         # 遍历数据源，尝试获取数据
         last_error = None
@@ -197,9 +191,7 @@ class MarketDataService:
 
                 # 调用路由器的 route_to_best_source 方法
                 result = await router.route_to_best_source(
-                    market=market,
-                    method_name="get_stock_list",
-                    status=status
+                    market=market, method_name="get_stock_list", status=status
                 )
 
                 if result:
@@ -223,7 +215,7 @@ class MarketDataService:
         start_date: str | None = None,
         end_date: str | None = None,
         user_id: str | None = None,
-        adjust_type: str | None = None
+        adjust_type: str | None = None,
     ) -> tuple[list[dict[str, Any]], str]:
         """
         获取日线行情(支持用户配置和降级)
@@ -246,13 +238,14 @@ class MarketDataService:
         """
         # 标准化日期格式为 YYYY-MM-DD
         from core.market_data.tools.field_mapper import FieldMapper
+
         if start_date:
             normalized = FieldMapper.normalize_date(start_date)
             if len(normalized) == 8:
                 start_date = f"{normalized[:4]}-{normalized[4:6]}-{normalized[6:]}"
             else:
                 start_date = normalized
-        
+
         if end_date:
             normalized = FieldMapper.normalize_date(end_date)
             if len(normalized) == 8:
@@ -267,7 +260,7 @@ class MarketDataService:
             return [], "unknown"
 
         market_str = market.value
-        
+
         # 准备用户数据源获取函数
         user_source_func = None
         has_user_config = False
@@ -275,11 +268,9 @@ class MarketDataService:
 
         if user_id:
             user_configs = await self.user_source_repo.get_user_configs(
-                user_id=user_id,
-                market=market_str,
-                enabled=True
+                user_id=user_id, market=market_str, enabled=True
             )
-            
+
             if user_configs:
                 has_user_config = True
                 # 使用优先级最高的数据源
@@ -287,7 +278,7 @@ class MarketDataService:
                 # 为了配合 fetch_func 的签名，我们构建一个闭包
                 config = user_configs[0]
                 user_source_id = config.get("source_id", "unknown")
-                
+
                 async def _fetch_user_data():
                     return await self._fetch_from_user_source(
                         symbol=symbol,
@@ -295,23 +286,24 @@ class MarketDataService:
                         user_id=user_id,
                         start_date=start_date,
                         end_date=end_date,
-                        adjust_type=adjust_type
+                        adjust_type=adjust_type,
                     )
+
                 user_source_func = _fetch_user_data
 
         # 准备降级获取函数 (仅查 DB)
         async def _fallback_func():
             # 1. 查 DB
             quotes = await self.stock_quotes_repo.get_quotes(
-                symbol=symbol,
-                start_date=start_date,
-                end_date=end_date
+                symbol=symbol, start_date=start_date, end_date=end_date
             )
             if quotes:
                 return quotes
-            
+
             # DB 无数据，返回空列表（根据文档，用户未配置私有源时只能读库，不能触发公共源实时抓取）
-            logger.info(f"No data in database for {symbol}, and no user source configured. Returning empty.")
+            logger.info(
+                f"No data in database for {symbol}, and no user source configured. Returning empty."
+            )
             return []
 
         # 执行双通道获取 (如果配置了用户源) 或 直接降级
@@ -321,7 +313,7 @@ class MarketDataService:
                 symbol=symbol,
                 data_type="daily_quote",
                 fetch_func=user_source_func,
-                fallback_func=_fallback_func
+                fallback_func=_fallback_func,
             )
             return result, source
         else:
@@ -343,20 +335,20 @@ class MarketDataService:
         if not symbol:
             return None
 
-        if symbol.endswith(('.SH', '.SZ')):
+        if symbol.endswith((".SH", ".SZ", ".SSE", ".SZSE")):
             return MarketType.A_STOCK
-        elif symbol.endswith('.US'):
+        elif symbol.endswith(".US"):
             return MarketType.US_STOCK
-        elif symbol.endswith('.HK'):
+        elif symbol.endswith(".HK"):
             return MarketType.HK_STOCK
-        elif '.' in symbol:
+        elif "." in symbol:
             # 其他格式，尝试从后缀判断
-            suffix = symbol.split('.')[-1].upper()
-            if suffix in ['SH', 'SZ']:
+            suffix = symbol.split(".")[-1].upper()
+            if suffix in ["SH", "SZ", "SSE", "SZSE"]:
                 return MarketType.A_STOCK
-            elif suffix == 'US':
+            elif suffix == "US":
                 return MarketType.US_STOCK
-            elif suffix == 'HK':
+            elif suffix == "HK":
                 return MarketType.HK_STOCK
 
         # 无法推断，默认为A股
@@ -369,7 +361,7 @@ class MarketDataService:
         user_id: str,
         start_date: str | None = None,
         end_date: str | None = None,
-        adjust_type: str | None = None
+        adjust_type: str | None = None,
     ) -> list[dict[str, Any]]:
         """
         从用户配置的数据源获取数据
@@ -390,7 +382,11 @@ class MarketDataService:
             config = await self.user_source_repo.get_config(
                 user_id=user_id,
                 source_id=source_id,
-                market=self._infer_market_from_symbol(symbol).value if self._infer_market_from_symbol(symbol) else "A_STOCK"
+                market=(
+                    self._infer_market_from_symbol(symbol).value
+                    if self._infer_market_from_symbol(symbol)
+                    else "A_STOCK"
+                ),
             )
             user_config = config.get("config", {}) if config else {}
         except Exception:
@@ -399,9 +395,11 @@ class MarketDataService:
         # 延迟导入避免循环依赖
         if source_id == "tushare_pro":
             from core.market_data.sources.a_stock.tushare_adapter import TuShareAdapter
+
             adapter = TuShareAdapter(config=user_config or {})
         elif source_id == "alpha_vantage":
             from core.market_data.sources.us_stock.alphavantage_adapter import AlphaVantageAdapter
+
             adapter = AlphaVantageAdapter(config=user_config or {})
         else:
             logger.warning(f"Unsupported user source: {source_id}")
@@ -409,10 +407,7 @@ class MarketDataService:
 
         try:
             result = await adapter.get_daily_quotes(
-                symbol=symbol,
-                start_date=start_date,
-                end_date=end_date,
-                adjust_type=adjust_type
+                symbol=symbol, start_date=start_date, end_date=end_date, adjust_type=adjust_type
             )
 
             # 转换为字典列表

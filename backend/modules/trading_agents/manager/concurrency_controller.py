@@ -42,6 +42,37 @@ class ConcurrencyController:
         # 事件缓存: {model_id: asyncio.Event}
         self._event_cache: Dict[str, asyncio.Event] = {}
 
+    async def cleanup_on_startup(self) -> None:
+        """
+        启动时清理并发控制状态
+
+        清除所有 Redis 并发控制相关的 Key，防止服务重启后残留状态导致死锁。
+        """
+        try:
+            redis_client = redis_manager.get_client()
+            
+            # 1. 清理模型活跃任务
+            active_keys = await redis_client.keys("concurrency:model:*:active")
+            if active_keys:
+                await redis_client.delete(*active_keys)
+                logger.info(f"[并发控制] 已清理 {len(active_keys)} 个模型活跃任务 Key")
+
+            # 2. 清理等待队列
+            waiting_keys = await redis_client.keys("concurrency:model:*:waiting")
+            if waiting_keys:
+                await redis_client.delete(*waiting_keys)
+                logger.info(f"[并发控制] 已清理 {len(waiting_keys)} 个等待队列 Key")
+
+            # 3. 清理用户批量任务
+            batch_keys = await redis_client.keys("concurrency:user:*:batch_active")
+            if batch_keys:
+                await redis_client.delete(*batch_keys)
+                logger.info(f"[并发控制] 已清理 {len(batch_keys)} 个用户批量任务 Key")
+
+            logger.info("[并发控制] 启动清理完成")
+        except Exception as e:
+            logger.error(f"[并发控制] 启动清理失败: {e}")
+
     async def request_execution(
         self,
         model_id: str,

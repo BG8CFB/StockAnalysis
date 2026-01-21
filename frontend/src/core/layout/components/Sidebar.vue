@@ -11,16 +11,21 @@
     >
       <div class="logo-wrapper">
         <div class="logo-icon">
-          <el-icon :size="24">
+          <el-icon :size="20">
             <DataAnalysis />
           </el-icon>
         </div>
-        <h1
+        <div
           v-if="!collapsed"
-          class="logo-text"
+          class="logo-text-group"
         >
-          股票分析
-        </h1>
+          <h1 class="logo-text">
+            股票分析
+          </h1>
+          <p class="logo-subtitle">
+            Smart Trading
+          </p>
+        </div>
       </div>
     </div>
 
@@ -263,18 +268,31 @@ async function handleLogout() {
 </script>
 
 <style scoped>
-/* Theme Variables - Dark Modern SaaS */
+/* ============================================
+   一级侧边栏 - 精致深色主题设计
+   Primary Sidebar - Refined Dark Theme
+   ============================================ */
+
+/* Theme Variables */
 .sidebar-container {
-  --sb-bg: #111827; /* Gray 900 */
-  --sb-text: #9ca3af; /* Gray 400 */
-  --sb-text-hover: #f3f4f6; /* Gray 100 */
-  --sb-active-bg: #1f2937; /* Gray 800 */
-  --sb-active-text: #60a5fa; /* Blue 400 */
-  --sb-border: #1f2937;
-  --sb-header-height: 64px;
-  
+  /* 浅色配色 - 与二级侧边栏（白色）协调但保持轻微层级 */
+  --sb-bg: #f1f5f9; /* Slate 100 - 浅灰蓝 */
+  --sb-bg-submenu: rgba(0, 0, 0, 0.03);
+  --sb-text: #64748b; /* Slate 500 */
+  --sb-text-hover: #334155; /* Slate 700 */
+  --sb-text-active: #2563eb; /* Blue 600 */
+  --sb-border: #e2e8f0; /* Slate 200 */
+  --sb-border-glow: rgba(59, 130, 246, 0.2);
+  --sb-active-bg: #dbeafe; /* Blue 100 */
+  --sb-hover-bg: #e2e8f0; /* Slate 200 */
+  --sb-header-height: 72px;
+  --sb-primary: #2563eb; /* Blue 600 */
+  --sb-primary-glow: rgba(37, 99, 235, 0.3);
+  --sb-accent: #7c3aed; /* Violet 600 */
+
   background-color: var(--sb-bg);
   border-right: 1px solid var(--sb-border);
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.04);
   display: flex;
   flex-direction: column;
   height: 100vh;
@@ -283,219 +301,259 @@ async function handleLogout() {
   user-select: none;
 }
 
-/* Header / Logo */
+/* ============================================
+   Header / Logo - 头部品牌区
+   ============================================ */
 .sidebar-header {
   height: var(--sb-header-height);
   display: flex;
   align-items: center;
   padding: 0 20px;
+  background: linear-gradient(135deg, #dbeafe 0%, #e0e7ff 100%);
   border-bottom: 1px solid var(--sb-border);
   cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 头部背景装饰 - 微妙的渐变光晕 */
+.sidebar-header::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -20%;
+  width: 200px;
+  height: 200px;
+  background: radial-gradient(circle, var(--sb-primary-glow) 0%, transparent 70%);
+  opacity: 0.15;
+  pointer-events: none;
 }
 
 .logo-wrapper {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 12px;
   width: 100%;
+  position: relative;
+  z-index: 1;
 }
 
+/* Logo 图标 - 渐变背景 + 发光效果 */
 .logo-icon {
-  width: 32px;
-  height: 32px;
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-  border-radius: 8px;
+  width: 38px;
+  height: 38px;
+  background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
   flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+  animation: logo-pulse 3s ease-in-out infinite;
 }
 
-/* 优化图标居中 - 保持自然居中效果 */
+/* Logo 呼吸动画 */
+@keyframes logo-pulse {
+  0%, 100% {
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+  }
+  50% {
+    box-shadow: 0 4px 18px rgba(37, 99, 235, 0.5);
+  }
+}
+
 .logo-icon :deep(.el-icon) {
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
+/* Logo 文字组 */
+.logo-text-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .logo-text {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 700;
-  color: #f9fafb;
+  color: #1e293b; /* Slate 800 */
   margin: 0;
   letter-spacing: 0.5px;
   white-space: nowrap;
+  line-height: 1.2;
 }
 
-/* Scroll Area */
+/* 副标题 - 英文 */
+.logo-subtitle {
+  font-size: 10px;
+  color: #64748b; /* Slate 500 */
+  margin: 0;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+/* ============================================
+   Scroll Area - 滚动区域
+   ============================================ */
 .sidebar-scroll-area {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 16px 12px;
-  /* 隐藏滚动条但保持可滚动功能 */
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE 10+ */
+  padding: 20px 12px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
-/* Chrome, Safari, Edge - 隐藏滚动条 */
 .sidebar-scroll-area::-webkit-scrollbar {
   display: none;
   width: 0;
   height: 0;
 }
 
-/* Menu Reset & Base Styles */
+/* ============================================
+   Menu Reset - 菜单基础样式重置
+   ============================================ */
 .custom-menu {
   border: none !important;
   background: transparent !important;
   --el-menu-bg-color: transparent;
   --el-menu-text-color: var(--sb-text);
   --el-menu-hover-bg-color: transparent;
-  --el-menu-active-color: var(--sb-active-text);
+  --el-menu-active-color: var(--sb-text-active);
 }
 
+/* ============================================
+   Menu Label - 分组标签
+   ============================================ */
 .menu-label {
-  font-size: 11px;
+  position: relative;
+  font-size: 10px;
   text-transform: uppercase;
-  color: #4b5563; /* Gray 600 */
-  font-weight: 600;
-  margin: 8px 12px 8px;
-  letter-spacing: 0.05em;
+  color: #94a3b8; /* Slate 400 */
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  margin: 20px 12px 10px;
+  padding-left: 12px;
+  display: flex;
+  align-items: center;
+}
+
+/* 分组标签左侧装饰条 - 渐变 + 发光 */
+.menu-label::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  width: 2px;
+  height: 10px;
+  background: linear-gradient(to bottom, #2563eb, #7c3aed);
+  border-radius: 2px;
+  box-shadow: 0 0 6px rgba(37, 99, 235, 0.3);
 }
 
 .mt-4 { margin-top: 24px; }
 
-/* Menu Items */
-:deep(.el-menu-item), :deep(.el-sub-menu__title) {
-  height: 40px;
-  line-height: 40px;
+/* ============================================
+   Menu Items - 一级菜单项
+   ============================================ */
+:deep(.el-menu-item),
+:deep(.el-sub-menu__title) {
+  height: 42px;
+  line-height: 42px;
   border-radius: 6px;
   margin-bottom: 4px;
   color: var(--sb-text);
-  transition: all 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border-left: 3px solid transparent;
+  position: relative;
 }
 
-:deep(.el-menu-item:hover), :deep(.el-sub-menu__title:hover) {
-  background-color: rgba(255,255,255,0.05) !important;
+/* Hover 状态 */
+:deep(.el-menu-item:hover),
+:deep(.el-sub-menu__title:hover) {
+  background-color: var(--sb-hover-bg) !important;
   color: var(--sb-text-hover);
+  transform: translateX(1px);
 }
 
+/* Active 状态 - 左边框 + 发光 */
 :deep(.el-menu-item.is-active) {
   background-color: var(--sb-active-bg) !important;
-  color: var(--sb-active-text) !important;
-  font-weight: 500;
+  color: var(--sb-text-active) !important;
+  font-weight: 600;
+  border-left-color: var(--sb-primary);
+  box-shadow: 0 0 12px rgba(37, 99, 235, 0.15);
+}
+
+/* 子菜单展开状态 */
+:deep(.el-sub-menu.is-opened > .el-sub-menu__title) {
+  background-color: rgba(37, 99, 235, 0.06) !important;
+  color: var(--sb-text-hover);
 }
 
 /* Icons */
 :deep(.el-icon) {
   font-size: 18px;
-  margin-right: 10px;
+  margin-right: 12px;
   color: inherit;
-  transition: none;
 }
 
-/* Fix: Reduce size of expansion arrow */
+/* 展开箭头 */
 :deep(.el-sub-menu__icon-arrow) {
   font-size: 12px !important;
   margin-right: 0 !important;
-  width: auto;
+  color: inherit;
+  transition: transform 0.2s;
 }
 
-/* Submenu Styles */
+:deep(.el-sub-menu.is-opened .el-sub-menu__icon-arrow) {
+  transform: rotate(180deg);
+}
+
+/* ============================================
+   Submenu - 二级菜单
+   ============================================ */
 :deep(.el-sub-menu .el-menu) {
-  background: transparent !important;
-  padding-left: 0;
+  background: var(--sb-bg-submenu) !important;
+  border-radius: 6px;
+  padding: 8px 0;
+  margin-top: 4px;
 }
 
-/* Level 2 Items */
+/* Level 2 Items - 二级菜单项 */
 :deep(.el-sub-menu .el-menu-item) {
   height: 36px;
   line-height: 36px;
   font-size: 13px;
-  padding-left: 44px !important; /* Align with text of parent */
+  padding-left: 48px !important;
+  border-left-width: 2px;
+  margin-bottom: 2px;
 }
 
-/* Decoration for Level 2 */
+/* 二级菜单装饰圆点 */
 .sub-dot {
-  width: 4px;
-  height: 4px;
+  width: 3px;
+  height: 3px;
   border-radius: 50%;
-  background-color: #4b5563;
+  background-color: #94a3b8; /* Slate 400 */
   margin-right: 12px;
-  transition: background 0.2s;
+  transition: all 0.2s;
+  display: inline-block;
 }
 
 :deep(.el-menu-item.is-active) .sub-dot {
-  background-color: var(--sb-active-text);
-  box-shadow: 0 0 8px rgba(96, 165, 250, 0.5);
+  background-color: var(--sb-text-active);
+  box-shadow: 0 0 6px rgba(37, 99, 235, 0.4);
 }
 
-/* Menu Divider */
-.menu-divider {
-  height: 1px;
-  background-color: #374151; /* Gray 700 */
-  margin: 12px 0;
-  opacity: 0.6;
-}
-
-/* Menu Section Label */
-.menu-section-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  color: #6b7280; /* Gray 500 */
-  font-weight: 600;
-  padding: 8px 12px 4px 44px;
-  letter-spacing: 0.05em;
-}
-
-/* Level 3 (Nested Submenu) */
-.nested-submenu :deep(.el-sub-menu__title) {
-  padding-left: 44px !important;
-  height: 36px;
-  line-height: 36px;
-  font-size: 13px;
-}
-.group-dot { margin-right: 12px; }
-
-/* Level 3 Items */
-.nested-submenu :deep(.el-menu-item) {
-  padding-left: 68px !important;
-  position: relative;
-}
-
-/* Guide Lines for Deep Nesting */
-.line-guide {
-  position: absolute;
-  left: 54px;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background-color: #374151;
-  opacity: 0.5;
-}
-
-/* Collapsed State Tweaks */
-.collapsed .logo-text,
-.collapsed .menu-label,
-.collapsed .user-details,
-.collapsed .logout-icon {
-  display: none;
-}
-
-.collapsed :deep(.el-menu-item), 
-.collapsed :deep(.el-sub-menu__title) {
-  padding: 0 !important;
-  justify-content: center;
-}
-.collapsed :deep(.el-icon) { margin-right: 0; }
-.collapsed :deep(.el-sub-menu__icon-arrow) { display: none; }
-
-/* Footer */
+/* ============================================
+   Footer - 底部用户卡片
+   ============================================ */
 .sidebar-footer {
-  padding: 16px;
+  padding: 12px;
   border-top: 1px solid var(--sb-border);
 }
 
@@ -503,25 +561,91 @@ async function handleLogout() {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px;
-  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+  border: 1px solid var(--sb-border);
+  border-radius: 10px;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: all 0.2s;
 }
-.user-card:hover { background-color: rgba(255,255,255,0.05); }
+
+.user-card:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.user-avatar {
+  border: 2px solid #e2e8f0;
+  box-shadow: 0 0 0 0 !important;
+}
 
 .user-details {
   flex: 1;
   overflow: hidden;
 }
+
 .user-name {
-  color: #f3f4f6;
+  color: #1e293b; /* Slate 800 */
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   white-space: nowrap;
 }
+
 .user-role {
-  color: #6b7280;
-  font-size: 12px;
+  font-size: 10px;
+  color: #2563eb; /* Blue 600 */
+  background: #dbeafe; /* Blue 100 */
+  border: 1px solid #bfdbfe; /* Blue 200 */
+  padding: 2px 8px;
+  border-radius: 8px;
+  display: inline-block;
+  margin-top: 2px;
+}
+
+.logout-icon {
+  color: #94a3b8; /* Slate 400 */
+  transition: all 0.2s;
+}
+
+.logout-icon:hover {
+  color: #2563eb; /* Blue 600 */
+}
+
+/* ============================================
+   Collapsed State - 折叠状态
+   ============================================ */
+.collapsed .logo-text-group,
+.collapsed .menu-label,
+.collapsed .user-details,
+.collapsed .logout-icon {
+  display: none;
+}
+
+.collapsed :deep(.el-menu-item),
+.collapsed :deep(.el-sub-menu__title) {
+  padding: 0 !important;
+  justify-content: center;
+}
+
+.collapsed :deep(.el-icon) {
+  margin-right: 0;
+}
+
+.collapsed :deep(.el-sub-menu__icon-arrow) {
+  display: none;
+}
+
+.collapsed .logo-wrapper {
+  justify-content: center;
+}
+
+.collapsed .user-card {
+  justify-content: center;
+  padding: 8px;
+}
+
+.collapsed .user-avatar {
+  margin: 0;
 }
 </style>

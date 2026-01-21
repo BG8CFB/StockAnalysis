@@ -10,7 +10,7 @@ from typing import Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
 from pydantic import BaseModel
 
-from core.auth.dependencies import get_current_user_from_query
+from core.auth.dependencies import verify_token_only
 from modules.trading_agents.api.websocket_manager import WebSocketManager
 
 logger = logging.getLogger(__name__)
@@ -46,11 +46,12 @@ async def websocket_task_updates(
     """
     # 验证用户认证
     try:
-        user = await get_current_user_from_query(token=token)
+        user = await verify_token_only(token)
     except Exception as e:
         logger.warning(f"WebSocket 认证失败: {e}")
         await websocket.close(code=1008, reason="认证失败")
         return
+
     if not user:
         await websocket.close(code=1008, reason="认证失败")
         return

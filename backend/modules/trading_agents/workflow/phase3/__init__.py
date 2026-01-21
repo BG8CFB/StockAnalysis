@@ -33,6 +33,11 @@ from modules.trading_agents.models.state import (
     TaskStatus,
 )
 from modules.trading_agents.config import get_enabled_agents
+from modules.trading_agents.workflow.events import (
+    create_phase_agents_event,
+    create_agent_started_event,
+    create_agent_completed_event,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +64,9 @@ async def execute_phase3(
     """
     import asyncio
 
+    # 获取 WebSocket 管理器
+    from modules.trading_agents.api.websocket_manager import websocket_manager
+
     logger.info(f"[Phase 3] 开始执行, 任务ID: {state.task_id}")
 
     # 更新状态
@@ -74,6 +82,18 @@ async def execute_phase3(
 
     # 获取智能体配置
     agents_config = get_enabled_agents(config, "phase3")
+
+    # 发送阶段智能体列表事件
+    phase_agents_event = create_phase_agents_event(
+        task_id=state.task_id,
+        phase=3,
+        phase_name="策略风格与风险评估",
+        execution_mode="hybrid",  # 混合模式（策略师并发，风控串行）
+        max_concurrency=3,  # 3个策略师并发
+        agents=agents_config
+    )
+    await websocket_manager.broadcast_event(state.task_id, phase_agents_event)
+    logger.info(f"[Phase 3] 已发送智能体列表事件, 智能体数量: {len(agents_config)}")
 
     # 创建智能体实例
     debators = []
@@ -109,6 +129,14 @@ async def execute_phase3(
     )
 
     # 并发执行所有策略分析师
+    # 发送策略分析师开始事件
+    for debator in debators:
+        await websocket_manager.broadcast_event(state.task_id, create_agent_started_event(
+            task_id=state.task_id,
+            agent_slug=debator.slug,
+            agent_name=debator.name
+        ))
+
     strategy_tasks = [
         debator.analyze(state, state.investment_decision)
         for debator in debators
@@ -130,9 +158,31 @@ async def execute_phase3(
                 "content": result["output"],
                 "timestamp": datetime.utcnow().isoformat()
             })
+            # 发送策略分析师完成事件
+            await websocket_manager.broadcast_event(state.task_id, create_agent_completed_event(
+                task_id=state.task_id,
+                agent_slug=result["slug"],
+                agent_name=result["name"],
+                token_usage={}  # 暂无 token 用量
+            ))
 
     # 执行风险管理委员会主席（串行，等待所有策略分析师完成）
+    # 发送风险管理委员会主席开始事件
+    await websocket_manager.broadcast_event(state.task_id, create_agent_started_event(
+        task_id=state.task_id,
+        agent_slug="risk-manager",
+        agent_name="风险管理委员会主席"
+    ))
     manager_result = await risk_manager.assess(state, strategy_reports, state.investment_decision)
+
+    # 发送风险管理委员会主席完成事件
+    if manager_result and manager_result.get("output"):
+        await websocket_manager.broadcast_event(state.task_id, create_agent_completed_event(
+            task_id=state.task_id,
+            agent_slug="risk-manager",
+            agent_name="风险管理委员会主席",
+            token_usage={}  # 暂无 token 用量
+        ))
 
     # 更新状态
     if manager_result.get("decision"):

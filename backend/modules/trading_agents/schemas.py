@@ -265,6 +265,19 @@ class AnalysisTaskResponse(BaseModel):
     # 批量任务关联
     batch_id: Optional[str]
 
+    @field_serializer('created_at', 'started_at', 'completed_at', 'expired_at')
+    def serialize_datetime(self, dt: Optional[datetime]) -> Optional[str]:
+        """序列化 datetime 为 UTC 格式字符串（带 'Z' 后缀）"""
+        if dt is None:
+            return None
+        # 确保 datetime 是 naive 的（无时区信息），然后添加 'Z' 表示 UTC
+        if dt.tzinfo is not None:
+            # 如果有时区信息，转换为 UTC
+            return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+        else:
+            # naive datetime 被当作 UTC 处理
+            return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+
     @classmethod
     def from_db(cls, data: Dict[str, Any]) -> "AnalysisTaskResponse":
         """从数据库数据创建响应对象"""

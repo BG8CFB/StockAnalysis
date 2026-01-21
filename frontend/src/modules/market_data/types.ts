@@ -125,13 +125,15 @@ export interface DataSourceInfo {
 }
 
 /**
- * 数据类型状态项（修改后：主备数据源分离）
+ * 数据类型状态项（返回实际使用的数据源）
  */
 export interface DataTypeStatus {
   data_type: string
   data_type_name: string
-  primary_source: DataSourceInfo
-  fallback_source?: DataSourceInfo
+  current_source: DataSourceInfo  // 当前实际使用的数据源
+  is_fallback: boolean  // 是否已降级到备用数据源
+  can_retry: boolean  // 是否可以重试主数据源
+  fallback_reason: string | null  // 降级原因
 }
 
 /**

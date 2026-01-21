@@ -131,137 +131,176 @@
     <el-dialog
       v-model="showAgentDialog"
       :title="dialogTitle"
-      width="700px"
+      width="960px"
       @close="handleAgentDialogClose"
+      class="agent-edit-dialog"
     >
       <el-form
         ref="agentFormRef"
         :model="agentForm"
         :rules="agentRules"
-        label-width="120px"
+        label-width="80px"
+        class="agent-form"
       >
         <!-- 第一阶段：允许修改所有字段 -->
         <template v-if="isPhase1">
-          <el-form-item
-            label="智能体名称"
-            prop="name"
-          >
-            <el-input
-              v-model="agentForm.name"
-              placeholder="例如: 技术分析师"
-            />
-          </el-form-item>
+          <!-- 两列布局 -->
+          <div class="dialog-two-column">
+            <!-- 左列：基本信息 + 角色定义 -->
+            <div class="dialog-left">
+              <el-form-item label="名称" prop="name">
+                <el-input v-model="agentForm.name" placeholder="技术分析师" clearable />
+              </el-form-item>
 
-          <el-form-item
-            label="唯一标识符"
-            prop="slug"
-          >
-            <el-input
-              v-model="agentForm.slug"
-              placeholder="例如: technical_analyst"
-              :disabled="isEditAgent"
-            />
-            <span class="form-tip">只能包含字母、数字和下划线</span>
-          </el-form-item>
+              <el-form-item label="标识符" prop="slug">
+                <el-input
+                  v-model="agentForm.slug"
+                  placeholder="technical_analyst"
+                  :disabled="isEditAgent"
+                  clearable
+                />
+              </el-form-item>
 
-          <el-form-item
-            label="角色定义"
-            prop="role_definition"
-          >
-            <el-input
-              v-model="agentForm.role_definition"
-              type="textarea"
-              :rows="6"
-              placeholder="你是一位专业的股票分析师，负责..."
-            />
-            <span class="form-tip">系统提示词，定义智能体的角色和职责</span>
-          </el-form-item>
+              <el-form-item label="使用场景">
+                <el-input
+                  v-model="agentForm.when_to_use"
+                  type="textarea"
+                  :rows="2"
+                  placeholder="用于分析股票的技术指标..."
+                  maxlength="100"
+                  show-word-limit
+                />
+              </el-form-item>
 
-          <el-form-item label="使用场景">
-            <el-input
-              v-model="agentForm.when_to_use"
-              type="textarea"
-              :rows="2"
-              placeholder="用于分析股票的技术指标..."
-            />
-          </el-form-item>
+              <el-divider content-position="left">角色定义</el-divider>
 
-          <el-form-item label="启用的 MCP 服务器">
-            <el-select
-              v-model="agentForm.enabled_mcp_servers"
-              multiple
-              placeholder="选择 MCP 服务器（未选择时使用所有已启用的服务器）"
-              style="width: 100%"
-            >
-              <el-option
-                v-for="server in serverOptions"
-                :key="server.name"
-                :label="server.name"
-                :value="server.name"
-              />
-            </el-select>
-            <span class="form-tip">该智能体可使用的 MCP 服务器。未选择时，可使用所有已启用的 MCP 服务器。</span>
-          </el-form-item>
+              <el-form-item label="系统提示词" prop="role_definition" class="full-width-item">
+                <el-input
+                  v-model="agentForm.role_definition"
+                  type="textarea"
+                  :rows="14"
+                  placeholder="你是一位专业的股票分析师，负责..."
+                  show-word-limit
+                />
+              </el-form-item>
+            </div>
 
-          <el-form-item label="启用状态">
-            <el-switch v-model="agentForm.enabled" />
-          </el-form-item>
+            <!-- 右列：工具配置 -->
+            <div class="dialog-right">
+              <div class="right-section-title">
+                <span>工具配置</span>
+              </div>
+
+              <!-- MCP 服务器 -->
+              <div class="right-section-block">
+                <div class="section-header">MCP 服务器</div>
+                <div class="mcp-server-list">
+                  <div
+                    v-for="server in serverOptions"
+                    :key="server.name"
+                    class="mcp-server-item"
+                    :class="{ 'is-selected': agentForm.enabled_mcp_servers.includes(server.name) }"
+                    @click="toggleMCPServer(server.name)"
+                  >
+                    <div class="server-main">
+                      <el-checkbox
+                        :model-value="agentForm.enabled_mcp_servers.includes(server.name)"
+                        @click.stop.native="toggleMCPServer(server.name)"
+                      />
+                      <div class="server-info">
+                        <div class="server-name">{{ server.name }}</div>
+                        <div class="server-desc">{{ getServerDescription(server.name) }}</div>
+                      </div>
+                    </div>
+                    <el-tag v-if="server.enabled" size="small" type="success">已启用</el-tag>
+                    <el-tag v-else size="small" type="info">未启用</el-tag>
+                  </div>
+                </div>
+                <div class="section-tip">未选择时使用所有已启用的服务器</div>
+              </div>
+
+              <!-- 本地工具 -->
+              <div class="right-section-block">
+                <div class="section-header">本地工具</div>
+                <div class="local-tools-list">
+                  <el-checkbox-group v-model="selectedLocalTools" class="tools-checkbox-list">
+                    <el-checkbox
+                      v-for="tool in localToolOptions"
+                      :key="tool.key"
+                      :label="tool.key"
+                      :disabled="!tool.available"
+                    >
+                      <div class="tool-checkbox-label">
+                        <span class="tool-name">{{ tool.name }}</span>
+                        <span v-if="!tool.available" class="tool-pending">（待实现）</span>
+                      </div>
+                    </el-checkbox>
+                  </el-checkbox-group>
+                </div>
+                <div class="section-tip">预加载到上下文的数据类型</div>
+              </div>
+
+              <!-- 本地工具参数 -->
+              <div v-if="selectedLocalTools.length > 0" class="right-section-block params-block">
+                <div class="section-header">参数配置</div>
+                <div class="tools-params-compact">
+                  <div v-if="selectedLocalTools.includes('news')" class="param-row">
+                    <span class="param-label">新闻</span>
+                    <el-input-number v-model="localToolParams.news.limit" :min="5" :max="100" :step="5" size="small" />
+                    <span class="param-sep">条</span>
+                    <el-input-number v-model="localToolParams.news.days" :min="1" :max="90" size="small" />
+                    <span class="param-sep">天内</span>
+                  </div>
+                  <div v-if="selectedLocalTools.includes('quotes')" class="param-row">
+                    <span class="param-label">行情</span>
+                    <el-input-number v-model="localToolParams.quotes.days" :min="7" :max="365" size="small" />
+                    <span class="param-sep">天</span>
+                    <el-checkbox v-model="localToolParams.quotes.include_realtime" size="small">含实时</el-checkbox>
+                  </div>
+                  <div v-if="selectedLocalTools.includes('financials')" class="param-row">
+                    <span class="param-label">财报</span>
+                    <el-input-number v-model="localToolParams.financials.quarters" :min="1" :max="12" size="small" />
+                    <span class="param-sep">个季度</span>
+                  </div>
+                  <div v-if="selectedLocalTools.includes('indicators')" class="param-row">
+                    <span class="param-label">指标</span>
+                    <el-input-number v-model="localToolParams.indicators.periods" :min="1" :max="12" size="small" />
+                    <span class="param-sep">个季度</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </template>
 
         <!-- 第二、三、四阶段：只能修改提示词 -->
         <template v-else>
           <el-alert
-            title="提示"
+            title="只能修改角色定义"
             type="info"
             :closable="false"
             style="margin-bottom: 16px"
-          >
-            本阶段只能修改智能体的提示词（角色定义），其他字段不可修改。
-          </el-alert>
+          />
 
-          <el-form-item label="智能体名称">
-            <el-input
-              v-model="agentForm.name"
-              disabled
-            />
+          <el-form-item label="智能体">
+            <span>{{ agentForm.name }} ({{ agentForm.slug }})</span>
           </el-form-item>
 
-          <el-form-item label="唯一标识符">
-            <el-input
-              v-model="agentForm.slug"
-              disabled
-            />
-          </el-form-item>
-
-          <el-form-item
-            label="角色定义"
-            prop="role_definition"
-          >
+          <el-form-item label="角色定义" prop="role_definition">
             <el-input
               v-model="agentForm.role_definition"
               type="textarea"
-              :rows="10"
+              :rows="12"
               placeholder="你是一位专业的股票分析师，负责..."
+              show-word-limit
             />
-            <span class="form-tip">系统提示词，定义智能体的角色和职责</span>
-          </el-form-item>
-
-          <el-form-item label="启用状态">
-            <el-switch v-model="agentForm.enabled" />
-            <span class="form-tip">可以启用或禁用此智能体</span>
           </el-form-item>
         </template>
       </el-form>
 
       <template #footer>
-        <el-button @click="showAgentDialog = false">
-          取消
-        </el-button>
-        <el-button
-          type="primary"
-          :loading="saving"
-          @click="handleSaveAgent"
-        >
+        <el-button @click="showAgentDialog = false">取消</el-button>
+        <el-button type="primary" :loading="saving" @click="handleSaveAgent">
           保存
         </el-button>
       </template>
@@ -286,6 +325,9 @@ import {
   Document,
   Monitor,
   Wallet,
+  Setting,
+  News,
+  TrendCharts as ChartIcon,
 } from '@element-plus/icons-vue'
 import type { AgentConfig, Phase1Config, Phase2Config, Phase3Config, Phase4Config, AIModelConfig, MCPServerConfig } from '../types'
 
@@ -401,6 +443,32 @@ const agentRules = {
   // role_definition 不再是必填字段（管理员界面可能需要，但在前端表单中不强制）
 }
 
+// ==================== 本地工具配置 ====================
+// 选中的本地工具类型
+const selectedLocalTools = ref<string[]>([])
+
+// 本地工具参数配置
+const localToolParams = reactive({
+  news: { limit: 20, days: 7 },
+  quotes: { days: 30, include_realtime: true },
+  financials: { quarters: 4 },
+  indicators: { periods: 4 },
+  technical: { days: 30, indicators: ['MA', 'MACD', 'KDJ', 'RSI', 'BOLL'] },
+  company: {},
+  macro: {},
+})
+
+// 本地工具选项
+const localToolOptions = [
+  { key: 'news', name: '新闻信息', desc: '个股相关新闻和市场快讯', icon: Document, available: true },
+  { key: 'quotes', name: '行情数据', desc: '历史行情和实时报价', icon: ChartIcon, available: true },
+  { key: 'financials', name: '财务报表', desc: '利润表、资产负债表、现金流量表', icon: Money, available: true },
+  { key: 'indicators', name: '财务指标', desc: 'ROE、资产负债率等关键指标', icon: DataAnalysis, available: true },
+  { key: 'company', name: '公司信息', desc: '公司基本信息和业务描述', icon: InfoFilled, available: true },
+  { key: 'technical', name: '技术指标', desc: 'MA、MACD、KDJ、RSI、BOLL', icon: TrendCharts, available: false },
+  { key: 'macro', name: '宏观经济', desc: 'CPI、PMI、GDP 等宏观数据', icon: Monitor, available: false },
+]
+
 // 保存状态
 const saving = ref(false)
 
@@ -497,6 +565,32 @@ async function handleSaveAgent() {
 // 关闭智能体对话框
 function handleAgentDialogClose() {
   agentFormRef.value?.resetFields()
+}
+
+// MCP 服务器相关
+function toggleMCPServer(serverName: string) {
+  const index = agentForm.enabled_mcp_servers.indexOf(serverName)
+  if ( index > -1) {
+    agentForm.enabled_mcp_servers.splice(index, 1)
+  } else {
+    agentForm.enabled_mcp_servers.push(serverName)
+  }
+}
+
+function getServerDescription(serverName: string): string {
+  const descriptions: Record<string, string> = {
+    'finnhub': '美股金融数据，提供实时行情、财务数据、新闻',
+    'alpha_vantage': '全球股票、外汇、加密货币数据和技术指标',
+    'polygon': '美股实时数据和Historical数据，机构级质量',
+    'yahoo-finance': '全球股票、ETF、期权数据，覆盖面广',
+    'tushare': 'A股数据，提供行情、财务、宏观经济数据',
+    'akshare': '中国金融市场数据，包含股票、基金、期货',
+    'eastmoney': '东方财富数据，A股行情、财务、研报',
+    'baostock': 'A股证券历史数据，适合回测研究',
+    'news-api': '全球新闻和舆情数据，支持多语言',
+    'crypto-api': '加密货币实时行情和交易数据',
+  }
+  return descriptions[serverName] || 'MCP 服务器工具'
 }
 </script>
 
@@ -702,54 +796,316 @@ function handleAgentDialogClose() {
 }
 
 :deep(.el-dialog__header) {
-  padding: 20px 24px 16px;
+  padding: 18px 24px 12px;
   border-bottom: 1px solid #e4e7ed;
 }
 
 :deep(.el-dialog__title) {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   color: #303133;
 }
 
 :deep(.el-dialog__body) {
-  padding: 24px;
+  padding: 20px 24px;
 }
 
 :deep(.el-dialog__footer) {
-  padding: 16px 24px 20px;
+  padding: 12px 24px 16px;
   border-top: 1px solid #e4e7ed;
+}
+
+/* ==================== 对话框两列布局 ==================== */
+.dialog-two-column {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 24px;
+}
+
+.dialog-left {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dialog-right {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.full-width-item :deep(.el-form-item__content) {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+/* ==================== 右侧区域样式 ==================== */
+.right-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.right-section-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.section-header {
+  font-size: 13px;
+  font-weight: 500;
+  color: #606266;
+  padding-bottom: 4px;
+}
+
+.section-tip {
+  font-size: 11px;
+  color: #909399;
+  line-height: 1.4;
+}
+
+/* ==================== MCP 服务器列表 ==================== */
+.mcp-server-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* 自定义滚动条样式 */
+.mcp-server-list::-webkit-scrollbar,
+.local-tools-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.mcp-server-list::-webkit-scrollbar-track,
+.local-tools-list::-webkit-scrollbar-track {
+  background: #f5f7fa;
+  border-radius: 3px;
+}
+
+.mcp-server-list::-webkit-scrollbar-thumb,
+.local-tools-list::-webkit-scrollbar-thumb {
+  background: #dcdfe6;
+  border-radius: 3px;
+}
+
+.mcp-server-list::-webkit-scrollbar-thumb:hover,
+.local-tools-list::-webkit-scrollbar-thumb:hover {
+  background: #b0b0b0;
+}
+
+.mcp-server-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.mcp-server-item:hover {
+  border-color: #409eff;
+  background: #f0f7ff;
+}
+
+.mcp-server-item.is-selected {
+  border-color: #409eff;
+  background: #ecf5ff;
+}
+
+.server-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.server-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0px;
+  min-width: 0;
+}
+
+.server-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #303133;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.3;
+}
+
+.server-desc {
+  font-size: 11px;
+  color: #909399;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+/* ==================== 本地工具列表 ==================== */
+.local-tools-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.tools-checkbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+:deep(.tools-checkbox-list .el-checkbox) {
+  margin-right: 0;
+  padding: 6px 10px;
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+:deep(.tools-checkbox-list .el-checkbox:hover) {
+  border-color: #409eff;
+  background: #f0f7ff;
+}
+
+:deep(.tools-checkbox-list .el-checkbox.is-checked) {
+  border-color: #409eff;
+  background: #ecf5ff;
+}
+
+:deep(.tools-checkbox-list .el-checkbox.is-disabled) {
+  background: #fafafa;
+  opacity: 0.6;
+}
+
+:deep(.tools-checkbox-list .el-checkbox.is-disabled:hover) {
+  border-color: #e4e7ed;
+  background: #fafafa;
+}
+
+:deep(.tools-checkbox-list .el-checkbox__label) {
+  width: 100%;
+  padding-left: 0;
+}
+
+.tool-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tool-name {
+  font-size: 13px;
+  color: #606266;
+}
+
+:deep(.tools-checkbox-list .el-checkbox.is-disabled .tool-name) {
+  color: #c0c4cc;
+}
+
+.tool-pending {
+  color: #909399;
+  font-size: 11px;
+}
+
+/* ==================== 参数配置 ==================== */
+.params-block {
+  background: #f9fafb;
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.tools-params-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.param-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.param-label {
+  color: #606266;
+  font-weight: 500;
+  min-width: 32px;
+}
+
+.param-sep {
+  color: #909399;
+  font-size: 11px;
+}
+
+:deep(.param-row .el-input-number) {
+  width: 70px;
+}
+
+:deep(.param-row .el-input-number .el-input__inner) {
+  padding-left: 6px;
+  padding-right: 6px;
+  text-align: center;
+}
+
+/* ==================== 分隔线 ==================== */
+:deep(.el-divider) {
+  margin: 8px 0 8px;
+}
+
+:deep(.el-divider__text) {
+  font-size: 12px;
+  font-weight: 600;
+  color: #303133;
+  background: transparent;
 }
 
 /* ==================== 表单提示 ==================== */
 .form-tip {
-  margin-left: 12px;
+  margin-top: 4px;
   color: #909399;
-  font-size: 12px;
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 /* ==================== 响应式 ==================== */
-@media (max-width: 768px) {
-  .agents-grid {
+@media (max-width: 900px) {
+  :deep(.el-dialog) {
+    width: 95vw !important;
+  }
+
+  .dialog-two-column {
     grid-template-columns: 1fr;
-    padding: 16px;
-    gap: 12px;
+    gap: 16px;
   }
 
-  .agents-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-    padding: 12px 16px;
+  .dialog-right {
+    order: -1;
   }
 
-  .agent-card {
-    padding: 14px;
-  }
-
-  .agent-avatar {
-    width: 42px;
-    height: 42px;
+  .mcp-server-list,
+  .local-tools-list {
+    max-height: 180px;
   }
 }
 </style>

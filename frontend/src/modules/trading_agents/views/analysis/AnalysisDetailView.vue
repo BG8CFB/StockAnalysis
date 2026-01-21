@@ -61,7 +61,7 @@
 
     <!-- 分析内容 -->
     <div
-      v-else-if="task && progress.state"
+      v-else-if="task && progressState"
       class="analysis-content"
     >
       <!-- 进度概览 -->
@@ -103,7 +103,7 @@
               智能体
             </div>
             <div class="item-value">
-              {{ progress.completedAgentsCount }}/{{ progress.totalAgentsCount }}
+              {{ completedAgentsCount }}/{{ totalAgentsCount }}
             </div>
           </div>
         </div>
@@ -137,7 +137,7 @@
 
           <!-- 当前运行的智能体 -->
           <el-card
-            v-if="progress.runningAgents.value.length > 0"
+            v-if="runningAgents.length > 0"
             shadow="never"
             class="agents-card"
           >
@@ -147,7 +147,7 @@
 
             <div class="running-agents">
               <AgentStatusCard
-                v-for="agent in progress.runningAgents.value"
+                v-for="agent in runningAgents"
                 :key="agent.slug"
                 :agent="agent"
                 :show-thinking="true"
@@ -158,17 +158,17 @@
 
           <!-- 已完成的智能体 -->
           <el-card
-            v-if="progress.completedAgents.value.length > 0"
+            v-if="completedAgents.length > 0"
             shadow="never"
             class="agents-card"
           >
             <template #header>
-              <span>已完成的智能体 ({{ progress.completedAgents.value.length }})</span>
+              <span>已完成的智能体 ({{ completedAgents.length }})</span>
             </template>
 
             <div class="completed-agents">
               <AgentStatusCard
-                v-for="agent in progress.completedAgents.value"
+                v-for="agent in completedAgents"
                 :key="agent.slug"
                 :agent="agent"
                 :show-thinking="true"
@@ -179,17 +179,17 @@
 
           <!-- 已生成的报告 -->
           <el-card
-            v-if="progress.generatedReports.value.length > 0"
+            v-if="generatedReports.length > 0"
             shadow="never"
             class="reports-card"
           >
             <template #header>
-              <span>分析报告 ({{ progress.generatedReports.value.length }})</span>
+              <span>分析报告 ({{ generatedReports.length }})</span>
             </template>
 
             <div class="reports-list">
               <ReportCard
-                v-for="report in progress.generatedReports.value"
+                v-for="report in generatedReports"
                 :key="report.agent"
                 :agent-name="report.agent"
                 :report="report.report"
@@ -308,6 +308,17 @@ const error = ref(false)
 
 // 分析进度 - 初始化为空，在任务加载后更新
 const progress = useAnalysisProgress()
+const {
+  state: progressStateRaw,
+  currentPhaseInfo,
+  completedAgentsCount,
+  totalAgentsCount,
+  runningAgents,
+  completedAgents,
+  generatedReports,
+  elapsedSeconds,
+  handleEvent: handleProgressEvent
+} = progress
 
 // Token 使用 - 初始化为空，在任务加载后更新
 const tokenUsage = useTokenUsage()
@@ -328,11 +339,8 @@ const ws = useWebSocket({
 
 // 计算属性：当前阶段索引
 const currentPhaseIndex = computed(() => {
-  return Math.max(0, progress.state.value.currentPhase - 1)
+  return Math.max(0, progressStateRaw.value.currentPhase - 1)
 })
-
-// 计算属性：当前阶段信息
-const currentPhaseInfo = computed(() => progress.currentPhaseInfo)
 
 // 计算属性：进度状态
 const progressStatus = computed(() => {
@@ -351,9 +359,6 @@ const showFinalReport = computed(() => {
   return task.value?.final_report || task.value?.final_recommendation
 })
 
-// 计算属性：已耗时（秒）
-const elapsedSeconds = computed(() => progress.elapsedSeconds.value)
-
 // 计算属性：Token 统计
 const tokenStats = computed(() => tokenUsage.totalUsage)
 
@@ -361,7 +366,7 @@ const tokenStats = computed(() => tokenUsage.totalUsage)
 const estimatedCost = computed(() => tokenUsage.estimatedCost)
 
 // 计算属性：进度状态
-const progressState = computed(() => progress.state.value)
+const progressState = computed(() => progressStateRaw.value)
 
 /**
  * 获取状态类型
@@ -429,7 +434,7 @@ function formatTokenCount(count: number): string {
  * WebSocket 事件处理
  */
 function handleWebSocketEvent(event: any) {
-  progress.handleEvent(event)
+  handleProgressEvent(event)
 
   // 更新 Token 使用
   if (event.data?.token_usage) {
@@ -449,6 +454,8 @@ function handleWsStatusChange(status: WebSocketStatus) {
  */
 function handleWsError(err: Error) {
   console.error('[AnalysisDetail] WebSocket 错误:', err)
+  // WebSocket 连接失败不影响任务详情显示，仅记录错误
+  // 实时更新功能会失效，但用户仍可查看静态数据
 }
 
 /**

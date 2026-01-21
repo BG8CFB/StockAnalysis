@@ -5,16 +5,17 @@ A股市场数据工具
 """
 
 import logging
-from typing import Optional, List, Dict, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from core.market_data.models import MarketType
-from core.market_data.tools.base_tool import MarketDataToolBase, DataSource
+from core.market_data.tools.base_tool import DataSource, MarketDataToolBase
 
 if TYPE_CHECKING:
     from core.market_data.managers.source_router import DataSourceRouter
 else:
     # 运行时使用 Any 作为类型
     from typing import Any
+
     DataSourceRouter = Any  # type: ignore
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,7 @@ class AStockTool(MarketDataToolBase):
         self,
         user_id: Optional[str] = None,
         source_router: Optional[DataSourceRouter] = None,
-        data_source: DataSource = DataSource.AUTO
+        data_source: DataSource = DataSource.AUTO,
     ):
         super().__init__(user_id, source_router, data_source)
 
@@ -39,10 +40,7 @@ class AStockTool(MarketDataToolBase):
         """获取市场类型"""
         return MarketType.A_STOCK
 
-    async def get_realtime_quote(
-        self,
-        symbol: str
-    ) -> Optional[Dict[str, Any]]:
+    async def get_realtime_quote(self, symbol: str) -> Optional[Dict[str, Any]]:
         """
         获取实时行情
 
@@ -82,10 +80,7 @@ class AStockTool(MarketDataToolBase):
             logger.error(f"Failed to get realtime quote for {symbol}: {e}")
             return await self.get_latest_quote(symbol)
 
-    async def get_stock_list(
-        self,
-        limit: int = 100
-    ) -> List[Dict[str, Any]]:
+    async def get_stock_list(self, limit: int = 100) -> List[Dict[str, Any]]:
         """
         获取A股股票列表
 
@@ -103,9 +98,7 @@ class AStockTool(MarketDataToolBase):
                 # 如果数据库为空，从数据源获取
                 logger.info("No A stocks in database, fetching from data source")
                 stock_list = await self.source_router.route_to_best_source(
-                    market=MarketType.A_STOCK,
-                    method_name="get_stock_list",
-                    status="L"
+                    market=MarketType.A_STOCK, method_name="get_stock_list", status="L"
                 )
 
                 return [
@@ -157,10 +150,7 @@ class AStockTool(MarketDataToolBase):
 
         return results
 
-    async def get_index_stocks(
-        self,
-        index_code: str = "000300.SH"
-    ) -> List[Dict[str, Any]]:
+    async def get_index_stocks(self, index_code: str = "000300.SH") -> List[Dict[str, Any]]:
         """
         获取指数成分股
 
@@ -189,10 +179,7 @@ class AStockTool(MarketDataToolBase):
             logger.error(f"Failed to get index stocks for {index_code}: {e}")
             return []
 
-    async def get_sector_stocks(
-        self,
-        sector: str
-    ) -> List[Dict[str, Any]]:
+    async def get_sector_stocks(self, sector: str) -> List[Dict[str, Any]]:
         """
         获取板块成分股
 
@@ -205,8 +192,7 @@ class AStockTool(MarketDataToolBase):
         try:
             # 从数据库按行业查询
             stocks = await self.stock_info_repo.get_by_sector(
-                market=MarketType.A_STOCK,
-                sector=sector
+                market=MarketType.A_STOCK, sector=sector
             )
             return stocks if stocks else []
 
@@ -214,10 +200,7 @@ class AStockTool(MarketDataToolBase):
             logger.error(f"Failed to get sector stocks for {sector}: {e}")
             return []
 
-    async def get_macro_economic(
-        self,
-        indicator: str = "shibor"
-    ) -> Optional[Dict[str, Any]]:
+    async def get_macro_economic(self, indicator: str = "shibor") -> Optional[Dict[str, Any]]:
         """
         获取宏观经济数据
 
@@ -249,10 +232,7 @@ class AStockTool(MarketDataToolBase):
             logger.error(f"Failed to get macro economic data for {indicator}: {e}")
             return None
 
-    async def get_top_list(
-        self,
-        trade_date: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
+    async def get_top_list(self, trade_date: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         获取龙虎榜数据
 
@@ -281,10 +261,7 @@ class AStockTool(MarketDataToolBase):
             logger.error(f"Failed to get top list: {e}")
             return []
 
-    async def get_margin_trading(
-        self,
-        symbol: str
-    ) -> Optional[Dict[str, Any]]:
+    async def get_margin_trading(self, symbol: str) -> Optional[Dict[str, Any]]:
         """
         获取融资融券数据
 
@@ -313,10 +290,7 @@ class AStockTool(MarketDataToolBase):
             logger.error(f"Failed to get margin trading for {symbol}: {e}")
             return None
 
-    async def get_dividend_info(
-        self,
-        symbol: str
-    ) -> List[Dict[str, Any]]:
+    async def get_dividend_info(self, symbol: str) -> List[Dict[str, Any]]:
         """
         获取分红送股信息
 

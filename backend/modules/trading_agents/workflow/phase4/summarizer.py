@@ -18,9 +18,15 @@ from langchain.agents import create_agent
 from modules.trading_agents.models.state import (
     WorkflowState,
     PhaseExecution,
+    AgentExecution,
     TaskStatus,
 )
 from modules.trading_agents.config import get_enabled_agents
+from modules.trading_agents.workflow.events import (
+    create_phase_agents_event,
+    create_agent_started_event,
+    create_agent_completed_event,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -362,6 +368,9 @@ async def execute_phase4(
     Returns:
         更新后的工作流状态
     """
+    # 获取 WebSocket 管理器
+    from modules.trading_agents.api.websocket_manager import websocket_manager
+
     logger.info(f"[Phase 4] 开始执行, 任务ID: {state.task_id}")
 
     # 更新状态
@@ -371,6 +380,18 @@ async def execute_phase4(
     # Phase 4 是必须执行的，不检查 enabled 配置
     # 获取智能体配置
     agents_config = get_enabled_agents(config, "phase4")
+
+    # 发送阶段智能体列表事件
+    phase_agents_event = create_phase_agents_event(
+        task_id=state.task_id,
+        phase=4,
+        phase_name="总结智能体",
+        execution_mode="serial",
+        max_concurrency=1,
+        agents=agents_config
+    )
+    await websocket_manager.broadcast_event(state.task_id, phase_agents_event)
+    logger.info(f"[Phase 4] 已发送智能体列表事件, 智能体数量: {len(agents_config)}")
 
     # 创建总结智能体实例
     summarizer = None
@@ -398,8 +419,24 @@ async def execute_phase4(
         max_concurrency=1
     )
 
+    # 发送总结智能体开始事件
+    await websocket_manager.broadcast_event(state.task_id, create_agent_started_event(
+        task_id=state.task_id,
+        agent_slug=summarizer.slug,
+        agent_name=summarizer.name
+    ))
+
     # 执行总结智能体
     result = await summarizer.summarize(state)
+
+    # 发送总结智能体完成事件
+    if result.get("output"):
+        await websocket_manager.broadcast_event(state.task_id, create_agent_completed_event(
+            task_id=state.task_id,
+            agent_slug=summarizer.slug,
+            agent_name=summarizer.name,
+            token_usage={}  # 暂无 token 用量
+        ))
 
     # 更新状态
     if result.get("output"):

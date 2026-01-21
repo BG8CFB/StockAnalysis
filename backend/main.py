@@ -30,7 +30,13 @@ from core.config import settings
 from core.db.mongodb import mongodb, connect_to_mongodb, close_mongodb
 from core.db.redis import redis_manager, connect_to_redis, close_redis
 from core.colored_formatter import ColoredFormatter
+from core.logging_config import setup_logging
 from core.admin.tasks import init_scheduler, shutdown_scheduler
+
+# ==================== 配置日志系统 ====================
+# 在导入其他模块之前配置日志，确保所有模块的日志都能正常输出
+setup_logging(level=settings.LOG_LEVEL)
+# ================================================================
 from core.market_data.repositories.stock_info import StockInfoRepository
 from core.market_data.repositories.stock_quotes import StockQuoteRepository
 from core.market_data.repositories.stock_financial import (
@@ -79,7 +85,14 @@ async def lifespan(app: FastAPI):
         init_scheduler()
         logger.info("✅ 定时任务调度器启动成功")
 
-        # 5. 启动市场数据定时调度器
+        # 5. 清理并发控制状态（防止死锁）
+        logger.info("📦 清理并发控制状态...")
+        from modules.trading_agents.manager.concurrency_controller import get_concurrency_controller
+        concurrency_controller = get_concurrency_controller()
+        await concurrency_controller.cleanup_on_startup()
+        logger.info("✅ 并发控制状态已清理")
+
+        # 6. 启动市场数据定时调度器
         await init_market_data_scheduler()
 
         logger.info("=" * 60)
@@ -149,6 +162,34 @@ def create_app() -> FastAPI:
         allow_methods=settings.CORS_ALLOW_METHODS,
         allow_headers=settings.CORS_ALLOW_HEADERS,
     )
+
+    # ==================== 请求日志中间件 ====================
+    @app.middleware("http")
+    async def log_requests(request, call_next):
+        """记录所有 HTTP 请求"""
+        import time
+        start_time = time.time()
+
+        # 记录请求
+        logger.info(f"➡️  {request.method} {request.url.path}")
+
+        try:
+            response = await call_next(request)
+
+            # 计算处理时间
+            process_time = (time.time() - start_time) * 1000
+            status = response.status_code
+
+            # 记录响应
+            log_func = logger.warning if status >= 400 else logger.info
+            log_func(f"⬅️  {request.method} {request.url.path} - {status} ({process_time:.0f}ms)")
+
+            return response
+        except Exception as e:
+            # 记录异常
+            process_time = (time.time() - start_time) * 1000
+            logger.error(f"❌ {request.method} {request.url.path} - 异常: {e} ({process_time:.0f}ms)")
+            raise
 
     # ==================== 注册路由 ====================
     # 注意：注册顺序很重要！核心路由优先，业务模块在后

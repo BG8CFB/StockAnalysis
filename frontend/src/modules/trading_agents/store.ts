@@ -238,14 +238,19 @@ export const useTradingAgentsStore = defineStore('tradingAgents', () => {
   }
 
   async function createTasks(data: UnifiedTaskCreate) {
+    console.log('[Store] 准备创建任务:', data)
     try {
       const result = await taskApi.createTasks(data)
+      console.log('[Store] 任务创建成功:', result)
       const id = result.task_id || result.batch_id
       if (id) {
         ElMessage.success(result.message || '任务已创建')
+        console.log('[Store] 任务ID:', id)
       }
       return { id, result }
     } catch (error: any) {
+      console.error('[Store] 任务创建失败:', error)
+      console.error('[Store] 错误详情:', error.response?.data)
       ElMessage.error(error.response?.data?.detail || '创建任务失败')
       throw error
     }

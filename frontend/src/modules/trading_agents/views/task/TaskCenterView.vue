@@ -671,8 +671,15 @@ async function handleDelete(task: AnalysisTask) {
       loadStatusCounts(),
       loadTasks(),
     ])
-  } catch (err) {
-    // 用户取消
+  } catch (err: any) {
+    // 区分用户取消和 API 错误
+    if (err === 'cancel' || err?.message === 'cancel') {
+      // 用户取消操作，不显示错误
+      return
+    }
+    // API 调用失败，显示错误消息
+    const errorMsg = err?.response?.data?.detail || err?.message || '删除任务失败'
+    ElMessage.error(errorMsg)
   }
 }
 

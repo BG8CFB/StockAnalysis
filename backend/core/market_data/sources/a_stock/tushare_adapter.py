@@ -6,30 +6,24 @@ TuShare Pro A股数据源适配器完整实现
 """
 
 import logging
-from typing import List, Optional, Dict, Any
-from datetime import datetime
+from typing import Any, Dict, List, Optional
 
-import tushare as ts
 import pandas as pd
+import tushare as ts
 
-from core.market_data.sources.base import DataSourceAdapter
 from core.market_data.models import (
-    StockInfo,
-    StockQuote,
-    StockMinuteQuote,
-    StockFinancial,
-    FinancialIncome,
-    FinancialBalance,
     FinancialCashFlow,
-    StockFinancialIndicator,
-    StockCompany,
     MacroEconomic,
-    MarketType,
-    Exchange,
-    StockMoneyFlow,
-    StockHSGTMoneyFlow,
     MarketNews,
+    MarketType,
+    StockCompany,
+    StockFinancial,
+    StockFinancialIndicator,
+    StockInfo,
+    StockMinuteQuote,
+    StockQuote,
 )
+from core.market_data.sources.base import DataSourceAdapter
 from core.market_data.tools.data_cleaner import DataCleaner
 
 logger = logging.getLogger(__name__)
@@ -48,40 +42,51 @@ class TuShareAdapter(DataSourceAdapter):
             ts.set_token(api_token)
             self.pro = ts.pro_api()
             logger.info("TuShare adapter initialized with API token")
+            self.is_available = True
         else:
             self.pro = None
-            logger.warning("TuShare adapter initialized without API token - will be disabled")
+            # 没有 token 时标记为不可用（这是正常情况，不打印 warning 级别日志）
+            self.is_available = False
+            logger.info(
+                "TuShare adapter initialized without API token - will use fallback data sources"
+            )
 
         self.source_name = "tushare"
         # 设置默认优先级（TuShare 是主要数据源，优先级最高）
         self._priority = 1
+
+    def is_configured(self) -> bool:
+        """
+        检查 TuShare 适配器是否已配置（是否有 token）
+
+        Returns:
+            bool: 已配置返回 True，否则返回 False
+        """
+        return self._has_token and self.pro is not None
 
     def supports_market(self, market: MarketType) -> bool:
         return market == MarketType.A_STOCK
 
     async def test_connection(self) -> bool:
         if not self._has_token or self.pro is None:
-            logger.warning("TuShare adapter cannot test connection - no API token configured")
+            # 没有配置 token 是正常情况，不打印警告
+            logger.debug("TuShare adapter test skipped - no API token configured")
             return False
         try:
-            df = self.pro.stock_basic(exchange='', list_status='L', fields='ts_code')
+            df = self.pro.stock_basic(exchange="", list_status="L", fields="ts_code")
             return df is not None and len(df) > 0
         except Exception as e:
             logger.error(f"TuShare connection test failed: {e}")
             return False
 
-    async def get_stock_list(
-        self,
-        market: MarketType,
-        status: str = "L"
-    ) -> List[StockInfo]:
+    async def get_stock_list(self, market: MarketType, status: str = "L") -> List[StockInfo]:
         if not self._has_token or self.pro is None:
             raise RuntimeError("TuShare API token not configured - cannot fetch data")
         try:
             df = self.pro.stock_basic(
-                exchange='',
+                exchange="",
                 list_status=status,
-                fields='ts_code,symbol,name,area,industry,market,exchange,list_date,is_hs'
+                fields="ts_code,symbol,name,area,industry,market,exchange,list_date,is_hs",
             )
 
             if df is None or df.empty:
@@ -109,19 +114,14 @@ class TuShareAdapter(DataSourceAdapter):
         symbol: str,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-        adjust_type: Optional[str] = None
+        adjust_type: Optional[str] = None,
     ) -> List[StockQuote]:
         if not self._has_token or self.pro is None:
             raise RuntimeError("TuShare API token not configured - cannot fetch data")
         try:
-            adj = adjust_type if adjust_type in ['qfq', 'hfq'] else None
+            adj = adjust_type if adjust_type in ["qfq", "hfq"] else None
 
-            df = ts.pro_bar(
-                ts_code=symbol,
-                adj=adj,
-                start_date=start_date,
-                end_date=end_date
-            )
+            df = ts.pro_bar(ts_code=symbol, adj=adj, start_date=start_date, end_date=end_date)
 
             if df is None or df.empty:
                 return []
@@ -146,10 +146,7 @@ class TuShareAdapter(DataSourceAdapter):
             raise
 
     async def get_minute_quotes(
-        self,
-        symbol: str,
-        trade_date: Optional[str] = None,
-        freq: str = "1min"
+        self, symbol: str, trade_date: Optional[str] = None, freq: str = "1min"
     ) -> List[StockMinuteQuote]:
         """
         获取分钟K线数据
@@ -163,9 +160,9 @@ class TuShareAdapter(DataSourceAdapter):
             分钟K线数据列表
         """
         try:
-            params = {'ts_code': symbol}
+            params = {"ts_code": symbol}
             if trade_date:
-                params['trade_date'] = trade_date
+                params["trade_date"] = trade_date
 
             df = self.pro.stk_mins(**params)
 
@@ -191,15 +188,12 @@ class TuShareAdapter(DataSourceAdapter):
             raise
 
     async def get_stock_financials(
-        self,
-        symbol: str,
-        report_date: Optional[str] = None,
-        report_type: Optional[str] = None
+        self, symbol: str, report_date: Optional[str] = None, report_type: Optional[str] = None
     ) -> List[StockFinancial]:
         try:
-            params = {'ts_code': symbol}
+            params = {"ts_code": symbol}
             if report_date:
-                params['period'] = report_date
+                params["period"] = report_date
 
             df_income = self.pro.income(**params)
 
@@ -224,9 +218,7 @@ class TuShareAdapter(DataSourceAdapter):
             raise
 
     async def get_stock_balance_sheet(
-        self,
-        symbol: str,
-        report_date: Optional[str] = None
+        self, symbol: str, report_date: Optional[str] = None
     ) -> List[StockFinancial]:
         """
         获取资产负债表
@@ -239,9 +231,9 @@ class TuShareAdapter(DataSourceAdapter):
             资产负债表数据列表
         """
         try:
-            params = {'ts_code': symbol}
+            params = {"ts_code": symbol}
             if report_date:
-                params['period'] = report_date
+                params["period"] = report_date
 
             df = self.pro.balancesheet(**params)
 
@@ -266,9 +258,7 @@ class TuShareAdapter(DataSourceAdapter):
             raise
 
     async def get_stock_cashflow(
-        self,
-        symbol: str,
-        report_date: Optional[str] = None
+        self, symbol: str, report_date: Optional[str] = None
     ) -> List[FinancialCashFlow]:
         """
         获取现金流量表
@@ -281,9 +271,9 @@ class TuShareAdapter(DataSourceAdapter):
             现金流量表数据列表
         """
         try:
-            params = {'ts_code': symbol}
+            params = {"ts_code": symbol}
             if report_date:
-                params['period'] = report_date
+                params["period"] = report_date
 
             df = self.pro.cashflow(**params)
 
@@ -309,14 +299,12 @@ class TuShareAdapter(DataSourceAdapter):
             raise
 
     async def get_financial_indicators(
-        self,
-        symbol: str,
-        report_date: Optional[str] = None
+        self, symbol: str, report_date: Optional[str] = None
     ) -> List[StockFinancialIndicator]:
         try:
-            params = {'ts_code': symbol}
+            params = {"ts_code": symbol}
             if report_date:
-                params['period'] = report_date
+                params["period"] = report_date
 
             df = self.pro.fina_indicator(**params)
 
@@ -340,10 +328,7 @@ class TuShareAdapter(DataSourceAdapter):
             logger.error(f"Failed to get financial indicators: {e}")
             raise
 
-    async def get_stock_company(
-        self,
-        symbol: str
-    ) -> Optional[StockCompany]:
+    async def get_stock_company(self, symbol: str) -> Optional[StockCompany]:
         """
         获取公司详细信息
 
@@ -354,13 +339,13 @@ class TuShareAdapter(DataSourceAdapter):
             公司详细信息，未找到返回None
         """
         try:
-            exchange = 'SSE' if symbol.endswith('.SH') else 'SZSE'
+            exchange = "SSE" if symbol.endswith(".SH") else "SZSE"
             df = self.pro.stock_company(exchange=exchange)
 
             if df is None or df.empty:
                 return None
 
-            filtered_df = df[df['ts_code'] == symbol]
+            filtered_df = df[df["ts_code"] == symbol]
             if filtered_df.empty:
                 return None
 
@@ -369,24 +354,28 @@ class TuShareAdapter(DataSourceAdapter):
             company = StockCompany(
                 symbol=symbol,
                 market=MarketType.A_STOCK,
-                company_name=row.get('company_name', row.get('com_name', '')),
-                company_name_en=row.get('company_name_en'),
-                industry=row.get('industry'),
-                sector=row.get('area'),
-                listing_date=str(row.get('list_date', row.get('list_date', ''))),
+                company_name=row.get("company_name", row.get("com_name", "")),
+                company_name_en=row.get("company_name_en"),
+                industry=row.get("industry"),
+                sector=row.get("area"),
+                listing_date=str(row.get("list_date", row.get("list_date", ""))),
                 contact={
-                    'legal_representative': row.get('chairman'),
-                    'secretary': row.get('secretary'),
-                    'phone': row.get('office_address'),
+                    "legal_representative": row.get("chairman"),
+                    "secretary": row.get("secretary"),
+                    "phone": row.get("office_address"),
                 },
                 business={
-                    'main_business': row.get('main_business'),
-                    'business_scope': row.get('business_scope'),
+                    "main_business": row.get("main_business"),
+                    "business_scope": row.get("business_scope"),
                 },
                 capital_structure={
-                    'share_capital': float(row.get('share_capital', 0)) / 100000000 if pd.notna(row.get('share_capital')) else None,
+                    "share_capital": (
+                        float(row.get("share_capital", 0)) / 100000000
+                        if pd.notna(row.get("share_capital"))
+                        else None
+                    ),
                 },
-                data_source=self.source_name
+                data_source=self.source_name,
             )
 
             logger.info(f"Retrieved company info for {symbol}")
@@ -397,10 +386,7 @@ class TuShareAdapter(DataSourceAdapter):
             raise
 
     async def get_daily_basic(
-        self,
-        symbol: str,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None
+        self, symbol: str, start_date: Optional[str] = None, end_date: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         获取每日指标（市盈率、市净率等）
@@ -414,11 +400,11 @@ class TuShareAdapter(DataSourceAdapter):
             每日指标列表
         """
         try:
-            params = {'ts_code': symbol}
+            params = {"ts_code": symbol}
             if start_date:
-                params['start_date'] = start_date
+                params["start_date"] = start_date
             if end_date:
-                params['end_date'] = end_date
+                params["end_date"] = end_date
 
             df = self.pro.daily_basic(**params)
 
@@ -442,7 +428,7 @@ class TuShareAdapter(DataSourceAdapter):
         self,
         exchange: str = "SSE",
         start_date: Optional[str] = None,
-        end_date: Optional[str] = None
+        end_date: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         获取交易日历
@@ -456,11 +442,11 @@ class TuShareAdapter(DataSourceAdapter):
             交易日历列表
         """
         try:
-            params = {'exchange': exchange}
+            params = {"exchange": exchange}
             if start_date:
-                params['start_date'] = start_date
+                params["start_date"] = start_date
             if end_date:
-                params['end_date'] = end_date
+                params["end_date"] = end_date
 
             df = self.pro.trade_cal(**params)
 
@@ -469,11 +455,13 @@ class TuShareAdapter(DataSourceAdapter):
 
             result = []
             for _, row in df.iterrows():
-                result.append({
-                    'exchange': exchange,
-                    'cal_date': str(row['cal_date']),
-                    'is_open': bool(row['is_open']),
-                })
+                result.append(
+                    {
+                        "exchange": exchange,
+                        "cal_date": str(row["cal_date"]),
+                        "is_open": bool(row["is_open"]),
+                    }
+                )
 
             logger.info(f"Retrieved {len(result)} trade days for {exchange}")
             return result
@@ -483,9 +471,7 @@ class TuShareAdapter(DataSourceAdapter):
             raise
 
     async def get_shibor(
-        self,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None
+        self, start_date: Optional[str] = None, end_date: Optional[str] = None
     ) -> List[MacroEconomic]:
         """
         获取SHIBOR利率数据
@@ -500,32 +486,34 @@ class TuShareAdapter(DataSourceAdapter):
         try:
             params = {}
             if start_date:
-                params['start_date'] = start_date
+                params["start_date"] = start_date
             if end_date:
-                params['end_date'] = end_date
+                params["end_date"] = end_date
 
             logger.info(f"Fetching Tushare SHIBOR data: params={params}")
             df = self.pro.shibor(**params)
 
             if df is None or df.empty:
-                logger.warning(f"No SHIBOR data returned from Tushare")
+                logger.warning("No SHIBOR data returned from Tushare")
                 return []
 
             result = []
             for _, row in df.iterrows():
-                date = str(row.get('date', ''))
+                date = str(row.get("date", ""))
                 if not date:
                     continue
-                for period in ['on', '1w', '2w', '1m', '3m', '6m', '9m', '1y']:
+                for period in ["on", "1w", "2w", "1m", "3m", "6m", "9m", "1y"]:
                     rate = row.get(period)
                     if pd.notna(rate) and rate > 0:
-                        result.append(MacroEconomic(
-                            indicator=f'shibor_{period}',
-                            period=date,
-                            value=float(rate),
-                            unit='%',
-                            data_source=self.source_name
-                        ))
+                        result.append(
+                            MacroEconomic(
+                                indicator=f"shibor_{period}",
+                                period=date,
+                                value=float(rate),
+                                unit="%",
+                                data_source=self.source_name,
+                            )
+                        )
 
             logger.info(f"Retrieved {len(result)} shibor rates")
             return result
@@ -534,10 +522,7 @@ class TuShareAdapter(DataSourceAdapter):
             logger.error(f"Failed to get shibor: {e}")
             return []
 
-    async def get_shibor_quote(
-        self,
-        date: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
+    async def get_shibor_quote(self, date: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         获取SHIBOR报价数据
 
@@ -550,7 +535,7 @@ class TuShareAdapter(DataSourceAdapter):
         try:
             params = {}
             if date:
-                params['date'] = date
+                params["date"] = date
 
             df = self.pro.shibor_quote(**params)
 
@@ -559,15 +544,17 @@ class TuShareAdapter(DataSourceAdapter):
 
             result = []
             for _, row in df.iterrows():
-                result.append({
-                    'date': str(row['date']),
-                    'type': row.get('type'),
-                    'term': row.get('term'),
-                    'bid': float(row['bid']) if pd.notna(row['bid']) else None,
-                    'ask': float(row['ask']) if pd.notna(row['ask']) else None,
-                    'deal': float(row['deal']) if pd.notna(row['deal']) else None,
-                    'data_source': self.source_name,
-                })
+                result.append(
+                    {
+                        "date": str(row["date"]),
+                        "type": row.get("type"),
+                        "term": row.get("term"),
+                        "bid": float(row["bid"]) if pd.notna(row["bid"]) else None,
+                        "ask": float(row["ask"]) if pd.notna(row["ask"]) else None,
+                        "deal": float(row["deal"]) if pd.notna(row["deal"]) else None,
+                        "data_source": self.source_name,
+                    }
+                )
 
             logger.info(f"Retrieved {len(result)} shibor quotes")
             return result
@@ -577,9 +564,7 @@ class TuShareAdapter(DataSourceAdapter):
             raise
 
     async def get_cpi(
-        self,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None
+        self, start_date: Optional[str] = None, end_date: Optional[str] = None
     ) -> List[MacroEconomic]:
         """
         获取CPI数据
@@ -594,9 +579,9 @@ class TuShareAdapter(DataSourceAdapter):
         try:
             params = {}
             if start_date:
-                params['start_date'] = start_date
+                params["start_date"] = start_date
             if end_date:
-                params['end_date'] = end_date
+                params["end_date"] = end_date
 
             df = self.pro.cn_cpi(**params)
 
@@ -605,15 +590,17 @@ class TuShareAdapter(DataSourceAdapter):
 
             result = []
             for _, row in df.iterrows():
-                period = str(row.get('month', row.get('cpi', '')))
-                result.append(MacroEconomic(
-                    indicator='cpi',
-                    period=period,
-                    value=float(row.get('cpi', row.get('cpi_yoy', 0))),
-                    unit='%',
-                    yoy=float(row.get('cpi_yoy', 0)),
-                    data_source=self.source_name
-                ))
+                period = str(row.get("month", row.get("cpi", "")))
+                result.append(
+                    MacroEconomic(
+                        indicator="cpi",
+                        period=period,
+                        value=float(row.get("cpi", row.get("cpi_yoy", 0))),
+                        unit="%",
+                        yoy=float(row.get("cpi_yoy", 0)),
+                        data_source=self.source_name,
+                    )
+                )
 
             logger.info(f"Retrieved {len(result)} cpi data")
             return result
@@ -623,9 +610,7 @@ class TuShareAdapter(DataSourceAdapter):
             raise
 
     async def get_ppi(
-        self,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None
+        self, start_date: Optional[str] = None, end_date: Optional[str] = None
     ) -> List[MacroEconomic]:
         """
         获取PPI数据
@@ -640,9 +625,9 @@ class TuShareAdapter(DataSourceAdapter):
         try:
             params = {}
             if start_date:
-                params['start_date'] = start_date
+                params["start_date"] = start_date
             if end_date:
-                params['end_date'] = end_date
+                params["end_date"] = end_date
 
             df = self.pro.cn_ppi(**params)
 
@@ -651,15 +636,17 @@ class TuShareAdapter(DataSourceAdapter):
 
             result = []
             for _, row in df.iterrows():
-                period = str(row.get('month', row.get('ppi', '')))
-                result.append(MacroEconomic(
-                    indicator='ppi',
-                    period=period,
-                    value=float(row.get('ppi', row.get('ppi_yoy', 0))),
-                    unit='%',
-                    yoy=float(row.get('ppi_yoy', 0)),
-                    data_source=self.source_name
-                ))
+                period = str(row.get("month", row.get("ppi", "")))
+                result.append(
+                    MacroEconomic(
+                        indicator="ppi",
+                        period=period,
+                        value=float(row.get("ppi", row.get("ppi_yoy", 0))),
+                        unit="%",
+                        yoy=float(row.get("ppi_yoy", 0)),
+                        data_source=self.source_name,
+                    )
+                )
 
             logger.info(f"Retrieved {len(result)} ppi data")
             return result
@@ -669,9 +656,7 @@ class TuShareAdapter(DataSourceAdapter):
             raise
 
     async def get_money_supply(
-        self,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None
+        self, start_date: Optional[str] = None, end_date: Optional[str] = None
     ) -> List[MacroEconomic]:
         """
         获取货币供应量数据
@@ -686,9 +671,9 @@ class TuShareAdapter(DataSourceAdapter):
         try:
             params = {}
             if start_date:
-                params['start_date'] = start_date
+                params["start_date"] = start_date
             if end_date:
-                params['end_date'] = end_date
+                params["end_date"] = end_date
 
             df = self.pro.cn_m(**params)
 
@@ -697,15 +682,17 @@ class TuShareAdapter(DataSourceAdapter):
 
             result = []
             for _, row in df.iterrows():
-                result.append(MacroEconomic(
-                    indicator=f'money_supply_{row.get("stat")}',
-                    period=str(row['month']),
-                    value=float(row['m2']),
-                    unit='亿元',
-                    yoy=float(row['m2_yoy']) if pd.notna(row['m2_yoy']) else None,
-                    mom=float(row['m2_mom']) if pd.notna(row['m2_mom']) else None,
-                    data_source=self.source_name
-                ))
+                result.append(
+                    MacroEconomic(
+                        indicator=f'money_supply_{row.get("stat")}',
+                        period=str(row["month"]),
+                        value=float(row["m2"]),
+                        unit="亿元",
+                        yoy=float(row["m2_yoy"]) if pd.notna(row["m2_yoy"]) else None,
+                        mom=float(row["m2_mom"]) if pd.notna(row["m2_mom"]) else None,
+                        data_source=self.source_name,
+                    )
+                )
 
             logger.info(f"Retrieved {len(result)} money supply data")
             return result
@@ -715,9 +702,7 @@ class TuShareAdapter(DataSourceAdapter):
             raise
 
     async def get_pmi_caixin(
-        self,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None
+        self, start_date: Optional[str] = None, end_date: Optional[str] = None
     ) -> List[MacroEconomic]:
         """
         获取财新PMI数据
@@ -733,28 +718,30 @@ class TuShareAdapter(DataSourceAdapter):
             params = {}
             if start_date:
                 start_m = start_date[:6] if len(start_date) >= 6 else start_date
-                params['start_m'] = start_m
+                params["start_m"] = start_m
             if end_date:
                 end_m = end_date[:6] if len(end_date) >= 6 else end_date
-                params['end_m'] = end_m
+                params["end_m"] = end_m
 
             df = self.pro.cn_pmi(**params)
 
             if df is None or df.empty:
-                logger.warning(f"No PMI data returned for caixin")
+                logger.warning("No PMI data returned for caixin")
                 return []
 
             result = []
             for _, row in df.iterrows():
-                pmi_value = row.get('PMI011200')
+                pmi_value = row.get("PMI011200")
                 if pd.notna(pmi_value) and pmi_value > 0:
-                    result.append(MacroEconomic(
-                        indicator='pmi_caixin',
-                        period=str(row['MONTH']),
-                        value=float(pmi_value),
-                        unit='-',
-                        data_source=self.source_name
-                    ))
+                    result.append(
+                        MacroEconomic(
+                            indicator="pmi_caixin",
+                            period=str(row["MONTH"]),
+                            value=float(pmi_value),
+                            unit="-",
+                            data_source=self.source_name,
+                        )
+                    )
 
             logger.info(f"Retrieved {len(result)} caixin pmi data")
             return result
@@ -764,9 +751,7 @@ class TuShareAdapter(DataSourceAdapter):
             return []
 
     async def get_pmi_cic(
-        self,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None
+        self, start_date: Optional[str] = None, end_date: Optional[str] = None
     ) -> List[MacroEconomic]:
         """
         获取中采PMI数据
@@ -782,28 +767,30 @@ class TuShareAdapter(DataSourceAdapter):
             params = {}
             if start_date:
                 start_m = start_date[:6] if len(start_date) >= 6 else start_date
-                params['start_m'] = start_m
+                params["start_m"] = start_m
             if end_date:
                 end_m = end_date[:6] if len(end_date) >= 6 else end_date
-                params['end_m'] = end_m
+                params["end_m"] = end_m
 
             df = self.pro.cn_pmi(**params)
 
             if df is None or df.empty:
-                logger.warning(f"No PMI data returned for cic")
+                logger.warning("No PMI data returned for cic")
                 return []
 
             result = []
             for _, row in df.iterrows():
-                pmi_value = row.get('PMI010200')
+                pmi_value = row.get("PMI010200")
                 if pd.notna(pmi_value) and pmi_value > 0:
-                    result.append(MacroEconomic(
-                        indicator='pmi_manufacturing',
-                        period=str(row['MONTH']),
-                        value=float(pmi_value),
-                        unit='-',
-                        data_source=self.source_name
-                    ))
+                    result.append(
+                        MacroEconomic(
+                            indicator="pmi_manufacturing",
+                            period=str(row["MONTH"]),
+                            value=float(pmi_value),
+                            unit="-",
+                            data_source=self.source_name,
+                        )
+                    )
 
             logger.info(f"Retrieved {len(result)} cic pmi data")
             return result
@@ -813,9 +800,7 @@ class TuShareAdapter(DataSourceAdapter):
             return []
 
     async def get_northbound_money_flow(
-        self,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None
+        self, start_date: Optional[str] = None, end_date: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         获取北向资金流向
@@ -830,9 +815,9 @@ class TuShareAdapter(DataSourceAdapter):
         try:
             params = {}
             if start_date:
-                params['start_date'] = start_date
+                params["start_date"] = start_date
             if end_date:
-                params['end_date'] = end_date
+                params["end_date"] = end_date
 
             df = self.pro.moneyflow_hsgt(**params)
 
@@ -841,15 +826,25 @@ class TuShareAdapter(DataSourceAdapter):
 
             result = []
             for _, row in df.iterrows():
-                result.append({
-                    'trade_date': str(row.get('trade_date', '')),
-                    'ggt_ss': float(row.get('ggt_ss')) if pd.notna(row.get('ggt_ss')) else None,
-                    'ggt_sz': float(row.get('ggt_sz')) if pd.notna(row.get('ggt_sz')) else None,
-                    'north_money': float(row.get('north_money')) if pd.notna(row.get('north_money')) else None,
-                    'north_money_hold': None,
-                    'south_money': float(row.get('south_money')) if pd.notna(row.get('south_money')) else None,
-                    'data_source': self.source_name,
-                })
+                result.append(
+                    {
+                        "trade_date": str(row.get("trade_date", "")),
+                        "ggt_ss": float(row.get("ggt_ss")) if pd.notna(row.get("ggt_ss")) else None,
+                        "ggt_sz": float(row.get("ggt_sz")) if pd.notna(row.get("ggt_sz")) else None,
+                        "north_money": (
+                            float(row.get("north_money"))
+                            if pd.notna(row.get("north_money"))
+                            else None
+                        ),
+                        "north_money_hold": None,
+                        "south_money": (
+                            float(row.get("south_money"))
+                            if pd.notna(row.get("south_money"))
+                            else None
+                        ),
+                        "data_source": self.source_name,
+                    }
+                )
 
             logger.info(f"Retrieved {len(result)} northbound money flow")
             return result
@@ -862,103 +857,105 @@ class TuShareAdapter(DataSourceAdapter):
         self,
         symbol: Optional[str] = None,
         start_date: Optional[str] = None,
-        end_date: Optional[str] = None
+        end_date: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         获取个股资金流向
-        
+
         Args:
             symbol: 股票代码
             start_date: 开始日期
             end_date: 结束日期
-            
+
         Returns:
             个股资金流向列表
         """
         try:
             params = {}
             if symbol:
-                params['ts_code'] = symbol
+                params["ts_code"] = symbol
             if start_date:
-                params['start_date'] = start_date
+                params["start_date"] = start_date
             if end_date:
-                params['end_date'] = end_date
-                
+                params["end_date"] = end_date
+
             df = self.pro.moneyflow(**params)
-            
+
             if df is None or df.empty:
                 return []
-                
+
             result = []
             for _, row in df.iterrows():
                 mapped = DataCleaner.clean_stock_money_flow(row.to_dict(), "tushare")
                 if mapped:
                     result.append(mapped)
-                    
+
             logger.info(f"Retrieved {len(result)} individual money flow")
             return result
-            
+
         except Exception as e:
             logger.error(f"Failed to get individual money flow: {e}")
             raise
 
     async def get_market_news(
-        self,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-        src: str = "sina"
+        self, start_date: Optional[str] = None, end_date: Optional[str] = None, src: str = "sina"
     ) -> List[MarketNews]:
         """
         获取市场新闻
-        
+
         Args:
             start_date: 开始日期 (YYYY-MM-DD HH:MM:SS)
             end_date: 结束日期 (YYYY-MM-DD HH:MM:SS)
             src: 新闻来源 (sina/10jqka/eastmoney/yuncaijing)
-            
+
         Returns:
             新闻列表
         """
         try:
-            params = {'src': src}
+            params = {"src": src}
             if start_date:
-                params['start_date'] = start_date
+                params["start_date"] = start_date
             if end_date:
-                params['end_date'] = end_date
-                
+                params["end_date"] = end_date
+
+            if self.pro is None:
+                logger.warning("TuShare API token not configured")
+                return []
+
             # TuShare news 接口
             df = self.pro.news(**params)
-            
+
             if df is None or df.empty:
                 return []
-                
+
             news_list = []
             for _, row in df.iterrows():
                 try:
-                    news_id = str(row.get('news_id', ''))
+                    news_id = str(row.get("news_id", ""))
                     if not news_id:
                         # 如果没有ID，使用来源+时间+标题生成一个
                         import hashlib
+
                         content_str = f"{src}_{row.get('datetime')}_{row.get('title')}"
                         news_id = hashlib.md5(content_str.encode()).hexdigest()
-                        
+
                     news = MarketNews(
                         news_id=news_id,
                         ts_code=None,  # Tushare news 接口通常不返回关联股票
-                        datetime=str(row.get('datetime', '')),
-                        title=str(row.get('title', '')),
-                        content=str(row.get('content', '')),
+                        datetime=str(row.get("datetime", "")),
+                        title=str(row.get("title", "")),
+                        content=str(row.get("content", "")),
                         source=src,
-                        data_source=self.source_name
+                        data_source=self.source_name,
                     )
                     news_list.append(news)
                 except Exception as e:
                     logger.warning(f"Failed to parse news: {e}")
                     continue
-                    
+
             logger.info(f"Retrieved {len(news_list)} news items from {src}")
             return news_list
-            
+
         except Exception as e:
             logger.error(f"Failed to get market news: {e}")
             return []

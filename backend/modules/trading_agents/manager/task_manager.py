@@ -408,6 +408,38 @@ class TaskManager:
         count = await mongodb.database.analysis_tasks.count_documents(query)
         return count
 
+    async def get_user_active_tasks(self, user_id: str) -> List[Dict[str, Any]]:
+        """
+        获取用户的所有活跃任务（运行中或进行中）
+
+        Args:
+            user_id: 用户 ID
+
+        Returns:
+            活跃任务列表
+        """
+        # 活跃任务状态
+        active_statuses = [
+            TaskStatusEnum.PENDING.value,
+            TaskStatusEnum.RUNNING.value,
+        ]
+
+        query = {
+            "user_id": user_id,
+            "status": {"$in": active_statuses}
+        }
+
+        cursor = mongodb.database.analysis_tasks.find(query)
+        tasks = []
+        async for task_doc in cursor:
+            tasks.append({
+                "id": str(task_doc["_id"]),
+                "status": task_doc["status"],
+                "created_at": task_doc["created_at"],
+            })
+
+        return tasks
+
     async def cancel_task(self, task_id: str) -> None:
         """
         取消任务
@@ -871,12 +903,15 @@ class TaskManager:
             request=request,
             config=config
         )
+        logger.info(f"[TaskManager] 任务记录已创建: task_id={task_id}")
 
         # 2. 标记任务为运行中
         await self.mark_task_running(task_id)
+        logger.info(f"[TaskManager] 任务已标记为运行中: task_id={task_id}")
 
         # 3. 在后台异步执行工作流（不阻塞响应）
         # 注意：必须保存 Task 对象的引用，否则会被垃圾回收
+        logger.info(f"[TaskManager] 正在创建后台任务: task_id={task_id}")
         task = asyncio.create_task(
             self.execute_analysis_workflow(
                 task_id=task_id,
@@ -885,17 +920,22 @@ class TaskManager:
             ),
             name=f"workflow-{task_id}"
         )
+        logger.info(f"[TaskManager] 后台任务已创建: task_id={task_id}, task={task}")
 
         # 保存任务引用
         self._running_tasks[task_id] = task
 
         # 添加回调来追踪任务状态
         def task_callback(t):
+            logger.info(f"[TaskManager] 任务完成回调: task_id={task_id}, done={t.done()}, cancelled={t.cancelled()}")
+            if t.exception():
+                logger.error(f"[TaskManager] 任务异常: task_id={task_id}, exception={t.exception()}")
             if task_id in self._running_tasks:
                 del self._running_tasks[task_id]
 
         task.add_done_callback(task_callback)
 
+        logger.info(f"[TaskManager] create_task_background 完成，返回 task_id={task_id}")
         return task_id
 
     async def execute_analysis_workflow(
@@ -1037,7 +1077,7 @@ class TaskManager:
 
                 except asyncio.TimeoutError as e:
                     logger.error(f"任务 {task_id} 等待并发槽位超时: {e}")
-                    raise Exception(f"任务等待执行超时，请稍后重试") from e
+                    raise Exception("任务等待执行超时，请稍后重试") from e
                 except Exception as e:
                     logger.error(f"任务 {task_id} 等待并发槽位时发生异常: {e}", exc_info=True)
                     raise Exception(f"任务等待并发槽位失败: {e}") from e
@@ -1047,8 +1087,7 @@ class TaskManager:
 
             try:
                 # 使用新的 WorkflowScheduler 执行工作流
-                from modules.trading_agents.scheduler.workflow_scheduler import (
-                    WorkflowScheduler,
+                from modules.trading_agents.workflow import (
                     create_workflow_scheduler,
                 )
                 from core.ai.service import AIService
@@ -1061,11 +1100,61 @@ class TaskManager:
 
                 # 进度回调函数
                 async def progress_callback(progress_data: Dict[str, Any]):
-                    await ws_manager.broadcast_event(task_id, create_event(
-                        event_type=EventType.TASK_STARTED,
+                    """将调度器的进度数据转换为WebSocket事件并广播"""
+                    # 映射调度器事件到WebSocket事件类型
+                    event_mapping = {
+                        "task_created": EventType.TASK_CREATED,
+                        "phase1_start": EventType.PHASE_STARTED,
+                        "phase1_complete": EventType.PHASE_COMPLETED,
+                        "phase2_start": EventType.PHASE_STARTED,
+                        "phase2_complete": EventType.PHASE_COMPLETED,
+                        "phase3_start": EventType.PHASE_STARTED,
+                        "phase3_complete": EventType.PHASE_COMPLETED,
+                        "phase4_start": EventType.PHASE_STARTED,
+                        "phase4_complete": EventType.PHASE_COMPLETED,
+                        "task_completed": EventType.TASK_COMPLETED,
+                        "task_failed": EventType.TASK_FAILED,
+                        "task_cancelled": EventType.TASK_CANCELLED,
+                    }
+
+                    # 获取事件类型
+                    event_name = progress_data.get("event", "")
+                    event_type = event_mapping.get(event_name)
+
+                    if not event_type:
+                        # 如果没有映射，直接发送原始数据
+                        await ws_manager.broadcast_event(task_id, create_event(
+                            event_type=EventType.PROGRESS_UPDATE,  # 默认为进度更新
+                            task_id=task_id,
+                            **progress_data
+                        ))
+                        return
+
+                    # 创建标准事件
+                    event = create_event(
+                        event_type=event_type,
                         task_id=task_id,
-                        stock_code=request.stock_code,
-                    ))
+                    )
+
+                    # 添加额外数据
+                    if "current_phase" in progress_data:
+                        event.data["phase"] = progress_data["current_phase"]
+                    if "progress" in progress_data:
+                        event.data["progress"] = progress_data["progress"]
+                    if "message" in progress_data:
+                        event.data["message"] = progress_data["message"]
+                    if "stock_code" in progress_data:
+                        event.data["stock_code"] = progress_data["stock_code"]
+                    if "stock_name" in progress_data:
+                        event.data["stock_name"] = progress_data["stock_name"]
+                    
+                    # 添加其他可能的字段
+                    for key, value in progress_data.items():
+                        if key not in ["event", "task_id", "user_id", "timestamp"] and key not in event.data:
+                            event.data[key] = value
+
+                    # 广播事件
+                    await ws_manager.broadcast_event(task_id, event)
 
                 # 创建调度器
                 scheduler = create_workflow_scheduler(ai_service) \

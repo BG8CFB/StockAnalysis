@@ -70,7 +70,8 @@ class UserSettingsService:
         cached = await redis.get(cache_key)
         if cached:
             try:
-                data = json.loads(cached)
+                # 使用 json_util.loads 解析，确保 ObjectId 等类型正确转换
+                data = json_util.loads(cached)
                 # 使用 from_db 方法清理可能的无效数据
                 return UserSettingsResponse.from_db(data)
             except Exception as e:
@@ -288,6 +289,20 @@ class UserSettingsService:
         # 检查并发限制
         logger.info(f"[配额检查] 并发检查: {quota.concurrent_tasks} >= {quota.concurrent_limit} = {quota.concurrent_tasks >= quota.concurrent_limit}")
         if quota.concurrent_tasks >= quota.concurrent_limit:
+            # 双重检查：尝试自动修复并发计数
+            # 这种情况通常发生在服务异常重启后，计数器没有正确减少
+            logger.warning(f"[配额检查] 并发超限，尝试自动修复: user_id={user_id}, current={quota.concurrent_tasks}")
+            
+            fix_result = await self.diagnose_and_fix_concurrent_tasks(user_id)
+            
+            # 如果修复后计数减少，且小于限制，则允许创建
+            if fix_result["fixed_count"] < quota.concurrent_limit:
+                logger.info(f"[配额检查] 自动修复成功，允许创建: {fix_result['previous_count']} -> {fix_result['fixed_count']}")
+                return True, ""
+            
+            # 修复后仍然超限，才是真的超限
+            logger.warning(f"[配额检查] 自动修复后仍然超限: {fix_result['fixed_count']} >= {quota.concurrent_limit}")
+
             # 记录配额超限审计日志
             audit_logger = get_audit_logger()
             await audit_logger.log_task_quota_exceeded(
@@ -388,6 +403,78 @@ class UserSettingsService:
         # 清除缓存
         redis = await get_redis()
         await redis.delete(UserRedisKey.preferences(user_id))
+
+    async def diagnose_and_fix_concurrent_tasks(self, user_id: str) -> Dict[str, Any]:
+        """
+        诊断并修复并发任务计数
+
+        对比数据库中实际活跃的任务数与计数器，自动修复不一致的情况。
+
+        Args:
+            user_id: 用户 ID
+
+        Returns:
+            {
+                "previous_count": int,  # 修复前的计数
+                "actual_count": int,    # 实际活跃任务数
+                "fixed_count": int,     # 修复后的计数
+                "was_fixed": bool       # 是否进行了修复
+            }
+        """
+        from modules.trading_agents.manager.task_manager import get_task_manager
+
+        # 获取当前计数
+        user_doc = await self.db.user_settings.find_one(
+            {"user_id": ObjectId(user_id)},
+            {"quota_info.concurrent_tasks": 1}
+        )
+
+        previous_count = 0
+        if user_doc:
+            previous_count = user_doc.get("quota_info", {}).get("concurrent_tasks", 0)
+
+        # 获取实际活跃的任务数
+        task_manager = get_task_manager()
+        actual_tasks = await task_manager.get_user_active_tasks(user_id)
+        actual_count = len(actual_tasks)
+
+        # 如果不一致，进行修复
+        was_fixed = False
+        fixed_count = previous_count
+
+        if previous_count != actual_count:
+            # 更新计数器为实际值
+            await self.db.user_settings.update_one(
+                {"user_id": ObjectId(user_id)},
+                {
+                    "$set": {
+                        "quota_info.concurrent_tasks": actual_count,
+                        "updated_at": datetime.utcnow()
+                    }
+                }
+            )
+            was_fixed = True
+            fixed_count = actual_count
+
+            logger.warning(
+                f"[并发计数修复] user_id={user_id}, "
+                f"修复前={previous_count}, 实际={actual_count}, 修复后={fixed_count}"
+            )
+        else:
+            logger.info(
+                f"[并发计数检查] user_id={user_id}, 计数正确: {actual_count}"
+            )
+
+        # 清除缓存
+        redis = await get_redis()
+        await redis.delete(UserRedisKey.preferences(user_id))
+
+        return {
+            "previous_count": previous_count,
+            "actual_count": actual_count,
+            "fixed_count": fixed_count,
+            "was_fixed": was_fixed,
+        }
 
     async def update_storage_usage(
         self,

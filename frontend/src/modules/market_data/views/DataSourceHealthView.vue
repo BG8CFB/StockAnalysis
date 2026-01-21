@@ -47,19 +47,19 @@
       />
 
       <el-table-column
-        label="主数据源"
-        width="120"
+        label="当前数据源"
+        width="140"
       >
         <template #default="{ row }">
           <div class="source-cell">
-            <span>{{ dataSourceDisplayName(row.primary_source.source_id) }}</span>
+            <span>{{ dataSourceDisplayName(row.current_source.source_id) }}</span>
             <el-tag
-              v-if="row.primary_source.is_current"
-              type="success"
+              v-if="row.is_fallback"
+              type="warning"
               size="small"
-              class="current-tag"
+              class="fallback-tag"
             >
-              当前使用
+              已降级
             </el-tag>
           </div>
         </template>
@@ -72,48 +72,11 @@
       >
         <template #default="{ row }">
           <el-tag
-            v-if="row.primary_source.status"
-            :type="getDataSourceStatusTagType(row.primary_source.status)"
+            v-if="row.current_source.status"
+            :type="getDataSourceStatusTagType(row.current_source.status)"
             size="small"
           >
-            {{ dataSourceStatusLabel(row.primary_source.status) }}
-          </el-tag>
-          <span v-else class="status-placeholder">-</span>
-        </template>
-      </el-table-column>
-
-      <el-table-column
-        label="备用数据源"
-        width="120"
-      >
-        <template #default="{ row }">
-          <div v-if="row.fallback_source" class="source-cell">
-            <span>{{ dataSourceDisplayName(row.fallback_source.source_id) }}</span>
-            <el-tag
-              v-if="row.fallback_source.is_current"
-              type="success"
-              size="small"
-              class="current-tag"
-            >
-              当前使用
-            </el-tag>
-          </div>
-          <span v-else class="status-placeholder">-</span>
-        </template>
-      </el-table-column>
-
-      <el-table-column
-        label="状态"
-        width="90"
-        align="center"
-      >
-        <template #default="{ row }">
-          <el-tag
-            v-if="row.fallback_source && row.fallback_source.status"
-            :type="getDataSourceStatusTagType(row.fallback_source.status)"
-            size="small"
-          >
-            {{ dataSourceStatusLabel(row.fallback_source.status) }}
+            {{ dataSourceStatusLabel(row.current_source.status) }}
           </el-tag>
           <span v-else class="status-placeholder">-</span>
         </template>
@@ -125,12 +88,12 @@
       >
         <template #default="{ row }">
           <span class="time-info">
-            {{ getCurrentSourceCheckTime(row) }}
+            {{ row.current_source.last_check_relative || '-' }}
             <span
-              v-if="getCurrentSourceResponseTime(row)"
+              v-if="row.current_source.response_time_ms"
               class="response-time"
             >
-              {{ getCurrentSourceResponseTime(row) }}ms
+              {{ row.current_source.response_time_ms }}ms
             </span>
           </span>
         </template>
@@ -138,35 +101,35 @@
 
       <el-table-column
         label="备注/失败原因"
-        min-width="180"
+        min-width="200"
       >
         <template #default="{ row }">
           <div class="note-cell">
-            <!-- 主数据源错误信息 -->
+            <!-- 已降级状态 -->
             <span
-              v-if="row.primary_source.error_message && !row.primary_source.is_current"
-              class="error-message"
-            >
-              <el-tag
-                type="danger"
-                size="small"
-              >主源异常</el-tag>
-              {{ row.primary_source.error_message }}
-            </span>
-            <!-- 备用数据源正在使用 -->
-            <span
-              v-else-if="row.fallback_source && row.fallback_source.is_current"
+              v-if="row.is_fallback"
               class="fallback-info"
             >
               <el-tag
                 type="warning"
                 size="small"
               >已降级</el-tag>
-              使用备用数据源
+              {{ row.fallback_reason || '使用备用数据源' }}
             </span>
-            <!-- 正常状态 - 显示运行正常 -->
+            <!-- 错误信息 -->
             <span
-              v-else-if="row.primary_source.is_current && row.primary_source.status === 'healthy'"
+              v-else-if="row.current_source.error_message"
+              class="error-message"
+            >
+              <el-tag
+                type="danger"
+                size="small"
+              >异常</el-tag>
+              {{ row.current_source.error_message }}
+            </span>
+            <!-- 正常状态 -->
+            <span
+              v-else-if="row.current_source.status === 'healthy'"
               class="normal-status"
             >
               <el-tag
@@ -175,7 +138,7 @@
               >正常</el-tag>
               运行正常
             </span>
-            <!-- 其他状态：未检查或等待 -->
+            <!-- 未检查或等待 -->
             <span
               v-else
               class="waiting-status"
@@ -193,11 +156,11 @@
       >
         <template #default="{ row }">
           <el-button
-            v-if="!row.primary_source.is_current"
+            v-if="row.can_retry"
             type="primary"
             link
             size="small"
-            @click="handleRetry(row.primary_source.source_id, row.data_type)"
+            @click="handleRetry(row.current_source.source_id, row.data_type)"
           >
             重试主源
           </el-button>
@@ -481,29 +444,6 @@ const dataSourceStatusLabel = (status: DataSourceStatus | null) => {
 const getDataSourceStatusTagType = (status: DataSourceStatus | null) => {
   if (!status) return 'info'
   return DataSourceStatusTagType[status] || ''
-}
-
-/**
- * 获取当前使用的数据源检查时间
- */
-const getCurrentSourceCheckTime = (row: DataTypeStatus) => {
-  const current = row.primary_source.is_current ? row.primary_source : row.fallback_source
-  return current?.last_check_relative || '-'
-}
-
-/**
- * 获取当前使用的数据源响应时间
- */
-const getCurrentSourceResponseTime = (row: DataTypeStatus) => {
-  const current = row.primary_source.is_current ? row.primary_source : row.fallback_source
-  return current?.response_time_ms || null
-}
-
-/**
- * 获取下次更新说明
- */
-const getNextUpdate = (dataType: string) => {
-  return NextUpdateMap[dataType] || '按需更新'
 }
 
 /**

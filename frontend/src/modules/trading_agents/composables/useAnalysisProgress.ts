@@ -4,7 +4,7 @@
  *
  * @see docs/design.md 第1520-1522行
  */
-import { ref, computed } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import type { TaskEvent, AnalysisTask } from '../types'
 
 // 阶段定义
@@ -67,6 +67,25 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
 
   // 当前智能体
   const currentAgent = ref<string | null>(initialTask?.current_agent || null)
+
+  // 当前时间（用于计时）
+  const now = ref(Date.now())
+  let timer: number | null = null
+
+  // 启动计时器
+  if (typeof window !== 'undefined') {
+    timer = window.setInterval(() => {
+      now.value = Date.now()
+    }, 1000)
+  }
+
+  // 组件卸载时清除计时器
+  onUnmounted(() => {
+    if (timer) {
+      clearInterval(timer)
+      timer = null
+    }
+  })
 
   // 计算属性：当前阶段信息
   const currentPhaseInfo = computed(() =>
@@ -144,7 +163,7 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
 
   // 计算属性：任务耗时（秒）
   const elapsedSeconds = computed(() => {
-    const end = state.value.endTime || Date.now()
+    const end = state.value.endTime || now.value
     return Math.floor((end - state.value.startTime) / 1000)
   })
 
@@ -170,7 +189,14 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
       case 'agent_completed':
         handleAgentCompleted(event)
         break
+      case 'agent_failed':
+        handleAgentFailed(event)
+        break
+      case 'tool_called':
+        handleToolCall(event)
+        break
       case 'tool_call':
+        // 兼容旧版本事件名
         handleToolCall(event)
         break
       case 'tool_result':
@@ -187,6 +213,15 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
         break
       case 'task_cancelled':
         handleTaskCancelled(event)
+        break
+      case 'progress_update':
+        handleProgressUpdate(event)
+        break
+      case 'phase_agents':
+        handlePhaseAgents(event)
+        break
+      case 'connection_established':
+        // WebSocket 连接建立确认，无需处理
         break
       default:
         console.log('[AnalysisProgress] 未知事件类型:', event.event_type)
@@ -224,6 +259,14 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
   function handleAgentStarted(event: TaskEvent) {
     const { agent_slug, agent_name } = event.data
     currentAgent.value = agent_slug as string
+
+    // 如果智能体已存在（可能由 phase_agents 添加），则更新状态
+    const existing = state.value.agents.get(agent_slug as string)
+    if (existing) {
+      existing.status = 'running'
+      existing.startTime = event.timestamp * 1000
+      return
+    }
 
     const agent: AgentStatus = {
       slug: agent_slug as string,
@@ -307,6 +350,10 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
     state.value.progress = 100
     state.value.endTime = event.timestamp * 1000
     currentAgent.value = null
+    if (timer) {
+      clearInterval(timer)
+      timer = null
+    }
   }
 
   /**
@@ -315,6 +362,10 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
   function handleTaskFailed(event: TaskEvent) {
     state.value.endTime = event.timestamp * 1000
     currentAgent.value = null
+    if (timer) {
+      clearInterval(timer)
+      timer = null
+    }
   }
 
   /**
@@ -323,6 +374,10 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
   function handleTaskCancelled(event: TaskEvent) {
     state.value.endTime = event.timestamp * 1000
     currentAgent.value = null
+    if (timer) {
+      clearInterval(timer)
+      timer = null
+    }
 
     // 标记所有运行中的智能体为失败
     state.value.agents.forEach((agent) => {
@@ -331,6 +386,60 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
         agent.endTime = event.timestamp * 1000
       }
     })
+  }
+
+  /**
+   * 处理智能体失败
+   */
+  function handleAgentFailed(event: TaskEvent) {
+    const { agent_slug } = event.data
+    const agent = state.value.agents.get(agent_slug as string)
+
+    if (agent) {
+      agent.status = 'failed'
+      agent.endTime = event.timestamp * 1000
+    }
+
+    // 如果当前智能体失败，清除当前智能体
+    if (currentAgent.value === agent_slug) {
+      currentAgent.value = null
+    }
+  }
+
+  /**
+   * 处理进度更新
+   */
+  function handleProgressUpdate(event: TaskEvent) {
+    const { progress, phase } = event.data
+    if (typeof progress === 'number') {
+      state.value.progress = Math.min(Math.max(progress, 0), 100)
+    }
+    if (typeof phase === 'number') {
+      state.value.currentPhase = phase
+    }
+  }
+
+  /**
+   * 处理阶段智能体列表
+   */
+  function handlePhaseAgents(event: TaskEvent) {
+    const { agents, phase } = event.data
+    console.log('[AnalysisProgress] Received phase agents:', agents, 'Phase:', phase)
+    if (Array.isArray(agents)) {
+      // 更新当前阶段的智能体列表
+      agents.forEach((agent: any) => {
+        const { slug, name } = agent
+        if (!state.value.agents.has(slug)) {
+          state.value.agents.set(slug, {
+            slug: slug || 'unknown',
+            name: name || slug || 'Unknown Agent',
+            status: 'pending',
+            startTime: null,
+            endTime: null,
+          })
+        }
+      })
+    }
   }
 
   /**
@@ -348,6 +457,7 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
     }
     events.value = []
     currentAgent.value = null
+    now.value = Date.now()
   }
 
   /**

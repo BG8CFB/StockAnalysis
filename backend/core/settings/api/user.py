@@ -182,3 +182,21 @@ async def import_settings(
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"配置导入失败: {str(e)}")
+
+
+# =============================================================================
+# 配额管理
+# =============================================================================
+
+@router.post("/quota/fix-concurrent")
+async def fix_concurrent_tasks(
+    current_user: UserModel = Depends(get_current_active_user)
+):
+    """
+    诊断并修复并发任务计数
+
+    对比数据库中实际活跃的任务数与计数器，自动修复不一致的情况。
+    """
+    service = get_user_settings_service()
+    result = await service.diagnose_and_fix_concurrent_tasks(str(current_user.id))
+    return result

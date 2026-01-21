@@ -112,7 +112,8 @@
               </span>
               <el-tag
                 type="info"
-                size="plain"
+                effect="plain"
+                size="small"
               >
                 已选 {{ stagesConfig.stage1.selected_agents.length }}/{{ activeAnalysts.length }}
               </el-tag>
@@ -174,7 +175,8 @@
               </span>
               <el-tag
                 type="success"
-                size="plain"
+                effect="plain"
+                size="small"
               >
                 <el-icon><Timer /></el-icon> 预计 {{ estimateTime }} 分钟
               </el-tag>

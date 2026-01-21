@@ -30,7 +30,7 @@ const WS_CONFIG = {
   // 最大重试次数
   MAX_RETRY_COUNT: Number(import.meta.env.VITE_WS_MAX_RETRY_COUNT) || 10,
   // WebSocket 端点
-  WS_ENDPOINT: (taskId: string) => `/api/trading-agents/ws/${taskId}`,
+  WS_ENDPOINT: (taskId: string) => `/api/ws/tasks/${taskId}`,
 }
 
 interface WebSocketOptions {
@@ -318,7 +318,7 @@ export function useWebSocket(options: WebSocketOptions) {
     // 构建 WebSocket URL（携带 token 作为查询参数）
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.host
-    const wsUrl = `${protocol}//${host}${WS_CONFIG.ENDPOINT(taskId)}?token=${encodeURIComponent(token)}`
+    const wsUrl = `${protocol}//${host}${WS_CONFIG.WS_ENDPOINT(taskId)}?token=${encodeURIComponent(token)}`
 
     console.log('[WebSocket] 正在连接:', wsUrl)
 

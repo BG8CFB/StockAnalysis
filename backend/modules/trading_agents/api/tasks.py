@@ -658,7 +658,7 @@ async def clear_tasks_by_status(
 
     # 记录审计日志
     audit_logger = get_audit_logger()
-    await audit_logger.log_action(
+    await audit_logger.log(
         user_id=user_id,
         action="clear_tasks",
         details={
@@ -752,7 +752,7 @@ async def batch_delete_tasks(
 
     # 记录审计日志
     audit_logger = get_audit_logger()
-    await audit_logger.log_action(
+    await audit_logger.log(
         user_id=user_id,
         action="batch_delete_tasks",
         details={

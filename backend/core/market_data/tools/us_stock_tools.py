@@ -58,7 +58,7 @@ class USStockTool(MarketDataToolBase):
                 symbol = f"{symbol}.US"
 
             # 尝试从 Yahoo Finance 获取实时行情
-            from ...sources.us_stock import YahooFinanceAdapter
+            from ..sources.us_stock import YahooFinanceAdapter
 
             # 获取 Yahoo Finance 适配器
             sources = await self.source_router.get_available_sources(MarketType.US_STOCK)

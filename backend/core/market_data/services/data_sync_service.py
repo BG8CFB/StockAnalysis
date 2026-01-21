@@ -5,41 +5,43 @@
 """
 
 import logging
-from typing import Optional, List, Dict, Any
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
+from core.market_data.managers.source_router import DataSourceRouter
 from core.market_data.models import (
-    MarketType,
     MacroEconomic,
+    MarketType,
 )
 from core.market_data.models.datasource import (
-    DataSourceType,
     DataSourceStatus,
-    DataSourceStatusHistory,
+    DataSourceType,
 )
 from core.market_data.repositories.datasource import (
-    SystemDataSourceRepository,
-    DataSourceStatusRepository,
     DataSourceStatusHistoryRepository,
+    DataSourceStatusRepository,
+    SystemDataSourceRepository,
+)
+from core.market_data.repositories.macro_economic import MacroEconomicRepository
+from core.market_data.repositories.market_news import MarketNewsRepository
+from core.market_data.repositories.stock_company import StockCompanyRepository
+from core.market_data.repositories.stock_financial import (
+    StockFinancialIndicatorRepository,
+    StockFinancialRepository,
 )
 from core.market_data.repositories.stock_info import StockInfoRepository
 from core.market_data.repositories.stock_quotes import StockQuoteRepository
-from core.market_data.repositories.stock_financial import (
-    StockFinancialRepository,
-    StockFinancialIndicatorRepository,
-)
-from core.market_data.repositories.stock_company import StockCompanyRepository
-from core.market_data.repositories.macro_economic import MacroEconomicRepository
-from core.market_data.repositories.market_news import MarketNewsRepository
-from core.market_data.sources.a_stock.tushare_adapter import TuShareAdapter
 from core.market_data.sources.a_stock.akshare_adapter import AkShareAdapter
-from core.market_data.managers.source_router import DataSourceRouter
+from core.market_data.sources.a_stock.tushare_adapter import TuShareAdapter
 
 logger = logging.getLogger(__name__)
 
 
 class DataSyncService:
     """数据同步服务（支持自动数据源切换）"""
+
+    # 类级别标志：是否已打印过 TuShare 不可用的警告（避免重复日志）
+    _tushare_unavailable_logged: bool = False
 
     def __init__(self):
         self.system_source_repo = SystemDataSourceRepository()
@@ -60,16 +62,54 @@ class DataSyncService:
         # 监控服务实例（延迟加载）
         self._monitor_service = None
 
+    def _should_log_tushare_unavailable(self) -> bool:
+        """
+        检查是否应该打印 TuShare 不可用的日志（只打印一次）
+
+        Returns:
+            bool: True 表示应该打印，False 表示已打印过
+        """
+        if not DataSyncService._tushare_unavailable_logged:
+            DataSyncService._tushare_unavailable_logged = True
+            return True
+        return False
+
     def _get_monitor_service(self):
         """获取监控服务实例（延迟加载）"""
         if self._monitor_service is None:
             from core.market_data.services.source_monitor_service import SourceMonitorService
+
             self._monitor_service = SourceMonitorService()
         return self._monitor_service
 
+    def clear_adapter_cache(self, market: str = None, source_id: str = None) -> None:
+        """
+        清除适配器缓存（用于配置更新后重新创建适配器）
+
+        Args:
+            market: 市场类型（可选，清除该市场所有适配器）
+            source_id: 数据源ID（可选）
+        """
+        if market and source_id:
+            cache_key = f"{market}:{source_id}"
+            if cache_key in self._adapters:
+                del self._adapters[cache_key]
+                logger.info(f"Cleared adapter cache for {cache_key}")
+        elif market:
+            keys_to_clear = [k for k in self._adapters if k.startswith(f"{market}:")]
+            for key in keys_to_clear:
+                del self._adapters[key]
+            logger.info(f"Cleared {len(keys_to_clear)} adapter caches for market {market}")
+        else:
+            self._adapters.clear()
+            logger.info("Cleared all adapter caches")
+
     def _get_adapter(self, source_id: str, config: Dict[str, Any], market: str = "A_STOCK") -> Any:
         """
-        获取数据源适配器实例（支持默认配置和多市场）
+        获取数据源适配器实例（支持动态重新创建）
+
+        对于 TuShare，如果已存在适配器但没有 token，而新配置包含 token，
+        则会重新创建适配器以支持动态配置。
 
         Args:
             source_id: 数据源ID
@@ -79,61 +119,84 @@ class DataSyncService:
         Returns:
             适配器实例
         """
-        # 使用 source_id 和 market 组合作为缓存 key
         cache_key = f"{market}:{source_id}"
+        adapter_config = config if config else {}
 
-        if cache_key not in self._adapters:
-            adapter_config = config if config else {}
-
-            # A股数据源
-            if market == "A_STOCK":
-                if source_id == "tushare":
-                    try:
-                        self._adapters[cache_key] = TuShareAdapter(adapter_config)
-                        logger.info(f"Created TuShare adapter (has_token: {bool(adapter_config.get('api_token'))})")
-                    except ValueError as e:
-                        logger.warning(f"TuShare adapter creation failed: {e}, creating with empty config")
-                        self._adapters[cache_key] = TuShareAdapter({})
-                elif source_id == "akshare":
-                    self._adapters[cache_key] = AkShareAdapter(adapter_config)
-                    logger.info("Created AkShare adapter for A_STOCK")
-                else:
-                    raise ValueError(f"Unsupported data source: {source_id} for market: {market}")
-
-            # 美股数据源
-            elif market == "US_STOCK":
-                if source_id == "yahoo":
-                    from core.market_data.sources.us_stock.yahoo_adapter import YahooFinanceAdapter
-                    self._adapters[cache_key] = YahooFinanceAdapter(adapter_config)
-                    logger.info("Created YahooFinance adapter for US_STOCK")
-                elif source_id == "alpha_vantage":
-                    from core.market_data.sources.us_stock.alphavantage_adapter import AlphaVantageAdapter
-                    self._adapters[cache_key] = AlphaVantageAdapter(adapter_config)
-                    logger.info("Created AlphaVantage adapter for US_STOCK")
-                elif source_id == "akshare":
-                    # TODO: AkShare US adapter 尚未实现，已定义但未开发
-                    raise NotImplementedError(
-                        f"AkShare adapter for US_STOCK is not yet implemented. "
-                        f"Please use 'yahoo' or 'alpha_vantage' for US market data."
+        # 检查是否需要重新创建适配器（对于 TuShare，检测 token 变化）
+        if cache_key in self._adapters:
+            existing_adapter = self._adapters[cache_key]
+            if source_id == "tushare" and hasattr(existing_adapter, "is_configured"):
+                # 对于 TuShare，检查新配置是否包含 token
+                has_new_token = bool(adapter_config.get("api_token"))
+                if has_new_token and not existing_adapter.is_configured():
+                    # 新配置有 token，但现有适配器没有，重新创建
+                    logger.info(
+                        f"TuShare token detected in config - recreating adapter "
+                        f"(previous: unconfigured, new: has_token={has_new_token})"
                     )
+                    del self._adapters[cache_key]
                 else:
-                    raise ValueError(f"Unsupported data source: {source_id} for market: {market}")
+                    # 返回现有适配器
+                    return existing_adapter
 
-            # 港股数据源
-            elif market == "HK_STOCK":
-                if source_id == "yahoo":
-                    from core.market_data.sources.hk_stock.yahoo_adapter import YahooHKAdapter
-                    self._adapters[cache_key] = YahooHKAdapter(adapter_config)
-                    logger.info("Created YahooHK adapter for HK_STOCK")
-                elif source_id == "akshare":
-                    from core.market_data.sources.hk_stock.akshare_adapter import AkShareHKAdapter
-                    self._adapters[cache_key] = AkShareHKAdapter(adapter_config)
-                    logger.info("Created AkShareHK adapter for HK_STOCK")
-                else:
-                    raise ValueError(f"Unsupported data source: {source_id} for market: {market}")
-
+        # 创建新适配器并缓存
+        if market == "A_STOCK":
+            if source_id == "tushare":
+                try:
+                    self._adapters[cache_key] = TuShareAdapter(adapter_config)
+                    has_token = bool(adapter_config.get('api_token'))
+                    logger.info(f"Created TuShare adapter (has_token: {has_token})")
+                except ValueError as e:
+                    logger.warning(
+                        f"TuShare adapter creation failed: {e}, creating with empty config"
+                    )
+                    self._adapters[cache_key] = TuShareAdapter({})
+            elif source_id == "akshare":
+                self._adapters[cache_key] = AkShareAdapter(adapter_config)
+                logger.info("Created AkShare adapter for A_STOCK")
             else:
-                raise ValueError(f"Unsupported market: {market}")
+                raise ValueError(f"Unsupported data source: {source_id} for market: {market}")
+
+        # 美股数据源
+        elif market == "US_STOCK":
+            if source_id == "yahoo":
+                from core.market_data.sources.us_stock.yahoo_adapter import YahooFinanceAdapter
+
+                self._adapters[cache_key] = YahooFinanceAdapter(adapter_config)
+                logger.info("Created YahooFinance adapter for US_STOCK")
+            elif source_id == "alpha_vantage":
+                from core.market_data.sources.us_stock.alphavantage_adapter import (
+                    AlphaVantageAdapter,
+                )
+
+                self._adapters[cache_key] = AlphaVantageAdapter(adapter_config)
+                logger.info("Created AlphaVantage adapter for US_STOCK")
+            elif source_id == "akshare":
+                # TODO: AkShare US adapter 尚未实现，已定义但未开发
+                raise NotImplementedError(
+                    "AkShare adapter for US_STOCK is not yet implemented. "
+                    "Please use 'yahoo' or 'alpha_vantage' for US market data."
+                )
+            else:
+                raise ValueError(f"Unsupported data source: {source_id} for market: {market}")
+
+        # 港股数据源
+        elif market == "HK_STOCK":
+            if source_id == "yahoo":
+                from core.market_data.sources.hk_stock.yahoo_adapter import YahooHKAdapter
+
+                self._adapters[cache_key] = YahooHKAdapter(adapter_config)
+                logger.info("Created YahooHK adapter for HK_STOCK")
+            elif source_id == "akshare":
+                from core.market_data.sources.hk_stock.akshare_adapter import AkShareHKAdapter
+
+                self._adapters[cache_key] = AkShareHKAdapter(adapter_config)
+                logger.info("Created AkShareHK adapter for HK_STOCK")
+            else:
+                raise ValueError(f"Unsupported data source: {source_id} for market: {market}")
+
+        else:
+            raise ValueError(f"Unsupported market: {market}")
 
         return self._adapters[cache_key]
 
@@ -157,7 +220,9 @@ class DataSyncService:
 
         for source_config in sources:
             try:
-                adapter = self._get_adapter(source_config["source_id"], source_config["config"], market)
+                adapter = self._get_adapter(
+                    source_config["source_id"], source_config["config"], market
+                )
                 # 设置优先级（从配置中读取或使用默认值）
                 if "priority" in source_config:
                     adapter.set_priority(source_config["priority"])
@@ -173,12 +238,7 @@ class DataSyncService:
         return self._router
 
     async def _get_data_with_fallback(
-        self,
-        market: str,
-        method_name: str,
-        use_fallback: bool = True,
-        *args,
-        **kwargs
+        self, market: str, method_name: str, use_fallback: bool = True, *args, **kwargs
     ) -> Any:
         """
         使用自动降级获取数据
@@ -219,7 +279,7 @@ class DataSyncService:
         status: DataSourceStatus,
         response_time_ms: Optional[int] = None,
         error: Optional[Dict[str, Any]] = None,
-        check_type: str = "sync_task"
+        check_type: str = "sync_task",
     ):
         """
         更新数据源状态（使用失败计数机制）
@@ -241,7 +301,7 @@ class DataSyncService:
                 market=market,
                 data_type=data_type,
                 source_id=source_id,
-                response_time_ms=response_time_ms or 0
+                response_time_ms=response_time_ms or 0,
             )
         elif error:
             # 失败时使用失败计数机制
@@ -250,7 +310,7 @@ class DataSyncService:
                 data_type=data_type,
                 source_id=source_id,
                 error=error,
-                check_type=check_type
+                check_type=check_type,
             )
             logger.info(f"Handled failure for {source_id}/{data_type}: {result}")
         else:
@@ -263,14 +323,11 @@ class DataSyncService:
                 status=status,
                 response_time_ms=response_time_ms,
                 error=error,
-                check_type=check_type
+                check_type=check_type,
             )
 
     async def sync_stock_list(
-        self,
-        market: MarketType = MarketType.A_STOCK,
-        source_id: str = "tushare",
-        status: str = "L"
+        self, market: MarketType = MarketType.A_STOCK, source_id: str = "tushare", status: str = "L"
     ) -> Dict[str, Any]:
         """
         同步股票列表
@@ -290,7 +347,7 @@ class DataSyncService:
             "symbol": None,
             "market": market.value,
             "data_types": ["stock_list"],
-            "result": {}
+            "result": {},
         }
 
         try:
@@ -300,7 +357,9 @@ class DataSyncService:
 
             adapter = self._get_adapter(source_id, adapter_config, market.value)
 
-            logger.info(f"Syncing stock list from {source_id} (config: {'found' if config else 'default'})")
+            logger.info(
+                f"Syncing stock list from {source_id} (config: {'found' if config else 'default'})"
+            )
             stock_list = await adapter.get_stock_list(market, status)
 
             upserted = 0
@@ -315,16 +374,12 @@ class DataSyncService:
                 data_type="stock_list",
                 source_id=source_id,
                 status=DataSourceStatus.HEALTHY,
-                response_time_ms=response_time_ms
+                response_time_ms=response_time_ms,
             )
 
             result["status"] = "completed"
             result["progress"] = 100
-            result["result"] = {
-                "total": len(stock_list),
-                "upserted": upserted,
-                "source": source_id
-            }
+            result["result"] = {"total": len(stock_list), "upserted": upserted, "source": source_id}
 
             logger.info(f"Synced {upserted} stocks from {source_id}")
 
@@ -338,7 +393,7 @@ class DataSyncService:
                 source_id=source_id,
                 status=DataSourceStatus.UNAVAILABLE,
                 response_time_ms=response_time_ms,
-                error={"code": "SYNC_ERROR", "message": str(e)}
+                error={"code": "SYNC_ERROR", "message": str(e)},
             )
 
             result["status"] = "failed"
@@ -354,7 +409,7 @@ class DataSyncService:
         source_id: Optional[str] = None,
         adjust_type: Optional[str] = None,
         rollback_on_error: bool = False,
-        market: str = "A_STOCK"
+        market: str = "A_STOCK",
     ) -> Dict[str, Any]:
         """
         同步日线行情（支持自动降级）
@@ -378,7 +433,7 @@ class DataSyncService:
             "symbol": None,
             "market": market,
             "data_types": ["daily_quotes"],
-            "result": {}
+            "result": {},
         }
 
         total_upserted = 0
@@ -406,16 +461,19 @@ class DataSyncService:
             for idx, symbol in enumerate(symbols):
                 symbol_success = False
                 last_error = None
-                
+
                 # 对每个 symbol 尝试所有可用源
                 for adapter in adapters:
                     try:
-                        logger.info(f"Syncing daily quotes for {symbol} from {adapter.source_name} ({idx+1}/{len(symbols)})")
+                        # 进度日志改为 DEBUG 级别，只在文件中记录
+                        logger.debug(
+                            f"Syncing daily quotes for {symbol} from {adapter.source_name} ({idx+1}/{len(symbols)})"
+                        )
                         quotes = await adapter.get_daily_quotes(
                             symbol=symbol,
                             start_date=start_date,
                             end_date=end_date,
-                            adjust_type=adjust_type
+                            adjust_type=adjust_type,
                         )
 
                         upserted = 0
@@ -427,25 +485,30 @@ class DataSyncService:
                         successful_symbols.append(symbol)
                         rollback_candidates.append(symbol)
                         symbol_success = True
-                        used_source_id = adapter.source_name # 记录最后一次成功的源
-                        break # 成功则跳出源循环，处理下一个 symbol
+                        used_source_id = adapter.source_name  # 记录最后一次成功的源
+                        break  # 成功则跳出源循环，处理下一个 symbol
 
                     except Exception as e:
                         last_error = e
-                        logger.warning(f"Failed to sync {symbol} from {adapter.source_name}: {e}")
-                        continue # 尝试下一个源
-                
+                        # 对 TuShare 没有配置的情况，减少日志噪音
+                        error_msg = str(e)
+                        if "token not configured" in error_msg.lower():
+                            if self._should_log_tushare_unavailable():
+                                logger.warning(
+                                    f"TuShare API token not configured - "
+                                    f"falling back to other data sources for {len(symbols) - idx} remaining symbols"
+                                )
+                        else:
+                            logger.debug(f"Failed to sync {symbol} from {adapter.source_name}: {e}")
+                        continue  # 尝试下一个源
+
                 if not symbol_success:
                     failed_symbols.append({"symbol": symbol, "error": str(last_error)})
                     # 如果配置了出错回滚，立即回滚已写入的数据
                     if rollback_on_error and rollback_candidates:
                         count = len(rollback_candidates)
-                        logger.warning(
-                            f"Rolling back {count} symbols due to error"
-                        )
-                        await self._rollback_daily_quotes(
-                            rollback_candidates, start_date, end_date
-                        )
+                        logger.warning(f"Rolling back {count} symbols due to error")
+                        await self._rollback_daily_quotes(rollback_candidates, start_date, end_date)
                         rollback_candidates.clear()
                         raise last_error
 
@@ -465,7 +528,7 @@ class DataSyncService:
                     data_type="daily_quote",
                     source_id=used_source_id,
                     status=status,
-                    response_time_ms=response_time_ms
+                    response_time_ms=response_time_ms,
                 )
 
             result["status"] = "completed" if not failed_symbols else "completed_with_errors"
@@ -478,7 +541,7 @@ class DataSyncService:
                 "failed_symbols": failed_symbols[:10],
                 "total_quotes": total_upserted,
                 "source": used_source_id or "multiple",
-                "rollback_performed": False
+                "rollback_performed": False,
             }
 
             logger.info(f"Synced {total_upserted} quotes for {len(symbols)} symbols")
@@ -494,7 +557,7 @@ class DataSyncService:
                     source_id=source_id,
                     status=DataSourceStatus.UNAVAILABLE,
                     response_time_ms=response_time_ms,
-                    error={"code": "SYNC_ERROR", "message": str(e)}
+                    error={"code": "SYNC_ERROR", "message": str(e)},
                 )
 
             result["status"] = "failed"
@@ -503,11 +566,7 @@ class DataSyncService:
         return result
 
     async def sync_minute_quotes(
-        self,
-        symbols: List[str],
-        trade_date: str,
-        source_id: str = "akshare",
-        freq: str = "1min"
+        self, symbols: List[str], trade_date: str, source_id: str = "akshare", freq: str = "1min"
     ) -> Dict[str, Any]:
         """
         同步分钟K线数据
@@ -528,7 +587,7 @@ class DataSyncService:
             "symbol": None,
             "market": "A_STOCK",
             "data_types": ["minute_quotes"],
-            "result": {}
+            "result": {},
         }
 
         total_upserted = 0
@@ -541,15 +600,16 @@ class DataSyncService:
 
             adapter = self._get_adapter(source_id, adapter_config, "A_STOCK")
 
-            logger.info(f"Syncing daily quotes from {source_id} (config: {'found' if config else 'default'})")
+            logger.info(
+                f"Syncing daily quotes from {source_id} (config: {'found' if config else 'default'})"
+            )
 
             for idx, symbol in enumerate(symbols):
                 try:
-                    logger.info(f"Syncing minute quotes for {symbol} ({idx+1}/{len(symbols)})")
+                    # 进度日志改为 DEBUG
+                    logger.debug(f"Syncing minute quotes for {symbol} ({idx+1}/{len(symbols)})")
                     klines = await adapter.get_minute_quotes(
-                        symbol=symbol,
-                        trade_date=trade_date,
-                        freq=freq
+                        symbol=symbol, trade_date=trade_date, freq=freq
                     )
 
                     upserted = 0
@@ -560,7 +620,16 @@ class DataSyncService:
                     total_upserted += upserted
 
                 except Exception as e:
-                    logger.warning(f"Failed to sync {symbol}: {e}")
+                    # 对 TuShare 没有配置的情况，减少日志噪音
+                    error_msg = str(e)
+                    if "token not configured" in error_msg.lower():
+                        if self._should_log_tushare_unavailable():
+                            logger.warning(
+                                "TuShare API token not configured - "
+                                "will try fallback data sources"
+                            )
+                    else:
+                        logger.debug(f"Failed to sync {symbol}: {e}")
                     failed_symbols.append({"symbol": symbol, "error": str(e)})
 
             response_time_ms = int((datetime.now() - start_time).total_seconds() * 1000)
@@ -575,7 +644,7 @@ class DataSyncService:
                 data_type="minute_quotes",
                 source_id=source_id,
                 status=status,
-                response_time_ms=response_time_ms
+                response_time_ms=response_time_ms,
             )
 
             result["status"] = "completed" if not failed_symbols else "completed_with_errors"
@@ -586,7 +655,7 @@ class DataSyncService:
                 "failed": len(failed_symbols),
                 "total_klines": total_upserted,
                 "failed_symbols": failed_symbols[:10],
-                "source": source_id
+                "source": source_id,
             }
 
             logger.info(f"Synced {total_upserted} minute klines for {len(symbols)} symbols")
@@ -601,7 +670,7 @@ class DataSyncService:
                 source_id=source_id,
                 status=DataSourceStatus.UNAVAILABLE,
                 response_time_ms=response_time_ms,
-                error={"code": "SYNC_ERROR", "message": str(e)}
+                error={"code": "SYNC_ERROR", "message": str(e)},
             )
 
             result["status"] = "failed"
@@ -610,10 +679,7 @@ class DataSyncService:
         return result
 
     async def sync_financials(
-        self,
-        symbols: List[str],
-        report_date: Optional[str] = None,
-        source_id: str = "tushare"
+        self, symbols: List[str], report_date: Optional[str] = None, source_id: str = "tushare"
     ) -> Dict[str, Any]:
         """
         同步财务数据
@@ -637,7 +703,7 @@ class DataSyncService:
             "symbol": None,
             "market": "A_STOCK",
             "data_types": ["financials", "financial_indicator"],
-            "result": {}
+            "result": {},
         }
 
         # 分别统计两种数据
@@ -653,15 +719,19 @@ class DataSyncService:
 
             adapter = self._get_adapter(source_id, adapter_config, "A_STOCK")
 
-            logger.info(f"Syncing daily quotes from {source_id} (config: {'found' if config else 'default'})")
+            logger.info(
+                f"Syncing daily quotes from {source_id} (config: {'found' if config else 'default'})"
+            )
 
             for idx, symbol in enumerate(symbols):
                 # 1. 同步财务报表数据
                 try:
-                    logger.info(f"Syncing financial statements for {symbol} ({idx+1}/{len(symbols)})")
+                    # 进度日志改为 DEBUG
+                    logger.debug(
+                        f"Syncing financial statements for {symbol} ({idx+1}/{len(symbols)})"
+                    )
                     financials = await adapter.get_stock_financials(
-                        symbol=symbol,
-                        report_date=report_date
+                        symbol=symbol, report_date=report_date
                     )
 
                     for financial in financials:
@@ -669,15 +739,25 @@ class DataSyncService:
                         financials_upserted += 1
 
                 except Exception as e:
-                    logger.warning(f"Failed to sync financial statements for {symbol}: {e}")
+                    error_msg = str(e)
+                    if "token not configured" in error_msg.lower():
+                        if self._should_log_tushare_unavailable():
+                            logger.warning(
+                                "TuShare API token not configured - "
+                                "will try fallback data sources"
+                            )
+                    else:
+                        logger.debug(f"Failed to sync financial statements for {symbol}: {e}")
                     financials_failed_symbols.append({"symbol": symbol, "error": str(e)})
 
                 # 2. 同步财务指标数据
                 try:
-                    logger.info(f"Syncing financial indicators for {symbol} ({idx+1}/{len(symbols)})")
+                    # 进度日志改为 DEBUG
+                    logger.debug(
+                        f"Syncing financial indicators for {symbol} ({idx+1}/{len(symbols)})"
+                    )
                     indicators = await adapter.get_financial_indicators(
-                        symbol=symbol,
-                        report_date=report_date
+                        symbol=symbol, report_date=report_date
                     )
 
                     for indicator in indicators:
@@ -685,7 +765,15 @@ class DataSyncService:
                         indicators_upserted += 1
 
                 except Exception as e:
-                    logger.warning(f"Failed to sync financial indicators for {symbol}: {e}")
+                    error_msg = str(e)
+                    if "token not configured" in error_msg.lower():
+                        if self._should_log_tushare_unavailable():
+                            logger.warning(
+                                "TuShare API token not configured - "
+                                "will try fallback data sources"
+                            )
+                    else:
+                        logger.debug(f"Failed to sync financial indicators for {symbol}: {e}")
                     indicators_failed_symbols.append({"symbol": symbol, "error": str(e)})
 
             response_time_ms = int((datetime.now() - start_time).total_seconds() * 1000)
@@ -702,7 +790,7 @@ class DataSyncService:
                 data_type="financials",
                 source_id=source_id,
                 status=financials_status,
-                response_time_ms=response_time_ms
+                response_time_ms=response_time_ms,
             )
 
             # 计算整体状态
@@ -719,16 +807,16 @@ class DataSyncService:
                     "upserted": financials_upserted,
                     "successful": len(symbols) - len(financials_failed_symbols),
                     "failed": len(financials_failed_symbols),
-                    "failed_symbols": financials_failed_symbols[:10]
+                    "failed_symbols": financials_failed_symbols[:10],
                 },
                 "indicators": {
                     "upserted": indicators_upserted,
                     "successful": len(symbols) - len(indicators_failed_symbols),
                     "failed": len(indicators_failed_symbols),
-                    "failed_symbols": indicators_failed_symbols[:10]
+                    "failed_symbols": indicators_failed_symbols[:10],
                 },
                 "total_records": financials_upserted + indicators_upserted,
-                "source": source_id
+                "source": source_id,
             }
 
             logger.info(
@@ -747,7 +835,7 @@ class DataSyncService:
                 source_id=source_id,
                 status=DataSourceStatus.UNAVAILABLE,
                 response_time_ms=response_time_ms,
-                error={"code": "SYNC_ERROR", "message": str(e)}
+                error={"code": "SYNC_ERROR", "message": str(e)},
             )
 
             result["status"] = "failed"
@@ -756,9 +844,7 @@ class DataSyncService:
         return result
 
     async def sync_company_info(
-        self,
-        symbols: List[str],
-        source_id: str = "tushare"
+        self, symbols: List[str], source_id: str = "tushare"
     ) -> Dict[str, Any]:
         """
         同步公司信息
@@ -777,7 +863,7 @@ class DataSyncService:
             "symbol": None,
             "market": "A_STOCK",
             "data_types": ["company_info"],
-            "result": {}
+            "result": {},
         }
 
         total_upserted = 0
@@ -790,11 +876,14 @@ class DataSyncService:
 
             adapter = self._get_adapter(source_id, adapter_config, "A_STOCK")
 
-            logger.info(f"Syncing daily quotes from {source_id} (config: {'found' if config else 'default'})")
+            logger.info(
+                f"Syncing daily quotes from {source_id} (config: {'found' if config else 'default'})"
+            )
 
             for idx, symbol in enumerate(symbols):
                 try:
-                    logger.info(f"Syncing company info for {symbol} ({idx+1}/{len(symbols)})")
+                    # 进度日志改为 DEBUG
+                    logger.debug(f"Syncing company info for {symbol} ({idx+1}/{len(symbols)})")
                     company = await adapter.get_stock_company(symbol)
 
                     if company:
@@ -802,7 +891,16 @@ class DataSyncService:
                         total_upserted += 1
 
                 except Exception as e:
-                    logger.warning(f"Failed to sync {symbol}: {e}")
+                    # 对 TuShare 没有配置的情况，减少日志噪音
+                    error_msg = str(e)
+                    if "token not configured" in error_msg.lower():
+                        if self._should_log_tushare_unavailable():
+                            logger.warning(
+                                "TuShare API token not configured - "
+                                "will try fallback data sources"
+                            )
+                    else:
+                        logger.debug(f"Failed to sync {symbol}: {e}")
                     failed_symbols.append({"symbol": symbol, "error": str(e)})
 
             response_time_ms = int((datetime.now() - start_time).total_seconds() * 1000)
@@ -817,7 +915,7 @@ class DataSyncService:
                 data_type="company_info",
                 source_id=source_id,
                 status=status,
-                response_time_ms=response_time_ms
+                response_time_ms=response_time_ms,
             )
 
             result["status"] = "completed" if not failed_symbols else "completed_with_errors"
@@ -828,7 +926,7 @@ class DataSyncService:
                 "failed": len(failed_symbols),
                 "total_records": total_upserted,
                 "failed_symbols": failed_symbols[:10],
-                "source": source_id
+                "source": source_id,
             }
 
             logger.info(f"Synced {total_upserted} company records for {len(symbols)} symbols")
@@ -843,7 +941,7 @@ class DataSyncService:
                 source_id=source_id,
                 status=DataSourceStatus.UNAVAILABLE,
                 response_time_ms=response_time_ms,
-                error={"code": "SYNC_ERROR", "message": str(e)}
+                error={"code": "SYNC_ERROR", "message": str(e)},
             )
 
             result["status"] = "failed"
@@ -852,9 +950,7 @@ class DataSyncService:
         return result
 
     async def sync_company_info_with_fallback(
-        self,
-        symbols: List[str],
-        source_id: str = "tushare"
+        self, symbols: List[str], source_id: str = "tushare"
     ) -> Dict[str, Any]:
         """
         同步公司信息（带自动降级）
@@ -873,7 +969,7 @@ class DataSyncService:
             "symbol": None,
             "market": "A_STOCK",
             "data_types": ["company_info"],
-            "result": {}
+            "result": {},
         }
 
         # 数据源优先级列表（按优先级排序）
@@ -894,14 +990,19 @@ class DataSyncService:
                 adapter_config = config.get("config", {}) if config else {}
 
                 adapter = self._get_adapter(src_id, adapter_config, "A_STOCK")
-                logger.info(f"Created {src_id} adapter (config: {'found' if config else 'default'})")
+                logger.info(
+                    f"Created {src_id} adapter (config: {'found' if config else 'default'})"
+                )
 
                 total_upserted = 0
                 failed_symbols = []
 
                 for idx, symbol in enumerate(symbols):
                     try:
-                        logger.info(f"Syncing company info for {symbol} from {src_id} ({idx+1}/{len(symbols)})")
+                        # 进度日志改为 DEBUG
+                        logger.debug(
+                            f"Syncing company info for {symbol} from {src_id} ({idx+1}/{len(symbols)})"
+                        )
                         company = await adapter.get_stock_company(symbol)
 
                         if company:
@@ -909,7 +1010,16 @@ class DataSyncService:
                             total_upserted += 1
 
                     except Exception as e:
-                        logger.warning(f"Failed to sync {symbol} from {src_id}: {e}")
+                        # 对 TuShare 没有配置的情况，减少日志噪音
+                        error_msg = str(e)
+                        if "token not configured" in error_msg.lower():
+                            if self._should_log_tushare_unavailable():
+                                logger.warning(
+                                    "TuShare API token not configured - "
+                                    "falling back to other data sources"
+                                )
+                        else:
+                            logger.debug(f"Failed to sync {symbol} from {src_id}: {e}")
                         failed_symbols.append({"symbol": symbol, "error": str(e)})
 
                 # 成功获取数据
@@ -921,7 +1031,7 @@ class DataSyncService:
                     data_type="company_info",
                     source_id=src_id,
                     status=DataSourceStatus.HEALTHY,
-                    response_time_ms=response_time_ms
+                    response_time_ms=response_time_ms,
                 )
 
                 result["status"] = "completed"
@@ -932,7 +1042,7 @@ class DataSyncService:
                     "failed": len(failed_symbols),
                     "total_records": total_upserted,
                     "failed_symbols": failed_symbols[:10],
-                    "source": src_id
+                    "source": src_id,
                 }
 
                 logger.info(f"Successfully synced {total_upserted} company records from {src_id}")
@@ -940,7 +1050,15 @@ class DataSyncService:
 
             except Exception as e:
                 last_error = e
-                logger.warning(f"Failed to sync company info from {src_id}: {e}")
+                # 对 TuShare 没有配置的情况，减少日志噪音
+                error_msg = str(e)
+                if "token not configured" in error_msg.lower():
+                    if self._should_log_tushare_unavailable():
+                        logger.warning(
+                            "TuShare API token not configured - " "will try fallback data sources"
+                        )
+                else:
+                    logger.debug(f"Failed to sync company info from {src_id}: {e}")
                 # 标记该数据源状态
                 try:
                     await self._update_source_status(
@@ -949,7 +1067,7 @@ class DataSyncService:
                         source_id=src_id,
                         status=DataSourceStatus.UNAVAILABLE,
                         response_time_ms=int((datetime.now() - start_time).total_seconds() * 1000),
-                        error={"code": "SYNC_ERROR", "message": str(e)}
+                        error={"code": "SYNC_ERROR", "message": str(e)},
                     )
                 except Exception:
                     pass
@@ -965,9 +1083,7 @@ class DataSyncService:
         return result
 
     async def sync_macro_economic(
-        self,
-        indicators: List[str],
-        source_id: str = "tushare"
+        self, indicators: List[str], source_id: str = "tushare"
     ) -> Dict[str, Any]:
         """
         同步宏观经济数据
@@ -986,7 +1102,7 @@ class DataSyncService:
             "symbol": None,
             "market": "A_STOCK",
             "data_types": ["macro_economic"],
-            "result": {}
+            "result": {},
         }
 
         total_upserted = 0
@@ -999,7 +1115,9 @@ class DataSyncService:
 
             adapter = self._get_adapter(source_id, adapter_config, "A_STOCK")
 
-            logger.info(f"Syncing daily quotes from {source_id} (config: {'found' if config else 'default'})")
+            logger.info(
+                f"Syncing daily quotes from {source_id} (config: {'found' if config else 'default'})"
+            )
 
             for indicator in indicators:
                 try:
@@ -1029,13 +1147,21 @@ class DataSyncService:
                             unit=data.get("unit"),
                             yoy=data.get("yoy"),
                             mom=data.get("mom"),
-                            data_source=source_id
+                            data_source=source_id,
                         )
                         await self.macro_economic_repo.upsert_macro(macro)
                         total_upserted += 1
 
                 except Exception as e:
-                    logger.warning(f"Failed to sync {indicator}: {e}")
+                    error_msg = str(e)
+                    if "token not configured" in error_msg.lower():
+                        if self._should_log_tushare_unavailable():
+                            logger.warning(
+                                "TuShare API token not configured - "
+                                "will try fallback data sources"
+                            )
+                    else:
+                        logger.debug(f"Failed to sync {indicator}: {e}")
                     failed_indicators.append({"indicator": indicator, "error": str(e)})
 
             response_time_ms = int((datetime.now() - start_time).total_seconds() * 1000)
@@ -1050,7 +1176,7 @@ class DataSyncService:
                 data_type="macro_economic",
                 source_id=source_id,
                 status=status,
-                response_time_ms=response_time_ms
+                response_time_ms=response_time_ms,
             )
 
             result["status"] = "completed" if not failed_indicators else "completed_with_errors"
@@ -1061,7 +1187,7 @@ class DataSyncService:
                 "failed": len(failed_indicators),
                 "total_records": total_upserted,
                 "failed_indicators": failed_indicators,
-                "source": source_id
+                "source": source_id,
             }
 
             logger.info(f"Synced {total_upserted} macro economic records")
@@ -1076,7 +1202,7 @@ class DataSyncService:
                 source_id=source_id,
                 status=DataSourceStatus.UNAVAILABLE,
                 response_time_ms=response_time_ms,
-                error={"code": "SYNC_ERROR", "message": str(e)}
+                error={"code": "SYNC_ERROR", "message": str(e)},
             )
 
             result["status"] = "failed"
@@ -1084,11 +1210,7 @@ class DataSyncService:
 
         return result
 
-    async def sync_all_for_symbol(
-        self,
-        symbol: str,
-        source_id: str = "tushare"
-    ) -> Dict[str, Any]:
+    async def sync_all_for_symbol(self, symbol: str, source_id: str = "tushare") -> Dict[str, Any]:
         """
         同步指定股票的所有数据类型
 
@@ -1104,11 +1226,7 @@ class DataSyncService:
         results["company_info"] = await self.sync_company_info([symbol], source_id)
         results["financials"] = await self.sync_financials([symbol], source_id)
 
-        return {
-            "symbol": symbol,
-            "results": results,
-            "overall_status": "completed"
-        }
+        return {"symbol": symbol, "results": results, "overall_status": "completed"}
 
     # ==================== 回滚方法 ====================
 
@@ -1130,9 +1248,7 @@ class DataSyncService:
             try:
                 # 删除指定日期范围内的数据
                 await self.stock_quotes_repo.delete_quotes_in_range(
-                    symbol=symbol,
-                    start_date=start_date,
-                    end_date=end_date
+                    symbol=symbol, start_date=start_date, end_date=end_date
                 )
                 logger.info(f"Rolled back quotes for {symbol} ({start_date} to {end_date})")
             except Exception as e:
@@ -1141,9 +1257,7 @@ class DataSyncService:
     # ==================== 支持自动降级的数据同步方法 ====================
 
     async def sync_stock_list_with_fallback(
-        self,
-        market: MarketType = MarketType.A_STOCK,
-        status: str = "L"
+        self, market: MarketType = MarketType.A_STOCK, status: str = "L"
     ) -> Dict[str, Any]:
         """
         同步股票列表（支持自动降级）
@@ -1164,11 +1278,13 @@ class DataSyncService:
 
         # 如果没有配置任何数据源，使用默认数据源列表
         if not configs:
-            logger.warning(f"No configured data sources for {market.value}, using default fallback order")
+            logger.warning(
+                f"No configured data sources for {market.value}, using default fallback order"
+            )
             # 创建默认配置（用于降级）
             default_configs = [
                 {"source_id": "tushare", "priority": 1, "config": {}},
-                {"source_id": "akshare", "priority": 2, "config": {}}
+                {"source_id": "akshare", "priority": 2, "config": {}},
             ]
             configs = default_configs
 
@@ -1178,8 +1294,14 @@ class DataSyncService:
         for config in configs:
             source_id = config["source_id"]
             try:
-                logger.info(f"Trying to sync stock list from {source_id} (config: {'db' if 'priority' in config else 'default'})")
-                result = await self.sync_stock_list(market=market, source_id=source_id, status=status)
+                has_db_config = 'priority' in config
+                logger.info(
+                    f"Trying to sync stock list from {source_id} "
+                    f"(config: {'db' if has_db_config else 'default'})"
+                )
+                result = await self.sync_stock_list(
+                    market=market, source_id=source_id, status=status
+                )
 
                 if result["status"] == "completed":
                     successful_source = source_id
@@ -1189,7 +1311,15 @@ class DataSyncService:
                     return result
                 elif result["status"] == "failed":
                     last_error = result.get("error_message", "Unknown error")
-                    logger.warning(f"Failed to sync from {source_id}: {last_error}")
+                    # 对 TuShare 没有配置的情况，减少日志噪音
+                    if "token not configured" in last_error.lower():
+                        if self._should_log_tushare_unavailable():
+                            logger.warning(
+                                "TuShare API token not configured - "
+                                "will try fallback data sources"
+                            )
+                    else:
+                        logger.debug(f"Failed to sync from {source_id}: {last_error}")
                     continue
 
             except Exception as e:
@@ -1203,15 +1333,11 @@ class DataSyncService:
             "status": "failed",
             "market": market.value,
             "error_message": f"All data sources failed. Last error: {last_error}",
-            "attempted_sources": [c["source_id"] for c in configs]
+            "attempted_sources": [c["source_id"] for c in configs],
         }
 
     async def sync_daily_quotes_with_fallback(
-        self,
-        symbols: List[str],
-        start_date: str,
-        end_date: str,
-        adjust_type: Optional[str] = None
+        self, symbols: List[str], start_date: str, end_date: str, adjust_type: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         同步日线行情（支持自动降级）
@@ -1236,7 +1362,7 @@ class DataSyncService:
             logger.warning("No configured data sources for A_STOCK, using default fallback order")
             default_configs = [
                 {"source_id": "tushare", "priority": 1, "config": {}},
-                {"source_id": "akshare", "priority": 2, "config": {}}
+                {"source_id": "akshare", "priority": 2, "config": {}},
             ]
             configs = default_configs
 
@@ -1252,7 +1378,7 @@ class DataSyncService:
                     start_date=start_date,
                     end_date=end_date,
                     source_id=source_id,
-                    adjust_type=adjust_type
+                    adjust_type=adjust_type,
                 )
 
                 if result["status"] in ["completed", "completed_with_errors"]:
@@ -1261,7 +1387,15 @@ class DataSyncService:
                     return result
                 elif result["status"] == "failed":
                     last_error = result.get("error_message", "Unknown error")
-                    logger.warning(f"Failed to sync from {source_id}: {last_error}")
+                    # 对 TuShare 没有配置的情况，减少日志噪音
+                    if "token not configured" in last_error.lower():
+                        if self._should_log_tushare_unavailable():
+                            logger.warning(
+                                "TuShare API token not configured - "
+                                "will try fallback data sources"
+                            )
+                    else:
+                        logger.debug(f"Failed to sync from {source_id}: {last_error}")
                     continue
 
             except Exception as e:
@@ -1275,13 +1409,11 @@ class DataSyncService:
             "status": "failed",
             "market": "A_STOCK",
             "error_message": f"All data sources failed. Last error: {last_error}",
-            "attempted_sources": [c["source_id"] for c in configs]
+            "attempted_sources": [c["source_id"] for c in configs],
         }
 
     async def sync_financials_with_fallback(
-        self,
-        symbols: List[str],
-        report_date: Optional[str] = None
+        self, symbols: List[str], report_date: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         同步财务数据（支持自动降级）
@@ -1304,7 +1436,7 @@ class DataSyncService:
             logger.warning("No configured data sources for A_STOCK, using default fallback order")
             default_configs = [
                 {"source_id": "tushare", "priority": 1, "config": {}},
-                {"source_id": "akshare", "priority": 2, "config": {}}
+                {"source_id": "akshare", "priority": 2, "config": {}},
             ]
             configs = default_configs
 
@@ -1316,9 +1448,7 @@ class DataSyncService:
             try:
                 logger.info(f"Trying to sync financials from {source_id}")
                 result = await self.sync_financials(
-                    symbols=symbols,
-                    report_date=report_date,
-                    source_id=source_id
+                    symbols=symbols, report_date=report_date, source_id=source_id
                 )
 
                 if result["status"] in ["completed", "completed_with_errors"]:
@@ -1327,7 +1457,15 @@ class DataSyncService:
                     return result
                 elif result["status"] == "failed":
                     last_error = result.get("error_message", "Unknown error")
-                    logger.warning(f"Failed to sync from {source_id}: {last_error}")
+                    # 对 TuShare 没有配置的情况，减少日志噪音
+                    if "token not configured" in last_error.lower():
+                        if self._should_log_tushare_unavailable():
+                            logger.warning(
+                                "TuShare API token not configured - "
+                                "will try fallback data sources"
+                            )
+                    else:
+                        logger.debug(f"Failed to sync from {source_id}: {last_error}")
                     continue
 
             except Exception as e:
@@ -1341,23 +1479,20 @@ class DataSyncService:
             "status": "failed",
             "market": "A_STOCK",
             "error_message": f"All data sources failed. Last error: {last_error}",
-            "attempted_sources": [c["source_id"] for c in configs]
+            "attempted_sources": [c["source_id"] for c in configs],
         }
 
     async def sync_market_news(
-        self,
-        source_id: str = "tushare",
-        limit: int = 50,
-        symbol: Optional[str] = None
+        self, source_id: str = "tushare", limit: int = 50, symbol: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         同步市场新闻
-        
+
         Args:
             source_id: 数据源ID
             limit: 限制数量
             symbol: 个股代码（可选）
-            
+
         Returns:
             同步结果
         """
@@ -1368,76 +1503,68 @@ class DataSyncService:
             "symbol": symbol,
             "market": "A_STOCK",
             "data_types": ["market_news"],
-            "result": {}
+            "result": {},
         }
-        
+
         try:
             # 尝试获取配置，如果不存在使用空配置
             config = await self.system_source_repo.get_config(source_id, "A_STOCK")
             adapter_config = config["config"] if config else {}
-            
+
             adapter = self._get_adapter(source_id, adapter_config, "A_STOCK")
-            
+
             logger.info(f"Syncing market news from {source_id}")
-            
+
             # 使用自动降级逻辑
             if source_id == "tushare":
                 # Tushare news 需要 start_date/end_date
                 from datetime import timedelta
+
                 end_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 start_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
-                
+
                 news_list = await adapter.get_market_news(
-                    start_date=start_date,
-                    end_date=end_date,
-                    src="sina"
+                    start_date=start_date, end_date=end_date, src="sina"
                 )
             else:
                 # AkShare news
-                news_list = await adapter.get_market_news(
-                    symbol=symbol,
-                    limit=limit
-                )
-                
+                news_list = await adapter.get_market_news(symbol=symbol, limit=limit)
+
             upserted = 0
             for news in news_list:
                 await self.market_news_repo.upsert_news(news)
                 upserted += 1
-                
+
             response_time_ms = int((datetime.now() - start_time).total_seconds() * 1000)
-            
+
             await self._update_source_status(
                 market="A_STOCK",
                 data_type="market_news",
                 source_id=source_id,
                 status=DataSourceStatus.HEALTHY,
-                response_time_ms=response_time_ms
+                response_time_ms=response_time_ms,
             )
-            
+
             result["status"] = "completed"
             result["progress"] = 100
-            result["result"] = {
-                "total": len(news_list),
-                "upserted": upserted,
-                "source": source_id
-            }
-            
+            result["result"] = {"total": len(news_list), "upserted": upserted, "source": source_id}
+
             logger.info(f"Synced {upserted} news items from {source_id}")
-            
+
         except Exception as e:
             logger.error(f"Failed to sync market news: {e}")
             response_time_ms = int((datetime.now() - start_time).total_seconds() * 1000)
-            
+
             await self._update_source_status(
                 market="A_STOCK",
                 data_type="market_news",
                 source_id=source_id,
                 status=DataSourceStatus.UNAVAILABLE,
                 response_time_ms=response_time_ms,
-                error={"code": "SYNC_ERROR", "message": str(e)}
+                error={"code": "SYNC_ERROR", "message": str(e)},
             )
-            
+
             result["status"] = "failed"
             result["error_message"] = str(e)
-            
+
         return result

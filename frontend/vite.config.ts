@@ -53,6 +53,8 @@ export default defineConfig({
         // 在 Docker 环境中通过 VITE_API_TARGET 环境变量指定 backend 服务地址
         target: process.env.VITE_API_TARGET || 'http://localhost:8000',
         changeOrigin: true,
+        // 启用 WebSocket 代理支持
+        ws: true,
       },
     },
   },
