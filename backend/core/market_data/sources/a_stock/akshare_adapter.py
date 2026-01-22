@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import pandas as pd
 from typing import Optional, List, Dict, Any
@@ -22,7 +23,7 @@ from core.market_data.models import (
     StockHSGTMoneyFlow,
     StockFinancialIndicator,
 )
-from core.market_data.tools.field_mapper import FieldMapper
+from core.market_data.tools.field_mapper import FieldMapper, AkShareFieldMapper
 from core.market_data.tools.data_cleaner import DataCleaner
 from core.market_data.sources.base import DataSourceAdapter
 
@@ -44,7 +45,8 @@ class AkShareAdapter(DataSourceAdapter):
     async def connect(self) -> bool:
         """测试连接"""
         try:
-            df = self.ak.tool_trade_date_hist_sina()
+            await asyncio.sleep(1)  # 避免触发反爬虫机制
+            df = await asyncio.to_thread(self.ak.tool_trade_date_hist_sina)
             return df is not None and not df.empty
         except Exception as e:
             logger.error(f"AkShare连接失败: {e}")
@@ -70,7 +72,9 @@ class AkShareAdapter(DataSourceAdapter):
             股票信息列表
         """
         try:
-            df = self.ak.stock_zh_a_spot_em()
+            await asyncio.sleep(1)  # 避免触发反爬虫机制
+            # 使用 to_thread 避免阻塞主线程
+            df = await asyncio.to_thread(self.ak.stock_zh_a_spot_em)
 
             if df is None or df.empty:
                 return []
@@ -85,10 +89,10 @@ class AkShareAdapter(DataSourceAdapter):
                     stock = StockInfo(**mapped)
                     stocks.append(stock)
                 except Exception as e:
-                    logger.warning(f"Failed to parse stock: {e}")
+                    logger.debug(f"Failed to parse stock: {e}")
                     continue
 
-            logger.info(f"Retrieved {len(stocks)} stocks from AkShare")
+            logger.debug(f"Retrieved {len(stocks)} stocks from AkShare")
             return stocks
 
         except Exception as e:
@@ -113,6 +117,7 @@ class AkShareAdapter(DataSourceAdapter):
             logger.info(
                 f"Fetching daily quotes: symbol={code}, start={start}, end={end}, adjust={adjust}"
             )
+            await asyncio.sleep(1)  # 避免触发反爬虫机制
             df = self.ak.stock_zh_a_hist(
                 symbol=code, period="daily", start_date=start, end_date=end, adjust=adjust
             )
@@ -166,6 +171,7 @@ class AkShareAdapter(DataSourceAdapter):
 
             logger.info(f"Fetching minute quotes: symbol={code}, period={period}")
 
+            await asyncio.sleep(1)  # 避免触发反爬虫机制
             df = self.ak.stock_zh_a_hist_min_em(symbol=code, period=period, adjust="")
 
             if df is None or df.empty:
@@ -207,11 +213,12 @@ class AkShareAdapter(DataSourceAdapter):
         try:
             code = symbol.split(".")[0]
 
-            logger.info(f"Fetching profit sheet: symbol={code}")
+            logger.debug(f"Fetching profit sheet: symbol={code}")
 
             try:
-                df = self.ak.stock_financial_report_sina(stock=code, symbol="利润表")
-                logger.info(
+                await asyncio.sleep(1)  # 避免触发反爬虫机制
+                df = await asyncio.to_thread(self.ak.stock_financial_report_sina, stock=code, symbol="利润表")
+                logger.debug(
                     f"Profit sheet result type: {type(df)}, empty: {df.empty if isinstance(df, pd.DataFrame) else 'N/A'}"
                 )
             except Exception as e:
@@ -267,6 +274,7 @@ class AkShareAdapter(DataSourceAdapter):
             logger.info(f"Fetching balance sheet: symbol={code}")
 
             try:
+                await asyncio.sleep(1)  # 避免触发反爬虫机制
                 df = self.ak.stock_financial_report_sina(stock=code, symbol="资产负债表")
             except Exception as e:
                 logger.warning(f"Failed to get balance sheet: {e}")
@@ -341,10 +349,11 @@ class AkShareAdapter(DataSourceAdapter):
         try:
             code = symbol.split(".")[0]
 
-            logger.info(f"Fetching cashflow: symbol={code}")
+            logger.debug(f"Fetching cashflow: symbol={code}")
 
             try:
-                df = self.ak.stock_financial_report_sina(stock=code, symbol="现金流量表")
+                await asyncio.sleep(1)  # 避免触发反爬虫机制
+                df = await asyncio.to_thread(self.ak.stock_financial_report_sina, stock=code, symbol="现金流量表")
             except Exception as e:
                 logger.warning(f"Failed to get cashflow: {e}")
                 return []
@@ -403,6 +412,7 @@ class AkShareAdapter(DataSourceAdapter):
             symbol_with_exchange = f"{code}.{exchange}"
 
             try:
+                await asyncio.sleep(1)  # 避免触发反爬虫机制
                 df = self.ak.stock_financial_analysis_indicator_em(
                     symbol=symbol_with_exchange, indicator="按报告期"
                 )
@@ -460,7 +470,8 @@ class AkShareAdapter(DataSourceAdapter):
         try:
             code = symbol.split(".")[0]
 
-            df = self.ak.stock_individual_info_em(symbol=code)
+            await asyncio.sleep(1)  # 避免触发反爬虫机制
+            df = await asyncio.to_thread(self.ak.stock_individual_info_em, symbol=code)
 
             if df is None or df.empty:
                 return StockCompany(
@@ -482,7 +493,7 @@ class AkShareAdapter(DataSourceAdapter):
                 data_source=self.source_name,
             )
 
-            logger.info(f"Retrieved company info for {symbol}")
+            logger.debug(f"Retrieved company info for {symbol}")
             return company
 
         except Exception as e:
@@ -514,7 +525,8 @@ class AkShareAdapter(DataSourceAdapter):
             code = symbol.split(".")[0]
 
             try:
-                df = self.ak.stock_individual_fund_flow(stock=code)
+                await asyncio.sleep(1)  # 避免触发反爬虫机制
+                df = await asyncio.to_thread(self.ak.stock_individual_fund_flow, stock=code)
             except Exception as e:
                 logger.warning(f"Failed to get daily basic: {e}")
                 return []
@@ -530,10 +542,10 @@ class AkShareAdapter(DataSourceAdapter):
                          mapped["ts_code"] = symbol
                          basics.append(mapped)
                 except Exception as e:
-                    logger.warning(f"Failed to parse basic: {e}")
+                    logger.debug(f"Failed to parse basic: {e}")
                     continue
 
-            logger.info(f"Retrieved {len(basics)} daily basics")
+            logger.debug(f"Retrieved {len(basics)} daily basics")
             return basics
 
         except Exception as e:
@@ -555,7 +567,8 @@ class AkShareAdapter(DataSourceAdapter):
             交易日历列表
         """
         try:
-            df = self.ak.tool_trade_date_hist_sina()
+            await asyncio.sleep(1)  # 避免触发反爬虫机制
+            df = await asyncio.to_thread(self.ak.tool_trade_date_hist_sina)
 
             if df is None or df.empty:
                 return []
@@ -580,10 +593,10 @@ class AkShareAdapter(DataSourceAdapter):
                         }
                     )
                 except Exception as e:
-                    logger.warning(f"Failed to parse calendar: {e}")
+                    logger.debug(f"Failed to parse calendar: {e}")
                     continue
 
-            logger.info(f"Retrieved {len(calendar)} trade calendar dates")
+            logger.debug(f"Retrieved {len(calendar)} trade calendar dates")
             return calendar
 
         except Exception as e:
@@ -621,6 +634,7 @@ class AkShareAdapter(DataSourceAdapter):
             for period in periods:
                 try:
                     logger.info(f"Fetching SHIBOR data for period: {period}")
+                    await asyncio.sleep(1)  # 避免触发反爬虫机制
                     df = self.ak.rate_interbank(
                         market="上海银行同业拆借市场", symbol="Shibor人民币", indicator=period
                     )
@@ -679,6 +693,7 @@ class AkShareAdapter(DataSourceAdapter):
             PMI数据列表
         """
         try:
+            await asyncio.sleep(1)  # 避免触发反爬虫机制
             df = self.ak.macro_china_pmi_yearly()
 
             if df is None or df.empty:
@@ -725,6 +740,7 @@ class AkShareAdapter(DataSourceAdapter):
             北向资金流向列表
         """
         try:
+            await asyncio.sleep(1)  # 避免触发反爬虫机制
             df = self.ak.stock_hsgt_hist_em()
 
             if df is None or df.empty:
@@ -755,6 +771,7 @@ class AkShareAdapter(DataSourceAdapter):
         """
         try:
             try:
+                await asyncio.sleep(1)  # 避免触发反爬虫机制
                 df = self.ak.stock_zh_a_new()
             except Exception as e:
                 logger.warning(f"Failed to get new stocks: {e}")
@@ -801,6 +818,7 @@ class AkShareAdapter(DataSourceAdapter):
         try:
             code = symbol.split(".")[0]
             # 使用个股信息接口
+            await asyncio.sleep(1)  # 避免触发反爬虫机制
             df = self.ak.stock_individual_info_em(symbol=code)
 
             if df is None or df.empty:
@@ -845,6 +863,7 @@ class AkShareAdapter(DataSourceAdapter):
             停牌股票列表
         """
         try:
+            await asyncio.sleep(1)  # 避免触发反爬虫机制
             df = self.ak.stock_zh_a_spot_em()
 
             if df is None or df.empty:
@@ -896,6 +915,7 @@ class AkShareAdapter(DataSourceAdapter):
             板块数据列表
         """
         try:
+            await asyncio.sleep(1)  # 避免触发反爬虫机制
             if sector_type == "concept":
                 df = self.ak.stock_board_concept_name_em()
             elif sector_type == "industry":
@@ -937,6 +957,7 @@ class AkShareAdapter(DataSourceAdapter):
             板块内股票实时行情列表
         """
         try:
+            await asyncio.sleep(1)  # 避免触发反爬虫机制
             df = self.ak.stock_board_concept_spot_em(symbol=sector_name)
 
             if df is None or df.empty:
@@ -990,6 +1011,7 @@ class AkShareAdapter(DataSourceAdapter):
                 end_date = start_date
 
             try:
+                await asyncio.sleep(1)  # 避免触发反爬虫机制
                 df = self.ak.stock_lhb_detail_em(start_date=start_date, end_date=end_date)
             except Exception as e:
                 logger.warning(f"Failed to get top list: {e}")
@@ -1037,6 +1059,7 @@ class AkShareAdapter(DataSourceAdapter):
             code = symbol.split(".")[0]
 
             try:
+                await asyncio.sleep(1)  # 避免触发反爬虫机制
                 df = self.ak.stock_history_dividend_detail(symbol=code, indicator="分红")
             except Exception as e:
                 logger.warning(f"Failed to get dividend: {e}")
@@ -1125,6 +1148,7 @@ class AkShareAdapter(DataSourceAdapter):
 
             try:
                 today = datetime.now().strftime("%Y%m%d")
+                await asyncio.sleep(1)  # 避免触发反爬虫机制
                 if exchange_str == "sh":
                     df = self.ak.stock_margin_detail_sse(date=today)
                 else:
@@ -1193,6 +1217,7 @@ class AkShareAdapter(DataSourceAdapter):
             logger.info(f"Fetching stock news: symbol={code}")
             
             try:
+                await asyncio.sleep(1)  # 避免触发反爬虫机制
                 df = self.ak.stock_news_em(symbol=code)
             except Exception as e:
                 logger.warning(f"Failed to get stock news: {e}")
@@ -1257,6 +1282,7 @@ class AkShareAdapter(DataSourceAdapter):
         try:
             code = symbol.split(".")[0]
 
+            await asyncio.sleep(1)  # 避免触发反爬虫机制
             df = self.ak.stock_individual_fund_flow(stock=code)
 
             if df is None or df.empty:
@@ -1314,6 +1340,7 @@ class AkShareAdapter(DataSourceAdapter):
                 # 获取个股新闻
                 code = symbol.split('.')[0]
                 try:
+                    await asyncio.sleep(1)  # 避免触发反爬虫机制
                     df = self.ak.stock_news_em(symbol=code)
                     if df is not None and not df.empty:
                         df = df.head(limit)
@@ -1341,6 +1368,7 @@ class AkShareAdapter(DataSourceAdapter):
             else:
                 # 获取全球财经快讯
                 try:
+                    await asyncio.sleep(1)  # 避免触发反爬虫机制
                     df = self.ak.stock_info_global_cls()
                     if df is not None and not df.empty:
                         df = df.head(limit)

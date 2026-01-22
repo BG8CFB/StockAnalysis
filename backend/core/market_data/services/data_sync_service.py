@@ -145,7 +145,7 @@ class DataSyncService:
                 try:
                     self._adapters[cache_key] = TuShareAdapter(adapter_config)
                     has_token = bool(adapter_config.get('api_token'))
-                    logger.info(f"Created TuShare adapter (has_token: {has_token})")
+                    logger.debug(f"Created TuShare adapter (has_token: {has_token})")
                 except ValueError as e:
                     logger.warning(
                         f"TuShare adapter creation failed: {e}, creating with empty config"
@@ -153,7 +153,7 @@ class DataSyncService:
                     self._adapters[cache_key] = TuShareAdapter({})
             elif source_id == "akshare":
                 self._adapters[cache_key] = AkShareAdapter(adapter_config)
-                logger.info("Created AkShare adapter for A_STOCK")
+                logger.debug("Created AkShare adapter for A_STOCK")
             else:
                 raise ValueError(f"Unsupported data source: {source_id} for market: {market}")
 
@@ -163,14 +163,14 @@ class DataSyncService:
                 from core.market_data.sources.us_stock.yahoo_adapter import YahooFinanceAdapter
 
                 self._adapters[cache_key] = YahooFinanceAdapter(adapter_config)
-                logger.info("Created YahooFinance adapter for US_STOCK")
+                logger.debug("Created YahooFinance adapter for US_STOCK")
             elif source_id == "alpha_vantage":
                 from core.market_data.sources.us_stock.alphavantage_adapter import (
                     AlphaVantageAdapter,
                 )
 
                 self._adapters[cache_key] = AlphaVantageAdapter(adapter_config)
-                logger.info("Created AlphaVantage adapter for US_STOCK")
+                logger.debug("Created AlphaVantage adapter for US_STOCK")
             elif source_id == "akshare":
                 # TODO: AkShare US adapter 尚未实现，已定义但未开发
                 raise NotImplementedError(
@@ -186,12 +186,12 @@ class DataSyncService:
                 from core.market_data.sources.hk_stock.yahoo_adapter import YahooHKAdapter
 
                 self._adapters[cache_key] = YahooHKAdapter(adapter_config)
-                logger.info("Created YahooHK adapter for HK_STOCK")
+                logger.debug("Created YahooHK adapter for HK_STOCK")
             elif source_id == "akshare":
                 from core.market_data.sources.hk_stock.akshare_adapter import AkShareHKAdapter
 
                 self._adapters[cache_key] = AkShareHKAdapter(adapter_config)
-                logger.info("Created AkShareHK adapter for HK_STOCK")
+                logger.debug("Created AkShareHK adapter for HK_STOCK")
             else:
                 raise ValueError(f"Unsupported data source: {source_id} for market: {market}")
 
@@ -357,7 +357,7 @@ class DataSyncService:
 
             adapter = self._get_adapter(source_id, adapter_config, market.value)
 
-            logger.info(
+            logger.debug(
                 f"Syncing stock list from {source_id} (config: {'found' if config else 'default'})"
             )
             stock_list = await adapter.get_stock_list(market, status)
@@ -381,7 +381,7 @@ class DataSyncService:
             result["progress"] = 100
             result["result"] = {"total": len(stock_list), "upserted": upserted, "source": source_id}
 
-            logger.info(f"Synced {upserted} stocks from {source_id}")
+            logger.debug(f"Synced {upserted} stocks from {source_id}")
 
         except Exception as e:
             logger.error(f"Failed to sync stock list: {e}")
@@ -600,8 +600,8 @@ class DataSyncService:
 
             adapter = self._get_adapter(source_id, adapter_config, "A_STOCK")
 
-            logger.info(
-                f"Syncing daily quotes from {source_id} (config: {'found' if config else 'default'})"
+            logger.debug(
+                f"Syncing minute quotes from {source_id} (config: {'found' if config else 'default'})"
             )
 
             for idx, symbol in enumerate(symbols):
@@ -719,8 +719,8 @@ class DataSyncService:
 
             adapter = self._get_adapter(source_id, adapter_config, "A_STOCK")
 
-            logger.info(
-                f"Syncing daily quotes from {source_id} (config: {'found' if config else 'default'})"
+            logger.debug(
+                f"Syncing financials from {source_id} (config: {'found' if config else 'default'})"
             )
 
             for idx, symbol in enumerate(symbols):
@@ -876,8 +876,8 @@ class DataSyncService:
 
             adapter = self._get_adapter(source_id, adapter_config, "A_STOCK")
 
-            logger.info(
-                f"Syncing daily quotes from {source_id} (config: {'found' if config else 'default'})"
+            logger.debug(
+                f"Syncing company info from {source_id} (config: {'found' if config else 'default'})"
             )
 
             for idx, symbol in enumerate(symbols):
@@ -1295,7 +1295,7 @@ class DataSyncService:
             source_id = config["source_id"]
             try:
                 has_db_config = 'priority' in config
-                logger.info(
+                logger.debug(
                     f"Trying to sync stock list from {source_id} "
                     f"(config: {'db' if has_db_config else 'default'})"
                 )
@@ -1305,7 +1305,7 @@ class DataSyncService:
 
                 if result["status"] == "completed":
                     successful_source = source_id
-                    logger.info(f"Successfully synced stock list from {source_id}")
+                    logger.debug(f"Successfully synced stock list from {source_id}")
                     # 更新结果中的数据源信息
                     result["result"]["source"] = source_id
                     return result
