@@ -10,7 +10,6 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
-
 # =============================================================================
 # 通用辅助函数
 # =============================================================================
@@ -36,14 +35,13 @@ def _parse_datetime(value: Any) -> Optional[datetime]:
         return value
     if isinstance(value, dict) and "$date" in value:
         try:
-            from datetime import datetime as dt
+
             from dateutil import parser
             return parser.isoparse(value["$date"])
         except Exception:
             return None
     if isinstance(value, str):
         try:
-            from datetime import datetime as dt
             from dateutil import parser
             return parser.isoparse(value)
         except Exception:
@@ -68,6 +66,10 @@ class PresetPlatformEnum(str, Enum):
     MOONSHOT = "moonshot"
     ZHIPU = "zhipu"
     ZHIPU_CODING = "zhipu_coding"  # 智谱AI编程套餐
+    OPENAI = "openai"  # OpenAI
+    ANTHROPIC = "anthropic"  # Anthropic (Claude)
+    AZURE_OPENAI = "azure_openai"  # Azure OpenAI
+    QWEN = "qwen"  # 通义千问
 
 
 class ModelProviderEnum(str, Enum):
@@ -239,7 +241,7 @@ class AIModelConfigResponse(AIModelConfigBase):
         api_key = ""
         if api_key_encrypted:
             try:
-                from core.security.encryption import is_encrypted, decrypt_sensitive_data
+                from core.security.encryption import decrypt_sensitive_data, is_encrypted
                 # 先检查是否为 Base64 格式
                 if is_encrypted(api_key_encrypted):
                     api_key = decrypt_sensitive_data(api_key_encrypted)
@@ -285,6 +287,9 @@ class AIModelConfigResponse(AIModelConfigBase):
             enabled=data["enabled"],
             thinking_enabled=data.get("thinking_enabled", False),
             thinking_mode=data.get("thinking_mode"),  # 保留用于向后兼容
+            custom_input_price=data.get("custom_input_price"),
+            custom_output_price=data.get("custom_output_price"),
+            custom_thinking_price=data.get("custom_thinking_price"),
             is_system=data.get("is_system", False),
             owner_id=data.get("owner_id"),
             created_at=_parse_datetime(data.get("created_at")) or datetime.utcnow(),

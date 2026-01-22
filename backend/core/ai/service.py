@@ -209,6 +209,7 @@ class AIService:
 
         if env_api_key:
             platform = "zhipu_coding" if "coding" in env_api_base.lower() else "zhipu"
+            logger.info(f"使用环境变量配置: platform={platform}, model={env_model or model_id}")
             return {
                 "model_id": env_model or model_id or "glm-4.7",
                 "platform": platform,
@@ -222,22 +223,56 @@ class AIService:
 
         # 如果有配置服务，使用配置服务
         if self._config_service:
+            # 使用 get_model_with_credentials 获取包含完整 API Key 的配置
             if model_id:
-                config = await self._config_service.get_model(model_id, user_id)
+                config = await self._config_service.get_model_with_credentials(
+                    model_id=model_id,
+                    user_id=user_id,
+                    is_admin=False
+                )
                 if config:
-                    return self._config_to_dict(config)
+                    logger.info(
+                        f"从配置服务获取模型成功: model_id={config['model_id']}, "
+                        f"platform={config['platform_type']}"
+                    )
+                    return {
+                        "model_id": config["model_id"],
+                        "platform": config["platform_type"],
+                        "api_key": config["api_key"],  # 完整 API Key
+                        "api_base_url": config["api_base_url"],
+                        "temperature": config["temperature"],
+                        "timeout_seconds": config["timeout_seconds"],
+                        "max_retries": 3,
+                        "thinking_enabled": config["thinking_enabled"],
+                    }
 
-            # 尝试获取用户默认配置
-            config = await self._config_service.get_user_default(user_id)
-            if config:
-                return self._config_to_dict(config)
+            # 尝试获取用户默认模型
+            logger.debug(f"尝试获取用户默认模型: user_id={user_id}")
+            default_config = await self._config_service.get_default_model(user_id=user_id)
+            if default_config:
+                # 需要获取完整凭证
+                full_config = await self._config_service.get_model_with_credentials(
+                    model_id=str(default_config.id),
+                    user_id=user_id,
+                    is_admin=False
+                )
+                if full_config:
+                    logger.info(f"使用用户默认模型: model_id={full_config['model_id']}")
+                    return {
+                        "model_id": full_config["model_id"],
+                        "platform": full_config["platform_type"],
+                        "api_key": full_config["api_key"],
+                        "api_base_url": full_config["api_base_url"],
+                        "temperature": full_config["temperature"],
+                        "timeout_seconds": full_config["timeout_seconds"],
+                        "max_retries": 3,
+                        "thinking_enabled": full_config["thinking_enabled"],
+                    }
 
-            # 尝试获取系统默认配置
-            config = await self._config_service.get_system_default()
-            if config:
-                return self._config_to_dict(config)
-
-        # 返回默认配置（用于测试）
+        # 返回默认配置（用于测试，记录警告）
+        logger.error(
+            f"无法获取模型配置，使用空配置: model_id={model_id}, user_id={user_id}"
+        )
         return {
             "model_id": model_id or "glm-4.7",
             "platform": "zhipu",
@@ -408,6 +443,64 @@ class AIService:
 
         logger.debug(f"清除用户缓存: user={user_id}")
 
+    async def get_model_async(self, model_id: str, user_id: str = "system") -> BaseChatModel:
+        """
+        异步获取 LangChain ChatModel 实例
+
+        Args:
+            model_id: 模型 ID
+            user_id: 用户 ID（默认为 system）
+
+        Returns:
+            LangChain ChatModel 实例
+        """
+        import os
+        from core.ai.model import get_model_service
+
+        # 优先从环境变量读取配置（始终优先）
+        env_api_key = os.getenv("ZHIPU_API_KEY", "")
+        env_api_base = os.getenv("ZHIPU_API_BASE", "")
+        env_model = os.getenv("ZHIPU_MODEL", "")
+
+        if env_api_key:
+            platform = "zhipu_coding" if "coding" in env_api_base.lower() else "zhipu"
+            config = {
+                "model_id": env_model or model_id or "glm-4.7",
+                "platform": platform,
+                "api_key": env_api_key,
+                "api_base_url": env_api_base or "https://open.bigmodel.cn/api/coding/paas/v4",
+                "temperature": 0.5,
+                "timeout_seconds": 120,
+                "max_retries": 3,
+                "thinking_enabled": True,
+            }
+            return self._create_model_sync(config)
+
+        # 尝试从模型服务获取配置
+        model_service = get_model_service()
+        config = await self._get_model_config_from_service(model_service, model_id, user_id)
+
+        # 如果获取配置失败，使用默认配置（记录警告）
+        if not config or not config.get("api_key"):
+            logger.error(
+                f"无法获取模型 {model_id} 的配置，API Key 为空。"
+                f"请确保已在系统设置中配置模型或设置环境变量 ZHIPU_API_KEY。"
+                f"user_id={user_id}, config={config is not None}"
+            )
+            config = {
+                "model_id": model_id,
+                "platform": "zhipu",
+                "api_key": "",  # 空的 API Key 会导致调用失败
+                "api_base_url": "https://open.bigmodel.cn/api/paas/v4",
+                "temperature": 0.5,
+                "timeout_seconds": 60,
+                "max_retries": 3,
+                "thinking_enabled": True,
+            }
+
+        # 创建模型实例
+        return self._create_model_sync(config)
+
     def get_model(self, model_id: str, user_id: str = "system") -> BaseChatModel:
         """
         获取 LangChain ChatModel 实例
@@ -444,23 +537,34 @@ class AIService:
             }
             return self._create_model_sync(config)
 
-        # 尝试获取模型配置
+        # 尝试从配置服务获取模型配置
         config = None
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                # 在运行中的事件循环，使用默认配置
-                config = {
-                    "model_id": model_id,
-                    "platform": "zhipu",
-                    "api_key": "",
-                    "api_base_url": "https://open.bigmodel.cn/api/paas/v4",
-                    "temperature": 0.5,
-                    "timeout_seconds": 60,
-                    "max_retries": 3,
-                    "thinking_enabled": True,
-                }
+                # 在运行中的事件循环，使用 create_task 在后台获取配置
+                # 但这里我们需要同步返回，所以尝试从模型服务获取
+                try:
+                    from core.ai.model import get_model_service
+                    model_service = get_model_service()
+
+                    # 使用 run_coroutine_threadsafe 在运行中的循环中执行异步操作
+                    future = asyncio.run_coroutine_threadsafe(
+                        self._get_model_config_from_service(model_service, model_id, user_id),
+                        loop
+                    )
+                    # 增加超时时间到 10 秒，并捕获具体异常类型
+                    config = future.result(timeout=10)
+                except asyncio.TimeoutError:
+                    logger.error(
+                        f"从模型服务获取配置超时(10s): model_id={model_id}, user_id={user_id}"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"从模型服务获取配置异常: model_id={model_id}, user_id={user_id}, error={type(e).__name__}: {e}"
+                    )
             else:
+                # 没有运行中的循环，直接运行
                 config = loop.run_until_complete(self._get_model_config(user_id, model_id))
         except RuntimeError:
             # 没有事件循环，创建新的
@@ -471,12 +575,17 @@ class AIService:
             finally:
                 loop.close()
 
-        # 如果获取配置失败，使用默认配置
-        if not config:
+        # 如果获取配置失败，使用默认配置（记录警告）
+        if not config or not config.get("api_key"):
+            logger.error(
+                f"无法获取模型 {model_id} 的配置，API Key 为空。"
+                f"请确保已在系统设置中配置模型或设置环境变量 ZHIPU_API_KEY。"
+                f"user_id={user_id}, config={config is not None}"
+            )
             config = {
                 "model_id": model_id,
                 "platform": "zhipu",
-                "api_key": "",
+                "api_key": "",  # 空的 API Key 会导致调用失败
                 "api_base_url": "https://open.bigmodel.cn/api/paas/v4",
                 "temperature": 0.5,
                 "timeout_seconds": 60,
@@ -486,6 +595,58 @@ class AIService:
 
         # 创建模型实例
         return self._create_model_sync(config)
+
+    async def _get_model_config_from_service(
+        self, model_service, model_id: str, user_id: str
+    ) -> Optional[Dict]:
+        """
+        从模型服务获取模型配置
+
+        Args:
+            model_service: 模型服务实例
+            model_id: 模型 ID
+            user_id: 用户 ID
+
+        Returns:
+            配置字典或 None
+        """
+        try:
+            logger.debug(f"正在从模型服务获取配置: model_id={model_id}, user_id={user_id}")
+
+            # 使用内部方法获取包含完整 API Key 的模型配置
+            model_config = await model_service.get_model_with_credentials(
+                model_id=model_id,
+                user_id=user_id,
+                is_admin=False
+            )
+
+            if model_config:
+                logger.info(
+                    f"成功获取模型配置: model_id={model_config['model_id']}, "
+                    f"platform={model_config['platform_type']}, "
+                    f"api_key_prefix={model_config['api_key'][:8] if model_config['api_key'] else 'None'}..."
+                )
+                return {
+                    "model_id": model_config["model_id"],
+                    "platform": model_config["platform_type"],
+                    "api_key": model_config["api_key"],  # 已解密
+                    "api_base_url": model_config["api_base_url"],
+                    "temperature": model_config["temperature"],
+                    "timeout_seconds": model_config["timeout_seconds"],
+                    "max_retries": 3,
+                    "thinking_enabled": model_config["thinking_enabled"],
+                }
+            else:
+                logger.warning(
+                    f"模型服务返回空配置: model_id={model_id}, user_id={user_id}"
+                )
+        except Exception as e:
+            logger.error(
+                f"从模型服务获取配置失败: model_id={model_id}, user_id={user_id}, error={e}",
+                exc_info=True
+            )
+
+        return None
 
     def _create_model_sync(self, config: Dict) -> BaseChatModel:
         """同步创建 ChatModel 实例"""

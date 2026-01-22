@@ -139,24 +139,120 @@ class AIModelService:
         # 先尝试按 model_id 字段查找（模型的标识符，如 "glm-4.7"）
         doc = await collection.find_one({"model_id": model_id, "enabled": True})
 
-        # 如果没找到，尝试按 MongoDB _id 查找
+        # 如果没找到，尝试按 MongoDB _id 查找（也要检查 enabled）
         if not doc:
             try:
                 object_id = ObjectId(model_id)
-                doc = await collection.find_one({"_id": object_id})
+                doc = await collection.find_one({"_id": object_id, "enabled": True})
             except Exception:
+                logger.debug(
+                    f"模型 ID 格式无效，无法按 _id 查找: model_id={model_id}"
+                )
                 return None
 
         if not doc:
+            logger.warning(
+                f"模型未找到或已禁用: model_id={model_id}, user_id={user_id}, "
+                f"query_type='model_id_and__id'"
+            )
             return None
 
         # 权限检查
         # 系统模型对所有用户可见（is_system=True 的模型）
         # 用户私有模型只能被所有者访问
         if not is_admin and not doc.get("is_system") and doc.get("owner_id") != user_id:
+            logger.warning(
+                f"模型权限不足: model_id={model_id}, user_id={user_id}, "
+                f"is_system={doc.get('is_system')}, owner_id={doc.get('owner_id')}"
+            )
             return None
 
+        logger.debug(
+            f"成功获取模型: model_id={model_id}, name={doc.get('name')}, "
+            f"user_id={user_id}, is_system={doc.get('is_system')}"
+        )
         return AIModelConfigResponse.from_db(doc)
+
+    async def get_model_with_credentials(
+        self,
+        model_id: str,
+        user_id: str,
+        is_admin: bool = False
+    ) -> Optional[Dict[str, any]]:
+        """
+        获取包含完整凭证的模型配置（内部方法）
+
+        用于需要完整 API Key 的场景，如连接测试、模型调用。
+        注意：此方法返回原始数据库数据，包含未脱敏的 API Key。
+
+        Args:
+            model_id: 模型 ID（可以是 MongoDB _id 或 model_id 字段）
+            user_id: 用户 ID
+            is_admin: 是否为管理员
+
+        Returns:
+            包含完整凭证的模型配置字典，或 None
+        """
+        collection = await self._get_collection()
+
+        # 先尝试按 model_id 字段查找
+        doc = await collection.find_one({"model_id": model_id, "enabled": True})
+
+        # 如果没找到，尝试按 MongoDB _id 查找（也要检查 enabled）
+        if not doc:
+            try:
+                object_id = ObjectId(model_id)
+                doc = await collection.find_one({"_id": object_id, "enabled": True})
+            except Exception:
+                return None
+
+        if not doc:
+            logger.debug(
+                f"模型未找到或已禁用: model_id={model_id}, user_id={user_id}"
+            )
+            return None
+
+        # 权限检查
+        if not is_admin and not doc.get("is_system") and doc.get("owner_id") != user_id:
+            logger.warning(
+                f"模型权限不足: model_id={model_id}, user_id={user_id}, "
+                f"is_system={doc.get('is_system')}, owner_id={doc.get('owner_id')}"
+            )
+            return None
+
+        # 解密 API Key
+        encrypted_api_key = doc.get("api_key", "")
+        api_key = ""
+        if encrypted_api_key:
+            try:
+                from core.security.encryption import decrypt_sensitive_data, is_encrypted
+                if is_encrypted(encrypted_api_key):
+                    api_key = decrypt_sensitive_data(encrypted_api_key)
+                else:
+                    api_key = encrypted_api_key
+            except Exception as e:
+                logger.error(f"解密 API Key 失败: model_id={model_id}, error={e}")
+                return None
+
+        # 检查 API Key 是否存在
+        if not api_key:
+            logger.error(
+                f"模型配置缺少 API Key: model_id={model_id}, name={doc.get('name')}"
+            )
+            return None
+
+        # 返回包含完整 API Key 和所有必要配置的数据
+        return {
+            "id": str(doc["_id"]),
+            "name": doc["name"],
+            "platform_type": doc.get("platform_type", "custom"),
+            "api_base_url": doc["api_base_url"],
+            "api_key": api_key,  # 解密后的完整 API Key
+            "model_id": doc["model_id"],
+            "temperature": doc.get("temperature", 0.5),
+            "timeout_seconds": doc.get("timeout_seconds", 60),
+            "thinking_enabled": doc.get("thinking_enabled", False),
+        }
 
     async def list_models(
         self,
@@ -184,10 +280,16 @@ class AIModelService:
             # 管理员查看所有模型
             cursor = collection.find(query).sort("created_at", -1)
             all_models = [AIModelConfigResponse.from_db(doc) async for doc in cursor]
-            return {
+            result = {
                 "system": [m for m in all_models if m.is_system],
                 "user": [m for m in all_models if not m.is_system],
             }
+            # 记录模型数量（帮助诊断数据不一致问题）
+            logger.info(
+                f"列出模型: user_id={user_id}, is_admin=true, "
+                f"system_count={len(result['system'])}, user_count={len(result['user'])}"
+            )
+            return result
         else:
             # 普通用户只能查看系统级模型和自己的模型
             system_models = []
@@ -207,10 +309,16 @@ class AIModelService:
             }).sort("created_at", -1)
             user_models = [AIModelConfigResponse.from_db(doc) async for doc in user_cursor]
 
-            return {
+            result = {
                 "system": system_models,
                 "user": user_models,
             }
+            # 记录模型数量（帮助诊断数据不一致问题）
+            logger.info(
+                f"列出模型: user_id={user_id}, is_admin=false, "
+                f"system_count={len(result['system'])}, user_count={len(result['user'])}"
+            )
+            return result
 
     async def get_default_model(
         self,

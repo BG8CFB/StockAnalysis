@@ -6,6 +6,7 @@
 
 import json
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -46,17 +47,17 @@ class ChatCompletionRequest(BaseModel):
     """聊天补全请求"""
     model_id: str = Field(..., description="模型 ID")
     messages: list[ChatMessageRequest] = Field(..., description="消息列表")
-    temperature: float = Field(None, ge=0, le=2, description="温度参数")
-    max_tokens: int = Field(None, gt=0, description="最大 token 数")
+    temperature: Optional[float] = Field(None, ge=0, le=2, description="温度参数")
+    max_tokens: Optional[int] = Field(None, gt=0, description="最大 token 数")
     stream: bool = Field(False, description="是否使用流式输出")
 
 
 class ChatCompletionResponse(BaseModel):
     """聊天补全响应"""
     content: str = Field(..., description="回复内容")
-    reasoning_content: str = Field(None, description="思考内容")
-    thinking_tokens: int = Field(None, description="思考 token 数")
-    usage: dict = Field(None, description="token 使用情况")
+    reasoning_content: Optional[str] = Field(None, description="思考内容")
+    thinking_tokens: Optional[int] = Field(None, description="思考 token 数")
+    usage: Optional[dict] = Field(None, description="token 使用情况")
 
 
 # =============================================================================
@@ -142,14 +143,17 @@ async def test_model(
     is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
     service = get_model_service()
 
-    model = await service.get_model(model_id, str(current_user.id), is_admin)
-    if not model:
+    # 使用内部方法获取包含完整 API Key 的模型配置
+    model_with_creds = await service.get_model_with_credentials(
+        model_id, str(current_user.id), is_admin
+    )
+    if not model_with_creds:
         raise HTTPException(status_code=404, detail="模型配置不存在")
 
     test_request = AIModelTestRequest(
-        api_base_url=model.api_base_url,
-        api_key=model.api_key,
-        model_id=model.model_id,
+        api_base_url=model_with_creds["api_base_url"],
+        api_key=model_with_creds["api_key"],
+        model_id=model_with_creds["model_id"],
         timeout_seconds=10,
     )
 

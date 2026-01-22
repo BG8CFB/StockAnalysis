@@ -29,6 +29,11 @@ class LangChainAdapter:
         "qwen": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "moonshot": "https://api.moonshot.cn/v1",
         "openai": "https://api.openai.com/v1",
+        "anthropic": "https://api.anthropic.com",
+        "azure_openai": "https://your-resource.openai.azure.com",  # 需要用户自定义
+        "baidu": "https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat",
+        "tencent": "https://hunyuan.tencentcloudapi.com",
+        "alibaba": "https://dashscope.aliyuncs.com/compatible-mode/v1",
     }
 
     @classmethod
