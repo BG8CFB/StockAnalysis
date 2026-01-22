@@ -10,10 +10,23 @@ from typing import Optional
 # 尝试导入 colorama (Windows 支持)
 try:
     import colorama
-    colorama.init()
     HAS_COLORAMA = True
 except ImportError:
     HAS_COLORAMA = False
+
+_colorama_initialized = False
+
+def init_colorama():
+    """安全地初始化 colorama"""
+    global _colorama_initialized
+    if HAS_COLORAMA and not _colorama_initialized:
+        try:
+            # autoreset=True 自动重置颜色，避免颜色泄露
+            colorama.init(autoreset=True)
+            _colorama_initialized = True
+        except Exception:
+            # 忽略初始化错误（如在某些特殊终端环境下）
+            pass
 
 
 class ColoredFormatter(logging.Formatter):
@@ -137,6 +150,9 @@ def get_formatter(debug_mode: bool = True) -> ColoredFormatter:
     Returns:
         日志格式器实例
     """
+    # 确保 colorama 已初始化
+    init_colorama()
+
     if debug_mode:
         return VerboseColoredFormatter(use_color=True)
     else:

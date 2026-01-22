@@ -161,14 +161,14 @@ def _setup_third_party_loggers() -> None:
     # 任务调度 - INFO
     logging.getLogger("apscheduler").setLevel(logging.INFO)
 
-    # Web 框架 - INFO (让 uvicorn 的请求日志显示)
+    # Web 框架 - WARNING (减少噪音，只显示真正的警告和错误)
     uvicorn_logger = logging.getLogger("uvicorn")
-    uvicorn_logger.setLevel(logging.INFO)
+    uvicorn_logger.setLevel(logging.WARNING)
     # 确保 uvicorn 日志传播到根日志器
     uvicorn_logger.propagate = True
 
     uvicorn_access = logging.getLogger("uvicorn.access")
-    uvicorn_access.setLevel(logging.INFO)
+    uvicorn_access.setLevel(logging.WARNING)
     uvicorn_access.propagate = True
 
     # AI SDK - WARNING
