@@ -123,6 +123,7 @@ class WorkflowState:
     # Phase 4: 策略风格与风险评估
     strategy_reports: List[Dict[str, Any]] = field(default_factory=list)
     risk_approval: Optional[Dict[str, Any]] = None
+    summary_report: Optional[str] = None  # 总结报告
 
     # 最终报告
     final_report: Optional[str] = None

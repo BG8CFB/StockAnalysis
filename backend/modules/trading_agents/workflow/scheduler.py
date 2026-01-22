@@ -119,8 +119,21 @@ class WorkflowScheduler:
             phase4_config = stages.get("stage4") or stages.get("phase4") or {}
 
             # 获取模型
-            data_collection_model_instance = self.ai_service.get_model(data_collection_model)
-            debate_model_instance = self.ai_service.get_model(debate_model)
+            data_collection_model_instance = await self.ai_service.get_model_async(data_collection_model or "claude-sonnet-4-20250514", user_id)
+            
+            # 确保 debate_model 有效
+            if not debate_model:
+                # 如果没有指定，尝试使用 data_collection_model 或默认模型
+                debate_model = data_collection_model or "claude-haiku-4-20250514"
+            
+            debate_model_instance = await self.ai_service.get_model_async(debate_model, user_id)
+            
+            # 检查模型实例是否有有效的 API Key (如果 API Key 为空，get_model_async 会返回空配置的实例)
+            # 这里我们通过检查私有属性 _api_key 来验证 (LangChain Adapter 实现)
+            # 或者尝试获取默认模型作为兜底
+            if not getattr(debate_model_instance, "api_key", None) and not getattr(debate_model_instance, "openai_api_key", None):
+                 logger.warning(f"[调度器] Debate model {debate_model} API Key 为空，尝试使用 Data Collection model")
+                 debate_model_instance = data_collection_model_instance
 
             # Phase 1: 信息收集与基础分析（所有分析师并发，受 task_concurrency 控制）
             if phase1_config.get("enabled", True):

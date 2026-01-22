@@ -5,9 +5,9 @@ TradingAgents 工作流状态定义
 状态在调度器和各阶段 runner 之间传递。
 """
 
-from typing import Dict, Any, List, Optional
 from datetime import datetime
 from enum import Enum
+from typing import Any, Dict, List, Optional
 
 
 class TaskStatus(str, Enum):
@@ -85,13 +85,33 @@ class WorkflowState:
         self.manager_decision: Optional[Dict[str, Any]] = None
         self.trade_plan: Optional[Dict[str, Any]] = None
 
-        # ===== Phase 3: 风险评估 =====
+        # ===== Phase 2: 风险评估 =====
         self.risk_assessments: List[Dict[str, Any]] = []
         self.cro_summary: Optional[Dict[str, Any]] = None
 
+        # ===== Phase 3: 策略分析 =====
+        self.strategy_reports: List[Dict[str, Any]] = []
+        self.investment_decision: Optional[Dict[str, Any]] = None
+        self.trading_plan: Optional[Dict[str, Any]] = None
+        self.risk_approval: Optional[Dict[str, Any]] = None
+        self.final_recommendation: Optional[str] = None
+        self.risk_level: Optional[str] = None
+
         # ===== Phase 4: 最终报告 =====
+        self.summary_report: Optional[Dict[str, Any]] = None
+        self.summary_confidence: Optional[str] = None
+        self.price_predictions: Optional[Dict[str, Any]] = None
         self.final_report: Optional[Dict[str, Any]] = None
         self.recommendation: Optional[str] = None
+
+        # ===== 股票信息 =====
+        self.stock_name: Optional[str] = None
+        self.market: Optional[str] = None
+
+        # ===== 执行状态 =====
+        self.phase_executions: List[Dict[str, Any]] = []
+        self.progress: float = 0.0
+        self.completed_at: Optional[str] = None
 
         # ===== 元数据 =====
         self.token_usage: List[Dict[str, Any]] = []

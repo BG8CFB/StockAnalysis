@@ -30,6 +30,7 @@ from modules.trading_agents.workflow.events import (
     create_agent_started_event,
     create_agent_completed_event,
     create_progress_update_event,
+    create_report_generated_event,
 )
 
 logger = logging.getLogger(__name__)
@@ -61,11 +62,12 @@ class Phase1AgentFactory:
         self.ai_service = ai_service
         self.config = config or {}
 
-    def create_agent(
+    async def create_agent(
         self,
         agent_config: Dict[str, Any],
         tools: List[BaseTool],
-        model_id: str
+        model_id: str,
+        user_id: str = "system"
     ):
         """
         创建单个智能体 (LangChain 0.3+ create_agent API)
@@ -74,12 +76,13 @@ class Phase1AgentFactory:
             agent_config: 智能体配置
             tools: 工具列表
             model_id: 模型 ID
+            user_id: 用户 ID
 
         Returns:
             AgentExecutor 实例
         """
         # 获取 LLM 模型
-        model = self.ai_service.get_model(model_id)
+        model = await self.ai_service.get_model_async(model_id, user_id)
 
         # 构建系统提示词
         system_prompt_str = self._build_system_prompt(agent_config)
@@ -95,7 +98,8 @@ class Phase1AgentFactory:
             f"创建智能体: {agent_config['slug']} "
             f"({agent_config['name']}), "
             f"工具数: {len(tools)}, "
-            f"模型: {model_id}"
+            f"模型: {model_id}, "
+            f"用户: {user_id}"
         )
 
         return agent
@@ -409,6 +413,15 @@ async def execute_phase1(
 
             # 发送智能体完成事件
             if result and result.get("output"):
+                # 发送报告生成事件
+                report_event = create_report_generated_event(
+                    task_id=state.task_id,
+                    agent_slug=agent_config["slug"],
+                    agent_name=agent_config["name"],
+                    content=result["output"]
+                )
+                await websocket_manager.broadcast_event(state.task_id, report_event)
+
                 agent_completed_event = create_agent_completed_event(
                     task_id=state.task_id,
                     agent_slug=agent_config["slug"],
@@ -486,10 +499,11 @@ async def _execute_agent_internal(
     tools = await load_agent_tools(agent_config, state.user_id, state)
 
     # 创建智能体
-    agent = factory.create_agent(
+    agent = await factory.create_agent(
         agent_config,
         tools,
-        model_id
+        model_id,
+        user_id=state.user_id
     )
 
     # 构建用户提示词

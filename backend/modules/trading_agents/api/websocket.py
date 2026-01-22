@@ -67,9 +67,20 @@ async def websocket_task_updates(
     try:
         # 保持连接并接收消息
         while True:
-            data = await websocket.receive_text()
+            text_data = await websocket.receive_text()
+            
+            # 尝试解析 JSON 处理心跳
+            try:
+                import json
+                data = json.loads(text_data)
+                if isinstance(data, dict) and data.get("type") == "ping":
+                    await websocket.send_json({"type": "pong"})
+                    continue
+            except Exception:
+                pass
+
             # 这里可以处理客户端发送的消息
-            logger.debug(f"收到 WebSocket 消息: task={task_id}, user={user_id}, data={data}")
+            logger.debug(f"收到 WebSocket 消息: task={task_id}, user={user_id}, data={text_data}")
 
     except WebSocketDisconnect:
         logger.info(f"WebSocket 断开: task={task_id}, user={user_id}")

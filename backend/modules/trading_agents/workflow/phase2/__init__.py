@@ -37,6 +37,7 @@ from modules.trading_agents.workflow.events import (
     create_phase_agents_event,
     create_agent_started_event,
     create_agent_completed_event,
+    create_report_generated_event,
 )
 
 logger = logging.getLogger(__name__)
@@ -166,6 +167,12 @@ async def execute_phase2(
 
             # 发送看涨分析师完成事件
             if bull_result.get("output"):
+                await websocket_manager.broadcast_event(state.task_id, create_report_generated_event(
+                    task_id=state.task_id,
+                    agent_slug="bull-researcher",
+                    agent_name="看涨分析师",
+                    content=bull_result["output"]
+                ))
                 await websocket_manager.broadcast_event(state.task_id, create_agent_completed_event(
                     task_id=state.task_id,
                     agent_slug="bull-researcher",
@@ -174,6 +181,12 @@ async def execute_phase2(
                 ))
             # 发送看跌分析师完成事件
             if bear_result.get("output"):
+                await websocket_manager.broadcast_event(state.task_id, create_report_generated_event(
+                    task_id=state.task_id,
+                    agent_slug="bear-researcher",
+                    agent_name="看跌分析师",
+                    content=bear_result["output"]
+                ))
                 await websocket_manager.broadcast_event(state.task_id, create_agent_completed_event(
                     task_id=state.task_id,
                     agent_slug="bear-researcher",
@@ -192,6 +205,12 @@ async def execute_phase2(
             bull_view = bull_result["output"]
             # 发送看涨分析师完成事件
             if bull_result.get("output"):
+                await websocket_manager.broadcast_event(state.task_id, create_report_generated_event(
+                    task_id=state.task_id,
+                    agent_slug="bull-researcher",
+                    agent_name="看涨分析师",
+                    content=bull_result["output"]
+                ))
                 await websocket_manager.broadcast_event(state.task_id, create_agent_completed_event(
                     task_id=state.task_id,
                     agent_slug="bull-researcher",
@@ -213,6 +232,12 @@ async def execute_phase2(
             bear_view = bear_result["output"]
             # 发送看跌分析师完成事件
             if bear_result.get("output"):
+                await websocket_manager.broadcast_event(state.task_id, create_report_generated_event(
+                    task_id=state.task_id,
+                    agent_slug="bear-researcher",
+                    agent_name="看跌分析师",
+                    content=bear_result["output"]
+                ))
                 await websocket_manager.broadcast_event(state.task_id, create_agent_completed_event(
                     task_id=state.task_id,
                     agent_slug="bear-researcher",
@@ -237,6 +262,12 @@ async def execute_phase2(
     manager_result = await agents["manager"].decide(state, bull_view, bear_view)
     # 发送研究经理完成事件
     if manager_result.get("output"):
+        await websocket_manager.broadcast_event(state.task_id, create_report_generated_event(
+            task_id=state.task_id,
+            agent_slug="research-manager",
+            agent_name="研究经理",
+            content=manager_result["output"]
+        ))
         await websocket_manager.broadcast_event(state.task_id, create_agent_completed_event(
             task_id=state.task_id,
             agent_slug="research-manager",
@@ -273,6 +304,12 @@ async def execute_phase2(
                 "timestamp": datetime.utcnow().isoformat()
             }
             # 发送交易员完成事件
+            await websocket_manager.broadcast_event(state.task_id, create_report_generated_event(
+                task_id=state.task_id,
+                agent_slug="trader",
+                agent_name="专业交易员",
+                content=trader_result["output"]
+            ))
             await websocket_manager.broadcast_event(state.task_id, create_agent_completed_event(
                 task_id=state.task_id,
                 agent_slug="trader",

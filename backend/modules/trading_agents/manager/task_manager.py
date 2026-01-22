@@ -1029,6 +1029,7 @@ class TaskManager:
             if data_collection_model_id:
                 from core.ai.model import get_model_service
                 model_service = get_model_service()
+                # 使用异步方法获取模型
                 data_collection_model_obj = await model_service.get_model(data_collection_model_id, user_id)
                 data_collection_config = {
                     "max_concurrency": data_collection_model_obj.max_concurrency,
@@ -1040,6 +1041,7 @@ class TaskManager:
 
             # 为辩论模型请求并发
             if debate_model_id:
+                # 使用异步方法获取模型
                 debate_model_obj = await model_service.get_model(debate_model_id, user_id)
                 debate_config = {
                     "max_concurrency": debate_model_obj.max_concurrency,
@@ -1156,6 +1158,23 @@ class TaskManager:
                     # 广播事件
                     await ws_manager.broadcast_event(task_id, event)
 
+                    # 实时更新数据库（确保前端刷新能看到进度）
+                    if event_type in [EventType.PHASE_COMPLETED, EventType.TASK_FAILED]:
+                        update_data = {
+                            "current_phase": progress_data.get("current_phase", 0),
+                            "progress": progress_data.get("progress", 0.0),
+                            "status": progress_data.get("status", TaskStatusEnum.RUNNING.value),
+                            "updated_at": datetime.utcnow()
+                        }
+                        # 如果有报告数据，也更新
+                        if "analyst_reports" in progress_data:
+                            update_data["reports"] = {r["slug"]: r for r in progress_data["analyst_reports"]}
+                        
+                        await mongodb.database.analysis_tasks.update_one(
+                            {"_id": ObjectId(task_id)},
+                            {"$set": update_data}
+                        )
+
                 # 创建调度器
                 scheduler = create_workflow_scheduler(ai_service) \
                     .with_agent_config(agent_config) \
@@ -1179,8 +1198,8 @@ class TaskManager:
                     market=request.market,
                     trade_date=request.trade_date,
                     selected_agents=selected_agents,
-                    data_collection_model=data_collection_model_id or "claude-sonnet-4-20250514",
-                    debate_model=debate_model_id or "claude-haiku-4-20250514",
+                    data_collection_model=data_collection_model_id,  # 不要硬编码默认值，让 scheduler 处理
+                    debate_model=debate_model_id,  # 不要硬编码默认值，让 scheduler 处理
                     stages=stages_config,
                     data_collection_task_concurrency=task_concurrency,
                 )
@@ -1302,6 +1321,7 @@ class TaskManager:
 
         # 优先级1：任务参数指定
         if requested_model_id:
+            # 异步获取模型配置
             model = await model_service.get_model(requested_model_id, user_id, is_admin=False)
             if model:
                 source = f"任务参数指定({model.name})"
@@ -1318,6 +1338,7 @@ class TaskManager:
                 None
             )
             if user_model_id:
+                # 异步获取模型配置
                 model = await model_service.get_model(user_model_id, user_id, is_admin=False)
                 if model:
                     source = f"用户默认模型({model.name})"
@@ -1327,6 +1348,7 @@ class TaskManager:
                     logger.warning(f"用户默认的{model_type}模型不可用: {user_model_id}")
 
         # 优先级3：系统默认模型
+        # 异步获取默认模型配置
         model = await model_service.get_default_model(user_id=user_id)
         if model:
             source = f"系统默认模型({model.name})"

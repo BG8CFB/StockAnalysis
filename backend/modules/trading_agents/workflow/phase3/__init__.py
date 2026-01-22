@@ -37,6 +37,7 @@ from modules.trading_agents.workflow.events import (
     create_phase_agents_event,
     create_agent_started_event,
     create_agent_completed_event,
+    create_report_generated_event,
 )
 
 logger = logging.getLogger(__name__)
@@ -129,25 +130,44 @@ async def execute_phase3(
     )
 
     # 并发执行所有策略分析师
-    # 发送策略分析师开始事件
-    for debator in debators:
+    async def execute_debator(debator):
+        # 发送策略分析师开始事件
         await websocket_manager.broadcast_event(state.task_id, create_agent_started_event(
             task_id=state.task_id,
             agent_slug=debator.slug,
             agent_name=debator.name
         ))
+        
+        try:
+            result = await debator.analyze(state, state.investment_decision)
+            
+            if result and result.get("output"):
+                # 发送报告生成事件
+                await websocket_manager.broadcast_event(state.task_id, create_report_generated_event(
+                    task_id=state.task_id,
+                    agent_slug=result["slug"],
+                    agent_name=result["name"],
+                    content=result["output"]
+                ))
+                # 发送策略分析师完成事件
+                await websocket_manager.broadcast_event(state.task_id, create_agent_completed_event(
+                    task_id=state.task_id,
+                    agent_slug=result["slug"],
+                    agent_name=result["name"],
+                    token_usage={}  # 暂无 token 用量
+                ))
+            return result
+        except Exception as e:
+            logger.error(f"[Phase 3] 策略分析师 {debator.slug} 执行异常: {e}")
+            return e
 
-    strategy_tasks = [
-        debator.analyze(state, state.investment_decision)
-        for debator in debators
-    ]
+    strategy_tasks = [execute_debator(debator) for debator in debators]
     strategy_results = await asyncio.gather(*strategy_tasks, return_exceptions=True)
 
     # 处理策略分析师结果
     strategy_reports = []
     for i, result in enumerate(strategy_results):
         if isinstance(result, Exception):
-            logger.error(f"[Phase 3] 策略分析师 {i} 执行异常: {result}")
             continue
 
         if result and result.get("output"):
@@ -158,13 +178,6 @@ async def execute_phase3(
                 "content": result["output"],
                 "timestamp": datetime.utcnow().isoformat()
             })
-            # 发送策略分析师完成事件
-            await websocket_manager.broadcast_event(state.task_id, create_agent_completed_event(
-                task_id=state.task_id,
-                agent_slug=result["slug"],
-                agent_name=result["name"],
-                token_usage={}  # 暂无 token 用量
-            ))
 
     # 执行风险管理委员会主席（串行，等待所有策略分析师完成）
     # 发送风险管理委员会主席开始事件
@@ -177,6 +190,12 @@ async def execute_phase3(
 
     # 发送风险管理委员会主席完成事件
     if manager_result and manager_result.get("output"):
+        await websocket_manager.broadcast_event(state.task_id, create_report_generated_event(
+            task_id=state.task_id,
+            agent_slug="risk-manager",
+            agent_name="风险管理委员会主席",
+            content=manager_result["output"]
+        ))
         await websocket_manager.broadcast_event(state.task_id, create_agent_completed_event(
             task_id=state.task_id,
             agent_slug="risk-manager",

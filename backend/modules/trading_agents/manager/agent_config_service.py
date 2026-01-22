@@ -706,7 +706,7 @@ class AgentConfigService:
         """
         重置用户配置为公共配置
 
-        删除个人配置，下次访问时使用公共配置。
+        删除个人配置，返回最新的公共配置（从 YAML 文件实时加载）。
 
         Args:
             user_id: 用户 ID
@@ -721,8 +721,8 @@ class AgentConfigService:
 
         logger.info(f"重置用户配置为公共配置: user_id={user_id}")
 
-        # 返回公共配置
-        return await self.get_public_config()
+        # 返回 YAML 文件中的最新公共配置（而不是数据库中可能过时的配置）
+        return self._load_public_config_from_yaml(include_prompts=False)
 
     async def reset_to_default(
         self,

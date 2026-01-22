@@ -26,6 +26,7 @@ from modules.trading_agents.workflow.events import (
     create_phase_agents_event,
     create_agent_started_event,
     create_agent_completed_event,
+    create_report_generated_event,
 )
 
 logger = logging.getLogger(__name__)
@@ -431,6 +432,12 @@ async def execute_phase4(
 
     # 发送总结智能体完成事件
     if result.get("output"):
+        await websocket_manager.broadcast_event(state.task_id, create_report_generated_event(
+            task_id=state.task_id,
+            agent_slug=summarizer.slug,
+            agent_name=summarizer.name,
+            content=result["output"]
+        ))
         await websocket_manager.broadcast_event(state.task_id, create_agent_completed_event(
             task_id=state.task_id,
             agent_slug=summarizer.slug,
