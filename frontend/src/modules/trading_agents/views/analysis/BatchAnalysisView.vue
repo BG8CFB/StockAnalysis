@@ -198,8 +198,10 @@
                 type="success"
                 effect="plain"
                 size="small"
+                class="time-tag"
               >
-                <el-icon><Timer /></el-icon> 预计 {{ estimateTime }} 分钟
+                <el-icon><Timer /></el-icon>
+                <span>预计 {{ estimateTime }} 分钟</span>
               </el-tag>
             </div>
           </template>
@@ -330,68 +332,68 @@
             </div>
           </div>
         </el-card>
+      </div>
 
-        <!-- 分析预览 -->
-        <el-card class="section-card preview-card">
-          <template #header>
-            <div class="card-header">
-              <span class="header-title">
-                <el-icon><DataLine /></el-icon>
-                分析预览
-              </span>
-            </div>
-          </template>
-          <div class="preview-content">
-            <div class="preview-item">
-              <span class="preview-label">股票数量</span>
-              <el-tag
-                type="primary"
-                size="small"
-              >
-                {{ codesList.length }} 只
-              </el-tag>
-            </div>
-            <div class="preview-item">
-              <span class="preview-label">已选分析师</span>
-              <el-tag
-                type="success"
-                size="small"
-              >
-                {{ stagesConfig.stage1.selected_agents.length }} 个
-              </el-tag>
-            </div>
-            <div class="preview-item">
-              <span class="preview-label">深度分析</span>
-              <div class="preview-stages">
+      <!-- 右侧列：分析预览 + AI模型配置 + 操作按钮 -->
+      <div class="right-column">
+        <div class="right-sticky-wrapper">
+          <!-- 分析预览卡片 -->
+          <el-card class="config-card preview-card">
+            <template #header>
+              <div class="card-header">
+                <span class="header-title">
+                  <el-icon><DataLine /></el-icon>
+                  分析预览
+                </span>
+              </div>
+            </template>
+            <div class="preview-content">
+              <div class="preview-item">
+                <span class="preview-label">股票数量</span>
                 <el-tag
-                  v-if="stagesConfig.stage2.enabled"
+                  type="primary"
+                  size="small"
+                >
+                  {{ codesList.length }} 只
+                </el-tag>
+              </div>
+              <div class="preview-item">
+                <span class="preview-label">已选分析师</span>
+                <el-tag
                   type="success"
                   size="small"
                 >
-                  多空博弈与投资决策
-                </el-tag>
-                <el-tag
-                  v-if="stagesConfig.stage3.enabled"
-                  type="warning"
-                  size="small"
-                >
-                  策略风格与风险评估
-                </el-tag>
-                <el-tag
-                  type="info"
-                  size="small"
-                >
-                  总结智能体
+                  {{ stagesConfig.stage1.selected_agents.length }} 个
                 </el-tag>
               </div>
+              <div class="preview-item">
+                <span class="preview-label">深度分析</span>
+                <div class="preview-stages">
+                  <el-tag
+                    v-if="stagesConfig.stage2.enabled"
+                    type="success"
+                    size="small"
+                  >
+                    多空博弈
+                  </el-tag>
+                  <el-tag
+                    v-if="stagesConfig.stage3.enabled"
+                    type="warning"
+                    size="small"
+                  >
+                    策略评估
+                  </el-tag>
+                  <el-tag
+                    type="info"
+                    size="small"
+                  >
+                    最终总结
+                  </el-tag>
+                </div>
+              </div>
             </div>
-          </div>
-        </el-card>
-      </div>
+          </el-card>
 
-      <!-- 右侧列：AI模型配置 + 操作按钮 -->
-      <div class="right-column">
-        <div class="right-sticky-wrapper">
           <!-- AI 模型配置卡片 -->
           <el-card class="config-card model-card">
             <template #header>
@@ -621,13 +623,19 @@ const availableModels = computed(() => {
   return aiModelStore.enabledModels
 })
 
-// 计算预计耗时
+// 计算预计耗时(单位:分钟)
 const estimateTime = computed(() => {
-  let time = 3 // 基础时间
+  let time = 0
+  // 第一阶段: 根据选中的分析师数量计算,每个分析师约0.5分钟
+  time += Math.ceil(stagesConfig.stage1.selected_agents.length * 0.5)
+  // 第二阶段: 多空博弈,约2分钟
   if (stagesConfig.stage2.enabled) time += 2
+  // 第三阶段: 策略风格评估,约2分钟
   if (stagesConfig.stage3.enabled) time += 2
+  // 第四阶段: 总结,约1分钟
   time += 1
-  return time
+  // 至少显示1分钟
+  return Math.max(time, 1)
 })
 
 // 获取提供商标签
@@ -1224,6 +1232,11 @@ onUnmounted(() => {
   align-items: center;
 }
 
+.card-header .el-tag {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .header-title {
   display: flex;
   align-items: center;
@@ -1231,6 +1244,8 @@ onUnmounted(() => {
   font-weight: 600;
   font-size: 15px;
   color: #303133;
+  flex: 1;
+  min-width: 0;
 }
 
 .header-title .subtitle {
@@ -1491,7 +1506,20 @@ onUnmounted(() => {
   color: #606266;
 }
 
-/* ==================== 底部操作区 ==================== */
+/* ==================== 时间标签样式 ==================== */
+.time-tag {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.time-tag :deep(.el-tag__content) {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+/* ==================== 分析预览卡片（右侧） ==================== */
 .preview-card {
   border: 1px solid #e4e7ed;
   border-radius: 8px;
@@ -1504,26 +1532,27 @@ onUnmounted(() => {
 }
 
 .preview-content {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .preview-item {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .preview-label {
   font-size: 13px;
-  color: #909399;
+  color: #606266;
 }
 
 .preview-stages {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .action-buttons {

@@ -326,7 +326,7 @@ import {
   Monitor,
   Wallet,
   Setting,
-  News,
+  Reading,
   TrendCharts as ChartIcon,
 } from '@element-plus/icons-vue'
 import type { AgentConfig, Phase1Config, Phase2Config, Phase3Config, Phase4Config, AIModelConfig, MCPServerConfig } from '../types'
@@ -356,7 +356,7 @@ const enabledAgentsCount = computed(() => {
 // 获取智能体图标
 function getAgentIcon(slug: string) {
   const s = slug.toLowerCase()
-  if (s.includes('news') || s.includes('新闻')) return Document
+  if (s.includes('news') || s.includes('新闻')) return Reading
   if (s.includes('financial') || s.includes('fundamental') || s.includes('财务') || s.includes('基本面')) return Money
   if (s.includes('market') || s.includes('market') || s.includes('市场') || s.includes('技术')) return TrendCharts
   if (s.includes('social') || s.includes('sentiment') || s.includes('情绪')) return ChatLineSquare

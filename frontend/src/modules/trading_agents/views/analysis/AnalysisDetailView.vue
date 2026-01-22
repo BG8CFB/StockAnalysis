@@ -191,7 +191,7 @@
               <ReportCard
                 v-for="report in generatedReports"
                 :key="report.agent"
-                :agent-name="report.agent"
+                :agent-name="report.name"
                 :report="report.report"
               />
             </div>

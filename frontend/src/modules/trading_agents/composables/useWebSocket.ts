@@ -224,23 +224,31 @@ export function useWebSocket(options: WebSocketOptions) {
    * 处理 WebSocket 打开
    */
   function handleOpen() {
-    console.log('[WebSocket] 连接已建立')
+    console.log('[WebSocket] ✅ 连接已建立')
     retryCount.value = 0
     setStatus(WebSocketStatus.CONNECTED)
     startHeartbeat()
-    ElMessage.success('实时连接已建立')
   }
 
   /**
    * 处理 WebSocket 关闭
    */
   function handleClose(event: CloseEvent) {
-    console.log('[WebSocket] 连接已关闭:', event.code, event.reason)
+    console.log('[WebSocket] 🔌 连接已关闭:', event.code, event.reason)
     stopHeartbeat()
 
     if (manuallyClosed) {
       setStatus(WebSocketStatus.DISCONNECTED)
       manuallyClosed = false
+      return
+    }
+
+    // 判断是否需要重连
+    // 1001 表示客户端离开页面，不需要重连
+    // 1000 表示正常关闭，不需要重连
+    if (event.code === 1000 || event.code === 1001) {
+      console.log('[WebSocket] ℹ️ 正常关闭，无需重连')
+      setStatus(WebSocketStatus.DISCONNECTED)
       return
     }
 
@@ -270,14 +278,14 @@ export function useWebSocket(options: WebSocketOptions) {
    */
   function reconnect() {
     if (retryCount.value >= WS_CONFIG.MAX_RETRY_COUNT) {
-      console.warn('[WebSocket] 已达到最大重试次数')
+      console.warn('[WebSocket] ⚠️ 已达到最大重试次数，停止重连')
       return
     }
 
     const delay = calculateRetryDelay()
     retryCount.value++
 
-    console.log(`[WebSocket] ${delay / 1000}秒后进行第 ${retryCount.value} 次重连...`)
+    console.log(`[WebSocket] 🔄 ${delay / 1000}秒后进行第 ${retryCount.value} 次重连...`)
 
     setStatus(WebSocketStatus.RECONNECTING)
 
@@ -286,7 +294,7 @@ export function useWebSocket(options: WebSocketOptions) {
         return
       }
 
-      ElMessage.warning(`正在重连... (${retryCount.value}/${WS_CONFIG.MAX_RETRY_COUNT})`)
+      console.log('[WebSocket] 🔄 正在重连...')
       connect()
     }, delay)
   }

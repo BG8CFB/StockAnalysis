@@ -308,7 +308,7 @@ async function handleLogout() {
   height: var(--sb-header-height);
   display: flex;
   align-items: center;
-  padding: 0 20px;
+  justify-content: center;
   background: linear-gradient(135deg, #dbeafe 0%, #e0e7ff 100%);
   border-bottom: 1px solid var(--sb-border);
   cursor: pointer;
@@ -333,7 +333,6 @@ async function handleLogout() {
   display: flex;
   align-items: center;
   gap: 12px;
-  width: 100%;
   position: relative;
   z-index: 1;
 }
@@ -353,6 +352,10 @@ async function handleLogout() {
   animation: logo-pulse 3s ease-in-out infinite;
 }
 
+.logo-icon .el-icon {
+  vertical-align: middle;
+}
+
 /* Logo 呼吸动画 */
 @keyframes logo-pulse {
   0%, 100% {
@@ -361,12 +364,6 @@ async function handleLogout() {
   50% {
     box-shadow: 0 4px 18px rgba(37, 99, 235, 0.5);
   }
-}
-
-.logo-icon :deep(.el-icon) {
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 /* Logo 文字组 */
@@ -494,8 +491,9 @@ async function handleLogout() {
   color: var(--sb-text-hover);
 }
 
-/* Icons */
-:deep(.el-icon) {
+/* Icons - 只针对菜单项内的图标 */
+:deep(.el-menu-item .el-icon),
+:deep(.el-sub-menu__title .el-icon) {
   font-size: 18px;
   margin-right: 12px;
   color: inherit;

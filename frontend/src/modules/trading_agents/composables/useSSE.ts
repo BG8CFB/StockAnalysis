@@ -124,8 +124,9 @@ export function useSSE(options: SSEOptions) {
       }
     } catch (e) {
       // 如果不是 JSON，直接作为文本处理
-      receivedText.value += data
-      onMessage?.(data)
+      const textData = event.data
+      receivedText.value += textData
+      onMessage?.(textData)
     }
   }
 

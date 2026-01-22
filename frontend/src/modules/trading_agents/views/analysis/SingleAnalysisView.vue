@@ -177,8 +177,10 @@
                 type="success"
                 effect="plain"
                 size="small"
+                class="time-tag"
               >
-                <el-icon><Timer /></el-icon> 预计 {{ estimateTime }} 分钟
+                <el-icon><Timer /></el-icon>
+                <span>预计 {{ estimateTime }} 分钟</span>
               </el-tag>
             </div>
           </template>
@@ -309,63 +311,63 @@
             </div>
           </div>
         </el-card>
-
-        <!-- 分析预览 -->
-        <el-card class="section-card preview-card">
-          <template #header>
-            <div class="card-header">
-              <span class="header-title">
-                <el-icon><DataLine /></el-icon>
-                分析预览
-              </span>
-            </div>
-          </template>
-          <div class="preview-content">
-            <div class="preview-item">
-              <span class="preview-label">已选分析师</span>
-              <el-tag
-                type="primary"
-                size="small"
-              >
-                {{ stagesConfig.stage1.selected_agents.length }} 个
-              </el-tag>
-            </div>
-            <div class="preview-item">
-              <span class="preview-label">深度分析</span>
-              <div class="preview-stages">
-                <el-tag
-                  v-if="stagesConfig.stage2.enabled"
-                  type="success"
-                  size="small"
-                >
-                  多空博弈与投资决策
-                </el-tag>
-                <el-tag
-                  v-if="stagesConfig.stage3.enabled"
-                  type="warning"
-                  size="small"
-                >
-                  策略风格与风险评估
-                </el-tag>
-                <el-tag
-                  type="info"
-                  size="small"
-                >
-                  最终总结
-                </el-tag>
-              </div>
-            </div>
-            <div class="preview-item">
-              <span class="preview-label">预计耗时</span>
-              <span class="preview-value">约 {{ estimateTime }} 分钟</span>
-            </div>
-          </div>
-        </el-card>
       </div>
 
-      <!-- 右侧列：AI模型配置 + 操作按钮 -->
+      <!-- 右侧列：分析预览 + AI模型配置 + 操作按钮 -->
       <div class="right-column">
         <div class="right-sticky-wrapper">
+          <!-- 分析预览卡片 -->
+          <el-card class="config-card preview-card">
+            <template #header>
+              <div class="card-header">
+                <span class="header-title">
+                  <el-icon><DataLine /></el-icon>
+                  分析预览
+                </span>
+              </div>
+            </template>
+            <div class="preview-content">
+              <div class="preview-item">
+                <span class="preview-label">已选分析师</span>
+                <el-tag
+                  type="primary"
+                  size="small"
+                >
+                  {{ stagesConfig.stage1.selected_agents.length }} 个
+                </el-tag>
+              </div>
+              <div class="preview-item">
+                <span class="preview-label">深度分析</span>
+                <div class="preview-stages">
+                  <el-tag
+                    v-if="stagesConfig.stage2.enabled"
+                    type="success"
+                    size="small"
+                  >
+                    多空博弈
+                  </el-tag>
+                  <el-tag
+                    v-if="stagesConfig.stage3.enabled"
+                    type="warning"
+                    size="small"
+                  >
+                    策略评估
+                  </el-tag>
+                  <el-tag
+                    type="info"
+                    size="small"
+                  >
+                    最终总结
+                  </el-tag>
+                </div>
+              </div>
+              <div class="preview-item">
+                <span class="preview-label">预计耗时</span>
+                <span class="preview-value">约 {{ estimateTime }} 分钟</span>
+              </div>
+            </div>
+          </el-card>
+
           <!-- AI 模型配置卡片 -->
           <el-card class="config-card model-card">
             <template #header>
@@ -556,13 +558,19 @@ const enabledModels = computed(() => {
   return aiModelStore.enabledModels
 })
 
-// 计算预计耗时
+// 计算预计耗时(单位:分钟)
 const estimateTime = computed(() => {
-  let time = 3 // 基础时间
+  let time = 0
+  // 第一阶段: 根据选中的分析师数量计算,每个分析师约0.5分钟
+  time += Math.ceil(stagesConfig.stage1.selected_agents.length * 0.5)
+  // 第二阶段: 多空博弈,约2分钟
   if (stagesConfig.stage2.enabled) time += 2
+  // 第三阶段: 策略风格评估,约2分钟
   if (stagesConfig.stage3.enabled) time += 2
+  // 第四阶段: 总结,约1分钟
   time += 1
-  return time
+  // 至少显示1分钟
+  return Math.max(time, 1)
 })
 
 // AI 模型配置
@@ -971,6 +979,11 @@ onUnmounted(() => {
   gap: 12px;
 }
 
+.card-header .el-tag {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .header-title {
   font-size: 15px;
   font-weight: 600;
@@ -978,6 +991,8 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 1;
+  min-width: 0;
 }
 
 .header-title .subtitle {
@@ -1224,9 +1239,24 @@ onUnmounted(() => {
   color: #606266;
 }
 
-/* ==================== 底部操作区 ==================== */
+/* ==================== 时间标签样式 ==================== */
+.time-tag {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.time-tag :deep(.el-tag__content) {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+/* ==================== 分析预览卡片（右侧） ==================== */
 .preview-card {
-  margin-bottom: 0;
+  border: 1px solid #e4e7ed;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .preview-card :deep(.el-card__header) {
@@ -1262,6 +1292,7 @@ onUnmounted(() => {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 /* 开始按钮 */

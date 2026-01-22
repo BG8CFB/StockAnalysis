@@ -149,9 +149,14 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
 
   // 计算属性：已生成的报告
   const generatedReports = computed(() => {
-    const reports: { agent: string; report: string }[] = []
+    const reports: { agent: string; name: string; report: string }[] = []
     state.value.reports.forEach((report, slug) => {
-      reports.push({ agent: slug, report })
+      const agentInfo = state.value.agents.get(slug)
+      reports.push({ 
+        agent: slug, 
+        name: agentInfo?.name || slug,
+        report 
+      })
     })
     return reports
   })
@@ -283,13 +288,18 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
    * 处理智能体完成
    */
   function handleAgentCompleted(event: TaskEvent) {
-    const { agent_slug, report } = event.data
+    const { agent_slug, report, content } = event.data
     const agent = state.value.agents.get(agent_slug as string)
 
     if (agent) {
       agent.status = 'completed'
       agent.endTime = event.timestamp * 1000
-      agent.report = report as string
+      // 某些事件可能在 completed 事件中携带报告
+      const reportContent = (content || report) as string
+      if (reportContent) {
+        agent.report = reportContent
+        state.value.reports.set(agent_slug as string, reportContent)
+      }
     }
 
     // 更新进度（假设每个智能体占总进度的 10%）
@@ -339,8 +349,12 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
    * 处理报告生成
    */
   function handleReportGenerated(event: TaskEvent) {
-    const { agent_slug, report } = event.data
-    state.value.reports.set(agent_slug as string, report as string)
+    const { agent_slug, report, content } = event.data
+    // 后端发送的是 content 字段，但也兼容 report 字段
+    const reportContent = (content || report) as string
+    if (reportContent) {
+      state.value.reports.set(agent_slug as string, reportContent)
+    }
   }
 
   /**

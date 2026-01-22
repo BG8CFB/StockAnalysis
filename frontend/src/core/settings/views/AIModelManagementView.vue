@@ -960,6 +960,26 @@ function getProviderLabel(provider: ModelProviderEnum | string): string {
   return PROVIDER_PRESETS[provider as ModelProviderEnum]?.name || provider
 }
 
+// 获取模型图标
+function getModelIcon(provider: string | undefined): string {
+  if (!provider) return 'Cpu'
+
+  // 尝试从预设平台中查找
+  const platform = Object.values(PRESET_PLATFORMS).find(p => p.id === provider)
+  if (platform) {
+    return platform.icon
+  }
+
+  // 尝试从提供商预设中查找
+  const preset = PROVIDER_PRESETS[provider as ModelProviderEnum]
+  if (preset?.icon) {
+    return preset.icon
+  }
+
+  // 兜底图标
+  return 'Cpu'
+}
+
 // 当平台类型改变时
 function handlePlatformTypeChange() {
   if (formData.platform_type === PlatformTypeEnum.CUSTOM) {
