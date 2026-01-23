@@ -15,6 +15,46 @@ export const PHASES = [
   { id: 4, name: '总结智能体', description: '生成最终投资建议' },
 ] as const
 
+// 智能体名称映射
+export const AGENT_NAME_MAPPING: Record<string, string> = {
+  // Phase 1
+  'financial-news-analyst': '财经新闻分析师',
+  'social-media-analyst': '社交媒体分析师',
+  'china-market-analyst': '中国市场分析师',
+  'market-analyst': '市场技术分析师',
+  'market_technical': '市场技术分析师', // 兼容旧 slug
+  'fundamentals-analyst': '基本面分析师',
+  'short-term-capital-analyst': '短线资金分析师',
+  
+  // Phase 2
+  'bull-researcher': '看涨研究员',
+  'bear-researcher': '看跌研究员',
+  'research-manager': '投资组合经理',
+  'trader': '专业交易员',
+  
+  // Phase 3
+  'aggressive-debator': '激进策略分析师',
+  'neutral-debator': '中性策略分析师',
+  'conservative-debator': '保守策略分析师',
+  'risk-manager': '风险管理委员会主席',
+  
+  // Phase 4
+  'summarizer': '总结智能体',
+}
+
+/**
+ * 获取智能体显示名称
+ */
+export function getAgentDisplayName(slug: string, originalName?: string): string {
+  // 如果 originalName 是中文，优先使用 originalName
+  if (originalName && /[\u4e00-\u9fa5]/.test(originalName)) {
+    return originalName
+  }
+  
+  // 否则尝试使用映射
+  return AGENT_NAME_MAPPING[slug] || originalName || slug
+}
+
 // 智能体状态
 export interface AgentStatus {
   slug: string
@@ -151,10 +191,16 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
   const generatedReports = computed(() => {
     const reports: { agent: string; name: string; report: string }[] = []
     state.value.reports.forEach((report, slug) => {
+      // 过滤掉 final_report，因为它单独展示
+      if (slug === 'final_report') return
+
       const agentInfo = state.value.agents.get(slug)
+      // 优先使用 agentInfo 中的名字，如果没有则尝试从映射表中获取
+      const displayName = getAgentDisplayName(slug, agentInfo?.name)
+      
       reports.push({ 
         agent: slug, 
-        name: agentInfo?.name || slug,
+        name: displayName,
         report 
       })
     })
@@ -265,17 +311,21 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
     const { agent_slug, agent_name } = event.data
     currentAgent.value = agent_slug as string
 
+    // 获取显示名称（处理后端可能传回英文名的情况）
+    const displayName = getAgentDisplayName(agent_slug as string, agent_name as string)
+
     // 如果智能体已存在（可能由 phase_agents 添加），则更新状态
     const existing = state.value.agents.get(agent_slug as string)
     if (existing) {
       existing.status = 'running'
+      existing.name = displayName // 更新名称
       existing.startTime = event.timestamp * 1000
       return
     }
 
     const agent: AgentStatus = {
       slug: agent_slug as string,
-      name: agent_name as string,
+      name: displayName,
       status: 'running',
       startTime: event.timestamp * 1000,
       endTime: null,
@@ -443,14 +493,24 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
       // 更新当前阶段的智能体列表
       agents.forEach((agent: any) => {
         const { slug, name } = agent
+        
+        // 获取显示名称
+        const displayName = getAgentDisplayName(slug, name)
+        
         if (!state.value.agents.has(slug)) {
           state.value.agents.set(slug, {
             slug: slug || 'unknown',
-            name: name || slug || 'Unknown Agent',
+            name: displayName,
             status: 'pending',
             startTime: null,
             endTime: null,
           })
+        } else {
+           // 如果已存在，更新名称（可能从配置加载时名字是旧的）
+           const existing = state.value.agents.get(slug)
+           if (existing) {
+             existing.name = displayName
+           }
         }
       })
     }

@@ -207,6 +207,11 @@ class UserSettingsResponse(BaseModel):
         - 处理缓存数据缺失 _id 的情况
         - 处理 MongoDB 扩展 JSON 格式的 datetime
         """
+        # 检查必要字段
+        if "user_id" not in data:
+            # 尝试从 _id 推断或抛出更明确的错误
+            # 这里抛出 ValueError 会被上层捕获并回退到数据库查询
+            raise ValueError("缓存数据缺少 user_id 字段，这可能是旧版缓存数据")
 
         # 辅助函数：处理 datetime 字段（兼容 MongoDB 扩展 JSON 格式）
         def parse_datetime(value: Any) -> datetime:

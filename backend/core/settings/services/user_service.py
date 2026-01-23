@@ -72,10 +72,20 @@ class UserSettingsService:
             try:
                 # 使用 json_util.loads 解析，确保 ObjectId 等类型正确转换
                 data = json_util.loads(cached)
-                # 使用 from_db 方法清理可能的无效数据
-                return UserSettingsResponse.from_db(data)
+                # 检查缓存数据完整性
+                if "user_id" not in data and "_id" in data:
+                    # 尝试修复：如果缓存中有 _id 但没有 user_id，可能旧缓存格式
+                    # 但 UserSettingsResponse.from_db 需要 user_id
+                    # 这里选择直接忽略无效缓存，重新从数据库加载
+                    logger.warning(f"缓存的用户配置缺少关键字段(user_id): user_id={user_id}")
+                    await redis.delete(cache_key)
+                else:
+                    # 使用 from_db 方法清理可能的无效数据
+                    return UserSettingsResponse.from_db(data)
             except Exception as e:
                 logger.warning(f"解析缓存的用户配置失败: {e}")
+                # 缓存无效，删除缓存
+                await redis.delete(cache_key)
 
         # 从数据库获取
         collection = self.db.user_settings

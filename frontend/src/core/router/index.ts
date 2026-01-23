@@ -6,7 +6,7 @@ import type { RouteRecordRaw } from 'vue-router'
 import moduleRoutes from './module_loader'
 import { eventBus, Events } from '@core/events/bus'
 import { useUserStore } from '@core/auth/store'
-import { systemApi } from '@core/system/api'
+import { useSystemStore } from '@core/system/store'
 
 // 公开路由（不需要登录）
 const PUBLIC_ROUTE_NAMES = ['Login', 'Register', 'Init', 'NotFound']
@@ -47,20 +47,6 @@ const router = createRouter({
 
 // ==================== 路由守卫 ====================
 
-/**
- * 检查系统是否已初始化
- */
-async function checkSystemInitialized(): Promise<boolean> {
-  try {
-    const status = await systemApi.getStatus()
-    return status.initialized
-  } catch (error) {
-    console.error('Failed to check system status:', error)
-    // API 请求失败时，假设已初始化（避免卡在初始化页面）
-    return true
-  }
-}
-
 // 全局前置守卫
 router.beforeEach(async (to, from, next) => {
   // 设置页面标题
@@ -70,16 +56,19 @@ router.beforeEach(async (to, from, next) => {
   }
 
   const userStore = useUserStore()
+  const systemStore = useSystemStore()
   const routeName = to.name as string | undefined
 
   const requiresAuth = to.meta.requiresAuth !== false
   const adminOnly = to.meta.adminOnly === true
 
   // ==================== 系统初始化检查 ====================
-  // 检查所有路由（包括公开路由），确保系统初始化逻辑正确
-  const isInitialized = await checkSystemInitialized()
+  // 优化：只在未检查过时调用 API，避免每次路由跳转都请求后端
+  if (!systemStore.statusChecked) {
+    await systemStore.checkStatus()
+  }
 
-  if (!isInitialized) {
+  if (!systemStore.initialized) {
     // 系统未初始化，只允许访问初始化页面
     if (routeName !== 'Init') {
       next({ name: 'Init' })
