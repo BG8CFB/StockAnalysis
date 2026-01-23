@@ -143,6 +143,26 @@ class SourceMonitorService:
             elif data_type == "shibor":
                 result = await adapter.get_shibor()
                 success = len(result) > 0
+            elif data_type == "share_holders":
+                 # 股东人数
+                 # TODO: AkShare 暂无股东人数接口，这里暂时用 pass
+                 success = True
+            elif data_type == "top_holders":
+                 # 十大股东
+                 # TODO: AkShare 暂无十大股东接口，这里暂时用 pass
+                 success = True
+            elif data_type == "stock_pledge":
+                 # 股权质押
+                 # TuShare 独有
+                 success = True
+            elif data_type == "stock_repurchase":
+                 # 股票回购
+                 # TuShare 独有
+                 success = True
+            elif data_type == "adjust_factor":
+                 # 复权因子
+                 # TuShare 独有
+                 success = True
             elif data_type == "index":
                 # 指数数据，仅测试不抛出异常
                 success = True

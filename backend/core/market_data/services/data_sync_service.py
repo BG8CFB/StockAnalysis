@@ -326,6 +326,38 @@ class DataSyncService:
                 check_type=check_type,
             )
 
+    async def _get_router(self, market: str) -> DataSourceRouter:
+        """获取数据源路由器"""
+        if self._router and self._router_market == market:
+            return self._router
+
+        from core.market_data.managers.source_router import DataSourceRouter
+        from core.market_data.sources.a_stock.tushare_adapter import TuShareAdapter
+        from core.market_data.sources.a_stock.akshare_adapter import AkShareAdapter
+        from core.market_data.sources.us_stock.yahoo_adapter import YahooFinanceAdapter
+        from core.market_data.sources.us_stock.alphavantage_adapter import AlphaVantageAdapter
+        from core.market_data.sources.hk_stock.yahoo_adapter import YahooHKAdapter
+        from core.market_data.sources.hk_stock.akshare_adapter import AkShareHKAdapter
+
+        router = DataSourceRouter()
+        
+        # 加载配置并初始化适配器
+        configs = await self.system_source_repo.get_enabled_configs(market)
+        
+        for config in configs:
+            source_id = config["source_id"]
+            adapter_config = config.get("config", {})
+            
+            try:
+                adapter = self._get_adapter(source_id, adapter_config, market)
+                router.add_source(adapter)
+            except Exception as e:
+                logger.error(f"Failed to initialize adapter for {source_id}: {e}")
+                
+        self._router = router
+        self._router_market = market
+        return router
+
     async def sync_stock_list(
         self, market: MarketType = MarketType.A_STOCK, source_id: str = "tushare", status: str = "L"
     ) -> Dict[str, Any]:

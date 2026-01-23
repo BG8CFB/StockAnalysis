@@ -467,7 +467,13 @@ class StartupDataService:
                     "daily_quotes": ["tushare", "akshare"],  # 日线行情
                     "minute_quotes": ["akshare"],  # 分钟K线
                     "financials": ["tushare", "akshare"],  # 财务数据 (包含 financials, financial_indicator)
+                    "financial_indicator": ["akshare"],  # 财务指标数据
                     "company_info": ["tushare", "akshare"],  # 公司信息
+                    "share_holders": ["tushare", "akshare"],  # 股东人数
+                    "top_holders": ["akshare"],  # 十大股东
+                    "stock_pledge": ["tushare"],  # 股权质押
+                    "stock_repurchase": ["tushare"],  # 股票回购
+                    "adjust_factor": ["tushare"],  # 复权因子
                     "sector": ["akshare"],  # 板块数据 (包含 index, sector)
                     "macro_economy": ["akshare", "tushare"],  # 宏观经济
                 },

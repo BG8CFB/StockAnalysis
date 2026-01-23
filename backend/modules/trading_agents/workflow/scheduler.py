@@ -335,6 +335,67 @@ class WorkflowScheduler:
                     "stock_name": state.stock_name,
                     "timestamp": datetime.utcnow().isoformat(),
                 }
+
+                # 在 Phase 完成时添加报告数据，用于数据库保存
+                if event == "phase1_complete" and hasattr(state, 'analyst_reports'):
+                    progress_data["analyst_reports"] = state.analyst_reports
+                elif event == "phase2_complete":
+                    # Phase 2 完成时保存辩论相关数据
+                    if hasattr(state, 'debate_turns'):
+                        progress_data["debate_turns"] = state.debate_turns
+                    if hasattr(state, 'investment_decision'):
+                        progress_data["investment_decision"] = state.investment_decision
+                    if hasattr(state, 'trading_plan'):
+                        progress_data["trading_plan"] = state.trading_plan
+                elif event == "phase3_complete":
+                    # Phase 3 完成时保存策略报告
+                    if hasattr(state, 'strategy_reports'):
+                        progress_data["strategy_reports"] = state.strategy_reports
+                    if hasattr(state, 'risk_approval'):
+                        progress_data["risk_approval"] = state.risk_approval
+                elif event == "phase4_complete":
+                    # Phase 4 完成时保存最终数据
+                    if hasattr(state, 'summary_report'):
+                        progress_data["summary_report"] = state.summary_report
+                    if hasattr(state, 'final_recommendation'):
+                        progress_data["final_recommendation"] = state.final_recommendation
+                    if hasattr(state, 'risk_level'):
+                        progress_data["risk_level"] = state.risk_level
+                    if hasattr(state, 'buy_price'):
+                        progress_data["buy_price"] = state.buy_price
+                    if hasattr(state, 'sell_price'):
+                        progress_data["sell_price"] = state.sell_price
+                
+                # 在每个阶段完成时保存工具调用记录
+                if event.endswith("_complete"):
+                    if hasattr(state, 'tool_calls'):
+                        progress_data["tool_calls"] = state.tool_calls
+                    
+                    if hasattr(state, 'phase_executions'):
+                        # Convert dataclasses to dicts
+                        progress_data["phase_executions"] = [
+                            {
+                                "phase": p.phase,
+                                "phase_name": p.phase_name,
+                                "started_at": p.started_at,
+                                "completed_at": p.completed_at,
+                                "execution_mode": p.execution_mode,
+                                "max_concurrency": p.max_concurrency,
+                                "status": p.status,
+                                "agents": [
+                                    {
+                                        "slug": a.slug,
+                                        "name": a.name,
+                                        "started_at": a.started_at,
+                                        "completed_at": a.completed_at,
+                                        "status": a.status,
+                                        "error_message": a.error_message,
+                                        "output": a.output
+                                    } for a in p.agents
+                                ]
+                            } for p in state.phase_executions
+                        ]
+
                 asyncio.create_task(self._safe_notify(progress_data))
             except Exception as e:
                 logger.warning(f"[调度器] 通知进度失败: {e}")

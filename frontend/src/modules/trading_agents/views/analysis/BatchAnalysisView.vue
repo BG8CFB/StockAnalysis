@@ -61,6 +61,23 @@
               </div>
             </el-form-item>
 
+            <!-- 任务名称：单独占一行 -->
+            <el-form-item
+              label="任务名称"
+              prop="batch_name"
+            >
+              <el-input
+                v-model="formData.batch_name"
+                placeholder="为这次批量任务命名，便于识别和管理（可选）"
+                clearable
+                maxlength="100"
+                show-word-limit
+              />
+              <div class="form-tip">
+                例如：蓝筹股分析、科技股筛选、A股全面扫描等
+              </div>
+            </el-form-item>
+
             <!-- 市场类型 + 交易日期：同一行 -->
             <div class="stock-form-row">
               <el-form-item
@@ -348,6 +365,36 @@
               </div>
             </template>
             <div class="preview-content">
+              <!-- 股票列表预览 -->
+              <div
+                v-if="codesList.length > 0"
+                class="preview-stocks-section"
+              >
+                <div class="preview-label">股票列表</div>
+                <div class="preview-stocks-list">
+                  <div
+                    v-for="stock in stockNamesPreview"
+                    :key="stock.code"
+                    class="stock-preview-item"
+                  >
+                    <span class="stock-code">{{ stock.code }}</span>
+                    <span
+                      v-if="stock.name"
+                      class="stock-name"
+                    >{{ stock.name }}</span>
+                    <span
+                      v-else
+                      class="stock-name loading"
+                    >加载中...</span>
+                  </div>
+                  <div
+                    v-if="codesList.length > 5"
+                    class="stock-more"
+                  >
+                    ... 还有 {{ codesList.length - 5 }} 只股票
+                  </div>
+                </div>
+              </div>
               <div class="preview-item">
                 <span class="preview-label">股票数量</span>
                 <el-tag
@@ -494,71 +541,6 @@
       </div>
     </div>
 
-    <!-- 批量任务进度 -->
-    <el-card
-      v-if="batchTasks.length > 0 || currentBatchId"
-      shadow="never"
-      class="progress-card"
-    >
-      <template #header>
-        <div class="progress-header">
-          <span>批量任务进度</span>
-          <el-button
-            v-if="hasRunningTasks"
-            type="danger"
-            text
-            @click="handleCancelAll"
-          >
-            取消全部
-          </el-button>
-        </div>
-      </template>
-
-      <div class="batch-progress">
-        <el-progress
-          :percentage="batchProgress"
-          :status="batchStatus"
-        >
-          <span>{{ completedCount }}/{{ totalCount }}</span>
-        </el-progress>
-      </div>
-
-      <div class="task-list">
-        <div
-          v-for="task in batchTasks"
-          :key="task.id"
-          class="task-item"
-        >
-          <div class="task-info">
-            <span class="task-code">{{ task.stock_code }}</span>
-            <el-tag
-              :type="getStatusType(task.status)"
-              size="small"
-            >
-              {{ getStatusLabel(task.status) }}
-            </el-tag>
-          </div>
-          <div
-            v-if="task.status === TaskStatusEnum.PENDING && taskQueuePositions[task.id]"
-            class="queue-info"
-          >
-            <el-icon><Clock /></el-icon>
-            <span>排队中，前面还有 {{ taskQueuePositions[task.id].position }} 个任务</span>
-          </div>
-          <div class="task-actions">
-            <el-button
-              v-if="task.status === TaskStatusEnum.FAILED"
-              type="warning"
-              text
-              size="small"
-              @click.stop="handleRetryTask(task.id)"
-            >
-              重试
-            </el-button>
-          </div>
-        </div>
-      </div>
-    </el-card>
   </div>
 </template>
 
@@ -581,19 +563,17 @@ import {
   DataAnalysis,
   Wallet,
   Document,
-  Clock,
   User,
   Tickets,
   Timer,
 } from '@element-plus/icons-vue'
 import { useTradingAgentsStore } from '../../store'
 import { useAIModelStore } from '@core/settings/stores/ai-model'
-import { agentConfigApi, settingsApi, taskApi } from '../../api'
+import { agentConfigApi, settingsApi, marketDataApi } from '../../api'
 import { PROVIDER_PRESETS } from '../../types'
 import {
   TaskStatusEnum,
   StockMarketEnum,
-  type AnalysisTask,
   type AnalysisStagesConfig,
   type UserAgentConfig,
   type AgentConfig,
@@ -609,6 +589,19 @@ const formRef = ref<FormInstance>()
 
 // 提交状态
 const submitting = ref(false)
+
+// 股票名称相关状态
+const stockNamesMap = ref<Record<string, string>>({})
+const loadingStockNames = ref(false)
+let stockNamesFetchTimer: ReturnType<typeof setTimeout> | null = null
+
+// 股票名称预览（最多显示5个）
+const stockNamesPreview = computed(() => {
+  return codesList.value.slice(0, 5).map(code => ({
+    code,
+    name: stockNamesMap.value[code] || ''
+  }))
+})
 
 const loadingConfig = ref(false)
 const agentConfig = ref<UserAgentConfig | null>(null)
@@ -673,17 +666,37 @@ async function loadAgentConfig() {
   loadingConfig.value = true
   try {
     agentConfig.value = await agentConfigApi.getAgentConfig()
-    if (stagesConfig.stage1.selected_agents.length === 0 && activeAnalysts.value.length > 0) {
-      stagesConfig.stage1.selected_agents = activeAnalysts.value.map(a => a.slug)
-    }
 
     // 从 TradingAgents 设置 API 加载默认配置
     const tradingAgentsSettings = await settingsApi.getSettings()
     const defaultDebateRounds = tradingAgentsSettings.default_debate_rounds ?? 3
 
-    // 设置默认辩论轮次
+    // 应用默认第一阶段智能体选择
+    const defaultAgents = tradingAgentsSettings.default_phase1_agents || []
+    if (defaultAgents.length > 0) {
+      // 过滤掉已经被禁用的智能体
+      const enabledAgentSlugs = activeAnalysts.value.map(a => a.slug)
+      stagesConfig.stage1.selected_agents = defaultAgents.filter(slug =>
+        enabledAgentSlugs.includes(slug)
+      )
+      // 如果过滤后没有智能体，使用所有启用的智能体
+      if (stagesConfig.stage1.selected_agents.length === 0 && activeAnalysts.value.length > 0) {
+        stagesConfig.stage1.selected_agents = activeAnalysts.value.map(a => a.slug)
+      }
+    } else if (stagesConfig.stage1.selected_agents.length === 0 && activeAnalysts.value.length > 0) {
+      // 如果没有默认配置，使用所有启用的智能体
+      stagesConfig.stage1.selected_agents = activeAnalysts.value.map(a => a.slug)
+    }
+
+    // 应用默认辩论轮次
     stagesConfig.stage2.debate.rounds = defaultDebateRounds
     stagesConfig.stage3.debate.rounds = defaultDebateRounds
+
+    // 应用默认阶段启用状态
+    stagesConfig.stage2.enabled = tradingAgentsSettings.default_phase2_enabled ?? true
+    stagesConfig.stage2.debate.enabled = stagesConfig.stage2.enabled
+    stagesConfig.stage3.enabled = tradingAgentsSettings.default_phase3_enabled ?? false
+    stagesConfig.stage3.debate.enabled = stagesConfig.stage3.enabled
 
     // 从 TradingAgentsSettings 加载模型配置
     if (tradingAgentsSettings.data_collection_model_id) {
@@ -700,18 +713,6 @@ async function loadAgentConfig() {
   }
 }
 
-// 当前批量任务 ID
-const currentBatchId = ref<string | null>(null)
-
-// 批量任务列表
-const batchTasks = ref<AnalysisTask[]>([])
-
-// 任务队列位置信息
-const taskQueuePositions = ref<Record<string, { position: number; waiting_count: number }>>({})
-
-// 定时器
-let refreshTimer: ReturnType<typeof setInterval> | null = null
-
 // 切换智能体选中状态
 function toggleAgent(agentId: string) {
   const index = stagesConfig.stage1.selected_agents.indexOf(agentId)
@@ -726,6 +727,43 @@ function toggleAgent(agentId: string) {
   }
 }
 
+// 批量获取股票名称
+async function fetchBatchStockNames() {
+  // 清空之前的定时器
+  if (stockNamesFetchTimer) {
+    clearTimeout(stockNamesFetchTimer)
+    stockNamesFetchTimer = null
+  }
+
+  // 如果股票代码列表为空，清空名称
+  if (codesList.value.length === 0) {
+    stockNamesMap.value = {}
+    return
+  }
+
+  loadingStockNames.value = true
+
+  // 使用防抖，500ms 后执行
+  stockNamesFetchTimer = setTimeout(async () => {
+    try {
+      const result = await marketDataApi.getBatchStockNames({
+        codes: codesList.value,
+        market: formData.market,
+      })
+      // 将结果转换为 Map
+      const newMap: Record<string, string> = {}
+      result.data.forEach(item => {
+        newMap[item.code] = item.name
+      })
+      stockNamesMap.value = newMap
+    } catch (error) {
+      console.error('Failed to fetch stock names:', error)
+    } finally {
+      loadingStockNames.value = false
+    }
+  }, 500)
+}
+
 // 表单数据
 const formData = reactive({
   market: StockMarketEnum.A_SHARE,
@@ -733,6 +771,7 @@ const formData = reactive({
   trade_date: new Date().toISOString().split('T')[0],
   data_collection_model: '', // 数据收集阶段模型
   debate_model: '', // 辩论阶段模型
+  batch_name: '', // 批量任务名称（可选，用于分类和识别批量任务）
 })
 
 // 市场选项
@@ -797,37 +836,6 @@ const canSubmit = computed(() => {
     codesList.value.length > 0 &&
     codesList.value.length <= 50 &&
     stagesConfig.stage1.selected_agents.length > 0
-  )
-})
-
-// 总任务数
-const totalCount = computed(() => batchTasks.value.length)
-
-// 完成数
-const completedCount = computed(() => {
-  return batchTasks.value.filter(
-    task => task.status === TaskStatusEnum.COMPLETED
-  ).length
-})
-
-// 批量进度
-const batchProgress = computed(() => {
-  if (totalCount.value === 0) return 0
-  return Math.round((completedCount.value / totalCount.value) * 100)
-})
-
-// 批量状态
-const batchStatus = computed(() => {
-  if (hasRunningTasks.value) return undefined
-  if (completedCount.value === totalCount.value) return 'success'
-  return 'exception'
-})
-
-// 是否有运行中的任务
-const hasRunningTasks = computed(() => {
-  return batchTasks.value.some(
-    task => task.status === TaskStatusEnum.RUNNING ||
-           task.status === TaskStatusEnum.PENDING
   )
 })
 
@@ -936,6 +944,7 @@ async function handleSubmit() {
       trade_date: formData.trade_date,
       data_collection_model: formData.data_collection_model || undefined,
       debate_model: formData.debate_model || undefined,
+      batch_name: formData.batch_name || undefined, // 批量任务名称
       stages: {
         stage1: {
           enabled: true,
@@ -955,14 +964,16 @@ async function handleSubmit() {
       },
     })
 
-    currentBatchId.value = id  // 统一接口返回 batch_id
+    // 跳转到任务中心，带上 batch_id 筛选参数
     ElMessage.success(`批量分析任务已创建，共 ${formData.stock_codes.length} 只股票`)
+    router.push({
+      name: 'TaskCenter',
+      query: { batch_id: id },
+    })
 
-    // 开始刷新任务状态
-    startRefreshing()
-
-    // 清空表单
+    // 清空表单（包括任务名称）
     codesText.value = ''
+    formData.batch_name = ''
   } catch (error) {
     console.error('创建批量任务失败:', error)
   } finally {
@@ -984,130 +995,9 @@ function handleReset() {
   stagesConfig.stage3.debate.enabled = false
   stagesConfig.stage3.debate.rounds = 3 // 使用默认值
   formData.trade_date = new Date().toISOString().split('T')[0]
+  formData.batch_name = '' // 重置任务名称
 }
 
-/**
- * 刷新任务状态
- */
-async function refreshTasks() {
-  if (!currentBatchId.value) return
-
-  try {
-    await store.fetchTasks({
-      limit: 50,
-      offset: 0,
-    })
-
-    // 过滤出属于当前批量任务的任务
-    batchTasks.value = store.tasks.filter(
-      task => task.batch_id === currentBatchId.value
-    )
-
-    // 获取等待中的任务的队列位置
-    const waitingTasks = batchTasks.value.filter(
-      task => task.status === TaskStatusEnum.PENDING
-    )
-
-    for (const task of waitingTasks) {
-      try {
-        const queueInfo = await taskApi.getQueuePosition(task.id)
-        taskQueuePositions.value[task.id] = queueInfo
-      } catch (error) {
-        console.error(`获取任务队列位置失败: task_id=${task.id}`, error)
-      }
-    }
-
-    // 如果所有任务都完成，停止刷新
-    if (!hasRunningTasks.value) {
-      stopRefreshing()
-    }
-  } catch (error) {
-    console.error('刷新任务状态失败:', error)
-  }
-}
-
-/**
- * 开始定时刷新
- */
-function startRefreshing() {
-  refreshTasks()
-  refreshTimer = setInterval(refreshTasks, 3000)
-}
-
-/**
- * 停止定时刷新
- */
-function stopRefreshing() {
-  if (refreshTimer) {
-    clearInterval(refreshTimer)
-    refreshTimer = null
-  }
-}
-
-/**
- * 取消所有任务
- */
-async function handleCancelAll() {
-  try {
-    await ElMessageBox.confirm(
-      '确定要取消所有进行中的任务吗？',
-      '确认取消',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning',
-      }
-    )
-
-    for (const task of batchTasks.value) {
-      if (task.status === TaskStatusEnum.RUNNING || task.status === TaskStatusEnum.PENDING) {
-        await store.cancelTask(task.id)
-      }
-    }
-
-    ElMessage.success('已取消所有任务')
-    stopRefreshing()
-  } catch {
-    // 用户取消
-  }
-}
-
-/**
- * 取消单个任务
- */
-async function handleCancelTask(taskId: string) {
-  try {
-    await store.cancelTask(taskId)
-    ElMessage.success('任务已取消')
-  } catch (error) {
-    console.error('取消任务失败:', error)
-  }
-}
-
-/**
- * 重试任务
- */
-async function handleRetryTask(taskId: string) {
-  try {
-    await store.retryTask(taskId)
-    ElMessage.success('任务已重新提交')
-    startRefreshing()
-  } catch (error) {
-    console.error('重试任务失败:', error)
-  }
-}
-
-/**
- * 跳转到详情页面
- */
-function goToDetail(taskId: string) {
-  router.push({
-    name: 'AnalysisDetail',
-    params: { taskId },
-  })
-}
-
-// 组件卸载时清理
 // 监听 localStorage 的 trading_agents_settings 变化
 const storageEventHandler = (event: StorageEvent) => {
   if (event.key === 'trading_agents_settings' && event.newValue) {
@@ -1123,6 +1013,14 @@ const storageEventHandler = (event: StorageEvent) => {
   }
 }
 
+// 监听股票代码列表和市场类型变化
+watch(
+  () => [codesList.value, formData.market],
+  () => {
+    fetchBatchStockNames()
+  }
+)
+
 onMounted(async () => {
   // 注册 storage 事件监听
   window.addEventListener('storage', storageEventHandler)
@@ -1133,9 +1031,13 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  stopRefreshing()
   // 移除 storage 事件监听
   window.removeEventListener('storage', storageEventHandler)
+  // 清理定时器
+  if (stockNamesFetchTimer) {
+    clearTimeout(stockNamesFetchTimer)
+    stockNamesFetchTimer = null
+  }
 })
 </script>
 
@@ -1555,6 +1457,57 @@ onUnmounted(() => {
   justify-content: flex-end;
 }
 
+/* 股票列表预览 */
+.preview-stocks-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px dashed #e4e7ed;
+}
+
+.preview-stocks-section:last-child {
+  border-bottom: none;
+}
+
+.preview-stocks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stock-preview-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.stock-preview-item .stock-code {
+  font-weight: 600;
+  color: #409eff;
+  min-width: 60px;
+}
+
+.stock-preview-item .stock-name {
+  color: #606266;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stock-preview-item .stock-name.loading {
+  color: #909399;
+  font-style: italic;
+}
+
+.stock-more {
+  font-size: 12px;
+  color: #909399;
+  font-style: italic;
+  padding-left: 68px;
+}
+
 .action-buttons {
   display: flex;
   flex-direction: column;
@@ -1567,76 +1520,6 @@ onUnmounted(() => {
   font-size: 14px;
   font-weight: 600;
   border-radius: 8px;
-}
-
-/* ==================== 批量任务进度 ==================== */
-.progress-card {
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
-}
-
-.progress-card :deep(.el-card__header) {
-  padding: 14px 16px;
-  background: #fafbfc;
-  border-bottom: 1px solid #e4e7ed;
-}
-
-.progress-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.batch-progress {
-  margin-bottom: 16px;
-}
-
-.task-list {
-  display: grid;
-  gap: 10px;
-}
-
-.task-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px;
-  background: #f5f7fa;
-  border-radius: 6px;
-  transition: all 0.2s;
-}
-
-.task-item:hover {
-  background: #ebeef5;
-}
-
-.task-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.task-code {
-  font-size: 15px;
-  font-weight: 500;
-  color: #303133;
-}
-
-.task-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.queue-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-  padding: 8px 12px;
-  background: #f0f9ff;
-  border-radius: 4px;
-  font-size: 13px;
-  color: #409eff;
 }
 
 /* ==================== 响应式调整 ==================== */

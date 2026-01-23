@@ -7,34 +7,34 @@ import json
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Body
-from fastapi.responses import StreamingResponse
 from bson import ObjectId
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from core.admin.audit_logger import get_audit_logger
 from core.auth.dependencies import get_current_active_user, get_current_user_from_query
-from core.user.dependencies import get_current_admin_user
-from core.user.models import UserModel
 from core.auth.rbac import Role
-from core.db.mongodb import mongodb
+
 # 修复循环导入：从本地模块导入
 from core.background_tasks import create_analysis_task_background
+from core.db.mongodb import mongodb
 from core.settings.services.user_service import get_user_settings_service
-from core.admin.audit_logger import get_audit_logger
-
-from modules.trading_agents.manager.task_manager import get_task_manager, TaskManager
-from modules.trading_agents.manager.concurrency_controller import get_concurrency_controller
+from core.user.dependencies import get_current_admin_user
+from core.user.models import UserModel
 from modules.trading_agents.manager.agent_config_service import get_agent_config_service
+from modules.trading_agents.manager.concurrency_controller import get_concurrency_controller
+from modules.trading_agents.manager.task_manager import get_task_manager
 from modules.trading_agents.schemas import (
+    AnalysisStagesConfig,
     # 任务相关
     AnalysisTaskCreate,
-    BatchTaskCreate,
     AnalysisTaskResponse,
+    BatchTaskCreate,
+    MessageResponse,
+    TaskStatusEnum,
     UnifiedTaskCreate,
     UnifiedTaskResponse,
-    AnalysisStagesConfig,
-    TaskStatusEnum,
-    MessageResponse,
     # 智能体配置相关
     UserAgentConfigResponse,
     UserAgentConfigUpdate,
@@ -49,6 +49,7 @@ router = APIRouter(prefix="/trading-agents/tasks", tags=["TradingAgents - 任务
 # =============================================================================
 # 任务创建端点
 # =============================================================================
+
 
 @router.post("", response_model=UnifiedTaskResponse)
 async def create_tasks(
@@ -75,7 +76,9 @@ async def create_tasks(
     stock_count = len(stock_codes)
 
     # 调试日志
-    logger.info(f"创建任务请求: current_user.id={current_user.id}, type={type(current_user.id)}, stock_count={stock_count}")
+    logger.info(
+        f"创建任务请求: current_user.id={current_user.id}, type={type(current_user.id)}, stock_count={stock_count}"
+    )
 
     # 配额检查（所有任务）
     for i in range(stock_count):
@@ -84,10 +87,7 @@ async def create_tasks(
         allowed, error_msg = await settings_service.check_task_quota(user_id_str)
         logger.info(f"配额检查结果: allowed={allowed}, error={error_msg}")
         if not allowed:
-            raise HTTPException(
-                status_code=429,
-                detail=f"配额不足: {error_msg}"
-            )
+            raise HTTPException(status_code=429, detail=f"配额不足: {error_msg}")
 
     # 获取用户配置
     config = {}
@@ -112,16 +112,16 @@ async def create_tasks(
                         data_collection_model=request.data_collection_model,
                         debate_model=request.debate_model,
                     ),
-                    config=config
+                    config=config,
                 )
             )
-            logger.info(f"[API] 后台任务已创建，等待 task_id...")
+            logger.info("[API] 后台任务已创建，等待 task_id...")
 
             try:
                 task_id = await asyncio.wait_for(task_create_task, timeout=10.0)
                 logger.info(f"[API] ✅ 获得 task_id: {task_id}")
             except asyncio.TimeoutError:
-                logger.error(f"[API] ❌ 等待 task_id 超时（10秒）")
+                logger.error("[API] ❌ 等待 task_id 超时（10秒）")
                 raise HTTPException(status_code=500, detail="任务创建超时")
 
             await settings_service.increment_task_usage(str(current_user.id))
@@ -140,6 +140,8 @@ async def create_tasks(
                     # 传递用户选择的模型参数（空值时后台会使用默认模型）
                     data_collection_model=request.data_collection_model,
                     debate_model=request.debate_model,
+                    # 批量任务名称
+                    batch_name=request.batch_name,
                 ),
                 config=config,
             )
@@ -164,6 +166,7 @@ async def create_tasks(
 # 任务查询端点
 # =============================================================================
 
+
 @router.get("/status-counts")
 async def get_task_status_counts(
     current_user: UserModel = Depends(get_current_active_user),
@@ -186,10 +189,14 @@ async def get_task_status_counts(
     from asyncio import gather
 
     async def count_status(status_value):
-        return await task_manager.count_tasks(
-            user_id=user_id,
-            status=status_value,
-        ) if status_value else 0
+        return (
+            await task_manager.count_tasks(
+                user_id=user_id,
+                status=status_value,
+            )
+            if status_value
+            else 0
+        )
 
     # 并行获取各状态数量
     counts = await gather(
@@ -201,7 +208,9 @@ async def get_task_status_counts(
         count_status(TaskStatusEnum.STOPPED),
     )
 
-    pending_count, running_count, completed_count, failed_count, cancelled_count, stopped_count = counts
+    pending_count, running_count, completed_count, failed_count, cancelled_count, stopped_count = (
+        counts
+    )
 
     # 返回分组统计
     return {
@@ -217,7 +226,7 @@ async def get_task_status_counts(
             "failed": failed_count,
             "cancelled": cancelled_count,
             "stopped": stopped_count,
-        }
+        },
     }
 
 
@@ -365,7 +374,7 @@ async def stream_task(
                             # 分块发送报告
                             chunk_size = 100
                             for i in range(0, len(final_report), chunk_size):
-                                chunk = final_report[i:i + chunk_size]
+                                chunk = final_report[i : i + chunk_size]
                                 yield f"data: {json.dumps({'type': 'report_chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
                             yield f"data: {json.dumps({'type': 'report_complete'}, ensure_ascii=False)}\n\n"
                             break
@@ -375,7 +384,12 @@ async def stream_task(
                             break
 
                     # 如果任务失败或取消
-                    elif current_state.get("status") in ["failed", "cancelled", "stopped", "expired"]:
+                    elif current_state.get("status") in [
+                        "failed",
+                        "cancelled",
+                        "stopped",
+                        "expired",
+                    ]:
                         yield f"data: {json.dumps({'type': 'task_ended', 'status': current_state.get('status')}, ensure_ascii=False)}\n\n"
                         break
 
@@ -400,7 +414,7 @@ async def stream_task(
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
                 "X-Accel-Buffering": "no",
-            }
+            },
         )
 
     except Exception as e:
@@ -462,6 +476,7 @@ async def get_task_queue_position(
 # =============================================================================
 # 任务操作端点
 # =============================================================================
+
 
 @router.post("/{task_id}/cancel", response_model=MessageResponse)
 async def cancel_task(
@@ -535,8 +550,15 @@ async def retry_task(
             raise HTTPException(status_code=403, detail="无权操作此任务")
 
         # 只有失败或已取消的任务可以重试
-        if task_info["status"] not in [TaskStatusEnum.FAILED.value, TaskStatusEnum.CANCELLED.value, TaskStatusEnum.STOPPED.value, TaskStatusEnum.EXPIRED.value]:
-            raise HTTPException(status_code=400, detail="只有失败、已取消、已停止或已过期的任务可以重试")
+        if task_info["status"] not in [
+            TaskStatusEnum.FAILED.value,
+            TaskStatusEnum.CANCELLED.value,
+            TaskStatusEnum.STOPPED.value,
+            TaskStatusEnum.EXPIRED.value,
+        ]:
+            raise HTTPException(
+                status_code=400, detail="只有失败、已取消、已停止或已过期的任务可以重试"
+            )
 
         # 获取原任务的配置
         original_task = await mongodb.database.analysis_tasks.find_one({"_id": ObjectId(task_id)})
@@ -561,9 +583,7 @@ async def retry_task(
 
         task_create_task = asyncio.create_task(
             create_analysis_task_background(
-                user_id=str(current_user.id),
-                request=new_request,
-                config=config
+                user_id=str(current_user.id), request=new_request, config=config
             )
         )
 
@@ -586,9 +606,12 @@ async def retry_task(
 # 任务删除端点
 # =============================================================================
 
+
 @router.delete("/clear")
 async def clear_tasks_by_status(
-    statuses: str = Query(..., description="要清空的状态列表，逗号分隔，例如: failed,cancelled,stopped"),
+    statuses: str = Query(
+        ..., description="要清空的状态列表，逗号分隔，例如: failed,cancelled,stopped"
+    ),
     delete_reports: bool = Query(False, description="是否同时删除关联报告"),
     current_user: UserModel = Depends(get_current_active_user),
 ):
@@ -620,31 +643,24 @@ async def clear_tasks_by_status(
     if invalid_statuses:
         raise HTTPException(
             status_code=400,
-            detail=f"不允许清空以下状态: {', '.join(invalid_statuses)}. 仅允许清空失败、已取消、已终止状态的任务"
+            detail=f"不允许清空以下状态: {', '.join(invalid_statuses)}. 仅允许清空失败、已取消、已终止状态的任务",
         )
 
     user_id = str(current_user.id)
 
     # 构建查询条件
-    query = {
-        "user_id": user_id,
-        "status": {"$in": status_list}
-    }
+    query = {"user_id": user_id, "status": {"$in": status_list}}
 
     # 先统计要删除的数量
     count = await mongodb.database.analysis_tasks.count_documents(query)
 
     if count == 0:
-        return MessageResponse(
-            message=f"没有找到需要清空的任务",
-            success=False
-        )
+        return MessageResponse(message="没有找到需要清空的任务", success=False)
 
-    logger.info(f"用户 {user_id} 清空任务", {
-        "statuses": status_list,
-        "count": count,
-        "delete_reports": delete_reports
-    })
+    logger.info(
+        f"用户 {user_id} 清空任务",
+        {"statuses": status_list, "count": count, "delete_reports": delete_reports},
+    )
 
     # 执行删除
     delete_result = await mongodb.database.analysis_tasks.delete_many(query)
@@ -652,7 +668,9 @@ async def clear_tasks_by_status(
     # 如果需要删除关联报告
     if delete_reports:
         # 查询已删除任务的 ID
-        task_ids = [str(tid) for tid in await mongodb.database.analysis_tasks.distinct("_id", query)]
+        task_ids = [
+            str(tid) for tid in await mongodb.database.analysis_tasks.distinct("_id", query)
+        ]
         if task_ids:
             await mongodb.database.analysis_reports.delete_many({"task_id": {"$in": task_ids}})
 
@@ -664,14 +682,11 @@ async def clear_tasks_by_status(
         details={
             "statuses": status_list,
             "deleted_count": delete_result.deleted_count,
-            "delete_reports": delete_reports
-        }
+            "delete_reports": delete_reports,
+        },
     )
 
-    return MessageResponse(
-        message=f"已清空 {delete_result.deleted_count} 个任务",
-        success=True
-    )
+    return MessageResponse(message=f"已清空 {delete_result.deleted_count} 个任务", success=True)
 
 
 class BatchDeleteRequest(BaseModel):
@@ -700,19 +715,16 @@ async def batch_delete_tasks(
     """
     # 安全检查：限制批量删除数量
     if len(request.task_ids) > 100:
-        raise HTTPException(
-            status_code=400,
-            detail="单次批量删除最多支持 100 个任务"
-        )
+        raise HTTPException(status_code=400, detail="单次批量删除最多支持 100 个任务")
 
     user_id = str(current_user.id)
     success_count = 0
     failed_tasks = []
 
-    logger.info(f"用户 {user_id} 批量删除任务", {
-        "task_ids_count": len(request.task_ids),
-        "delete_reports": request.delete_reports
-    })
+    logger.info(
+        f"用户 {user_id} 批量删除任务",
+        {"task_ids_count": len(request.task_ids), "delete_reports": request.delete_reports},
+    )
 
     # 逐个验证和删除任务
     for task_id in request.task_ids:
@@ -759,15 +771,16 @@ async def batch_delete_tasks(
             "total": len(request.task_ids),
             "success_count": success_count,
             "failed_count": len(failed_tasks),
-            "delete_reports": request.delete_reports
-        }
+            "delete_reports": request.delete_reports,
+        },
     )
 
     return {
         "success_count": success_count,
         "failed_count": len(failed_tasks),
         "failed_tasks": failed_tasks,
-        "message": f"成功删除 {success_count} 个任务" + (f"，失败 {len(failed_tasks)} 个" if failed_tasks else "")
+        "message": f"成功删除 {success_count} 个任务"
+        + (f"，失败 {len(failed_tasks)} 个" if failed_tasks else ""),
     }
 
 
@@ -807,10 +820,7 @@ async def delete_task(
         if delete_reports:
             await mongodb.database.analysis_reports.delete_many({"task_id": task_id})
 
-        return MessageResponse(
-            message="任务已删除",
-            success=True
-        )
+        return MessageResponse(message="任务已删除", success=True)
 
     except HTTPException:
         raise
@@ -825,12 +835,15 @@ async def delete_task(
 # =============================================================================
 
 # 创建配置路由器
-config_router = APIRouter(prefix="/trading-agents/agent-config", tags=["TradingAgents - 智能体配置"])
+config_router = APIRouter(
+    prefix="/trading-agents/agent-config", tags=["TradingAgents - 智能体配置"]
+)
 
 
 # =============================================================================
 # 辅助函数
 # =============================================================================
+
 
 def filter_sensitive_prompts(config: UserAgentConfigResponse) -> UserAgentConfigResponse:
     """
@@ -845,8 +858,11 @@ def filter_sensitive_prompts(config: UserAgentConfigResponse) -> UserAgentConfig
         精简后的智能体配置（不含 role_definition）
     """
     from modules.trading_agents.schemas import (
-        Phase1ConfigSlim, Phase2ConfigSlim, Phase3ConfigSlim,
-        Phase4ConfigSlim, AgentConfigSlim
+        AgentConfigSlim,
+        Phase1ConfigSlim,
+        Phase2ConfigSlim,
+        Phase3ConfigSlim,
+        Phase4ConfigSlim,
     )
 
     def filter_agent(agent):
@@ -866,7 +882,7 @@ def filter_sensitive_prompts(config: UserAgentConfigResponse) -> UserAgentConfig
             enabled=phase.enabled,
             max_rounds=phase.max_rounds,
             agents=[filter_agent(a) for a in phase.agents],
-            max_concurrency=getattr(phase, 'max_concurrency', None)
+            max_concurrency=getattr(phase, "max_concurrency", None),
         )
 
     # 创建新的配置对象（去掉 role_definition）
@@ -886,11 +902,12 @@ def filter_sensitive_prompts(config: UserAgentConfigResponse) -> UserAgentConfig
 # 用户智能体配置端点
 # =============================================================================
 
+
 @config_router.get("", response_model=UserAgentConfigResponse)
 async def get_agent_config(
     include_prompts: bool = Query(
         False,
-        description="是否包含提示词（仅管理员可用）。普通用户将自动排除提示词以保护业务逻辑。"
+        description="是否包含提示词（仅管理员可用）。普通用户将自动排除提示词以保护业务逻辑。",
     ),
     current_user: UserModel = Depends(get_current_active_user),
 ):
@@ -1015,12 +1032,10 @@ async def import_agent_config(
 # 公共智能体配置端点（管理员专用）
 # =============================================================================
 
+
 @config_router.get("/public", response_model=UserAgentConfigResponse)
 async def get_public_config(
-    include_prompts: bool = Query(
-        False,
-        description="是否包含提示词。仅管理员可获取完整配置。"
-    ),
+    include_prompts: bool = Query(False, description="是否包含提示词。仅管理员可获取完整配置。"),
     current_admin: UserModel = Depends(get_current_admin_user),
 ):
     """

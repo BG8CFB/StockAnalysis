@@ -239,6 +239,15 @@
           width="130"
         />
         <el-table-column
+          label="任务名称"
+          width="150"
+        >
+          <template #default="{ row }">
+            <span v-if="row.batch_name" class="batch-name">{{ row.batch_name }}</span>
+            <span v-else class="no-batch-name">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column
           v-if="shouldShowRecommendationColumn"
           label="买卖建议"
           width="100"
@@ -377,7 +386,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { RefreshRight, Delete } from '@element-plus/icons-vue'
 import { useTradingAgentsStore } from '../../store'
@@ -390,6 +399,7 @@ import {
 } from '../../types'
 
 const router = useRouter()
+const route = useRoute()
 const store = useTradingAgentsStore()
 
 // 状态标签配置
@@ -422,6 +432,11 @@ const searchParams = reactive({
   recommendation: '',
   riskLevel: '',
 })
+
+// 批量任务 ID 筛选（从 URL query 参数获取）
+const batchIdFilter = ref<string | undefined>(
+  (route.query.batch_id as string) || undefined
+)
 
 // 日期范围
 const dateRange = ref<[string, string] | null>(null)
@@ -586,6 +601,7 @@ async function loadTasks() {
       stock_code: searchParams.stockCode || undefined,
       recommendation: searchParams.recommendation || undefined,
       risk_level: searchParams.riskLevel || undefined,
+      batch_id: batchIdFilter.value, // 批量任务 ID 筛选
       start_date: dateRange.value?.[0],
       end_date: dateRange.value?.[1],
       limit: pageSize.value,
@@ -1055,6 +1071,15 @@ onMounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--el-color-danger);
+}
+
+.batch-name {
+  color: var(--el-color-primary);
+  font-weight: 500;
+}
+
+.no-batch-name {
+  color: var(--el-text-color-placeholder);
 }
 
 .pagination-wrapper {

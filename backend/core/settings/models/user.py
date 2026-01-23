@@ -71,6 +71,14 @@ class TradingAgentsSettings(BaseModel):
     agent_timeout_minutes: int = Field(default=10, ge=1, le=60, description="单智能体超时（分钟）")
     tool_timeout_seconds: int = Field(default=30, ge=10, le=300, description="工具调用超时（秒）")
 
+    # 流程默认配置
+    default_phase1_agents: list = Field(
+        default_factory=list,
+        description="第一阶段默认选中的智能体 slug 列表"
+    )
+    default_phase2_enabled: bool = Field(default=True, description="第二阶段默认是否启用")
+    default_phase3_enabled: bool = Field(default=False, description="第三阶段默认是否启用")
+
     # 其他配置
     task_expiry_hours: int = Field(default=24, ge=1, le=168, description="任务过期时间（小时）")
     archive_days: int = Field(default=30, ge=7, le=365, description="报告归档天数")
@@ -182,6 +190,10 @@ class TradingAgentsSettingsUpdate(BaseModel):
     archive_days: Optional[int] = None
     enable_loop_detection: Optional[bool] = None
     enable_progress_events: Optional[bool] = None
+    # 流程默认配置
+    default_phase1_agents: Optional[list] = None
+    default_phase2_enabled: Optional[bool] = None
+    default_phase3_enabled: Optional[bool] = None
 
 
 class UserSettingsResponse(BaseModel):

@@ -396,11 +396,14 @@ export interface AnalysisTask {
   risk_level?: string
   error_message: string | null
   error_details: Record<string, unknown> | null
+  phase_executions?: PhaseExecution[]
+  tool_calls?: ToolCallRecord[]
   created_at: string
   started_at: string | null
   completed_at: string | null
   expired_at: string | null
   batch_id: string | null
+  batch_name?: string  // 批量任务名称
 }
 
 export interface BatchTask {
@@ -427,6 +430,7 @@ export interface UnifiedTaskCreate {
   data_collection_model?: string  // 数据收集阶段模型ID（第一阶段）
   debate_model?: string  // 辩论和总结阶段模型ID（第二三四阶段）
   stages: AnalysisStagesConfig
+  batch_name?: string  // 批量任务名称（可选，用于分类和识别批量任务）
 }
 
 export interface UnifiedTaskResponse {
@@ -586,6 +590,11 @@ export interface TradingAgentsSettings {
   phase_timeout_minutes: number
   agent_timeout_minutes: number
   tool_timeout_seconds: number
+
+  // 流程默认配置
+  default_phase1_agents: string[]  // 第一阶段默认选中的智能体 slug 列表
+  default_phase2_enabled: boolean  // 第二阶段默认是否启用
+  default_phase3_enabled: boolean  // 第三阶段默认是否启用
 
   // 其他配置
   task_expiry_hours: number

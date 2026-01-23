@@ -438,7 +438,7 @@ const agentRules = {
   name: [{ required: true, message: '请输入智能体名称', trigger: 'blur' }],
   slug: [
     { required: true, message: '请输入唯一标识符', trigger: 'blur' },
-    { pattern: /^[a-z0-9_]+$/, message: '只能包含小写字母、数字和下划线', trigger: 'blur' },
+    { pattern: /^[a-z0-9_-]+$/, message: '只能包含小写字母、数字、下划线和连字符', trigger: 'blur' },
   ],
   // role_definition 不再是必填字段（管理员界面可能需要，但在前端表单中不强制）
 }

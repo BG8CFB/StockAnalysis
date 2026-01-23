@@ -278,6 +278,9 @@ async def execute_phase2(
     # 更新状态
     state.debate_turns = debate_turns
     state.investment_decision = manager_result.get("decision")
+    # 添加报告内容到 investment_decision，以便持久化
+    if state.investment_decision and manager_result.get("output"):
+        state.investment_decision["content"] = manager_result["output"]
 
     if manager_result.get("decision"):
         decision = manager_result["decision"]

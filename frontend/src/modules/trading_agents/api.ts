@@ -147,34 +147,29 @@ export const agentConfigApi = {
 }
 
 // =============================================================================
-// TradingAgents 设置 API
+// TradingAgents 设置 API（全局配置，管理员管理）
 // =============================================================================
 
 export const settingsApi = {
   /**
-   * 获取用户的 TradingAgents 设置
-   * 返回用户的分析规则配置
+   * 获取 TradingAgents 全局配置
+   * 返回全局的分析规则配置（所有用户共享）
    * 后端: GET /settings/trading-agents
-   * 注意：后端返回 UserSettingsResponse，需要从中提取 trading_agents_settings
    */
   getSettings: async (): Promise<TradingAgentsSettings> => {
-    const response = await httpGet<{
-      trading_agents_settings: TradingAgentsSettings
-    }>(`/settings/trading-agents`)
-    return response.trading_agents_settings
+    // 直接返回全局配置，不再嵌套在 trading_agents_settings 中
+    const response = await httpGet<TradingAgentsSettings>(`/settings/trading-agents`)
+    return response
   },
 
   /**
-   * 更新用户的 TradingAgents 设置
-   * 更新用户的分析规则配置
-   * 后端: PUT /settings/trading-agents
-   * 注意：后端返回 UserSettingsResponse，需要从中提取 trading_agents_settings
+   * 更新 TradingAgents 全局配置（管理员）
+   * 更新全局的分析规则配置（所有用户共享）
+   * 后端: PUT /admin/settings/trading-agents
    */
   updateSettings: async (data: TradingAgentsSettings): Promise<TradingAgentsSettings> => {
-    const response = await httpPut<{
-      trading_agents_settings: TradingAgentsSettings
-    }>(`/settings/trading-agents`, data)
-    return response.trading_agents_settings
+    const response = await httpPut<TradingAgentsSettings>(`/admin/settings/trading-agents`, data)
+    return response
   },
 }
 
@@ -307,4 +302,44 @@ export const healthApi = {
    */
   check: () =>
     httpGet<{ status: string; module: string }>(`${TRADING_AGENTS_BASE_URL}/health`),
+}
+
+// =============================================================================
+// 市场数据 API（用于获取股票名称）
+// =============================================================================
+
+export const marketDataApi = {
+  /**
+   * 获取单个股票名称
+   * 后端: GET /market-data/stocks/name
+   */
+  getStockName: (params: {
+    code: string
+    market: string
+  }) =>
+    httpGet<{
+      success: boolean
+      data: {
+        code: string
+        symbol: string
+        name: string
+      }
+    }>('/market-data/stocks/name', { params }),
+
+  /**
+   * 批量获取股票名称
+   * 后端: POST /market-data/stocks/batch-names
+   */
+  getBatchStockNames: (params: {
+    codes: string[]
+    market: string
+  }) =>
+    httpPost<{
+      success: boolean
+      data: Array<{
+        code: string
+        symbol: string
+        name: string
+      }>
+    }>('/market-data/stocks/batch-names', params),
 }

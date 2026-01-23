@@ -207,6 +207,9 @@ async def execute_phase3(
     if manager_result.get("decision"):
         decision = manager_result["decision"]
         state.risk_approval = decision
+        # 添加报告内容到 risk_approval，以便持久化
+        if manager_result.get("output"):
+            state.risk_approval["content"] = manager_result["output"]
 
         # 更新最终推荐（风险经理可以否决或调整）
         if decision.get("recommendation"):

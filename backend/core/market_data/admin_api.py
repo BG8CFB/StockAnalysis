@@ -7,19 +7,21 @@
 """
 
 import logging
-from typing import List, Optional
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
+from typing import List, Optional
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from core.auth.dependencies import get_current_active_user
+from core.config import SUPPORTED_MARKETS
 from core.market_data.repositories.datasource import (
     SystemDataSourceRepository,
     UserDataSourceRepository,
 )
-from core.auth.dependencies import get_current_active_user
+from core.market_data.repositories.stock_info import StockInfoRepository
 from core.user.models import UserModel
-from core.config import SUPPORTED_MARKETS
 
 logger = logging.getLogger(__name__)
 
@@ -404,7 +406,9 @@ async def test_user_source_config(
                 adapter = TuShareAdapter(config=config["config"])
                 success = await adapter.test_connection()
             elif source_id == "alpha_vantage":
-                from core.market_data.sources.us_stock.alphavantage_adapter import AlphaVantageAdapter
+                from core.market_data.sources.us_stock.alphavantage_adapter import (
+                    AlphaVantageAdapter,
+                )
                 adapter = AlphaVantageAdapter(config=config["config"])
                 success = await adapter.test_connection()
             else:
@@ -461,9 +465,9 @@ async def _run_full_sync_task(
     logger.info(f"🚀 [后台任务] 开始执行 {market} 全量同步，用户: {user_id}")
     start_time = datetime.now()
 
-    from core.market_data.services.data_sync_service import DataSyncService
-    from core.market_data.repositories.stock_info import StockInfoRepository
     from core.market_data.models import MarketType
+    from core.market_data.repositories.stock_info import StockInfoRepository
+    from core.market_data.services.data_sync_service import DataSyncService
 
     sync_service = DataSyncService()
     stock_repo = StockInfoRepository()
@@ -612,7 +616,7 @@ async def trigger_full_sync(
 
         return JSONResponse(content={
             "success": True,
-            "message": f"全量同步任务已提交到后台执行",
+            "message": "全量同步任务已提交到后台执行",
             "task_id": task_id,
             "market": market,
             "user_id": user_id,
@@ -620,7 +624,7 @@ async def trigger_full_sync(
         })
     else:
         # 如果没有传入 background_tasks，则同步执行（兼容旧逻辑）
-        logger.warning(f"⚠️ 未传入 BackgroundTasks，同步执行同步任务")
+        logger.warning("⚠️ 未传入 BackgroundTasks，同步执行同步任务")
         await _run_full_sync_task(market, user_id)
 
         return JSONResponse(content={
@@ -631,3 +635,195 @@ async def trigger_full_sync(
             "user_id": user_id,
             "executed_at": datetime.now().isoformat()
         })
+
+
+# =============================================================================
+# 股票信息查询接口
+# =============================================================================
+
+class StockNameRequest(BaseModel):
+    """批量获取股票名称请求"""
+    codes: List[str] = Field(..., description="股票代码列表，如 ['600000', '000001']")
+    market: str = Field("A_STOCK", description="市场类型: A_STOCK, US_STOCK, HK_STOCK")
+
+
+class StockNameInfo(BaseModel):
+    """股票名称信息"""
+    code: str = Field(..., description="股票代码")
+    symbol: str = Field(..., description="标准化代码")
+    name: str = Field(..., description="股票名称")
+
+
+@router.post("/stocks/batch-names")
+async def get_batch_stock_names(
+    request: StockNameRequest,
+    current_user: UserModel = Depends(get_current_active_user),
+    stock_info_repo: StockInfoRepository = Depends(lambda: StockInfoRepository())
+):
+    """
+    批量获取股票名称
+
+    根据股票代码列表批量查询股票名称，用于前端分析预览显示。
+    """
+    try:
+        from core.market_data.models import MarketType
+
+        # 将市场类型字符串转换为枚举
+        try:
+            market_type = MarketType(request.market.lower())
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"不支持的市场类型: {request.market}"
+            )
+
+        results = []
+
+        for code in request.codes:
+            code = code.strip().upper()
+
+            # 根据市场类型构建标准化代码
+            # A股: 6位数字，需要判断交易所
+            if market_type == MarketType.A_STOCK:
+                # 600xxx, 601xxx, 603xxx, 605xxx = 上海证券交易所
+                # 000xxx, 001xxx, 002xxx, 003xxx = 深圳证券交易所
+                if code.startswith(('600', '601', '603', '605', '688', '689')):
+                    exchange_suffix = ".SH"
+                elif code.startswith(('000', '001', '002', '003', '300')):
+                    exchange_suffix = ".SZ"
+                else:
+                    # 无法判断，返回原始代码和空名称
+                    results.append(StockNameInfo(code=code, symbol=code, name="未知"))
+                    continue
+
+                symbol = f"{code}{exchange_suffix}"
+
+            # 美股: 直接添加 .US 后缀
+            elif market_type == MarketType.US_STOCK:
+                symbol = f"{code}.US" if not code.endswith(".US") else code
+
+            # 港股: 5位数字，添加 .HK 后缀
+            elif market_type == MarketType.HK_STOCK:
+                symbol = f"{code}.HK" if not code.endswith(".HK") else code
+
+            else:
+                results.append(StockNameInfo(code=code, symbol=code, name="未知"))
+                continue
+
+            # 查询数据库
+            stock_info = await stock_info_repo.get_by_symbol(symbol)
+
+            if stock_info:
+                results.append(StockNameInfo(
+                    code=code,
+                    symbol=symbol,
+                    name=stock_info.get("name", "未知")
+                ))
+            else:
+                results.append(StockNameInfo(code=code, symbol=symbol, name="未找到"))
+
+        return JSONResponse(content={
+            "success": True,
+            "data": [r.model_dump() for r in results]
+        })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get batch stock names: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取股票名称失败: {str(e)}"
+        )
+
+
+@router.get("/stocks/name")
+async def get_stock_name(
+    code: str = Query(..., description="股票代码，如 600000"),
+    market: str = Query("A_STOCK", description="市场类型: A_STOCK, US_STOCK, HK_STOCK"),
+    current_user: UserModel = Depends(get_current_active_user),
+    stock_info_repo: StockInfoRepository = Depends(lambda: StockInfoRepository())
+):
+    """
+    获取单个股票名称
+
+    根据股票代码查询股票名称，用于前端分析预览显示。
+    """
+    try:
+        from core.market_data.models import MarketType
+
+        # 将市场类型字符串转换为枚举
+        try:
+            market_type = MarketType(market.lower())
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"不支持的市场类型: {market}"
+            )
+
+        code = code.strip().upper()
+
+        # 根据市场类型构建标准化代码
+        if market_type == MarketType.A_STOCK:
+            if code.startswith(('600', '601', '603', '605', '688', '689')):
+                exchange_suffix = ".SH"
+            elif code.startswith(('000', '001', '002', '003', '300')):
+                exchange_suffix = ".SZ"
+            else:
+                return JSONResponse(content={
+                    "success": True,
+                    "data": {
+                        "code": code,
+                        "symbol": code,
+                        "name": "未知"
+                    }
+                })
+
+            symbol = f"{code}{exchange_suffix}"
+
+        elif market_type == MarketType.US_STOCK:
+            symbol = f"{code}.US" if not code.endswith(".US") else code
+
+        elif market_type == MarketType.HK_STOCK:
+            symbol = f"{code}.HK" if not code.endswith(".HK") else code
+
+        else:
+            return JSONResponse(content={
+                "success": True,
+                "data": {
+                    "code": code,
+                    "symbol": code,
+                    "name": "未知"
+                }
+            })
+
+        # 查询数据库
+        stock_info = await stock_info_repo.get_by_symbol(symbol)
+
+        if stock_info:
+            return JSONResponse(content={
+                "success": True,
+                "data": {
+                    "code": code,
+                    "symbol": symbol,
+                    "name": stock_info.get("name", "未知")
+                }
+            })
+        else:
+            return JSONResponse(content={
+                "success": True,
+                "data": {
+                    "code": code,
+                    "symbol": symbol,
+                    "name": "未找到"
+                }
+            })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get stock name: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取股票名称失败: {str(e)}"
+        )

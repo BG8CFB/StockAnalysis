@@ -91,12 +91,55 @@ interface ProgressState {
  * 分析进度追踪 Composable
  */
 export function useAnalysisProgress(initialTask?: AnalysisTask) {
+  // 恢复智能体状态
+  const initialAgents = new Map<string, AgentStatus>()
+  if (initialTask?.phase_executions) {
+    initialTask.phase_executions.forEach((phase) => {
+      if (phase.agents) {
+        phase.agents.forEach((agent) => {
+          // 获取显示名称
+          const displayName = getAgentDisplayName(agent.slug, agent.name)
+          
+          initialAgents.set(agent.slug, {
+            slug: agent.slug,
+            name: displayName,
+            status: agent.status === 'completed' ? 'completed' :
+                    agent.status === 'running' ? 'running' :
+                    agent.status === 'failed' ? 'failed' : 'pending',
+            startTime: agent.started_at ? new Date(agent.started_at).getTime() : null,
+            endTime: agent.completed_at ? new Date(agent.completed_at).getTime() : null,
+            report: agent.output || undefined
+          })
+        })
+      }
+    })
+  }
+
+  // 恢复工具调用
+  const initialToolCalls: ToolCallRecord[] = []
+  if (initialTask?.tool_calls) {
+    initialTask.tool_calls.forEach((call: any) => {
+        initialToolCalls.push({
+            toolName: call.tool_name || call.toolName || 'Unknown Tool',
+            agentName: call.agent_name || call.agentName || 'Unknown Agent',
+            input: typeof call.input === 'string' ? call.input : JSON.stringify(call.input || {}),
+            output: call.output ? (typeof call.output === 'string' ? call.output : JSON.stringify(call.output)) : undefined,
+            status: call.status === 'success' || call.status === 'completed' ? 'completed' : 
+                    call.status === 'failed' ? 'failed' : 'running',
+            startTime: call.start_time ? new Date(call.start_time).getTime() : 
+                       call.startTime ? new Date(call.startTime).getTime() : 0,
+            endTime: call.end_time ? new Date(call.end_time).getTime() :
+                     call.endTime ? new Date(call.endTime).getTime() : undefined
+        })
+    })
+  }
+
   // 进度状态
   const state = ref<ProgressState>({
     currentPhase: initialTask?.current_phase || 1,
     progress: initialTask?.progress || 0,
-    agents: new Map(),
-    toolCalls: [],
+    agents: initialAgents,
+    toolCalls: initialToolCalls,
     reports: new Map(Object.entries(initialTask?.reports || {})),
     startTime: initialTask?.created_at ? new Date(initialTask.created_at).getTime() : Date.now(),
     endTime: initialTask?.completed_at ? new Date(initialTask.completed_at).getTime() : null,

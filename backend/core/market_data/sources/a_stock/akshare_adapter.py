@@ -123,7 +123,10 @@ class AkShareAdapter(DataSourceAdapter):
             )
 
             if df is None or df.empty:
-                logger.warning(f"No daily quotes returned for {symbol}")
+                logger.warning(
+                    f"No daily quotes returned for {code} (original: {symbol}). "
+                    f"Possible reasons: 1. Stock delisted; 2. No trading data in range; 3. Invalid symbol."
+                )
                 return []
 
             quotes = []

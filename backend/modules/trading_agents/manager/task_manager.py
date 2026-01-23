@@ -7,27 +7,30 @@
 import asyncio
 import logging
 from datetime import datetime
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, List, Optional
 
 from bson import ObjectId
 
 from core.db.mongodb import mongodb
+
+# MCP 连接释放支持
+from core.mcp.pool.pool import get_mcp_connection_pool
+from modules.trading_agents.api.websocket_manager import (
+    get_ws_manager,
+)
+from modules.trading_agents.exceptions import (
+    TaskAlreadyRunningException,
+    TaskNotFoundException,
+)
 from modules.trading_agents.manager.task_manager_restore import (
     restore_running_tasks_with_checkpoint,
 )
 from modules.trading_agents.schemas import (
-    TaskStatusEnum,
+    AnalysisStagesConfig,
     AnalysisTaskCreate,
     BatchTaskCreate,
     RecommendationEnum,
-    AnalysisStagesConfig,
-)
-from modules.trading_agents.exceptions import (
-    TaskNotFoundException,
-    TaskAlreadyRunningException,
-)
-from modules.trading_agents.api.websocket_manager import (
-    get_ws_manager,
+    TaskStatusEnum,
 )
 from modules.trading_agents.workflow.events import (
     EventType,
@@ -35,8 +38,6 @@ from modules.trading_agents.workflow.events import (
     create_task_completed_event,
     create_task_failed_event,
 )
-# MCP 连接释放支持
-from core.mcp.pool.pool import get_mcp_connection_pool
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # 任务管理器
 # =============================================================================
+
 
 class TaskManager:
     """
@@ -131,7 +133,7 @@ class TaskManager:
                 task_id=str(task_id),
                 stock_code=request.stock_code,
                 trade_date=request.trade_date,
-            )
+            ),
         )
 
         return str(task_id)
@@ -177,14 +179,13 @@ class TaskManager:
             ),
             config=config,
             max_concurrent=batch_concurrency,
+            batch_name=request.batch_name,
         )
 
         # 启动第一批任务
         for task_id in result["initial_task_ids"]:
             # 从数据库读取正确的任务信息
-            task_doc = await mongodb.database.analysis_tasks.find_one(
-                {"_id": ObjectId(task_id)}
-            )
+            task_doc = await mongodb.database.analysis_tasks.find_one({"_id": ObjectId(task_id)})
 
             if not task_doc:
                 logger.error(f"找不到新创建的任务: task_id={task_id}")
@@ -295,6 +296,8 @@ class TaskManager:
             "token_usage": task_doc.get("token_usage", {}),
             "error_message": task_doc.get("error_message"),
             "error_details": task_doc.get("error_details"),
+            "phase_executions": task_doc.get("phase_executions", []),
+            "tool_calls": task_doc.get("tool_calls", []),
             "created_at": task_doc["created_at"],
             "started_at": task_doc.get("started_at"),
             "completed_at": task_doc.get("completed_at"),
@@ -352,19 +355,21 @@ class TaskManager:
 
         tasks = []
         async for task_doc in cursor:
-            tasks.append({
-                "id": str(task_doc["_id"]),
-                "stock_code": task_doc["stock_code"],
-                "trade_date": task_doc["trade_date"],
-                "status": task_doc["status"],
-                "progress": task_doc.get("progress", 0.0),
-                "final_recommendation": task_doc.get("final_recommendation"),
-                "risk_level": task_doc.get("risk_level"),
-                "buy_price": task_doc.get("buy_price"),
-                "sell_price": task_doc.get("sell_price"),
-                "created_at": task_doc["created_at"],
-                "completed_at": task_doc.get("completed_at"),
-            })
+            tasks.append(
+                {
+                    "id": str(task_doc["_id"]),
+                    "stock_code": task_doc["stock_code"],
+                    "trade_date": task_doc["trade_date"],
+                    "status": task_doc["status"],
+                    "progress": task_doc.get("progress", 0.0),
+                    "final_recommendation": task_doc.get("final_recommendation"),
+                    "risk_level": task_doc.get("risk_level"),
+                    "buy_price": task_doc.get("buy_price"),
+                    "sell_price": task_doc.get("sell_price"),
+                    "created_at": task_doc["created_at"],
+                    "completed_at": task_doc.get("completed_at"),
+                }
+            )
 
         return tasks
 
@@ -424,19 +429,18 @@ class TaskManager:
             TaskStatusEnum.RUNNING.value,
         ]
 
-        query = {
-            "user_id": user_id,
-            "status": {"$in": active_statuses}
-        }
+        query = {"user_id": user_id, "status": {"$in": active_statuses}}
 
         cursor = mongodb.database.analysis_tasks.find(query)
         tasks = []
         async for task_doc in cursor:
-            tasks.append({
-                "id": str(task_doc["_id"]),
-                "status": task_doc["status"],
-                "created_at": task_doc["created_at"],
-            })
+            tasks.append(
+                {
+                    "id": str(task_doc["_id"]),
+                    "status": task_doc["status"],
+                    "created_at": task_doc["created_at"],
+                }
+            )
 
         return tasks
 
@@ -472,7 +476,7 @@ class TaskManager:
                     "interrupt_signal": True,
                     "completed_at": datetime.utcnow(),
                 }
-            }
+            },
         )
 
         # 取消正在运行的任务（如果有）
@@ -487,7 +491,7 @@ class TaskManager:
             create_event(
                 event_type=EventType.TASK_CANCELLED,
                 task_id=task_id,
-            )
+            ),
         )
 
         # 使用延迟释放 MCP 连接（而非立即释放）
@@ -533,7 +537,7 @@ class TaskManager:
                     "interrupt_signal": True,
                     "completed_at": datetime.utcnow(),
                 }
-            }
+            },
         )
 
         # 取消正在运行的任务
@@ -548,7 +552,7 @@ class TaskManager:
             create_event(
                 event_type=EventType.TASK_STOPPED,
                 task_id=task_id,
-            )
+            ),
         )
 
         # 使用延迟释放 MCP 连接（而非立即释放）
@@ -586,8 +590,7 @@ class TaskManager:
             update_data["current_agent"] = current_agent
 
         await mongodb.database.analysis_tasks.update_one(
-            {"_id": ObjectId(task_id)},
-            {"$set": update_data}
+            {"_id": ObjectId(task_id)}, {"$set": update_data}
         )
 
     async def add_task_report(
@@ -605,8 +608,7 @@ class TaskManager:
             report: 报告内容
         """
         await mongodb.database.analysis_tasks.update_one(
-            {"_id": ObjectId(task_id)},
-            {"$set": {f"reports.{agent_slug}": report}}
+            {"_id": ObjectId(task_id)}, {"$set": {f"reports.{agent_slug}": report}}
         )
 
     async def complete_task(
@@ -630,9 +632,7 @@ class TaskManager:
             token_usage: Token 使用量
         """
         # 获取任务信息（检查是否属于批量任务）
-        task_doc = await mongodb.database.analysis_tasks.find_one(
-            {"_id": ObjectId(task_id)}
-        )
+        task_doc = await mongodb.database.analysis_tasks.find_one({"_id": ObjectId(task_id)})
         batch_id = task_doc.get("batch_id") if task_doc else None
         user_id = task_doc.get("user_id") if task_doc else None
 
@@ -655,8 +655,7 @@ class TaskManager:
             update_data["token_usage"] = token_usage
 
         await mongodb.database.analysis_tasks.update_one(
-            {"_id": ObjectId(task_id)},
-            {"$set": update_data}
+            {"_id": ObjectId(task_id)}, {"$set": update_data}
         )
 
         # 发送任务完成事件
@@ -669,7 +668,7 @@ class TaskManager:
                 buy_price=buy_price,
                 sell_price=sell_price,
                 total_token_usage=token_usage or {},
-            )
+            ),
         )
 
         # 移除运行中的任务
@@ -771,7 +770,7 @@ class TaskManager:
                     "error_details": error_details,
                     "completed_at": datetime.utcnow(),
                 }
-            }
+            },
         )
 
         # 发送任务失败事件
@@ -782,7 +781,7 @@ class TaskManager:
                 task_id=task_id,
                 error_message=error_message,
                 error_details=error_details,
-            )
+            ),
         )
 
         # 移除运行中的任务
@@ -812,7 +811,7 @@ class TaskManager:
                     "status": TaskStatusEnum.RUNNING.value,
                     "started_at": datetime.utcnow(),
                 }
-            }
+            },
         )
 
     async def check_interrupt(self, task_id: str) -> bool:
@@ -840,8 +839,7 @@ class TaskManager:
             task_id: 任务 ID
         """
         await mongodb.database.analysis_tasks.update_one(
-            {"_id": ObjectId(task_id)},
-            {"$set": {"interrupt_signal": False}}
+            {"_id": ObjectId(task_id)}, {"$set": {"interrupt_signal": False}}
         )
 
     async def restore_running_tasks(self) -> int:
@@ -857,9 +855,7 @@ class TaskManager:
             恢复的任务数量（失败的任务不计入）
         """
         # 调用增强恢复函数
-        restored_count, failed_count = await restore_running_tasks_with_checkpoint(
-            mongodb
-        )
+        restored_count, failed_count = await restore_running_tasks_with_checkpoint(mongodb)
 
         if failed_count > 0:
             logger.warning(f"有 {failed_count} 个任务恢复失败并已标记为失败状态")
@@ -873,16 +869,13 @@ class TaskManager:
         Returns:
             运行中的任务数量
         """
-        count = await mongodb.database.analysis_tasks.count_documents({
-            "status": TaskStatusEnum.RUNNING.value
-        })
+        count = await mongodb.database.analysis_tasks.count_documents(
+            {"status": TaskStatusEnum.RUNNING.value}
+        )
         return count
 
     async def create_task_background(
-        self,
-        user_id: str,
-        request: AnalysisTaskCreate,
-        config: Dict[str, Any]
+        self, user_id: str, request: AnalysisTaskCreate, config: Dict[str, Any]
     ) -> str:
         """
         后台任务：创建并执行分析任务
@@ -898,11 +891,7 @@ class TaskManager:
             任务 ID
         """
         # 1. 创建任务记录
-        task_id = await self.create_task(
-            user_id=user_id,
-            request=request,
-            config=config
-        )
+        task_id = await self.create_task(user_id=user_id, request=request, config=config)
         logger.info(f"[TaskManager] 任务记录已创建: task_id={task_id}")
 
         # 2. 标记任务为运行中
@@ -913,12 +902,8 @@ class TaskManager:
         # 注意：必须保存 Task 对象的引用，否则会被垃圾回收
         logger.info(f"[TaskManager] 正在创建后台任务: task_id={task_id}")
         task = asyncio.create_task(
-            self.execute_analysis_workflow(
-                task_id=task_id,
-                user_id=user_id,
-                request=request
-            ),
-            name=f"workflow-{task_id}"
+            self.execute_analysis_workflow(task_id=task_id, user_id=user_id, request=request),
+            name=f"workflow-{task_id}",
         )
         logger.info(f"[TaskManager] 后台任务已创建: task_id={task_id}, task={task}")
 
@@ -927,9 +912,13 @@ class TaskManager:
 
         # 添加回调来追踪任务状态
         def task_callback(t):
-            logger.info(f"[TaskManager] 任务完成回调: task_id={task_id}, done={t.done()}, cancelled={t.cancelled()}")
+            logger.info(
+                f"[TaskManager] 任务完成回调: task_id={task_id}, done={t.done()}, cancelled={t.cancelled()}"
+            )
             if t.exception():
-                logger.error(f"[TaskManager] 任务异常: task_id={task_id}, exception={t.exception()}")
+                logger.error(
+                    f"[TaskManager] 任务异常: task_id={task_id}, exception={t.exception()}"
+                )
             if task_id in self._running_tasks:
                 del self._running_tasks[task_id]
 
@@ -943,7 +932,7 @@ class TaskManager:
         task_id: str,
         user_id: str,
         request: AnalysisTaskCreate,
-        _skip_model_loading: bool = False
+        _skip_model_loading: bool = False,
     ) -> None:
         """
         执行分析工作流
@@ -954,9 +943,9 @@ class TaskManager:
             request: 分析任务请求
             _skip_model_loading: 跳过模型加载（用于批量任务）
         """
-        logger.info("="*60)
+        logger.info("=" * 60)
         logger.info(f"execute_analysis_workflow 开始: task_id={task_id}, user_id={user_id}")
-        logger.info("="*60)
+        logger.info("=" * 60)
 
         # 用于并发控制
         batch_id = task_id
@@ -967,6 +956,7 @@ class TaskManager:
             # 1. 加载用户智能体配置
             logger.info(f"[{task_id}] 步骤1: 加载用户智能体配置...")
             from modules.trading_agents.manager.agent_config_service import get_agent_config_service
+
             config_service = get_agent_config_service()
             agent_config = await config_service.get_user_config(user_id, create_if_missing=True)
 
@@ -974,9 +964,9 @@ class TaskManager:
                 raise Exception("无法加载用户智能体配置")
 
             # 将 Pydantic 对象转换为字典
-            if hasattr(agent_config, 'model_dump'):
-                agent_config = agent_config.model_dump(mode='json')
-            elif hasattr(agent_config, 'dict'):
+            if hasattr(agent_config, "model_dump"):
+                agent_config = agent_config.model_dump(mode="json")
+            elif hasattr(agent_config, "dict"):
                 agent_config = agent_config.dict()
 
             logger.info(f"[{task_id}] ✅ 用户智能体配置加载成功")
@@ -984,6 +974,7 @@ class TaskManager:
             # 2. 加载用户模型偏好
             logger.info(f"[{task_id}] 步骤2: 加载用户模型偏好...")
             from core.settings.services.user_service import get_user_settings_service
+
             settings_service = get_user_settings_service()
             user_settings = await settings_service.get_user_settings(user_id)
             logger.info(f"[{task_id}] ✅ 用户模型偏好加载成功")
@@ -992,6 +983,7 @@ class TaskManager:
             if not _skip_model_loading:
                 logger.info(f"[{task_id}] 步骤3: 解析AI模型...")
                 from core.ai.model import get_model_service
+
                 model_service = get_model_service()
 
                 # 确定数据收集模型（带回退）
@@ -1001,7 +993,7 @@ class TaskManager:
                     requested_model_id=request.data_collection_model,
                     user_settings=user_settings,
                     model_type="data_collection",
-                    user_id=user_id
+                    user_id=user_id,
                 )
                 logger.info(f"[{task_id}] ✅ 数据收集模型解析成功")
 
@@ -1012,25 +1004,33 @@ class TaskManager:
                     requested_model_id=request.debate_model,
                     user_settings=user_settings,
                     model_type="debate",
-                    user_id=user_id
+                    user_id=user_id,
                 )
                 logger.info(f"[{task_id}] ✅ 辩论模型解析成功")
 
                 data_collection_model_id = str(data_collection_model.id)
                 debate_model_id = str(debate_model.id)
 
-                logger.info(f"任务 {task_id} 模型解析完成: data_collection={data_collection_model_id}, debate={debate_model_id}")
+                logger.info(
+                    f"任务 {task_id} 模型解析完成: data_collection={data_collection_model_id}, debate={debate_model_id}"
+                )
 
             # 请求并发控制
-            from modules.trading_agents.manager.concurrency_controller import get_concurrency_controller
+            from modules.trading_agents.manager.concurrency_controller import (
+                get_concurrency_controller,
+            )
+
             concurrency_controller = get_concurrency_controller()
 
             # 为数据收集模型请求并发
             if data_collection_model_id:
                 from core.ai.model import get_model_service
+
                 model_service = get_model_service()
                 # 使用异步方法获取模型
-                data_collection_model_obj = await model_service.get_model(data_collection_model_id, user_id)
+                data_collection_model_obj = await model_service.get_model(
+                    data_collection_model_id, user_id
+                )
                 data_collection_config = {
                     "max_concurrency": data_collection_model_obj.max_concurrency,
                     "task_concurrency": data_collection_model_obj.task_concurrency,
@@ -1089,10 +1089,10 @@ class TaskManager:
 
             try:
                 # 使用新的 WorkflowScheduler 执行工作流
+                from core.ai.service import AIService
                 from modules.trading_agents.workflow import (
                     create_workflow_scheduler,
                 )
-                from core.ai.service import AIService
 
                 # 获取 AI 服务
                 ai_service = AIService()
@@ -1125,11 +1125,14 @@ class TaskManager:
 
                     if not event_type:
                         # 如果没有映射，直接发送原始数据
-                        await ws_manager.broadcast_event(task_id, create_event(
-                            event_type=EventType.PROGRESS_UPDATE,  # 默认为进度更新
-                            task_id=task_id,
-                            **progress_data
-                        ))
+                        await ws_manager.broadcast_event(
+                            task_id,
+                            create_event(
+                                event_type=EventType.PROGRESS_UPDATE,  # 默认为进度更新
+                                task_id=task_id,
+                                **progress_data,
+                            ),
+                        )
                         return
 
                     # 创建标准事件
@@ -1149,44 +1152,136 @@ class TaskManager:
                         event.data["stock_code"] = progress_data["stock_code"]
                     if "stock_name" in progress_data:
                         event.data["stock_name"] = progress_data["stock_name"]
-                    
+
                     # 添加其他可能的字段
                     for key, value in progress_data.items():
-                        if key not in ["event", "task_id", "user_id", "timestamp"] and key not in event.data:
+                        if (
+                            key not in ["event", "task_id", "user_id", "timestamp"]
+                            and key not in event.data
+                        ):
                             event.data[key] = value
 
                     # 广播事件
                     await ws_manager.broadcast_event(task_id, event)
 
                     # 实时更新数据库（确保前端刷新能看到进度）
-                    if event_type in [EventType.PHASE_COMPLETED, EventType.TASK_FAILED]:
+                    if event_type in [
+                        EventType.PHASE_COMPLETED,
+                        EventType.TASK_FAILED,
+                        EventType.TASK_COMPLETED,
+                    ]:
                         update_data = {
                             "current_phase": progress_data.get("current_phase", 0),
                             "progress": progress_data.get("progress", 0.0),
                             "status": progress_data.get("status", TaskStatusEnum.RUNNING.value),
-                            "updated_at": datetime.utcnow()
+                            "updated_at": datetime.utcnow(),
                         }
-                        # 如果有报告数据，也更新
+
+                        # 准备 reports 字段更新 (Map[slug, content_string])
+                        reports_update = {}
+
+                        # Phase 1: 保存分析师报告
                         if "analyst_reports" in progress_data:
-                            update_data["reports"] = {r["slug"]: r for r in progress_data["analyst_reports"]}
-                        
+                            # 修正：只保存内容字符串到 reports Map，而不是整个对象
+                            for r in progress_data["analyst_reports"]:
+                                reports_update[f"reports.{r['slug']}"] = r["content"]
+
+                        # Phase 2: 保存辩论轮次和投资决策
+                        if "debate_turns" in progress_data:
+                            update_data["debate_turns"] = progress_data["debate_turns"]
+                            # 提取最新的 Bull/Bear 观点
+                            if progress_data["debate_turns"]:
+                                last_turn = progress_data["debate_turns"][-1]
+                                if last_turn.get("bull_view"):
+                                    reports_update["reports.bull-researcher"] = last_turn[
+                                        "bull_view"
+                                    ]
+                                if last_turn.get("bear_view"):
+                                    reports_update["reports.bear-researcher"] = last_turn[
+                                        "bear_view"
+                                    ]
+
+                        if "investment_decision" in progress_data:
+                            update_data["investment_decision"] = progress_data[
+                                "investment_decision"
+                            ]
+                            if progress_data["investment_decision"].get("content"):
+                                reports_update["reports.research-manager"] = progress_data[
+                                    "investment_decision"
+                                ]["content"]
+
+                        if "trading_plan" in progress_data:
+                            update_data["trading_plan"] = progress_data["trading_plan"]
+                            if progress_data["trading_plan"].get("content"):
+                                reports_update["reports.trader"] = progress_data["trading_plan"][
+                                    "content"
+                                ]
+
+                        # Phase 3: 保存策略报告
+                        if "strategy_reports" in progress_data:
+                            update_data["strategy_reports"] = progress_data["strategy_reports"]
+                            for r in progress_data["strategy_reports"]:
+                                reports_update[f"reports.{r['slug']}"] = r["content"]
+
+                        if "risk_approval" in progress_data:
+                            update_data["risk_approval"] = progress_data["risk_approval"]
+                            if progress_data["risk_approval"].get("content"):
+                                reports_update["reports.risk-manager"] = progress_data[
+                                    "risk_approval"
+                                ]["content"]
+
+                        # Phase 4: 保存总结报告和最终数据
+                        if "summary_report" in progress_data:
+                            update_data["summary_report"] = progress_data["summary_report"]
+                            if progress_data["summary_report"].get("content"):
+                                reports_update["reports.summarizer"] = progress_data[
+                                    "summary_report"
+                                ]["content"]
+
+                        if "final_recommendation" in progress_data:
+                            update_data["final_recommendation"] = progress_data[
+                                "final_recommendation"
+                            ]
+                        if "risk_level" in progress_data:
+                            update_data["risk_level"] = progress_data["risk_level"]
+                        if "buy_price" in progress_data:
+                            update_data["buy_price"] = progress_data["buy_price"]
+                        if "sell_price" in progress_data:
+                            update_data["sell_price"] = progress_data["sell_price"]
+
+                        if "tool_calls" in progress_data:
+                            update_data["tool_calls"] = progress_data["tool_calls"]
+
+                        if "phase_executions" in progress_data:
+                            update_data["phase_executions"] = progress_data["phase_executions"]
+
+                        # 合并更新操作
+                        update_op = {"$set": update_data}
+                        if reports_update:
+                            update_op["$set"].update(reports_update)
+
                         await mongodb.database.analysis_tasks.update_one(
-                            {"_id": ObjectId(task_id)},
-                            {"$set": update_data}
+                            {"_id": ObjectId(task_id)}, update_op
                         )
 
                 # 创建调度器
-                scheduler = create_workflow_scheduler(ai_service) \
-                    .with_agent_config(agent_config) \
-                    .with_progress_callback(progress_callback) \
+                scheduler = (
+                    create_workflow_scheduler(ai_service)
+                    .with_agent_config(agent_config)
+                    .with_progress_callback(progress_callback)
                     .build()
+                )
 
                 # 获取阶段配置
                 stages_config = request.stages.model_dump() if request.stages else {}
                 selected_agents = stages_config.get("stage1", {}).get("selected_agents")
 
                 # 获取数据收集模型的 task_concurrency 配置
-                task_concurrency = data_collection_model_obj.task_concurrency if data_collection_model_obj else None
+                task_concurrency = (
+                    data_collection_model_obj.task_concurrency
+                    if data_collection_model_obj
+                    else None
+                )
                 logger.info(f"任务 {task_id} Phase 1 并发数: {task_concurrency or '无限制'}")
 
                 # 执行工作流
@@ -1209,10 +1304,14 @@ class TaskManager:
                 # 保存最终结果到数据库
                 await self.complete_task(
                     task_id=task_id,
-                    final_recommendation=self._convert_recommendation(final_state.final_recommendation),
+                    final_recommendation=self._convert_recommendation(
+                        final_state.final_recommendation
+                    ),
                     buy_price=final_state.buy_price,
                     sell_price=final_state.sell_price,
-                    token_usage=final_state.token_usage.model_dump() if final_state.token_usage else {},
+                    token_usage=(
+                        final_state.token_usage.model_dump() if final_state.token_usage else {}
+                    ),
                 )
 
                 # 保存最终报告
@@ -1227,6 +1326,7 @@ class TaskManager:
 
         except Exception as e:
             import traceback
+
             error_trace = traceback.format_exc()
             logger.error(f"分析任务执行失败: task_id={task_id}, error={e}\n{error_trace}")
 
@@ -1234,14 +1334,17 @@ class TaskManager:
             await self.fail_task(
                 task_id=task_id,
                 error_message=str(e),
-                error_details={"type": type(e).__name__, "traceback": error_trace}
+                error_details={"type": type(e).__name__, "traceback": error_trace},
             )
 
         finally:
             # 释放并发资源（两个模型都需要释放）
             if data_collection_model_id or debate_model_id:
                 try:
-                    from modules.trading_agents.manager.concurrency_controller import get_concurrency_controller
+                    from modules.trading_agents.manager.concurrency_controller import (
+                        get_concurrency_controller,
+                    )
+
                     concurrency_controller = get_concurrency_controller()
 
                     # 释放数据收集模型槽位
@@ -1276,20 +1379,21 @@ class TaskManager:
                                 f"model_id={debate_model_id}"
                             )
                         except Exception as e:
-                            logger.error(
-                                f"释放辩论模型并发槽位失败: task_id={task_id}, error={e}"
-                            )
+                            logger.error(f"释放辩论模型并发槽位失败: task_id={task_id}, error={e}")
                 except Exception as e:
                     logger.error(f"释放并发资源时发生错误: task_id={task_id}, error={e}")
 
             # 减少用户的并发任务计数
             try:
                 from core.settings.services.user_service import get_user_settings_service
+
                 settings_service = get_user_settings_service()
                 await settings_service.decrement_concurrent_tasks(user_id)
                 logger.info(f"已减少用户 {user_id} 的并发任务计数")
             except Exception as e:
-                logger.error(f"减少并发任务计数失败: task_id={task_id}, user_id={user_id}, error={e}")
+                logger.error(
+                    f"减少并发任务计数失败: task_id={task_id}, user_id={user_id}, error={e}"
+                )
 
             # 释放 MCP 连接（标记任务失败）
             try:
@@ -1305,7 +1409,7 @@ class TaskManager:
         requested_model_id: Optional[str],
         user_settings,
         model_type: str,
-        user_id: str
+        user_id: str,
     ):
         """
         解析模型（带回退机制）
@@ -1333,9 +1437,7 @@ class TaskManager:
         # 优先级2：用户默认模型
         if user_settings and user_settings.trading_agents_settings:
             user_model_id = getattr(
-                user_settings.trading_agents_settings,
-                f"{model_type}_model_id",
-                None
+                user_settings.trading_agents_settings, f"{model_type}_model_id", None
             )
             if user_model_id:
                 # 异步获取模型配置
@@ -1363,7 +1465,9 @@ class TaskManager:
             f"系统默认: 不可用"
         )
 
-    def _convert_recommendation(self, recommendation: Optional[str]) -> Optional[RecommendationEnum]:
+    def _convert_recommendation(
+        self, recommendation: Optional[str]
+    ) -> Optional[RecommendationEnum]:
         """
         转换推荐结果字符串为枚举
 

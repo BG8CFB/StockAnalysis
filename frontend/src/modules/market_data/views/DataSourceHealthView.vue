@@ -52,15 +52,20 @@
       >
         <template #default="{ row }">
           <div class="source-cell">
-            <span>{{ dataSourceDisplayName(row.current_source.source_id) }}</span>
-            <el-tag
-              v-if="row.is_fallback"
-              type="warning"
-              size="small"
-              class="fallback-tag"
-            >
-              已降级
-            </el-tag>
+            <template v-if="row.current_source.status === 'unavailable' && row.current_source.error_message?.includes('所有数据源均不可用')">
+              <span class="text-danger">无可用数据源</span>
+            </template>
+            <template v-else>
+              <span>{{ dataSourceDisplayName(row.current_source.source_id) }}</span>
+              <el-tag
+                v-if="row.is_fallback"
+                type="warning"
+                size="small"
+                class="fallback-tag"
+              >
+                已降级
+              </el-tag>
+            </template>
           </div>
         </template>
       </el-table-column>
@@ -126,6 +131,17 @@
                 size="small"
               >异常</el-tag>
               {{ row.current_source.error_message }}
+            </span>
+            <!-- 无可用源状态 -->
+            <span
+              v-else-if="row.current_source.status === 'unavailable' && row.current_source.error_message?.includes('所有数据源均不可用')"
+              class="error-message"
+            >
+              <el-tag
+                type="danger"
+                size="small"
+              >不可用</el-tag>
+              所有数据源均配置或连接失败
             </span>
             <!-- 正常状态 -->
             <span

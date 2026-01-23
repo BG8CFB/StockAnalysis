@@ -327,6 +327,24 @@
               </div>
             </template>
             <div class="preview-content">
+              <!-- 股票信息 -->
+              <div
+                v-if="formData.stock_code"
+                class="preview-item"
+              >
+                <span class="preview-label">股票信息</span>
+                <div class="preview-stock-info">
+                  <span class="stock-code">{{ formData.stock_code }}</span>
+                  <span
+                    v-if="stockName"
+                    class="stock-name"
+                  >{{ stockName }}</span>
+                  <span
+                    v-else
+                    class="stock-name loading"
+                  >加载中...</span>
+                </div>
+              </div>
               <div class="preview-item">
                 <span class="preview-label">已选分析师</span>
                 <el-tag
@@ -441,63 +459,11 @@
         </div>
       </div>
     </div>
-
-    <!-- 最近分析 -->
-    <el-card
-      v-if="recentTasks.length > 0"
-      shadow="never"
-      class="section-card recent-card"
-    >
-      <template #header>
-        <div class="card-header">
-          <span class="header-title">
-            <el-icon><Clock /></el-icon>
-            最近分析
-          </span>
-          <el-button
-            text
-            type="primary"
-            @click="goToTaskCenter"
-          >
-            查看全部 →
-          </el-button>
-        </div>
-      </template>
-      <div class="task-list">
-        <div
-          v-for="task in recentTasks"
-          :key="task.id"
-          class="task-item"
-          @click="goToDetail(task.id)"
-        >
-          <div class="task-info">
-            <div class="task-code">
-              {{ task.stock_code }}
-            </div>
-            <el-tag
-              :type="getStatusType(task.status)"
-              size="small"
-            >
-              {{ getStatusLabel(task.status) }}
-            </el-tag>
-          </div>
-          <div class="task-meta">
-            <span class="task-time">{{ formatTime(task.created_at) }}</span>
-            <span
-              v-if="task.final_recommendation"
-              class="task-recommendation"
-            >
-              建议: {{ task.final_recommendation }}
-            </span>
-          </div>
-        </div>
-      </div>
-    </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import {
@@ -517,11 +483,10 @@ import {
   Document,
   Cpu,
   Timer,
-  Clock,
 } from '@element-plus/icons-vue'
 import { useTradingAgentsStore } from '../../store'
 import { useAIModelStore } from '@core/settings/stores/ai-model'
-import { agentConfigApi, settingsApi } from '../../api'
+import { agentConfigApi, settingsApi, marketDataApi } from '../../api'
 import {
   TaskStatusEnum,
   StockMarketEnum,
@@ -537,12 +502,14 @@ const aiModelStore = useAIModelStore()
 // 表单引用
 const formRef = ref<FormInstance>()
 
+// 股票名称
+const stockName = ref('')
+const loadingStockName = ref(false)
+let stockNameFetchTimer: ReturnType<typeof setTimeout> | null = null
+
 // 提交状态
 const submitting = ref(false)
 const loadingConfig = ref(false)
-
-// 最近任务
-const recentTasks = ref<AnalysisTask[]>([])
 
 // 智能体配置
 const agentConfig = ref<UserAgentConfig | null>(null)
@@ -596,16 +563,37 @@ async function loadAgentConfig() {
   loadingConfig.value = true
   try {
     agentConfig.value = await agentConfigApi.getAgentConfig()
-    if (stagesConfig.stage1.selected_agents.length === 0 && activeAnalysts.value.length > 0) {
-      stagesConfig.stage1.selected_agents = activeAnalysts.value.map(a => a.slug)
-    }
 
     // 从 TradingAgents 设置 API 加载默认配置
     const tradingAgentsSettings = await settingsApi.getSettings()
     const defaultDebateRounds = tradingAgentsSettings.default_debate_rounds ?? 3
 
+    // 应用默认第一阶段智能体选择
+    const defaultAgents = tradingAgentsSettings.default_phase1_agents || []
+    if (defaultAgents.length > 0) {
+      // 过滤掉已经被禁用的智能体
+      const enabledAgentSlugs = activeAnalysts.value.map(a => a.slug)
+      stagesConfig.stage1.selected_agents = defaultAgents.filter(slug =>
+        enabledAgentSlugs.includes(slug)
+      )
+      // 如果过滤后没有智能体，使用所有启用的智能体
+      if (stagesConfig.stage1.selected_agents.length === 0 && activeAnalysts.value.length > 0) {
+        stagesConfig.stage1.selected_agents = activeAnalysts.value.map(a => a.slug)
+      }
+    } else if (stagesConfig.stage1.selected_agents.length === 0 && activeAnalysts.value.length > 0) {
+      // 如果没有默认配置，使用所有启用的智能体
+      stagesConfig.stage1.selected_agents = activeAnalysts.value.map(a => a.slug)
+    }
+
+    // 应用默认辩论轮次
     stagesConfig.stage2.debate.rounds = defaultDebateRounds
     stagesConfig.stage3.debate.rounds = defaultDebateRounds
+
+    // 应用默认阶段启用状态
+    stagesConfig.stage2.enabled = tradingAgentsSettings.default_phase2_enabled ?? true
+    stagesConfig.stage2.debate.enabled = stagesConfig.stage2.enabled
+    stagesConfig.stage3.enabled = tradingAgentsSettings.default_phase3_enabled ?? false
+    stagesConfig.stage3.debate.enabled = stagesConfig.stage3.enabled
 
     // 从 TradingAgentsSettings 加载模型配置
     if (tradingAgentsSettings.data_collection_model_id) {
@@ -622,6 +610,39 @@ async function loadAgentConfig() {
   } finally {
     loadingConfig.value = false
   }
+}
+
+// 获取股票名称
+async function fetchStockName() {
+  // 清空之前的定时器
+  if (stockNameFetchTimer) {
+    clearTimeout(stockNameFetchTimer)
+    stockNameFetchTimer = null
+  }
+
+  // 如果股票代码为空，清空名称
+  if (!formData.stock_code || !formData.stock_code.trim()) {
+    stockName.value = ''
+    return
+  }
+
+  loadingStockName.value = true
+
+  // 使用防抖，500ms 后执行
+  stockNameFetchTimer = setTimeout(async () => {
+    try {
+      const result = await marketDataApi.getStockName({
+        code: formData.stock_code.trim(),
+        market: formData.market,
+      })
+      stockName.value = result.data.name
+    } catch (error) {
+      console.error('Failed to fetch stock name:', error)
+      stockName.value = ''
+    } finally {
+      loadingStockName.value = false
+    }
+  }, 500)
 }
 
 // 切换智能体选中状态
@@ -774,19 +795,6 @@ function getStatusLabel(status: TaskStatusEnum): string {
   return labelMap[status] || '未知'
 }
 
-function formatTime(dateStr: string): string {
-  const date = new Date(dateStr)
-  const now = new Date()
-  const diff = now.getTime() - date.getTime()
-  const minutes = Math.floor(diff / 60000)
-  const hours = Math.floor(diff / 3600000)
-  const days = Math.floor(diff / 86400000)
-  if (minutes < 1) return '刚刚'
-  if (minutes < 60) return `${minutes}分钟前`
-  if (hours < 24) return `${hours}小时前`
-  return `${days}天前`
-}
-
 async function handleSubmit() {
   await formRef.value?.validate()
   if (stagesConfig.stage1.selected_agents.length === 0) {
@@ -833,29 +841,6 @@ async function handleSubmit() {
   }
 }
 
-function goToTaskCenter() {
-  router.push({ name: 'TaskList' })
-}
-
-function goToDetail(taskId: string) {
-  router.push({
-    name: 'AnalysisDetail',
-    params: { taskId },
-  })
-}
-
-async function loadRecentTasks() {
-  try {
-    await store.fetchTasks({
-      limit: 5,
-      offset: 0,
-    })
-    recentTasks.value = store.tasks.slice(0, 5)
-  } catch (error) {
-    console.error('加载任务失败:', error)
-  }
-}
-
 const storageEventHandler = (event: StorageEvent) => {
   if (event.key === 'trading_agents_settings' && event.newValue) {
     try {
@@ -870,15 +855,27 @@ const storageEventHandler = (event: StorageEvent) => {
   }
 }
 
+// 监听股票代码和市场类型变化
+watch(
+  () => [formData.stock_code, formData.market],
+  () => {
+    fetchStockName()
+  }
+)
+
 onMounted(async () => {
   window.addEventListener('storage', storageEventHandler)
   await loadAgentConfig()
-  await loadRecentTasks()
   await aiModelStore.fetchModels()
 })
 
 onUnmounted(() => {
   window.removeEventListener('storage', storageEventHandler)
+  // 清理定时器
+  if (stockNameFetchTimer) {
+    clearTimeout(stockNameFetchTimer)
+    stockNameFetchTimer = null
+  }
 })
 </script>
 
@@ -1295,6 +1292,29 @@ onUnmounted(() => {
   justify-content: flex-end;
 }
 
+/* 股票信息显示 */
+.preview-stock-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stock-code {
+  font-size: 16px;
+  font-weight: 600;
+  color: #409eff;
+}
+
+.stock-name {
+  font-size: 14px;
+  color: #606266;
+}
+
+.stock-name.loading {
+  color: #909399;
+  font-style: italic;
+}
+
 /* 开始按钮 */
 .action-btn {
   width: 100%;
@@ -1304,57 +1324,6 @@ onUnmounted(() => {
   font-weight: 600;
   border-radius: 10px;
   box-shadow: 0 2px 8px rgba(64, 158, 255, 0.3);
-}
-
-/* ==================== 最近分析卡片 ==================== */
-.recent-card :deep(.el-card__header) {
-  background: #fafbfc;
-}
-
-.task-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 12px;
-}
-
-.task-item {
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
-  padding: 12px;
-  cursor: pointer;
-  transition: all 0.25s;
-  background: #fff;
-}
-
-.task-item:hover {
-  border-color: #409eff;
-  box-shadow: 0 2px 12px rgba(64, 158, 255, 0.1);
-}
-
-.task-info {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.task-code {
-  font-size: 15px;
-  font-weight: 600;
-  color: #303133;
-}
-
-.task-meta {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 13px;
-  color: #909399;
-}
-
-.task-recommendation {
-  color: #67c23a;
-  font-weight: 500;
 }
 
 /* ==================== 响应式 ==================== */
@@ -1386,10 +1355,6 @@ onUnmounted(() => {
   }
 
   .agents-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .task-list {
     grid-template-columns: 1fr;
   }
 

@@ -197,6 +197,7 @@ def create_app() -> FastAPI:
     # 核心设置路由
     from core.settings.api.system import router as system_settings_router
     from core.settings.api.user import router as user_settings_router
+    from core.settings.api.admin import router as admin_settings_router
 
     # 核心管理路由
     from core.admin.api import router as core_admin_router
@@ -221,6 +222,7 @@ def create_app() -> FastAPI:
 
     # 注册所有路由（按优先级顺序）
     app.include_router(system_settings_router, prefix="/api")
+    app.include_router(admin_settings_router, prefix="/api")
     app.include_router(core_admin_router, prefix="/api")
     app.include_router(ai_core_router, prefix="/api")
     app.include_router(system_router, prefix="/api")

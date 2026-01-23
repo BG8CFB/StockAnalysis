@@ -11,9 +11,9 @@
 
 import asyncio
 import logging
-from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, field
-from datetime import datetime
+from typing import Any, Dict, List, Optional
+
 from bson import ObjectId
 
 from core.db.mongodb import mongodb
@@ -26,15 +26,18 @@ logger = logging.getLogger(__name__)
 # 数据模型
 # =============================================================================
 
+
 @dataclass
 class BatchTaskContext:
     """批量任务上下文"""
+
     batch_id: str
     user_id: str
     stock_codes: List[str]  # 所有待处理的股票代码
     request: AnalysisTaskCreate  # 原始请求（市场、日期、阶段等）
     config: Dict[str, Any]  # 智能体配置
     max_concurrent: int  # 最大并发数（从模型配置读取）
+    batch_name: Optional[str] = None  # 批量任务名称
     created_tasks: List[str] = field(default_factory=list)  # 已创建的任务 ID
     pending_stocks: List[str] = field(default_factory=list)  # 待处理的股票代码
     running_count: int = 0  # 当前运行中的任务数
@@ -43,6 +46,7 @@ class BatchTaskContext:
 # =============================================================================
 # 批量任务管理器
 # =============================================================================
+
 
 class BatchTaskManager:
     """
@@ -70,6 +74,7 @@ class BatchTaskManager:
         request: AnalysisTaskCreate,
         config: Dict[str, Any],
         max_concurrent: int,
+        batch_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         创建批量任务（只创建第一批可执行的任务）
@@ -80,6 +85,7 @@ class BatchTaskManager:
             request: 分析任务请求
             config: 智能体配置
             max_concurrent: 最大并发数（从模型配置读取）
+            batch_name: 批量任务名称
 
         Returns:
             {
@@ -107,6 +113,7 @@ class BatchTaskManager:
             request=request,
             config=config,
             max_concurrent=max_concurrent,
+            batch_name=batch_name,
             pending_stocks=pending_stocks,
         )
 
@@ -122,6 +129,7 @@ class BatchTaskManager:
                 request=request,
                 config=config,
                 batch_id=batch_id,
+                batch_name=batch_name,
             )
             initial_task_ids.append(task_id)
             context.created_tasks.append(task_id)
@@ -129,6 +137,7 @@ class BatchTaskManager:
 
         logger.info(
             f"[BatchTaskManager] 创建批量任务: batch_id={batch_id}, "
+            f"batch_name={batch_name}, "
             f"初始任务={len(initial_task_ids)}, 待处理={len(pending_stocks)}, "
             f"总计={len(stock_codes)}, 并发限制={max_concurrent}"
         )
@@ -191,6 +200,7 @@ class BatchTaskManager:
                     request=context.request,
                     config=context.config,
                     batch_id=batch_id,
+                    batch_name=context.batch_name,
                 )
                 new_task_ids.append(task_id)
                 context.created_tasks.append(task_id)
@@ -285,6 +295,7 @@ class BatchTaskManager:
         request: AnalysisTaskCreate,
         config: Dict[str, Any],
         batch_id: str,
+        batch_name: Optional[str] = None,
     ) -> str:
         """
         创建单个任务
@@ -295,6 +306,7 @@ class BatchTaskManager:
             request: 原始请求
             config: 智能体配置
             batch_id: 批量任务 ID
+            batch_name: 批量任务名称
 
         Returns:
             任务 ID
@@ -321,10 +333,13 @@ class BatchTaskManager:
             config=config,
         )
 
-        # 更新任务的 batch_id
+        # 更新任务的 batch_id 和 batch_name
+        update_data = {"batch_id": batch_id}
+        if batch_name:
+            update_data["batch_name"] = batch_name
+
         await mongodb.database.analysis_tasks.update_one(
-            {"_id": ObjectId(task_id)},
-            {"$set": {"batch_id": batch_id}}
+            {"_id": ObjectId(task_id)}, {"$set": update_data}
         )
 
         return task_id

@@ -12,14 +12,14 @@ TradingAgents 数据模型
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, field_serializer, field_validator
-
 
 # =============================================================================
 # 通用辅助函数
 # =============================================================================
+
 
 def parse_datetime(value: Any) -> Optional[datetime]:
     """
@@ -43,16 +43,17 @@ def parse_datetime(value: Any) -> Optional[datetime]:
     if isinstance(value, dict) and "$date" in value:
         # MongoDB 扩展 JSON 格式
         try:
-            from datetime import datetime as dt
+
             from dateutil import parser
+
             return parser.isoparse(value["$date"])
         except Exception:
             return None
     if isinstance(value, str):
         # ISO 8601 字符串
         try:
-            from datetime import datetime as dt
             from dateutil import parser
+
             return parser.isoparse(value)
         except Exception:
             return None
@@ -63,33 +64,38 @@ def parse_datetime(value: Any) -> Optional[datetime]:
 # 枚举定义
 # =============================================================================
 
+
 class RecommendationEnum(str, Enum):
     """推荐结果枚举"""
-    BUY = "买入"      # 建议买入
-    SELL = "卖出"     # 建议卖出
-    HOLD = "持有"     # 建议持有
+
+    BUY = "买入"  # 建议买入
+    SELL = "卖出"  # 建议卖出
+    HOLD = "持有"  # 建议持有
 
 
 class RiskLevelEnum(str, Enum):
     """风险等级枚举"""
-    HIGH = "高"       # 高风险
-    MEDIUM = "中"     # 中等风险
-    LOW = "低"        # 低风险
+
+    HIGH = "高"  # 高风险
+    MEDIUM = "中"  # 中等风险
+    LOW = "低"  # 低风险
 
 
 class TaskStatusEnum(str, Enum):
     """任务状态枚举"""
-    PENDING = "pending"         # 待执行
-    RUNNING = "running"         # 执行中
-    COMPLETED = "completed"     # 已完成
-    FAILED = "failed"           # 失败
-    CANCELLED = "cancelled"     # 已取消
-    STOPPED = "stopped"         # 已停止（中途人工干预）
-    EXPIRED = "expired"         # 已过期（24小时未完成）
+
+    PENDING = "pending"  # 待执行
+    RUNNING = "running"  # 执行中
+    COMPLETED = "completed"  # 已完成
+    FAILED = "failed"  # 失败
+    CANCELLED = "cancelled"  # 已取消
+    STOPPED = "stopped"  # 已停止（中途人工干预）
+    EXPIRED = "expired"  # 已过期（24小时未完成）
 
 
 class EventTypeEnum(str, Enum):
     """WebSocket 事件类型枚举"""
+
     TASK_STARTED = "task_started"
     TASK_COMPLETED = "task_completed"
     TASK_FAILED = "task_failed"
@@ -115,8 +121,10 @@ class EventTypeEnum(str, Enum):
 # WebSocket 事件模型
 # =============================================================================
 
+
 class TaskEvent(BaseModel):
     """任务事件"""
+
     event_type: EventTypeEnum
     task_id: str
     timestamp: datetime
@@ -127,8 +135,10 @@ class TaskEvent(BaseModel):
 # 通用响应模型
 # =============================================================================
 
+
 class MessageResponse(BaseModel):
     """通用消息响应"""
+
     message: str
     success: bool = True
 
@@ -140,8 +150,10 @@ from core.ai.model.schemas import ConnectionTestResponse
 # MCP 服务器配置模型
 # =============================================================================
 
+
 class MCPServerConfig(BaseModel):
     """MCP 服务器配置（支持容错策略）"""
+
     name: str = Field(..., description="服务器名称")
     required: bool = Field(default=True, description="是否必需（必需服务器失败将阻止任务启动）")
 
@@ -150,14 +162,17 @@ class MCPServerConfig(BaseModel):
 # 任务相关模型
 # =============================================================================
 
+
 class Stage1Config(BaseModel):
     """第一阶段配置"""
+
     enabled: bool = Field(default=True, description="是否启用第一阶段")
     selected_agents: List[str] = Field(default_factory=list, description="选中的智能体标识符列表")
 
 
 class DebateConfig(BaseModel):
     """辩论配置"""
+
     enabled: bool = Field(default=True, description="是否启用辩论")
     rounds: int = Field(default=3, ge=0, le=10, description="辩论轮次")
     concurrency: int = Field(default=1, ge=1, le=2, description="辩论并发数（1=串行，2=并行）")
@@ -165,24 +180,30 @@ class DebateConfig(BaseModel):
 
 class Stage2Config(BaseModel):
     """第二阶段配置"""
+
     enabled: bool = Field(default=True, description="是否启用第二阶段")
     debate: DebateConfig = Field(default_factory=DebateConfig, description="辩论配置")
 
 
 class Stage3Config(BaseModel):
     """第三阶段配置"""
+
     enabled: bool = Field(default=True, description="是否启用第三阶段")
     debate: DebateConfig = Field(default_factory=DebateConfig, description="辩论配置")
-    concurrency: int = Field(default=3, ge=1, le=3, description="风险评估并发数（1=串行，2=激进和保守一起，3=全部一起）")
+    concurrency: int = Field(
+        default=3, ge=1, le=3, description="风险评估并发数（1=串行，2=激进和保守一起，3=全部一起）"
+    )
 
 
 class Stage4Config(BaseModel):
     """第四阶段配置"""
+
     enabled: bool = Field(default=True, description="是否启用第四阶段（强制启用）")
 
 
 class AnalysisStagesConfig(BaseModel):
     """分析任务阶段配置"""
+
     stage1: Stage1Config = Field(default_factory=Stage1Config, description="第一阶段配置")
     stage2: Stage2Config = Field(default_factory=Stage2Config, description="第二阶段配置")
     stage3: Stage3Config = Field(default_factory=Stage3Config, description="第三阶段配置")
@@ -191,22 +212,31 @@ class AnalysisStagesConfig(BaseModel):
 
 class AnalysisTaskCreate(BaseModel):
     """创建分析任务请求"""
+
     stock_code: str = Field(..., min_length=1, max_length=20, description="股票代码")
     market: str = Field(default="a_share", description="股票市场：a_share, hong_kong, us")
     trade_date: str = Field(..., min_length=1, max_length=20, description="交易日期")
     data_collection_model: Optional[str] = Field(None, description="数据收集阶段模型ID（第一阶段）")
     debate_model: Optional[str] = Field(None, description="辩论和总结阶段模型ID（第二三四阶段）")
-    stages: AnalysisStagesConfig = Field(default_factory=AnalysisStagesConfig, description="阶段配置")
+    stages: AnalysisStagesConfig = Field(
+        default_factory=AnalysisStagesConfig, description="阶段配置"
+    )
 
 
 class BatchTaskCreate(BaseModel):
     """创建批量任务请求"""
+
     stock_codes: List[str] = Field(..., min_length=1, max_length=50, description="股票代码列表")
     market: str = Field(default="a_share", description="股票市场：a_share, hong_kong, us")
     trade_date: str = Field(..., min_length=1, max_length=20, description="交易日期")
     data_collection_model: Optional[str] = Field(None, description="数据收集阶段模型ID（第一阶段）")
     debate_model: Optional[str] = Field(None, description="辩论和总结阶段模型ID（第二三四阶段）")
-    stages: AnalysisStagesConfig = Field(default_factory=AnalysisStagesConfig, description="阶段配置")
+    stages: AnalysisStagesConfig = Field(
+        default_factory=AnalysisStagesConfig, description="阶段配置"
+    )
+    batch_name: Optional[str] = Field(
+        None, max_length=100, description="批量任务名称（可选，用于分类和识别批量任务）"
+    )
 
 
 class UnifiedTaskCreate(BaseModel):
@@ -216,21 +246,28 @@ class UnifiedTaskCreate(BaseModel):
     - 单股：传入单个股票代码或只有一个元素的列表
     - 批量：传入多个股票代码的列表
     """
+
     stock_codes: List[str] = Field(
         ...,
         min_length=1,
         max_length=50,
-        description="股票代码列表（1-50个）。单股分析传入单个元素的列表。"
+        description="股票代码列表（1-50个）。单股分析传入单个元素的列表。",
     )
     market: str = Field(default="a_share", description="股票市场：a_share, hong_kong, us")
     trade_date: str = Field(..., min_length=1, max_length=20, description="交易日期")
     data_collection_model: Optional[str] = Field(None, description="数据收集阶段模型ID（第一阶段）")
     debate_model: Optional[str] = Field(None, description="辩论和总结阶段模型ID（第二三四阶段）")
-    stages: AnalysisStagesConfig = Field(default_factory=AnalysisStagesConfig, description="阶段配置")
+    stages: AnalysisStagesConfig = Field(
+        default_factory=AnalysisStagesConfig, description="阶段配置"
+    )
+    batch_name: Optional[str] = Field(
+        None, max_length=100, description="批量任务名称（可选，用于分类和识别批量任务）"
+    )
 
 
 class AnalysisTaskResponse(BaseModel):
     """分析任务响应"""
+
     id: str
     user_id: str
     stock_code: str
@@ -256,6 +293,10 @@ class AnalysisTaskResponse(BaseModel):
     error_message: Optional[str]
     error_details: Optional[Dict[str, Any]]
 
+    # 执行记录
+    phase_executions: Optional[List[Dict[str, Any]]] = Field(default_factory=list, description="阶段执行记录")
+    tool_calls: Optional[List[Dict[str, Any]]] = Field(default_factory=list, description="工具调用记录")
+
     # 时间戳
     created_at: datetime
     started_at: Optional[datetime]
@@ -264,8 +305,9 @@ class AnalysisTaskResponse(BaseModel):
 
     # 批量任务关联
     batch_id: Optional[str]
+    batch_name: Optional[str] = Field(None, description="批量任务名称")
 
-    @field_serializer('created_at', 'started_at', 'completed_at', 'expired_at')
+    @field_serializer("created_at", "started_at", "completed_at", "expired_at")
     def serialize_datetime(self, dt: Optional[datetime]) -> Optional[str]:
         """序列化 datetime 为 UTC 格式字符串（带 'Z' 后缀）"""
         if dt is None:
@@ -273,10 +315,10 @@ class AnalysisTaskResponse(BaseModel):
         # 确保 datetime 是 naive 的（无时区信息），然后添加 'Z' 表示 UTC
         if dt.tzinfo is not None:
             # 如果有时区信息，转换为 UTC
-            return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+            return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
         else:
             # naive datetime 被当作 UTC 处理
-            return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+            return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     @classmethod
     def from_db(cls, data: Dict[str, Any]) -> "AnalysisTaskResponse":
@@ -297,7 +339,11 @@ class AnalysisTaskResponse(BaseModel):
             progress=data.get("progress", 0.0),
             reports=reports,
             final_report=final_report,
-            final_recommendation=RecommendationEnum(data["final_recommendation"]) if data.get("final_recommendation") else None,
+            final_recommendation=(
+                RecommendationEnum(data["final_recommendation"])
+                if data.get("final_recommendation")
+                else None
+            ),
             buy_price=data.get("buy_price"),
             sell_price=data.get("sell_price"),
             risk_level=data.get("risk_level"),
@@ -309,11 +355,13 @@ class AnalysisTaskResponse(BaseModel):
             completed_at=parse_datetime(data.get("completed_at")),
             expired_at=parse_datetime(data.get("expired_at")),
             batch_id=data.get("batch_id"),
+            batch_name=data.get("batch_name"),
         )
 
 
 class BatchTaskResponse(BaseModel):
     """批量任务响应"""
+
     id: str
     user_id: str
     stock_codes: List[str]
@@ -332,6 +380,7 @@ class UnifiedTaskResponse(BaseModel):
     - 单股：返回 task_id，batch_id 为 null
     - 批量：返回 batch_id，task_id 为 null
     """
+
     task_id: Optional[str] = Field(None, description="单个任务ID（单股分析时返回）")
     batch_id: Optional[str] = Field(None, description="批量任务ID（批量分析时返回）")
     stock_codes: List[str] = Field(..., description="涉及的股票代码列表")
@@ -346,7 +395,7 @@ class UnifiedTaskResponse(BaseModel):
             batch_id=None,
             stock_codes=[stock_code],
             total_count=1,
-            message=f"已创建单股分析任务，任务ID: {task_id}"
+            message=f"已创建单股分析任务，任务ID: {task_id}",
         )
 
     @classmethod
@@ -357,7 +406,7 @@ class UnifiedTaskResponse(BaseModel):
             batch_id=batch_id,
             stock_codes=stock_codes,
             total_count=len(stock_codes),
-            message=f"已创建批量分析任务，批量ID: {batch_id}，共 {len(stock_codes)} 个股票"
+            message=f"已创建批量分析任务，批量ID: {batch_id}，共 {len(stock_codes)} 个股票",
         )
 
 
@@ -365,8 +414,10 @@ class UnifiedTaskResponse(BaseModel):
 # 报告相关模型
 # =============================================================================
 
+
 class AnalysisReportResponse(BaseModel):
     """分析报告响应"""
+
     id: str
     task_id: str
     user_id: str
@@ -391,7 +442,9 @@ class AnalysisReportResponse(BaseModel):
             trade_date=data["trade_date"],
             report_type=data["report_type"],
             report_content=data["report_content"],
-            recommendation=RecommendationEnum(data["recommendation"]) if data.get("recommendation") else None,
+            recommendation=(
+                RecommendationEnum(data["recommendation"]) if data.get("recommendation") else None
+            ),
             buy_price=data.get("buy_price"),
             sell_price=data.get("sell_price"),
             token_usage=data.get("token_usage", {}),
@@ -401,6 +454,7 @@ class AnalysisReportResponse(BaseModel):
 
 class ReportSummaryResponse(BaseModel):
     """报告汇总统计响应"""
+
     total_reports: int
     buy_count: int
     sell_count: int
@@ -415,28 +469,37 @@ class ReportSummaryResponse(BaseModel):
 # 智能体配置模型
 # =============================================================================
 
+
 class AgentConfig(BaseModel):
     """单个智能体配置（完整版，含提示词）
 
     role_definition 可选，以支持精简模式（不暴露提示词给普通用户）
     """
+
     # 配置支持字段别名（驼峰命名与蛇形命名兼容）
     model_config = {"populate_by_name": True}
 
     slug: str = Field(..., min_length=1, max_length=50, description="唯一标识符")
     name: str = Field(..., min_length=1, max_length=100, description="显示名称")
     # 支持驼峰命名 (roleDefinition) 和蛇形命名 (role_definition)
-    role_definition: Optional[str] = Field(None, min_length=1, max_length=10000, description="角色定义（系统提示词）", alias="roleDefinition")
+    role_definition: Optional[str] = Field(
+        None,
+        min_length=1,
+        max_length=10000,
+        description="角色定义（系统提示词）",
+        alias="roleDefinition",
+    )
     # 支持驼峰命名 (whenToUse) 和蛇形命名 (when_to_use)
-    when_to_use: Optional[str] = Field(default="", max_length=500, description="使用场景说明", alias="whenToUse")
+    when_to_use: Optional[str] = Field(
+        default="", max_length=500, description="使用场景说明", alias="whenToUse"
+    )
     enabled_mcp_servers: List[MCPServerConfig] = Field(
-        default_factory=list,
-        description="启用的 MCP 服务器（支持配置必需性）"
+        default_factory=list, description="启用的 MCP 服务器（支持配置必需性）"
     )
     enabled_local_tools: List[str] = Field(default_factory=list, description="启用的本地工具")
     enabled: bool = Field(default=True, description="是否启用")
 
-    @field_validator('enabled_mcp_servers', mode='before')
+    @field_validator("enabled_mcp_servers", mode="before")
     @classmethod
     def convert_mcp_servers(cls, v):
         """向后兼容：自动将字符串/字典列表转换为 MCPServerConfig 列表"""
@@ -457,7 +520,7 @@ class AgentConfig(BaseModel):
                     pass
         return v
 
-    @field_serializer('enabled_mcp_servers')
+    @field_serializer("enabled_mcp_servers")
     def serialize_mcp_servers(self, value: List[MCPServerConfig]) -> List[str]:
         """序列化时将 MCPServerConfig 对象转换为字符串列表（前端兼容）"""
         if not value:
@@ -469,7 +532,7 @@ class AgentConfig(BaseModel):
             elif isinstance(server, str):
                 result.append(server)
             elif isinstance(server, dict):
-                result.append(server.get('name', ''))
+                result.append(server.get("name", ""))
         return result
 
 
@@ -479,21 +542,23 @@ class AgentConfigSlim(BaseModel):
     用于分析页面，不暴露敏感的 role_definition。
     普通用户不应看到系统提示词，避免泄露业务逻辑。
     """
+
     # 配置支持字段别名（驼峰命名与蛇形命名兼容）
     model_config = {"populate_by_name": True}
 
     slug: str = Field(..., min_length=1, max_length=50, description="唯一标识符")
     name: str = Field(..., min_length=1, max_length=100, description="显示名称")
     # 支持驼峰命名 (whenToUse) 和蛇形命名 (when_to_use)
-    when_to_use: Optional[str] = Field(default="", max_length=500, description="使用场景说明", alias="whenToUse")
+    when_to_use: Optional[str] = Field(
+        default="", max_length=500, description="使用场景说明", alias="whenToUse"
+    )
     enabled_mcp_servers: List[MCPServerConfig] = Field(
-        default_factory=list,
-        description="启用的 MCP 服务器（支持配置必需性）"
+        default_factory=list, description="启用的 MCP 服务器（支持配置必需性）"
     )
     enabled_local_tools: List[str] = Field(default_factory=list, description="启用的本地工具")
     enabled: bool = Field(default=True, description="是否启用")
 
-    @field_validator('enabled_mcp_servers', mode='before')
+    @field_validator("enabled_mcp_servers", mode="before")
     @classmethod
     def convert_mcp_servers(cls, v):
         """向后兼容：自动将字符串/字典列表转换为 MCPServerConfig 列表"""
@@ -511,7 +576,7 @@ class AgentConfigSlim(BaseModel):
                     pass
         return v
 
-    @field_serializer('enabled_mcp_servers')
+    @field_serializer("enabled_mcp_servers")
     def serialize_mcp_servers(self, value: List[MCPServerConfig]) -> List[str]:
         """序列化时将 MCPServerConfig 对象转换为字符串列表（前端兼容）"""
         if not value:
@@ -523,58 +588,67 @@ class AgentConfigSlim(BaseModel):
             elif isinstance(server, str):
                 result.append(server)
             elif isinstance(server, dict):
-                result.append(server.get('name', ''))
+                result.append(server.get("name", ""))
         return result
 
 
 class PhaseConfigBase(BaseModel):
     """阶段配置基础模型（包含公共字段）"""
+
     enabled: bool = Field(default=True, description="是否启用该阶段")
     agents: List[AgentConfig] = Field(default_factory=list, description="智能体列表")
 
 
 class PhaseConfigBaseSlim(BaseModel):
     """阶段配置基础模型（精简版，不含提示词）"""
+
     enabled: bool = Field(default=True, description="是否启用该阶段")
     agents: List[AgentConfigSlim] = Field(default_factory=list, description="智能体列表（精简版）")
 
 
 class Phase1Config(PhaseConfigBase):
     """第一阶段配置（信息收集与基础分析）"""
+
     max_concurrency: int = Field(default=3, ge=1, le=10, description="智能体最大并发数")
 
 
 class Phase1ConfigSlim(PhaseConfigBaseSlim):
     """第一阶段配置（精简版）"""
+
     max_concurrency: int = Field(default=3, ge=1, le=10, description="智能体最大并发数")
 
 
 class Phase2Config(PhaseConfigBase):
     """第二阶段配置（多空博弈与投资决策）"""
+
     debate_rounds: Optional[int] = Field(None, ge=1, le=10, description="辩论轮数")
 
 
 class Phase2ConfigSlim(PhaseConfigBaseSlim):
     """第二阶段配置（精简版）"""
+
     debate_rounds: Optional[int] = Field(None, ge=1, le=10, description="辩论轮数")
 
 
 class Phase3Config(PhaseConfigBase):
     """第三阶段配置（策略风格与风险评估）"""
+
     pass
 
 
 class Phase3ConfigSlim(PhaseConfigBaseSlim):
     """第三阶段配置（精简版）"""
+
     pass
 
 
 class Phase4Config(PhaseConfigBase):
     """第四阶段配置（总结智能体 - 必须执行）"""
+
     enabled: bool = Field(default=True, description="第四阶段必须执行（固定为true）")
 
     # 禁止修改 enabled 的验证
-    @field_validator('enabled')
+    @field_validator("enabled")
     @classmethod
     def phase4_must_be_enabled(cls, v: bool) -> bool:
         if not v:
@@ -584,11 +658,13 @@ class Phase4Config(PhaseConfigBase):
 
 class Phase4ConfigSlim(PhaseConfigBaseSlim):
     """第四阶段配置（精简版）"""
+
     enabled: bool = Field(default=True, description="第四阶段必须执行（固定为true）")
 
 
 class UserAgentConfigCreate(BaseModel):
     """创建用户智能体配置请求"""
+
     phase1: Phase1Config
     phase2: Optional[Phase2Config] = None
     phase3: Optional[Phase3Config] = None
@@ -597,6 +673,7 @@ class UserAgentConfigCreate(BaseModel):
 
 class UserAgentConfigUpdate(BaseModel):
     """更新用户智能体配置请求"""
+
     phase1: Optional[Phase1Config] = None
     phase2: Optional[Phase2Config] = None
     phase3: Optional[Phase3Config] = None
@@ -605,6 +682,7 @@ class UserAgentConfigUpdate(BaseModel):
 
 class UserAgentConfigResponse(BaseModel):
     """用户智能体配置响应"""
+
     id: str
     user_id: str
     is_public: bool = False
@@ -620,6 +698,7 @@ class UserAgentConfigResponse(BaseModel):
     def from_db(cls, data: Dict[str, Any]) -> "UserAgentConfigResponse":
         """从数据库数据创建响应对象"""
         import logging
+
         logger = logging.getLogger(__name__)
 
         def parse_phase(phase_data: Dict[str, Any], phase_class) -> PhaseConfigBase:
@@ -667,6 +746,7 @@ class UserAgentConfigResponse(BaseModel):
 # TradingAgents 用户设置模型
 # =============================================================================
 
+
 class TradingAgentsSettings(BaseModel):
     """TradingAgents 模块的用户设置"""
 
@@ -692,6 +772,7 @@ class TradingAgentsSettings(BaseModel):
 
 class TradingAgentsSettingsResponse(BaseModel):
     """TradingAgents 设置响应"""
+
     id: str
     user_id: str
     settings: TradingAgentsSettings

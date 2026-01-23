@@ -221,6 +221,9 @@ export const useTradingAgentsStore = defineStore('tradingAgents', () => {
     stock_code?: string
     recommendation?: string
     risk_level?: string
+    batch_id?: string  // 批量任务 ID 筛选
+    start_date?: string  // 开始日期
+    end_date?: string  // 结束日期
     limit?: number
     offset?: number
   }) {

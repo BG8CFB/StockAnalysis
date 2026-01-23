@@ -84,33 +84,23 @@ async def update_notification_settings(
 
 
 # =============================================================================
-# TradingAgents 设置
+# TradingAgents 设置（全局配置，所有用户共享）
 # =============================================================================
 
-@router.get("/trading-agents", response_model=UserSettingsResponse)
+@router.get("/trading-agents")
 async def get_trading_agents_settings(
     current_user: UserModel = Depends(get_current_active_user)
 ):
-    """获取 TradingAgents 设置"""
-    service = get_user_settings_service()
-    settings = await service.get_user_settings(str(current_user.id))
-    if not settings:
-        raise HTTPException(status_code=404, detail="用户配置不存在")
+    """
+    获取 TradingAgents 全局配置
+
+    注意：TradingAgents 配置是全局的，由管理员设置，所有用户共享。
+    此接口返回全局配置，不包含用户特定数据。
+    """
+    from core.settings.services.global_trading_agents_service import get_global_settings
+
+    settings = await get_global_settings()
     return settings
-
-
-@router.put("/trading-agents", response_model=UserSettingsResponse)
-async def update_trading_agents_settings(
-    request: TradingAgentsSettingsUpdate,
-    current_user: UserModel = Depends(get_current_active_user)
-):
-    """更新 TradingAgents 设置"""
-    service = get_user_settings_service()
-    settings = await service.update_trading_agents_settings(str(current_user.id), request)
-    if not settings:
-        raise HTTPException(status_code=404, detail="用户配置不存在")
-    return settings
-
 
 # =============================================================================
 # 配额信息

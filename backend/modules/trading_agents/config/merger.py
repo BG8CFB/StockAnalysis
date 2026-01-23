@@ -235,6 +235,12 @@ class ConfigMerger:
                 elif "role_definition" in user_agent and include_prompts:
                     merged_agent["roleDefinition"] = user_agent["role_definition"]
 
+                # 保留用户自定义的 whenToUse（使用场景）
+                if "whenToUse" in user_agent:
+                    merged_agent["whenToUse"] = user_agent["whenToUse"]
+                elif "when_to_use" in user_agent:
+                    merged_agent["whenToUse"] = user_agent["when_to_use"]
+
                 # 保留用户的 enabled 状态（Phase 2-3 可以禁用阶段，但智能体本身的状态）
                 if "enabled" in user_agent:
                     merged_agent["enabled"] = user_agent["enabled"]
@@ -270,10 +276,12 @@ class ConfigMerger:
         else:
             enabled = template_agents[0].get("enabled", True) if template_agents else True
 
-        # 标准化字段名（role_definition -> roleDefinition）
+        # 标准化字段名（role_definition -> roleDefinition, when_to_use -> whenToUse）
         for agent in merged_agents:
             if "role_definition" in agent and "roleDefinition" not in agent:
                 agent["roleDefinition"] = agent.pop("role_definition")
+            if "when_to_use" in agent and "whenToUse" not in agent:
+                agent["whenToUse"] = agent.pop("when_to_use")
 
         return {"enabled": enabled, "agents": merged_agents}
 
@@ -308,12 +316,14 @@ class ConfigMerger:
             if phase in phase_config:
                 fallback[phase] = phase_config[phase]
 
-        # 标准化字段名（role_definition -> roleDefinition）
+        # 标准化字段名（role_definition -> roleDefinition, when_to_use -> whenToUse）
         for phase in ["phase1", "phase2", "phase3", "phase4"]:
             if phase in fallback and "agents" in fallback[phase]:
                 for agent in fallback[phase]["agents"]:
                     if "role_definition" in agent and "roleDefinition" not in agent:
                         agent["roleDefinition"] = agent.pop("role_definition")
+                    if "when_to_use" in agent and "whenToUse" not in agent:
+                        agent["whenToUse"] = agent.pop("when_to_use")
 
         return fallback
 
