@@ -123,11 +123,17 @@
           <!-- 管理员专区 - 使用 v-show 保持 DOM 结构稳定 -->
           <!-- 注意：isAdmin 计算属性会在 userInfo 加载前临时返回 false -->
           <!-- 使用 v-show 而不是 v-if 可以避免菜单闪烁和状态不一致 -->
-          <el-menu-item v-show="isAdmin" index="/settings/users">
+          <el-menu-item
+            v-show="isAdmin"
+            index="/settings/users"
+          >
             <span class="sub-dot" />
             <span>用户管理</span>
           </el-menu-item>
-          <el-menu-item v-show="isAdmin" index="/settings/system">
+          <el-menu-item
+            v-show="isAdmin"
+            index="/settings/system"
+          >
             <span class="sub-dot" />
             <span>系统参数</span>
           </el-menu-item>

@@ -2,12 +2,19 @@
 WebSocket 推送管理器
 
 管理 WebSocket 连接，实现按需连接和事件广播。
+支持：
+- 按需连接（用户打开详情页面时连接）
+- 单用户最多 5 个连接限制
+- 事件广播（无连接时丢弃事件，不缓存）
+- 任务级权限验证
+- 连接时间跟踪与定期清理陈旧连接
 """
 
 import asyncio
 import json
 import logging
 from collections import defaultdict
+from datetime import datetime, timedelta
 from typing import Dict, Set, Any, Optional, List, Callable
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -15,6 +22,10 @@ from fastapi import WebSocket, WebSocketDisconnect
 from modules.trading_agents.workflow.events import TaskEvent, EventType
 
 logger = logging.getLogger(__name__)
+
+# 配置常量（可通过环境变量覆盖）
+CLEANUP_INTERVAL = 300  # 清理间隔（秒）：5 分钟
+CONNECTION_TIMEOUT = 1800  # 连接超时（秒）：30 分钟
 
 
 # =============================================================================
@@ -30,6 +41,7 @@ class WebSocketManager:
     - 单用户最多 5 个连接限制
     - 事件广播（无连接时丢弃事件，不缓存）
     - 任务级权限验证
+    - 连接时间跟踪与定期清理陈旧连接
     """
 
     # 单用户最大连接数
@@ -39,11 +51,67 @@ class WebSocketManager:
         # {task_id: {user_id: Set[WebSocket]}}
         self._connections: Dict[str, Dict[str, Set[WebSocket]]] = defaultdict(lambda: defaultdict(set))
 
-        # {websocket: (task_id, user_id)} 反向映射
-        self._connection_info: Dict[WebSocket, tuple[str, str]] = {}
+        # {websocket: (task_id, user_id, created_at, last_active_at)} 反向映射
+        # 添加连接时间和最后活跃时间，用于超时清理
+        self._connection_info: Dict[WebSocket, tuple[str, str, datetime, datetime]] = {}
 
         # 任务权限验证回调函数
         self._task_auth_callback: Optional[Callable[[str, str], bool]] = None
+
+        # 清理任务标志
+        self._cleanup_task: Optional[asyncio.Task] = None
+
+        # 启动清理任务
+        self._start_cleanup_task()
+
+    def _start_cleanup_task(self) -> None:
+        """启动定期清理陈旧连接的后台任务"""
+        if self._cleanup_task is None or self._cleanup_task.done():
+            self._cleanup_task = asyncio.create_task(self._cleanup_stale_connections())
+            logger.info("[WebSocketManager] 已启动陈旧连接清理任务")
+
+    async def _cleanup_stale_connections(self) -> None:
+        """
+        定期清理陈旧连接的后台任务
+
+        检查所有连接，将超过超时阈值的连接断开。
+        """
+        try:
+            while True:
+                # 等待清理间隔
+                await asyncio.sleep(CLEANUP_INTERVAL)
+
+                now = datetime.now()
+                stale_connections: List[WebSocket] = []
+
+                # 找出超时的连接
+                for websocket, (_, _, created_at, last_active_at) in self._connection_info.items():
+                    # 如果最后活跃时间超过阈值，或者创建时间超过阈值（从未活跃）
+                    timeout_threshold = last_active_at + timedelta(seconds=CONNECTION_TIMEOUT)
+                    if now > timeout_threshold:
+                        stale_connections.append(websocket)
+
+                # 断开陈旧连接
+                for websocket in stale_connections:
+                    try:
+                        task_id, user_id, _, _ = self._connection_info.get(websocket, (None, None, None, None))
+                        await self.disconnect(websocket, code=4000, reason="Connection timeout")
+                        logger.info(
+                            f"[WebSocketManager] 清理超时连接: task={task_id}, user={user_id}"
+                        )
+                    except Exception as e:
+                        logger.warning(f"[WebSocketManager] 清理连接时出错: {e}")
+
+                if stale_connections:
+                    logger.info(
+                        f"[WebSocketManager] 本次清理超时连接 {len(stale_connections)} 个"
+                    )
+
+        except asyncio.CancelledError:
+            logger.info("[WebSocketManager] 陈旧连接清理任务已取消")
+            raise
+        except Exception as e:
+            logger.error(f"[WebSocketManager] 陈旧连接清理任务出错: {e}")
 
     def set_task_auth_callback(self, callback: Callable[[str, str], bool]) -> None:
         """
@@ -133,9 +201,12 @@ class WebSocketManager:
         # 接受连接
         await websocket.accept()
 
+        now = datetime.now()
+
         # 添加连接
         self._connections[task_id][user_id].add(websocket)
-        self._connection_info[websocket] = (task_id, user_id)
+        # 记录连接时间和最后活跃时间
+        self._connection_info[websocket] = (task_id, user_id, now, now)
 
         logger.info(
             f"WebSocket 连接建立: task={task_id}, user={user_id}, "
@@ -169,7 +240,7 @@ class WebSocketManager:
         if websocket not in self._connection_info:
             return
 
-        task_id, user_id = self._connection_info[websocket]
+        task_id, user_id, _, _ = self._connection_info[websocket]
 
         # 从连接集合中移除
         if task_id in self._connections:
@@ -222,6 +293,11 @@ class WebSocketManager:
         for user_id, websockets in self._connections[task_id].items():
             for ws in list(websockets):  # 使用 list 复制以避免迭代时修改
                 try:
+                    # 更新最后活跃时间
+                    if ws in self._connection_info:
+                        task_id_, user_id_, created_at, _ = self._connection_info[ws]
+                        self._connection_info[ws] = (task_id_, user_id_, created_at, datetime.now())
+
                     await self._send_to_websocket(ws, event_data)
                 except Exception as e:
                     logger.warning(f"WebSocket 发送失败: {e}")
@@ -247,6 +323,11 @@ class WebSocketManager:
             if user_id in task_connections:
                 for ws in list(task_connections[user_id]):
                     try:
+                        # 更新最后活跃时间
+                        if ws in self._connection_info:
+                            task_id_, user_id_, created_at, _ = self._connection_info[ws]
+                            self._connection_info[ws] = (task_id_, user_id_, created_at, datetime.now())
+
                         await self._send_to_websocket(ws, event_data)
                     except Exception as e:
                         logger.warning(f"WebSocket 发送失败: {e}")
@@ -267,6 +348,11 @@ class WebSocketManager:
         # 遍历所有连接
         for websocket in list(self._connection_info.keys()):
             try:
+                # 更新最后活跃时间
+                if websocket in self._connection_info:
+                    task_id_, user_id_, created_at, _ = self._connection_info[websocket]
+                    self._connection_info[websocket] = (task_id_, user_id_, created_at, datetime.now())
+
                 await self._send_to_websocket(websocket, event_data)
             except Exception as e:
                 logger.warning(f"WebSocket 发送失败: {e}")
@@ -291,6 +377,11 @@ class WebSocketManager:
         for user_id, connections in self._connections[task_id].items():
             for ws in list(connections):
                 try:
+                    # 更新最后活跃时间
+                    if ws in self._connection_info:
+                        task_id_, user_id_, created_at, _ = self._connection_info[ws]
+                        self._connection_info[ws] = (task_id_, user_id_, created_at, datetime.now())
+
                     await self._send_to_websocket(ws, event_data)
                 except Exception as e:
                     logger.warning(f"WebSocket 发送失败: {e}")
@@ -361,14 +452,32 @@ class WebSocketManager:
                 "users": list(task_connections.keys()),
             }
 
+        # 统计陈旧连接
+        stale_count = 0
+        now = datetime.now()
+        for _, (_, _, _, last_active_at) in self._connection_info.items():
+            if now - last_active_at > timedelta(seconds=CONNECTION_TIMEOUT):
+                stale_count += 1
+
         return {
             "total_connections": total_connections,
             "total_tasks": len(self._connections),
             "task_stats": task_stats,
+            "stale_connections": stale_count,
+            "cleanup_interval": CLEANUP_INTERVAL,
+            "connection_timeout": CONNECTION_TIMEOUT,
         }
 
     async def close_all(self) -> None:
         """关闭所有连接"""
+        # 取消清理任务
+        if self._cleanup_task:
+            self._cleanup_task.cancel()
+            try:
+                await self._cleanup_task
+            except asyncio.CancelledError:
+                pass
+
         for websocket in list(self._connection_info.keys()):
             try:
                 await self.disconnect(websocket, code=1001, reason="服务器关闭")

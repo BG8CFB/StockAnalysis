@@ -379,9 +379,10 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
 
   /**
    * 处理智能体完成
+   * 进度：优先使用后端下发的 progress；否则按「已完成数/总智能体数」估算，总数不写死。
    */
   function handleAgentCompleted(event: TaskEvent) {
-    const { agent_slug, report, content } = event.data
+    const { agent_slug, report, content, progress: backendProgress, total_agents } = event.data
     const agent = state.value.agents.get(agent_slug as string)
 
     if (agent) {
@@ -395,12 +396,21 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
       }
     }
 
-    // 更新进度（假设每个智能体占总进度的 10%）
-    const progressPerAgent = 100 / 10 // 假设总共10个智能体
-    state.value.progress = Math.min(
-      state.value.progress + progressPerAgent,
-      100
-    )
+    // 进度：优先使用后端下发的数字类型 progress
+    if (typeof backendProgress === 'number') {
+      state.value.progress = Math.min(Math.max(backendProgress, 0), 100)
+      return
+    }
+    // 否则按「已完成智能体数 / 总智能体数」估算（总数不写死，与后端口径一致）
+    const total = typeof total_agents === 'number' && total_agents > 0
+      ? total_agents
+      : state.value.agents.size
+    if (total > 0) {
+      const completed = Array.from(state.value.agents.values()).filter(
+        (a) => a.status === 'completed'
+      ).length
+      state.value.progress = Math.min(Math.round((completed / total) * 100), 100)
+    }
   }
 
   /**

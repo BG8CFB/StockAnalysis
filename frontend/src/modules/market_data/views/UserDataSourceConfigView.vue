@@ -3,22 +3,38 @@
     <!-- 页面标题 -->
     <div class="page-header">
       <div class="header-content">
-        <el-icon class="header-icon" :size="24">
+        <el-icon
+          class="header-icon"
+          :size="24"
+        >
           <Connection />
         </el-icon>
         <div>
           <h2>数据源配置</h2>
-          <p class="description">管理您的金融数据接入点</p>
+          <p class="description">
+            管理您的金融数据接入点
+          </p>
         </div>
       </div>
-      <el-button type="primary" :icon="Plus" @click="handleCreate">
+      <el-button
+        type="primary"
+        :icon="Plus"
+        @click="handleCreate"
+      >
         添加数据源
       </el-button>
     </div>
 
     <!-- 市场切换标签 -->
-    <el-card shadow="never" class="market-card">
-      <el-radio-group v-model="activeMarket" size="large" @change="handleMarketChange">
+    <el-card
+      shadow="never"
+      class="market-card"
+    >
+      <el-radio-group
+        v-model="activeMarket"
+        size="large"
+        @change="handleMarketChange"
+      >
         <el-radio-button
           v-for="market in markets"
           :key="market.value"
@@ -30,7 +46,10 @@
     </el-card>
 
     <!-- 数据源卡片列表 -->
-    <el-row :gutter="16" v-loading="loading">
+    <el-row
+      v-loading="loading"
+      :gutter="16"
+    >
       <el-col
         v-for="(config, index) in filteredConfigs"
         :key="`${config.source_id}-${config.market}`"
@@ -47,12 +66,19 @@
           <template #header>
             <div class="card-header">
               <div class="source-info">
-                <div class="source-icon" :class="`icon-${config.source_id}`">
+                <div
+                  class="source-icon"
+                  :class="`icon-${config.source_id}`"
+                >
                   {{ getSourceIcon(config.source_id) }}
                 </div>
                 <div class="source-details">
-                  <h4 class="source-name">{{ getDataSourceDisplayName(config.source_id) }}</h4>
-                  <p class="source-market">{{ MarketTypeName[config.market as MarketType] }}</p>
+                  <h4 class="source-name">
+                    {{ getDataSourceDisplayName(config.source_id) }}
+                  </h4>
+                  <p class="source-market">
+                    {{ MarketTypeName[config.market as MarketType] }}
+                  </p>
                 </div>
               </div>
               <el-tag
@@ -83,12 +109,18 @@
               <span class="token-masked">••••••••••••</span>
             </div>
 
-            <div v-if="config.last_test_time" class="info-item">
+            <div
+              v-if="config.last_test_time"
+              class="info-item"
+            >
               <span class="info-label">最后检查</span>
               <span class="info-value">{{ formatTime(config.last_test_time) }}</span>
             </div>
 
-            <div v-if="config.last_test_status" class="info-item">
+            <div
+              v-if="config.last_test_status"
+              class="info-item"
+            >
               <span class="info-label">连接状态</span>
               <el-tag
                 :type="config.last_test_status === 'success' ? 'success' : 'danger'"
@@ -112,11 +144,19 @@
                 <el-icon><Connection /></el-icon>
                 测试连接
               </el-button>
-              <el-button type="primary" link @click="handleEdit(config)">
+              <el-button
+                type="primary"
+                link
+                @click="handleEdit(config)"
+              >
                 <el-icon><Edit /></el-icon>
                 编辑
               </el-button>
-              <el-button type="danger" link @click="handleDelete(config)">
+              <el-button
+                type="danger"
+                link
+                @click="handleDelete(config)"
+              >
                 <el-icon><Delete /></el-icon>
               </el-button>
             </div>
@@ -125,18 +165,31 @@
       </el-col>
 
       <!-- 添加新数据源卡片 -->
-      <el-col :xs="24" :sm="12" :lg="8" :xl="6" v-if="!loading">
+      <el-col
+        v-if="!loading"
+        :xs="24"
+        :sm="12"
+        :lg="8"
+        :xl="6"
+      >
         <el-card
           shadow="hover"
           class="add-card"
           @click="handleCreate"
         >
           <div class="add-card-content">
-            <el-icon :size="48" color="var(--color-text-tertiary)">
+            <el-icon
+              :size="48"
+              color="var(--color-text-tertiary)"
+            >
               <Plus />
             </el-icon>
-            <p class="add-text">添加新数据源</p>
-            <p class="add-hint">{{ MarketTypeName[activeMarket as MarketType] }}</p>
+            <p class="add-text">
+              添加新数据源
+            </p>
+            <p class="add-hint">
+              {{ MarketTypeName[activeMarket as MarketType] }}
+            </p>
           </div>
         </el-card>
       </el-col>
@@ -148,7 +201,10 @@
       description="暂无数据源配置"
       :image-size="120"
     >
-      <el-button type="primary" @click="handleCreate">
+      <el-button
+        type="primary"
+        @click="handleCreate"
+      >
         立即添加
       </el-button>
     </el-empty>
@@ -168,7 +224,10 @@
         label-width="100px"
         label-position="left"
       >
-        <el-form-item label="市场类型" prop="market">
+        <el-form-item
+          label="市场类型"
+          prop="market"
+        >
           <el-select
             v-model="formData.market"
             placeholder="选择市场"
@@ -184,7 +243,10 @@
           </el-select>
         </el-form-item>
 
-        <el-form-item label="数据源" prop="source_id">
+        <el-form-item
+          label="数据源"
+          prop="source_id"
+        >
           <el-select
             v-model="formData.source_id"
             placeholder="选择数据源"
@@ -204,8 +266,14 @@
               </div>
             </el-option>
           </el-select>
-          <div v-if="selectedDataSourceInfo" class="form-tip">
-            <el-text type="info" size="small">
+          <div
+            v-if="selectedDataSourceInfo"
+            class="form-tip"
+          >
+            <el-text
+              type="info"
+              size="small"
+            >
               {{ selectedDataSourceInfo.description }}
             </el-text>
             <el-link
@@ -219,7 +287,10 @@
           </div>
         </el-form-item>
 
-        <el-form-item label="API Key" prop="api_key">
+        <el-form-item
+          label="API Key"
+          prop="api_key"
+        >
           <el-input
             v-model="formData.api_key"
             placeholder="请输入 API Key"
@@ -238,17 +309,41 @@
           </el-input>
         </el-form-item>
 
-        <el-form-item label="优先级" prop="priority">
-          <el-select v-model="formData.priority" style="width: 100%">
-            <el-option :label="'优先级 1（最高）'" :value="1" />
-            <el-option :label="'优先级 2'" :value="2" />
-            <el-option :label="'优先级 3'" :value="3" />
-            <el-option :label="'优先级 4'" :value="4" />
-            <el-option :label="'优先级 5（最低）'" :value="5" />
+        <el-form-item
+          label="优先级"
+          prop="priority"
+        >
+          <el-select
+            v-model="formData.priority"
+            style="width: 100%"
+          >
+            <el-option
+              :label="'优先级 1（最高）'"
+              :value="1"
+            />
+            <el-option
+              :label="'优先级 2'"
+              :value="2"
+            />
+            <el-option
+              :label="'优先级 3'"
+              :value="3"
+            />
+            <el-option
+              :label="'优先级 4'"
+              :value="4"
+            />
+            <el-option
+              :label="'优先级 5（最低）'"
+              :value="5"
+            />
           </el-select>
         </el-form-item>
 
-        <el-form-item label="启用状态" prop="enabled">
+        <el-form-item
+          label="启用状态"
+          prop="enabled"
+        >
           <el-switch
             v-model="formData.enabled"
             active-text="启用"
@@ -258,7 +353,9 @@
       </el-form>
 
       <template #footer>
-        <el-button @click="closeDialog">取消</el-button>
+        <el-button @click="closeDialog">
+          取消
+        </el-button>
         <el-button
           type="primary"
           :loading="submitting"

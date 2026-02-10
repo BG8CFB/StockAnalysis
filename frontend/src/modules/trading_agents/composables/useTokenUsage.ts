@@ -50,15 +50,47 @@ export function useTokenUsage(initialTask?: AnalysisTask) {
   // 货币单位
   const currency = ref('CNY')
 
-  // Token 价格（每 1K tokens 的价格，单位：元）
-  // 这里使用默认价格，实际应根据模型提供商调整
-  const tokenPrices = ref<Record<string, { input: number; output: number }>>({
-    'zhipu': { input: 0.001, output: 0.002 },  // 智谱
-    'deepseek': { input: 0.0001, output: 0.0002 },  // DeepSeek
-    'qwen': { input: 0.0008, output: 0.002 },  // 通义千问
-    'openai': { input: 0.003, output: 0.006 },  // OpenAI
-    'ollama': { input: 0, output: 0 },  // 本地模型免费
-    'default': { input: 0.001, output: 0.002 },
+  // 当前使用的模型 ID（用于计算成本）
+  const currentModelId = ref<string | null>(null)
+
+  // Token 价格配置（每 1K tokens 的价格）
+  // 格式：{ 模型ID: { input: 输入单价, output: 输出单价, currency: 货币单位 } }
+  const modelPricing = ref<Record<string, { input: number; output: number; currency: string }>>({
+    // 智谱 AI (glm-4 系列)
+    'glm-4.6': { input: 0.01, output: 0.01, currency: 'CNY' },
+    'glm-4-plus': { input: 0.05, output: 0.05, currency: 'CNY' },
+    'glm-4': { input: 0.01, output: 0.01, currency: 'CNY' },
+    'glm-3-turbo': { input: 0.005, output: 0.005, currency: 'CNY' },
+
+    // OpenAI
+    'gpt-4o': { input: 0.0025, output: 0.01, currency: 'USD' },
+    'gpt-4o-mini': { input: 0.00015, output: 0.0006, currency: 'USD' },
+    'gpt-4-turbo': { input: 0.01, output: 0.03, currency: 'USD' },
+    'gpt-4': { input: 0.03, output: 0.06, currency: 'USD' },
+    'gpt-3.5-turbo': { input: 0.0005, output: 0.0015, currency: 'USD' },
+
+    // Anthropic Claude
+    'claude-sonnet-4': { input: 0.003, output: 0.015, currency: 'USD' },
+    'claude-haiku-4': { input: 0.00025, output: 0.00125, currency: 'USD' },
+    'claude-opus-3': { input: 0.015, output: 0.075, currency: 'USD' },
+    'claude-sonnet-3': { input: 0.003, output: 0.015, currency: 'USD' },
+    'claude-haiku-3': { input: 0.00025, output: 0.00125, currency: 'USD' },
+
+    // DeepSeek
+    'deepseek-chat': { input: 0.00014, output: 0.00028, currency: 'USD' },
+    'deepseek-reasoner': { input: 0.00055, output: 0.0011, currency: 'USD' },
+
+    // 阿里通义千问
+    'qwen-turbo': { input: 0.0003, output: 0.0006, currency: 'USD' },
+    'qwen-plus': { input: 0.0008, output: 0.002, currency: 'USD' },
+    'qwen-max': { input: 0.002, output: 0.008, currency: 'USD' },
+
+    // 本地模型（免费）
+    'ollama': { input: 0, output: 0, currency: 'USD' },
+    'local': { input: 0, output: 0, currency: 'USD' },
+
+    // 默认配置（兜底）
+    'default': { input: 0.001, output: 0.002, currency: 'CNY' },
   })
 
   // 计算属性：总 Token 数
@@ -78,20 +110,57 @@ export function useTokenUsage(initialTask?: AnalysisTask) {
   })
 
   // 计算属性：估算成本
+  // 根据当前使用的模型计算成本，支持多模型混合使用
   const estimatedCost = computed(() => {
     if (!enableCostEstimation.value) return 0
 
-    // 使用默认价格计算
-    const defaultPrice = tokenPrices.value.default
-    const cost = (promptTokens.value / 1000) * defaultPrice.input +
-                 (completionTokens.value / 1000) * defaultPrice.output
+    // 获取当前模型的定价，如果没有则使用默认
+    const modelId = currentModelId.value || 'default'
+    const pricing = modelPricing.value[modelId] || modelPricing.value.default
+
+    // 如果有智能体级别的 Token 使用明细，按各模型分别计算后相加
+    if (agentBreakdown.value.length > 0) {
+      // 按模型分组计算成本
+      const modelCosts: Record<string, number> = {}
+
+      agentBreakdown.value.forEach((agent) => {
+        // 尝试从 agent slug 中提取模型标识
+        const modelKey = extractModelKey(agent.agentSlug)
+        const agentPricing = modelPricing.value[modelKey] || modelPricing.value.default
+
+        const cost = (agent.tokenUsage.promptTokens / 1000) * agentPricing.input +
+                     (agent.tokenUsage.completionTokens / 1000) * agentPricing.output
+
+        modelCosts[modelKey] = (modelCosts[modelKey] || 0) + cost
+      })
+
+      // 计算总成本
+      const totalCost = Object.values(modelCosts).reduce((sum, cost) => sum + cost, 0)
+      return parseFloat(totalCost.toFixed(4))
+    }
+
+    // 没有明细时，使用当前模型的定价
+    const cost = (promptTokens.value / 1000) * pricing.input +
+                 (completionTokens.value / 1000) * pricing.output
 
     return parseFloat(cost.toFixed(4))
   })
 
-  // 计算属性：格式化的成本字符串
+  // 计算属性：格式化的成本字符串（根据货币单位格式化）
   const formattedCost = computed(() => {
-    return `¥${estimatedCost.value.toFixed(2)}`
+    const modelId = currentModelId.value || 'default'
+    const pricing = modelPricing.value[modelId] || modelPricing.value.default
+
+    if (pricing.currency === 'USD') {
+      return `$${estimatedCost.value.toFixed(4)}`
+    }
+    return `¥${estimatedCost.value.toFixed(4)}`
+  })
+
+  // 计算属性：当前使用的货币单位
+  const currentCurrency = computed(() => {
+    const modelId = currentModelId.value || 'default'
+    return modelPricing.value[modelId]?.currency || 'CNY'
   })
 
   // 计算属性：是否超过警告阈值（100K tokens）
@@ -173,10 +242,45 @@ export function useTokenUsage(initialTask?: AnalysisTask) {
   }
 
   /**
+   * 从智能体 slug 中提取模型标识
+   * 例如: "technical-analyst-glm-4.6" -> "glm-4.6"
+   */
+  function extractModelKey(agentSlug: string): string {
+    // 常见模型标识模式
+    const modelPatterns = [
+      /-(glm-\d[\w-]*)/,  // glm-4.6, glm-4-plus
+      /-(gpt-4[\w-]*)/,   // gpt-4o, gpt-4-turbo
+      /-(claude-[\w-]+)/,  // claude-sonnet-4, claude-haiku-3
+      /-(deepseek-[\w-]+)/, // deepseek-chat
+      /-(qwen-[\w-]+)/,   // qwen-turbo, qwen-plus
+    ]
+
+    for (const pattern of modelPatterns) {
+      const match = agentSlug.match(pattern)
+      if (match) {
+        return match[1]
+      }
+    }
+
+    // 兜底：返回原始 slug 的最后一部分作为标识
+    const parts = agentSlug.split('-')
+    return parts[parts.length - 1] || 'default'
+  }
+
+  /**
+   * 设置当前使用的模型（用于成本计算）
+   * @param modelId 模型 ID，如 'glm-4.6'、'gpt-4o' 等
+   */
+  function setCurrentModel(modelId: string | null) {
+    currentModelId.value = modelId
+  }
+
+  /**
    * 根据模型提供商估算成本
+   * @deprecated 请使用 setCurrentModel + estimatedCost
    */
   function estimateCostForModel(provider: string): number {
-    const prices = tokenPrices.value[provider] || tokenPrices.value.default
+    const prices = modelPricing.value[provider] || modelPricing.value.default
     const cost = (promptTokens.value / 1000) * prices.input +
                  (completionTokens.value / 1000) * prices.output
     return parseFloat(cost.toFixed(4))
@@ -253,13 +357,15 @@ export function useTokenUsage(initialTask?: AnalysisTask) {
     agentBreakdown,
     enableCostEstimation,
     currency,
-    tokenPrices,
+    currentModelId,
+    modelPricing,
 
     // 计算属性
     totalUsage,
     tokenRatio,
     estimatedCost,
     formattedCost,
+    currentCurrency,
     isOverThreshold,
     thresholdProgress,
     agentRanking,
@@ -270,6 +376,8 @@ export function useTokenUsage(initialTask?: AnalysisTask) {
     updateTokenUsageStats,
     addTokenUsage,
     addAgentTokenUsage,
+    setCurrentModel,
+    extractModelKey,
     estimateCostForModel,
     reset,
     formatTokenCount,

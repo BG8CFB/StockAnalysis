@@ -83,7 +83,10 @@
           >
             {{ dataSourceStatusLabel(row.current_source.status) }}
           </el-tag>
-          <span v-else class="status-placeholder">-</span>
+          <span
+            v-else
+            class="status-placeholder"
+          >-</span>
         </template>
       </el-table-column>
 

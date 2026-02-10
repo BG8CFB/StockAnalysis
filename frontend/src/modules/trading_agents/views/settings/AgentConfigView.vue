@@ -10,7 +10,9 @@
         </div>
         <div class="header-info">
           <h2>智能体配置</h2>
-          <p class="description">自定义各阶段智能体的行为与参数</p>
+          <p class="description">
+            自定义各阶段智能体的行为与参数
+          </p>
         </div>
       </div>
 
@@ -43,13 +45,19 @@
 
         <!-- 操作按钮组 -->
         <el-button-group>
-          <el-tooltip content="导出配置" placement="bottom">
+          <el-tooltip
+            content="导出配置"
+            placement="bottom"
+          >
             <el-button
               :icon="Download"
               @click="handleExport"
             />
           </el-tooltip>
-          <el-tooltip content="导入配置" placement="bottom">
+          <el-tooltip
+            content="导入配置"
+            placement="bottom"
+          >
             <el-button
               :icon="Upload"
               @click="showImportDialog = true"
@@ -87,10 +95,16 @@
             :class="{ 'is-active': activePhase === phase.key }"
             @click="activePhase = phase.key"
           >
-            <div class="phase-number">{{ index + 1 }}</div>
+            <div class="phase-number">
+              {{ index + 1 }}
+            </div>
             <div class="phase-item-content">
-              <div class="phase-item-title">{{ phase.title }}</div>
-              <div class="phase-item-desc">{{ phase.shortDesc }}</div>
+              <div class="phase-item-title">
+                {{ phase.title }}
+              </div>
+              <div class="phase-item-desc">
+                {{ phase.shortDesc }}
+              </div>
             </div>
             <div class="phase-item-count">
               <el-tag
@@ -109,7 +123,10 @@
       <div class="phase-content">
         <div class="phase-content-header">
           <div class="phase-header-info">
-            <div class="phase-icon-large" :class="`phase-icon-${activePhase.slice(-1)}`">
+            <div
+              class="phase-icon-large"
+              :class="`phase-icon-${activePhase.slice(-1)}`"
+            >
               <el-icon :size="28">
                 <component :is="getCurrentPhaseIcon()" />
               </el-icon>

@@ -29,11 +29,18 @@ const showHeader = computed(() => {
 <template>
   <div class="settings-layout">
     <!-- 设置页面头部 - 仅在没有二级导航的页面显示 -->
-    <div v-if="showHeader" class="settings-header">
-      <h2 class="settings-title">{{ pageTitle }}</h2>
+    <div
+      v-if="showHeader"
+      class="settings-header"
+    >
+      <h2 class="settings-title">
+        {{ pageTitle }}
+      </h2>
       <div class="settings-breadcrumb">
         <span class="breadcrumb-item">全局设置</span>
-        <el-icon class="breadcrumb-separator"><ArrowRight /></el-icon>
+        <el-icon class="breadcrumb-separator">
+          <ArrowRight />
+        </el-icon>
         <span class="breadcrumb-item current">{{ pageTitle }}</span>
       </div>
     </div>

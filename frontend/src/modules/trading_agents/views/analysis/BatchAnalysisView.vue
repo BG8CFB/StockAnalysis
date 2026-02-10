@@ -370,7 +370,9 @@
                 v-if="codesList.length > 0"
                 class="preview-stocks-section"
               >
-                <div class="preview-label">股票列表</div>
+                <div class="preview-label">
+                  股票列表
+                </div>
                 <div class="preview-stocks-list">
                   <div
                     v-for="stock in stockNamesPreview"
@@ -540,7 +542,6 @@
         </div>
       </div>
     </div>
-
   </div>
 </template>
 

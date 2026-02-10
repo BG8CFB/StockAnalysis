@@ -23,6 +23,7 @@ from core.settings.services.user_service import get_user_settings_service
 from core.user.dependencies import get_current_admin_user
 from core.user.models import UserModel
 from modules.trading_agents.manager.agent_config_service import get_agent_config_service
+from modules.trading_agents.manager.batch_manager import get_batch_manager
 from modules.trading_agents.manager.concurrency_controller import get_concurrency_controller
 from modules.trading_agents.manager.task_manager import get_task_manager
 from modules.trading_agents.schemas import (
@@ -452,8 +453,8 @@ async def get_task_queue_position(
         if task["user_id"] != str(current_user.id):
             raise HTTPException(status_code=403, detail="无权访问此任务")
 
-        # 获取模型 ID
-        model_id = task.get("model_id")
+        # 获取模型 ID（优先 model_id，兼容 data_collection_model_id）
+        model_id = task.get("model_id") or task.get("data_collection_model_id")
         if not model_id:
             return {
                 "position": 0,
@@ -691,6 +692,7 @@ async def clear_tasks_by_status(
 
 class BatchDeleteRequest(BaseModel):
     task_ids: list[str]
+    batch_id: Optional[str] = None  # 增加批量ID参数，用于验证任务归属
     delete_reports: bool = False
 
 
@@ -704,14 +706,19 @@ async def batch_delete_tasks(
 
     验证每个任务的所有权，仅删除属于当前用户的任务。
     不允许删除运行中的任务。
+    删除时同步更新 BatchTaskContext，保持批量任务数据一致性。
 
     Args:
         task_ids: 任务 ID 列表
+        batch_id: 批量任务 ID（可选，用于验证任务归属一致性）
         delete_reports: 是否同时删除关联报告
         current_user: 当前用户
 
     Returns:
         删除结果
+
+    Raises:
+        HTTPException 400: 如果指定了 batch_id 但任务不属于该批量
     """
     # 安全检查：限制批量删除数量
     if len(request.task_ids) > 100:
@@ -720,11 +727,31 @@ async def batch_delete_tasks(
     user_id = str(current_user.id)
     success_count = 0
     failed_tasks = []
+    batch_manager = get_batch_manager()
 
     logger.info(
         f"用户 {user_id} 批量删除任务",
-        {"task_ids_count": len(request.task_ids), "delete_reports": request.delete_reports},
+        {"task_ids_count": len(request.task_ids), "batch_id": request.batch_id, "delete_reports": request.delete_reports},
     )
+
+    # ================================================================
+    # 4.1.1 修复：检查任务是否属于同一个批量
+    # ================================================================
+    if request.batch_id:
+        # 获取该批量下的所有任务
+        batch_tasks = await mongodb.database.analysis_tasks.find(
+            {"batch_id": request.batch_id, "user_id": user_id}
+        ).to_list(length=None)
+        valid_task_ids = {str(t["_id"]) for t in batch_tasks}
+
+        # 验证输入的任务是否都属于该批量
+        input_task_ids = set(request.task_ids)
+        if not input_task_ids.issubset(valid_task_ids):
+            invalid_ids = input_task_ids - valid_task_ids
+            raise HTTPException(
+                status_code=400,
+                detail=f"以下任务不属于批量 {request.batch_id}: {list(invalid_ids)[:10]}{'...' if len(invalid_ids) > 10 else ''}"
+            )
 
     # 逐个验证和删除任务
     for task_id in request.task_ids:
@@ -748,6 +775,26 @@ async def batch_delete_tasks(
             if task["status"] == TaskStatusEnum.RUNNING.value:
                 failed_tasks.append({"task_id": task_id, "reason": "运行中的任务不能删除"})
                 continue
+
+            # 获取任务的 batch_id 和 stock_code，用于同步更新 BatchTaskContext
+            batch_id = task.get("batch_id")
+            stock_code = task.get("stock_code")
+
+            # 如果任务属于某个批量，先从 BatchTaskContext 中移除
+            if batch_id:
+                remove_result = await batch_manager.remove_task_from_batch(
+                    task_id=task_id,
+                    batch_id=batch_id,
+                    stock_code=stock_code or "",
+                    task_status=task["status"],
+                )
+                if not remove_result["success"]:
+                    logger.warning(
+                        f"从批量上下文中移除任务失败: task_id={task_id}, "
+                        f"batch_id={batch_id}, reason={remove_result['message']}"
+                    )
+                    # 这里不作为失败，因为任务仍可从 MongoDB 删除
+                    # 只是 BatchTaskContext 可能会有残留
 
             # 删除任务
             await mongodb.database.analysis_tasks.delete_one({"_id": obj_id})

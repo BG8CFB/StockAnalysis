@@ -2,7 +2,12 @@
   <div class="analysis-settings">
     <div class="settings-header">
       <div class="header-info">
-        <el-icon color="#409eff" :size="20"><InfoFilled /></el-icon>
+        <el-icon
+          color="#409eff"
+          :size="20"
+        >
+          <InfoFilled />
+        </el-icon>
         <span>管理员配置：此处配置由管理员设置，所有用户共享</span>
       </div>
       <div class="header-actions">
@@ -20,9 +25,15 @@
     </div>
 
     <!-- Tab 切换 -->
-    <el-tabs v-model="activeTab" class="settings-tabs">
+    <el-tabs
+      v-model="activeTab"
+      class="settings-tabs"
+    >
       <!-- 默认配置 Tab -->
-      <el-tab-pane label="默认配置" name="default">
+      <el-tab-pane
+        label="默认配置"
+        name="default"
+      >
         <div class="tab-content">
           <!-- AI 模型配置 -->
           <div class="config-card">
@@ -31,7 +42,12 @@
                 <el-icon><Cpu /></el-icon>
                 AI 模型配置
               </h3>
-              <el-tag size="small" type="info">数据收集 vs 深度决策</el-tag>
+              <el-tag
+                size="small"
+                type="info"
+              >
+                数据收集 vs 深度决策
+              </el-tag>
             </div>
             <div class="card-body">
               <div class="model-config-grid">
@@ -64,7 +80,9 @@
                       </div>
                     </el-option>
                   </el-select>
-                  <div class="model-desc">用于第一阶段（数据收集与基础分析）</div>
+                  <div class="model-desc">
+                    用于第一阶段（数据收集与基础分析）
+                  </div>
                 </div>
 
                 <div class="model-config-item">
@@ -96,7 +114,9 @@
                       </div>
                     </el-option>
                   </el-select>
-                  <div class="model-desc">用于第二、三、四阶段（分析辩论与总结）</div>
+                  <div class="model-desc">
+                    用于第二、三、四阶段（分析辩论与总结）
+                  </div>
                 </div>
               </div>
             </div>
@@ -111,7 +131,10 @@
                   <el-icon><User /></el-icon>
                   第一阶段默认智能体
                 </h3>
-                <el-tag size="small" type="primary">
+                <el-tag
+                  size="small"
+                  type="primary"
+                >
                   已选 {{ formData.default_phase1_agents.length }}/{{ phase1Agents.length }}
                 </el-tag>
               </div>
@@ -142,8 +165,12 @@
                       </el-icon>
                     </div>
                     <div class="agent-content">
-                      <div class="agent-name">{{ agent.name }}</div>
-                      <div class="agent-slug">{{ agent.slug }}</div>
+                      <div class="agent-name">
+                        {{ agent.name }}
+                      </div>
+                      <div class="agent-slug">
+                        {{ agent.slug }}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -164,18 +191,32 @@
                   <div class="flow-config-list">
                     <div class="flow-config-item">
                       <div class="flow-info">
-                        <div class="flow-name">第二阶段</div>
-                        <div class="flow-desc">多空博弈与投资决策</div>
+                        <div class="flow-name">
+                          第二阶段
+                        </div>
+                        <div class="flow-desc">
+                          多空博弈与投资决策
+                        </div>
                       </div>
-                      <el-switch v-model="formData.default_phase2_enabled" size="default" />
+                      <el-switch
+                        v-model="formData.default_phase2_enabled"
+                        size="default"
+                      />
                     </div>
 
                     <div class="flow-config-item">
                       <div class="flow-info">
-                        <div class="flow-name">第三阶段</div>
-                        <div class="flow-desc">策略风格与风险评估</div>
+                        <div class="flow-name">
+                          第三阶段
+                        </div>
+                        <div class="flow-desc">
+                          策略风格与风险评估
+                        </div>
                       </div>
-                      <el-switch v-model="formData.default_phase3_enabled" size="default" />
+                      <el-switch
+                        v-model="formData.default_phase3_enabled"
+                        size="default"
+                      />
                     </div>
                   </div>
                 </div>
@@ -223,7 +264,10 @@
       </el-tab-pane>
 
       <!-- 超时配置 Tab -->
-      <el-tab-pane label="超时配置" name="timeout">
+      <el-tab-pane
+        label="超时配置"
+        name="timeout"
+      >
         <div class="tab-content">
           <div class="config-card timeout-card">
             <div class="card-header">
@@ -243,7 +287,9 @@
                     controls-position="right"
                   />
                   <span class="timeout-unit">分钟</span>
-                  <div class="timeout-desc">单个分析阶段的最大执行时间</div>
+                  <div class="timeout-desc">
+                    单个分析阶段的最大执行时间
+                  </div>
                 </div>
 
                 <div class="timeout-config-item">
@@ -255,7 +301,9 @@
                     controls-position="right"
                   />
                   <span class="timeout-unit">分钟</span>
-                  <div class="timeout-desc">单个智能体任务的最大执行时间</div>
+                  <div class="timeout-desc">
+                    单个智能体任务的最大执行时间
+                  </div>
                 </div>
 
                 <div class="timeout-config-item">
@@ -267,7 +315,9 @@
                     controls-position="right"
                   />
                   <span class="timeout-unit">秒</span>
-                  <div class="timeout-desc">单次工具调用的最大等待时间</div>
+                  <div class="timeout-desc">
+                    单次工具调用的最大等待时间
+                  </div>
                 </div>
               </div>
             </div>
@@ -276,7 +326,10 @@
       </el-tab-pane>
 
       <!-- 其他配置 Tab -->
-      <el-tab-pane label="其他配置" name="other">
+      <el-tab-pane
+        label="其他配置"
+        name="other"
+      >
         <div class="tab-content">
           <div class="config-card other-card">
             <div class="card-header">
@@ -296,7 +349,9 @@
                     controls-position="right"
                   />
                   <span class="other-unit">小时</span>
-                  <div class="other-desc">任务执行超时自动标记为过期</div>
+                  <div class="other-desc">
+                    任务执行超时自动标记为过期
+                  </div>
                 </div>
 
                 <div class="other-config-item">
@@ -308,7 +363,9 @@
                     controls-position="right"
                   />
                   <span class="other-unit">天</span>
-                  <div class="other-desc">超过此天数的报告将被自动归档</div>
+                  <div class="other-desc">
+                    超过此天数的报告将被自动归档
+                  </div>
                 </div>
 
                 <div class="other-config-item">

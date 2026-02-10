@@ -243,8 +243,14 @@
           width="150"
         >
           <template #default="{ row }">
-            <span v-if="row.batch_name" class="batch-name">{{ row.batch_name }}</span>
-            <span v-else class="no-batch-name">-</span>
+            <span
+              v-if="row.batch_name"
+              class="batch-name"
+            >{{ row.batch_name }}</span>
+            <span
+              v-else
+              class="no-batch-name"
+            >-</span>
           </template>
         </el-table-column>
         <el-table-column

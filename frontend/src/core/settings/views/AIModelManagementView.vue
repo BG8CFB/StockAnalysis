@@ -34,7 +34,10 @@
             class="model-table"
           >
             <!-- 模型信息 -->
-            <el-table-column min-width="300" label="模型信息">
+            <el-table-column
+              min-width="300"
+              label="模型信息"
+            >
               <template #default="{ row }">
                 <div class="model-info-cell">
                   <div class="model-icon user">
@@ -64,7 +67,11 @@
             </el-table-column>
 
             <!-- 平台类型 -->
-            <el-table-column width="120" align="center" label="平台类型">
+            <el-table-column
+              width="120"
+              align="center"
+              label="平台类型"
+            >
               <template #default="{ row }">
                 <el-tag
                   :type="row.platform_type === 'preset' ? 'success' : 'info'"
@@ -76,31 +83,48 @@
             </el-table-column>
 
             <!-- API 地址 -->
-            <el-table-column min-width="220" show-overflow-tooltip label="API 地址">
+            <el-table-column
+              min-width="220"
+              show-overflow-tooltip
+              label="API 地址"
+            >
               <template #default="{ row }">
                 <span class="api-url">{{ row.api_base_url }}</span>
               </template>
             </el-table-column>
 
             <!-- 并发配置 -->
-            <el-table-column width="160" align="center" label="并发配置">
+            <el-table-column
+              width="160"
+              align="center"
+              label="并发配置"
+            >
               <template #default="{ row }">
                 <div class="concurrency-info">
-                  <el-tooltip content="最大并发" placement="top">
+                  <el-tooltip
+                    content="最大并发"
+                    placement="top"
+                  >
                     <span class="concurrency-item">
                       <span class="label">总</span>
                       <span class="value">{{ row.max_concurrency }}</span>
                     </span>
                   </el-tooltip>
                   <el-divider direction="vertical" />
-                  <el-tooltip content="任务并发" placement="top">
+                  <el-tooltip
+                    content="任务并发"
+                    placement="top"
+                  >
                     <span class="concurrency-item">
                       <span class="label">任务</span>
                       <span class="value">{{ row.task_concurrency }}</span>
                     </span>
                   </el-tooltip>
                   <el-divider direction="vertical" />
-                  <el-tooltip content="批量并发" placement="top">
+                  <el-tooltip
+                    content="批量并发"
+                    placement="top"
+                  >
                     <span class="concurrency-item">
                       <span class="label">批量</span>
                       <span class="value">{{ row.batch_concurrency }}</span>
@@ -111,7 +135,10 @@
             </el-table-column>
 
             <!-- 特性 -->
-            <el-table-column width="150" label="特性">
+            <el-table-column
+              width="150"
+              label="特性"
+            >
               <template #default="{ row }">
                 <div class="feature-tags">
                   <el-tag
@@ -135,19 +162,28 @@
             </el-table-column>
 
             <!-- 状态 -->
-            <el-table-column width="90" align="center" label="状态">
+            <el-table-column
+              width="90"
+              align="center"
+              label="状态"
+            >
               <template #default="{ row }">
                 <el-switch
                   v-model="row.enabled"
-                  @change="handleToggleEnabled(row)"
                   :active-icon="CircleCheck"
                   :inactive-icon="CircleClose"
+                  @change="handleToggleEnabled(row)"
                 />
               </template>
             </el-table-column>
 
             <!-- 操作 -->
-            <el-table-column width="220" align="center" fixed="right" label="操作">
+            <el-table-column
+              width="220"
+              align="center"
+              fixed="right"
+              label="操作"
+            >
               <template #default="{ row }">
                 <div class="action-buttons">
                   <el-button
@@ -183,7 +219,10 @@
           </el-table>
 
           <!-- 空状态 -->
-          <div v-if="userModels.length === 0 && !store.modelsLoading" class="empty-state">
+          <div
+            v-if="userModels.length === 0 && !store.modelsLoading"
+            class="empty-state"
+          >
             <el-empty description="您还没有添加个人模型">
               <el-button
                 type="primary"
@@ -306,7 +345,10 @@
           </el-table>
 
           <!-- 空状态 -->
-          <div v-if="systemModels.length === 0 && !store.modelsLoading" class="empty-state">
+          <div
+            v-if="systemModels.length === 0 && !store.modelsLoading"
+            class="empty-state"
+          >
             <el-empty description="暂无系统模型" />
           </div>
         </el-tab-pane>
@@ -320,8 +362,8 @@
       width="1200px"
       top="5vh"
       destroy-on-close
-      @close="handleDialogClose"
       class="model-dialog"
+      @close="handleDialogClose"
     >
       <el-form
         ref="formRef"
@@ -334,15 +376,26 @@
           <!-- 左侧列 -->
           <div class="form-column">
             <!-- 基础信息卡片 -->
-            <el-card shadow="never" class="form-card">
+            <el-card
+              shadow="never"
+              class="form-card"
+            >
               <template #header>
                 <div class="card-header">
-                  <el-icon class="header-icon" :size="18"><InfoFilled /></el-icon>
+                  <el-icon
+                    class="header-icon"
+                    :size="18"
+                  >
+                    <InfoFilled />
+                  </el-icon>
                   <span class="header-title">基础信息</span>
                 </div>
               </template>
 
-              <el-form-item label="模型名称" prop="name">
+              <el-form-item
+                label="模型名称"
+                prop="name"
+              >
                 <el-input
                   v-model="formData.name"
                   placeholder="例如: GPT-4 生产环境"
@@ -354,7 +407,10 @@
                 </el-input>
               </el-form-item>
 
-              <el-form-item label="平台类型" prop="platform_type">
+              <el-form-item
+                label="平台类型"
+                prop="platform_type"
+              >
                 <el-segmented
                   v-model="formData.platform_type"
                   :options="[
@@ -421,16 +477,33 @@
             </el-card>
 
             <!-- 连接配置卡片 -->
-            <el-card shadow="never" class="form-card">
+            <el-card
+              shadow="never"
+              class="form-card"
+            >
               <template #header>
                 <div class="card-header required">
-                  <el-icon class="header-icon" :size="18"><Connection /></el-icon>
+                  <el-icon
+                    class="header-icon"
+                    :size="18"
+                  >
+                    <Connection />
+                  </el-icon>
                   <span class="header-title">连接配置</span>
-                  <el-tag type="danger" size="small" effect="plain">必填</el-tag>
+                  <el-tag
+                    type="danger"
+                    size="small"
+                    effect="plain"
+                  >
+                    必填
+                  </el-tag>
                 </div>
               </template>
 
-              <el-form-item label="API 地址" prop="api_base_url">
+              <el-form-item
+                label="API 地址"
+                prop="api_base_url"
+              >
                 <el-input
                   v-model="formData.api_base_url"
                   placeholder="https://api.openai.com/v1"
@@ -442,7 +515,10 @@
                 </el-input>
               </el-form-item>
 
-              <el-form-item label="API Key" prop="api_key">
+              <el-form-item
+                label="API Key"
+                prop="api_key"
+              >
                 <el-input
                   v-model="formData.api_key"
                   type="password"
@@ -455,7 +531,10 @@
                 </el-input>
               </el-form-item>
 
-              <el-form-item label="模型 ID" prop="model_id">
+              <el-form-item
+                label="模型 ID"
+                prop="model_id"
+              >
                 <template v-if="formData.platform_type === 'preset' && !manualInputModel">
                   <div class="model-select-group">
                     <el-select
@@ -483,7 +562,11 @@
                     </el-button>
                   </div>
                   <div class="form-tip">
-                    <el-link type="primary" :underline="false" @click="manualInputModel = true">
+                    <el-link
+                      type="primary"
+                      :underline="false"
+                      @click="manualInputModel = true"
+                    >
                       <el-icon><Edit /></el-icon>
                       手动输入模型ID
                     </el-link>
@@ -517,10 +600,18 @@
           <!-- 右侧列 -->
           <div class="form-column">
             <!-- 运行参数卡片 -->
-            <el-card shadow="never" class="form-card">
+            <el-card
+              shadow="never"
+              class="form-card"
+            >
               <template #header>
                 <div class="card-header">
-                  <el-icon class="header-icon" :size="18"><Operation /></el-icon>
+                  <el-icon
+                    class="header-icon"
+                    :size="18"
+                  >
+                    <Operation />
+                  </el-icon>
                   <span class="header-title">运行参数</span>
                 </div>
               </template>
@@ -530,7 +621,10 @@
                   <div class="concurrency-item">
                     <div class="concurrency-label">
                       <span>最大并发</span>
-                      <el-tooltip content="模型可同时处理的最大请求数" placement="top">
+                      <el-tooltip
+                        content="模型可同时处理的最大请求数"
+                        placement="top"
+                      >
                         <el-icon><QuestionFilled /></el-icon>
                       </el-tooltip>
                     </div>
@@ -545,7 +639,10 @@
                   <div class="concurrency-item">
                     <div class="concurrency-label">
                       <span>任务并发</span>
-                      <el-tooltip content="单个任务可同时运行的智能体数量" placement="top">
+                      <el-tooltip
+                        content="单个任务可同时运行的智能体数量"
+                        placement="top"
+                      >
                         <el-icon><QuestionFilled /></el-icon>
                       </el-tooltip>
                     </div>
@@ -560,7 +657,10 @@
                   <div class="concurrency-item">
                     <div class="concurrency-label">
                       <span>批量并发</span>
-                      <el-tooltip content="用户可同时运行的批量任务数" placement="top">
+                      <el-tooltip
+                        content="用户可同时运行的批量任务数"
+                        placement="top"
+                      >
                         <el-icon><QuestionFilled /></el-icon>
                       </el-tooltip>
                     </div>
@@ -601,10 +701,18 @@
             </el-card>
 
             <!-- 高级选项卡片 -->
-            <el-card shadow="never" class="form-card">
+            <el-card
+              shadow="never"
+              class="form-card"
+            >
               <template #header>
                 <div class="card-header">
-                  <el-icon class="header-icon" :size="18"><Cpu /></el-icon>
+                  <el-icon
+                    class="header-icon"
+                    :size="18"
+                  >
+                    <Cpu />
+                  </el-icon>
                   <span class="header-title">高级选项</span>
                 </div>
               </template>
@@ -613,7 +721,10 @@
               <div class="advanced-item">
                 <div class="advanced-header">
                   <span class="advanced-label">思考模式</span>
-                  <el-tooltip content="启用后，模型会展示推理过程，思考内容会返回给用户" placement="top">
+                  <el-tooltip
+                    content="启用后，模型会展示推理过程，思考内容会返回给用户"
+                    placement="top"
+                  >
                     <el-icon><QuestionFilled /></el-icon>
                   </el-tooltip>
                 </div>
@@ -645,7 +756,10 @@
                   </el-tag>
                 </div>
 
-                <div v-if="currentModelPrice" class="builtin-price-info">
+                <div
+                  v-if="currentModelPrice"
+                  class="builtin-price-info"
+                >
                   <div class="builtin-price-label">
                     <el-icon><CircleCheck /></el-icon>
                     <span>内置价格（元/百万tokens）</span>
@@ -707,7 +821,10 @@
               <div class="advanced-item">
                 <div class="advanced-header">
                   <span class="advanced-label">自定义请求头</span>
-                  <el-tooltip content="为API请求添加自定义HTTP头" placement="top">
+                  <el-tooltip
+                    content="为API请求添加自定义HTTP头"
+                    placement="top"
+                  >
                     <el-icon><QuestionFilled /></el-icon>
                   </el-tooltip>
                 </div>
@@ -757,7 +874,10 @@
 
       <template #footer>
         <div class="dialog-footer">
-          <el-button size="large" @click="showCreateDialog = false">
+          <el-button
+            size="large"
+            @click="showCreateDialog = false"
+          >
             取消
           </el-button>
           <el-button
@@ -788,7 +908,10 @@
         >
           <template #sub-title>
             <p>{{ testResult.message }}</p>
-            <p v-if="testResult.latency_ms" class="latency">
+            <p
+              v-if="testResult.latency_ms"
+              class="latency"
+            >
               延迟: <strong>{{ testResult.latency_ms }}ms</strong>
             </p>
           </template>
@@ -798,7 +921,12 @@
         v-else
         class="test-loading"
       >
-        <el-icon class="is-loading" :size="32"><Loading /></el-icon>
+        <el-icon
+          class="is-loading"
+          :size="32"
+        >
+          <Loading />
+        </el-icon>
         <p>正在测试连接...</p>
       </div>
     </el-dialog>

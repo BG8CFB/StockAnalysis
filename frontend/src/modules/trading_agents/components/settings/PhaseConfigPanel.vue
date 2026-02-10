@@ -42,8 +42,12 @@
               </el-icon>
             </div>
             <div class="agent-header-info">
-              <h4 class="agent-name">{{ agent.name }}</h4>
-              <p class="agent-slug">{{ agent.slug }}</p>
+              <h4 class="agent-name">
+                {{ agent.name }}
+              </h4>
+              <p class="agent-slug">
+                {{ agent.slug }}
+              </p>
             </div>
             <el-switch
               v-model="agent.enabled"
@@ -58,7 +62,9 @@
               v-if="agent.when_to_use"
               class="agent-description"
             >
-              <el-icon class="desc-icon"><InfoFilled /></el-icon>
+              <el-icon class="desc-icon">
+                <InfoFilled />
+              </el-icon>
               <span>{{ agent.when_to_use }}</span>
             </div>
 
@@ -67,7 +73,9 @@
               v-if="agent.enabled_mcp_servers && agent.enabled_mcp_servers.length > 0"
               class="agent-servers"
             >
-              <el-icon class="servers-icon"><Connection /></el-icon>
+              <el-icon class="servers-icon">
+                <Connection />
+              </el-icon>
               <el-tag
                 v-for="server in agent.enabled_mcp_servers.slice(0, 2)"
                 :key="server"
@@ -132,8 +140,8 @@
       v-model="showAgentDialog"
       :title="dialogTitle"
       width="960px"
-      @close="handleAgentDialogClose"
       class="agent-edit-dialog"
+      @close="handleAgentDialogClose"
     >
       <el-form
         ref="agentFormRef"
@@ -148,11 +156,21 @@
           <div class="dialog-two-column">
             <!-- 左列：基本信息 + 角色定义 -->
             <div class="dialog-left">
-              <el-form-item label="名称" prop="name">
-                <el-input v-model="agentForm.name" placeholder="技术分析师" clearable />
+              <el-form-item
+                label="名称"
+                prop="name"
+              >
+                <el-input
+                  v-model="agentForm.name"
+                  placeholder="技术分析师"
+                  clearable
+                />
               </el-form-item>
 
-              <el-form-item label="标识符" prop="slug">
+              <el-form-item
+                label="标识符"
+                prop="slug"
+              >
                 <el-input
                   v-model="agentForm.slug"
                   placeholder="technical_analyst"
@@ -172,9 +190,15 @@
                 />
               </el-form-item>
 
-              <el-divider content-position="left">角色定义</el-divider>
+              <el-divider content-position="left">
+                角色定义
+              </el-divider>
 
-              <el-form-item label="系统提示词" prop="role_definition" class="full-width-item">
+              <el-form-item
+                label="系统提示词"
+                prop="role_definition"
+                class="full-width-item"
+              >
                 <el-input
                   v-model="agentForm.role_definition"
                   type="textarea"
@@ -193,7 +217,9 @@
 
               <!-- MCP 服务器 -->
               <div class="right-section-block">
-                <div class="section-header">MCP 服务器</div>
+                <div class="section-header">
+                  MCP 服务器
+                </div>
                 <div class="mcp-server-list">
                   <div
                     v-for="server in serverOptions"
@@ -208,22 +234,45 @@
                         @click.stop.native="toggleMCPServer(server.name)"
                       />
                       <div class="server-info">
-                        <div class="server-name">{{ server.name }}</div>
-                        <div class="server-desc">{{ getServerDescription(server.name) }}</div>
+                        <div class="server-name">
+                          {{ server.name }}
+                        </div>
+                        <div class="server-desc">
+                          {{ getServerDescription(server.name) }}
+                        </div>
                       </div>
                     </div>
-                    <el-tag v-if="server.enabled" size="small" type="success">已启用</el-tag>
-                    <el-tag v-else size="small" type="info">未启用</el-tag>
+                    <el-tag
+                      v-if="server.enabled"
+                      size="small"
+                      type="success"
+                    >
+                      已启用
+                    </el-tag>
+                    <el-tag
+                      v-else
+                      size="small"
+                      type="info"
+                    >
+                      未启用
+                    </el-tag>
                   </div>
                 </div>
-                <div class="section-tip">未选择时使用所有已启用的服务器</div>
+                <div class="section-tip">
+                  未选择时使用所有已启用的服务器
+                </div>
               </div>
 
               <!-- 本地工具 -->
               <div class="right-section-block">
-                <div class="section-header">本地工具</div>
+                <div class="section-header">
+                  本地工具
+                </div>
                 <div class="local-tools-list">
-                  <el-checkbox-group v-model="selectedLocalTools" class="tools-checkbox-list">
+                  <el-checkbox-group
+                    v-model="selectedLocalTools"
+                    class="tools-checkbox-list"
+                  >
                     <el-checkbox
                       v-for="tool in localToolOptions"
                       :key="tool.key"
@@ -232,39 +281,92 @@
                     >
                       <div class="tool-checkbox-label">
                         <span class="tool-name">{{ tool.name }}</span>
-                        <span v-if="!tool.available" class="tool-pending">（待实现）</span>
+                        <span
+                          v-if="!tool.available"
+                          class="tool-pending"
+                        >（待实现）</span>
                       </div>
                     </el-checkbox>
                   </el-checkbox-group>
                 </div>
-                <div class="section-tip">预加载到上下文的数据类型</div>
+                <div class="section-tip">
+                  预加载到上下文的数据类型
+                </div>
               </div>
 
               <!-- 本地工具参数 -->
-              <div v-if="selectedLocalTools.length > 0" class="right-section-block params-block">
-                <div class="section-header">参数配置</div>
+              <div
+                v-if="selectedLocalTools.length > 0"
+                class="right-section-block params-block"
+              >
+                <div class="section-header">
+                  参数配置
+                </div>
                 <div class="tools-params-compact">
-                  <div v-if="selectedLocalTools.includes('news')" class="param-row">
+                  <div
+                    v-if="selectedLocalTools.includes('news')"
+                    class="param-row"
+                  >
                     <span class="param-label">新闻</span>
-                    <el-input-number v-model="localToolParams.news.limit" :min="5" :max="100" :step="5" size="small" />
+                    <el-input-number
+                      v-model="localToolParams.news.limit"
+                      :min="5"
+                      :max="100"
+                      :step="5"
+                      size="small"
+                    />
                     <span class="param-sep">条</span>
-                    <el-input-number v-model="localToolParams.news.days" :min="1" :max="90" size="small" />
+                    <el-input-number
+                      v-model="localToolParams.news.days"
+                      :min="1"
+                      :max="90"
+                      size="small"
+                    />
                     <span class="param-sep">天内</span>
                   </div>
-                  <div v-if="selectedLocalTools.includes('quotes')" class="param-row">
+                  <div
+                    v-if="selectedLocalTools.includes('quotes')"
+                    class="param-row"
+                  >
                     <span class="param-label">行情</span>
-                    <el-input-number v-model="localToolParams.quotes.days" :min="7" :max="365" size="small" />
+                    <el-input-number
+                      v-model="localToolParams.quotes.days"
+                      :min="7"
+                      :max="365"
+                      size="small"
+                    />
                     <span class="param-sep">天</span>
-                    <el-checkbox v-model="localToolParams.quotes.include_realtime" size="small">含实时</el-checkbox>
+                    <el-checkbox
+                      v-model="localToolParams.quotes.include_realtime"
+                      size="small"
+                    >
+                      含实时
+                    </el-checkbox>
                   </div>
-                  <div v-if="selectedLocalTools.includes('financials')" class="param-row">
+                  <div
+                    v-if="selectedLocalTools.includes('financials')"
+                    class="param-row"
+                  >
                     <span class="param-label">财报</span>
-                    <el-input-number v-model="localToolParams.financials.quarters" :min="1" :max="12" size="small" />
+                    <el-input-number
+                      v-model="localToolParams.financials.quarters"
+                      :min="1"
+                      :max="12"
+                      size="small"
+                    />
                     <span class="param-sep">个季度</span>
                   </div>
-                  <div v-if="selectedLocalTools.includes('indicators')" class="param-row">
+                  <div
+                    v-if="selectedLocalTools.includes('indicators')"
+                    class="param-row"
+                  >
                     <span class="param-label">指标</span>
-                    <el-input-number v-model="localToolParams.indicators.periods" :min="1" :max="12" size="small" />
+                    <el-input-number
+                      v-model="localToolParams.indicators.periods"
+                      :min="1"
+                      :max="12"
+                      size="small"
+                    />
                     <span class="param-sep">个季度</span>
                   </div>
                 </div>
@@ -286,7 +388,10 @@
             <span>{{ agentForm.name }} ({{ agentForm.slug }})</span>
           </el-form-item>
 
-          <el-form-item label="角色定义" prop="role_definition">
+          <el-form-item
+            label="角色定义"
+            prop="role_definition"
+          >
             <el-input
               v-model="agentForm.role_definition"
               type="textarea"
@@ -299,8 +404,14 @@
       </el-form>
 
       <template #footer>
-        <el-button @click="showAgentDialog = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="handleSaveAgent">
+        <el-button @click="showAgentDialog = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="saving"
+          @click="handleSaveAgent"
+        >
           保存
         </el-button>
       </template>

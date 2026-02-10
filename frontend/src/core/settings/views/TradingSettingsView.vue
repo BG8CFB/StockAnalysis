@@ -62,10 +62,14 @@ const activeLabel = computed(() => {
     <div class="settings-sidebar desktop-sidebar">
       <div class="sidebar-header">
         <h2 class="title">
-          <el-icon class="title-icon"><Cpu /></el-icon>
+          <el-icon class="title-icon">
+            <Cpu />
+          </el-icon>
           Trading Agent
         </h2>
-        <p class="subtitle">配置智能体参数与分析流程</p>
+        <p class="subtitle">
+          配置智能体参数与分析流程
+        </p>
       </div>
 
       <div class="menu-list">
@@ -76,11 +80,17 @@ const activeLabel = computed(() => {
           :class="{ active: activeTab === item.key }"
           @click="handleTabChange(item)"
         >
-          <el-icon class="menu-icon" :size="18">
+          <el-icon
+            class="menu-icon"
+            :size="18"
+          >
             <component :is="item.icon" />
           </el-icon>
           <span class="menu-label">{{ item.label }}</span>
-          <el-icon v-if="activeTab === item.key" class="active-indicator">
+          <el-icon
+            v-if="activeTab === item.key"
+            class="active-indicator"
+          >
             <ArrowRight />
           </el-icon>
         </div>
@@ -90,9 +100,15 @@ const activeLabel = computed(() => {
     <!-- 右侧内容区域 -->
     <div class="settings-content">
       <div class="content-wrapper full-height">
-        <transition name="fade-slide" mode="out-in">
+        <transition
+          name="fade-slide"
+          mode="out-in"
+        >
           <keep-alive>
-            <component :is="currentComponent" :key="activeTab" />
+            <component
+              :is="currentComponent"
+              :key="activeTab"
+            />
           </keep-alive>
         </transition>
       </div>

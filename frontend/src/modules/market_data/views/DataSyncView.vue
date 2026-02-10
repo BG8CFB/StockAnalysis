@@ -10,7 +10,10 @@
       <template #header>
         <div class="card-header">
           <span>全量同步</span>
-          <el-tag :type="syncStatus === 'syncing' ? 'warning' : 'info'" size="small">
+          <el-tag
+            :type="syncStatus === 'syncing' ? 'warning' : 'info'"
+            size="small"
+          >
             {{ syncStatusText }}
           </el-tag>
         </div>
@@ -37,10 +40,19 @@
         <!-- 市场选择 -->
         <div class="market-selector">
           <span class="label">选择市场：</span>
-          <el-radio-group v-model="selectedMarket" :disabled="syncStatus === 'syncing'">
-            <el-radio-button label="A_STOCK">A股</el-radio-button>
-            <el-radio-button label="US_STOCK">美股</el-radio-button>
-            <el-radio-button label="HK_STOCK">港股</el-radio-button>
+          <el-radio-group
+            v-model="selectedMarket"
+            :disabled="syncStatus === 'syncing'"
+          >
+            <el-radio-button label="A_STOCK">
+              A股
+            </el-radio-button>
+            <el-radio-button label="US_STOCK">
+              美股
+            </el-radio-button>
+            <el-radio-button label="HK_STOCK">
+              港股
+            </el-radio-button>
           </el-radio-group>
         </div>
 
@@ -53,7 +65,9 @@
             :disabled="syncStatus === 'syncing'"
             @click="handleSync"
           >
-            <el-icon v-if="syncStatus !== 'syncing'"><Refresh /></el-icon>
+            <el-icon v-if="syncStatus !== 'syncing'">
+              <Refresh />
+            </el-icon>
             {{ syncButtonText }}
           </el-button>
         </div>
@@ -61,11 +75,17 @@
     </el-card>
 
     <!-- 同步结果 -->
-    <el-card v-if="syncResult" class="result-card">
+    <el-card
+      v-if="syncResult"
+      class="result-card"
+    >
       <template #header>
         <div class="card-header">
           <span>同步结果</span>
-          <el-tag :type="syncResult.successful_tasks === syncResult.total_tasks ? 'success' : 'warning'" size="small">
+          <el-tag
+            :type="syncResult.successful_tasks === syncResult.total_tasks ? 'success' : 'warning'"
+            size="small"
+          >
             {{ syncResult.successful_tasks }}/{{ syncResult.total_tasks }} 成功
           </el-tag>
         </div>
@@ -96,7 +116,10 @@
                 {{ getTaskStatusLabel(task.status) }}
               </el-tag>
             </div>
-            <div v-if="task.result" class="task-result">
+            <div
+              v-if="task.result"
+              class="task-result"
+            >
               <span v-if="task.result.total !== undefined">
                 总计：{{ task.result.total || 0 }} 条
               </span>
@@ -106,12 +129,20 @@
               <span v-if="task.result.total_records !== undefined">
                 记录：{{ task.result.total_records || 0 }} 条
               </span>
-              <span v-if="task.result.source" class="source-tag">
+              <span
+                v-if="task.result.source"
+                class="source-tag"
+              >
                 数据源：{{ task.result.source }}
               </span>
             </div>
-            <div v-if="task.error" class="task-error">
-              <el-text type="danger">{{ task.error }}</el-text>
+            <div
+              v-if="task.error"
+              class="task-error"
+            >
+              <el-text type="danger">
+                {{ task.error }}
+              </el-text>
             </div>
           </div>
         </div>

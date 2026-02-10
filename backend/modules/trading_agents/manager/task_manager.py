@@ -947,8 +947,17 @@ class TaskManager:
         logger.info(f"execute_analysis_workflow 开始: task_id={task_id}, user_id={user_id}")
         logger.info("=" * 60)
 
+        # 从 MongoDB 获取真实的 batch_id（用于并发控制）
+        # 单任务的 batch_id 为 None，批量子任务的 batch_id 由 batch_manager 写入
+        try:
+            task_doc = await mongodb.database.analysis_tasks.find_one({"_id": ObjectId(task_id)})
+            batch_id = task_doc.get("batch_id") if task_doc else None
+            logger.info(f"[{task_id}] 获取到 batch_id: {batch_id}")
+        except Exception as e:
+            logger.warning(f"[{task_id}] 获取 batch_id 失败，使用 None: {e}")
+            batch_id = None
+
         # 用于并发控制
-        batch_id = task_id
         data_collection_model_id = None
         debate_model_id = None
 
@@ -1014,6 +1023,18 @@ class TaskManager:
                 logger.info(
                     f"任务 {task_id} 模型解析完成: data_collection={data_collection_model_id}, debate={debate_model_id}"
                 )
+
+                # 将解析出的模型 ID 写回任务文档，供队列位置等接口使用
+                update_model = {
+                    "data_collection_model_id": data_collection_model_id,
+                    "debate_model_id": debate_model_id,
+                    "model_id": data_collection_model_id,
+                }
+                await mongodb.database.analysis_tasks.update_one(
+                    {"_id": ObjectId(task_id)},
+                    {"$set": update_model},
+                )
+                logger.debug(f"任务 {task_id} 已落库 model_id 等字段")
 
             # 请求并发控制
             from modules.trading_agents.manager.concurrency_controller import (
@@ -1083,6 +1104,13 @@ class TaskManager:
                 except Exception as e:
                     logger.error(f"任务 {task_id} 等待并发槽位时发生异常: {e}", exc_info=True)
                     raise Exception(f"任务等待并发槽位失败: {e}") from e
+
+                # 如果是批量任务，登记 batch_id 以支持每用户批量并发限制
+                if batch_id:
+                    await concurrency_controller.register_batch_task(
+                        user_id=user_id,
+                        batch_id=batch_id,
+                    )
 
             # 5. 使用新调度器执行工作流
             logger.info(f"任务 {task_id} 开始执行工作流...")
