@@ -550,50 +550,16 @@ async function handleShowThinking(agent: AgentStatus) {
   thinkingDialogVisible.value = true
 
   try {
-    // TODO: 从后端获取智能体的思考过程
-    // 暂时使用模拟数据
-    selectedAgentThinking.value = generateMockThinking(agent.name)
+    // 从后端获取智能体的思考过程
+    const response = await taskApi.getAgentThinking(taskId.value, agent.slug)
+    selectedAgentThinking.value = response
   } catch (error) {
+    console.error('加载思考过程失败:', error)
     ElMessage.error('加载思考过程失败')
+    selectedAgentThinking.value = `# ${agent.name} 思考过程\n\n## 提示\n无法加载智能体思考过程，请稍后重试。`
   } finally {
     thinkingLoading.value = false
   }
-}
-
-/**
- * 生成模拟思考过程
- */
-function generateMockThinking(agentName: string): string {
-  return `# ${agentName} 思考过程
-
-## 分析目标
-对当前股票进行深入分析，评估投资价值和风险。
-
-## 关键发现
-
-### 1. 基本面分析
-- 财务状况良好，营收稳定增长
-- 盈利能力持续提升
-- 负债率处于合理水平
-
-### 2. 技术面分析
-- 股价处于上升趋势
-- 成交量温和放大
-- 技术指标显示买入信号
-
-### 3. 市场情绪
-- 市场对该股票关注度较高
-- 投资者情绪整体偏正面
-- 机构持仓比例稳定
-
-## 结论
-基于以上分析，该股票具有良好的投资价值，建议**买入**。
-
-## 风险提示
-- 市场波动风险
-- 行业政策变化风险
-- 公司经营风险
-`
 }
 
 // 组件挂载

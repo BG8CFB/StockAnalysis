@@ -667,7 +667,7 @@ function syncModelConfig() {
 
 // 表单数据
 const formData = reactive({
-  market: StockMarketEnum.A_SHARE,
+  market: StockMarketEnum.A_STOCK,
   stock_code: '',
   trade_date: new Date().toISOString().split('T')[0],
   data_collection_model: '',
@@ -676,9 +676,9 @@ const formData = reactive({
 
 // 市场选项
 const marketOptions = [
-  { label: 'A股市场', value: StockMarketEnum.A_SHARE },
-  { label: '港股市场', value: StockMarketEnum.HONG_KONG },
-  { label: '美股市场', value: StockMarketEnum.US },
+  { label: 'A股市场', value: StockMarketEnum.A_STOCK },
+  { label: '港股市场', value: StockMarketEnum.HK_STOCK },
+  { label: '美股市场', value: StockMarketEnum.US_STOCK },
 ]
 
 // 获取默认辩论轮次

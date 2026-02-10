@@ -302,11 +302,12 @@ async def load_agent_tools(
             # 获取数据源路由器
             source_router = get_source_router()
 
-            # 创建 Local 工具
+            # 创建 Local 工具（传入 market 以选择正确的工具）
             local_tool_instances = create_local_tools(
                 user_id=user_id,
                 source_router=source_router,
-                tool_names=local_tools
+                tool_names=local_tools,
+                market=state.market  # 传递市场类型，选择正确的工具
             )
             tools.extend(local_tool_instances)
             logger.info(f"[Phase 1] 创建了 {len(local_tool_instances)} 个 Local 工具")

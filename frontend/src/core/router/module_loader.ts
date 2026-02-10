@@ -53,13 +53,6 @@ const moduleRoutes: RouteRecordRaw[] = [
     component: () => import('@modules/market_data/views/DataSourceHealthView.vue'),
     meta: { requiresAuth: true, title: '数据源状态监控' },
   },
-  // 数据源设置（统一入口）
-  {
-    path: '/settings/data-sources',
-    name: 'SettingsDataSources',
-    component: () => import('@core/settings/views/DataSourceSettingsView.vue'),
-    meta: { requiresAuth: true, title: '数据源设置' },
-  },
   // 市场数据模块 - 保留原有路由作为兼容
   {
     path: '/settings/data-sync',
@@ -100,51 +93,99 @@ const moduleRoutes: RouteRecordRaw[] = [
     component: () => import('@modules/trading_agents/views/compare/HistoryCompareView.vue'),
     meta: { requiresAuth: true, title: '历史对比' },
   },
+  // ==================== 设置页面统一布局 ====================
+  // 使用嵌套路由确保菜单激活状态正确
   {
-    path: '/settings/users',
-    name: 'SettingsUsers',
-    component: () => import('@core/admin/views/UserManagementView.vue'),
-    meta: { requiresAuth: true, title: '用户管理', adminOnly: true },
-  },
-  {
-    path: '/settings/system',
-    name: 'SettingsSystem',
-    component: () => import('@core/settings/views/SystemSettingsView.vue'),
-    meta: { requiresAuth: true, title: '系统设置', adminOnly: true },
-  },
-  // AI 模型管理（核心设置模块）
-  {
-    path: '/settings/ai-models',
-    name: 'SettingsAIModels',
-    component: () => import('@core/settings/views/AIModelManagementView.vue'),
-    meta: { requiresAuth: true, title: 'AI 模型管理' },
-  },
-  // MCP 服务器管理
-  {
-    path: '/settings/mcp-servers',
-    name: 'SettingsMCPServers',
-    component: () => import('@core/settings/views/MCPServerManagementView.vue'),
-    meta: { requiresAuth: true, title: 'MCP 服务器管理' },
-  },
-  // Trading Agent 设置（统一入口）
-  {
-    path: '/settings/trading',
-    name: 'SettingsTrading',
-    component: () => import('@core/settings/views/TradingSettingsView.vue'),
-    meta: { requiresAuth: true, title: 'Trading Agent 设置' },
-  },
-  // TradingAgents 设置模块（保留原有路由作为兼容）
-  {
-    path: '/settings/trading-agents/agent-config',
-    name: 'TradingAgentsAgentConfig',
-    component: () => import('@modules/trading_agents/views/settings/AgentConfigView.vue'),
-    meta: { requiresAuth: true, title: '智能体配置' },
-  },
-  {
-    path: '/settings/trading-agents/analysis',
-    name: 'TradingAgentsAnalysis',
-    component: () => import('@modules/trading_agents/views/settings/AnalysisSettingsView.vue'),
-    meta: { requiresAuth: true, title: '分析设置' },
+    path: '/settings',
+    name: 'Settings',
+    component: () => import('@core/settings/views/SettingsLayoutView.vue'),
+    meta: { requiresAuth: true, title: '全局设置' },
+    children: [
+      // 用户设置（个人配置）
+      {
+        path: 'user',
+        name: 'SettingsUser',
+        component: () => import('@modules/settings/views/SettingsView.vue'),
+        meta: { requiresAuth: true, title: '个人设置' },
+      },
+      {
+        path: 'users',
+        name: 'SettingsUsers',
+        component: () => import('@core/admin/views/UserManagementView.vue'),
+        meta: { requiresAuth: true, title: '用户管理', adminOnly: true },
+      },
+      {
+        path: 'system',
+        name: 'SettingsSystem',
+        component: () => import('@core/settings/views/SystemSettingsView.vue'),
+        meta: { requiresAuth: true, title: '系统设置', adminOnly: true },
+      },
+      // AI 管理（统一管理 AI 模型和 MCP 服务器）
+      {
+        path: 'ai-management',
+        name: 'AIManagement',
+        component: () => import('@core/settings/views/AIManagementLayout.vue'),
+        meta: { requiresAuth: true, title: 'AI 管理' },
+        children: [
+          {
+            path: '',
+            name: 'AIManagementIndex',
+            redirect: () => '/settings/ai-management/models'
+          },
+          {
+            path: 'models',
+            name: 'AIModels',
+            component: () => import('@core/settings/views/AIModelManagementView.vue'),
+            meta: { requiresAuth: true, title: 'AI 模型管理' }
+          },
+          {
+            path: 'mcp',
+            name: 'MCPServers',
+            component: () => import('@core/settings/views/MCPServerManagementView.vue'),
+            meta: { requiresAuth: true, title: 'MCP 服务器管理' }
+          }
+        ]
+      },
+      // 兼容旧路径 - 重定向到新路径
+      {
+        path: 'ai-models',
+        redirect: () => '/settings/ai-management/models'
+      },
+      {
+        path: 'mcp-servers',
+        redirect: () => '/settings/ai-management/mcp'
+      },
+      {
+        path: 'data-sources',
+        name: 'SettingsDataSources',
+        component: () => import('@core/settings/views/DataSourceSettingsView.vue'),
+        meta: { requiresAuth: true, title: '数据源设置' },
+      },
+      {
+        path: 'trading',
+        name: 'SettingsTrading',
+        component: () => import('@core/settings/views/TradingSettingsView.vue'),
+        meta: { requiresAuth: true, title: 'Trading Agent 设置' },
+      },
+      {
+        path: 'trading-agents/agent-config',
+        name: 'TradingAgentsAgentConfig',
+        component: () => import('@modules/trading_agents/views/settings/AgentConfigView.vue'),
+        meta: { requiresAuth: true, title: '智能体配置' },
+      },
+      {
+        path: 'trading-agents/analysis',
+        name: 'TradingAgentsAnalysis',
+        component: () => import('@modules/trading_agents/views/settings/AnalysisSettingsView.vue'),
+        meta: { requiresAuth: true, title: '分析设置' },
+      },
+      // 重定向：访问 /settings 时根据权限跳转到合适的页面
+      {
+        path: '',
+        name: 'SettingsIndex',
+        redirect: () => '/settings/ai-management/models'
+      }
+    ]
   },
   // TradingAgents 管理员页面
   {

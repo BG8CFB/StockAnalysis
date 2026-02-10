@@ -89,7 +89,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -140,6 +140,16 @@ function toggleSidebar() {
 function closeSidebar() {
   sidebarOpen.value = false
 }
+
+// 监听路由变化，移动端下自动关闭侧边栏
+watch(
+  () => route.path,
+  () => {
+    if (isMobile.value && sidebarOpen.value) {
+      sidebarOpen.value = false
+    }
+  }
+)
 
 /**
  * 处理面包屑首页点击
@@ -322,6 +332,14 @@ onUnmounted(() => {
   overflow-x: hidden;
   padding: var(--space-6);
   position: relative;
+}
+
+/* 大屏内容区约束 - 保证阅读舒适度 */
+.main-content::before {
+  content: '';
+  display: block;
+  max-width: var(--max-width-content);
+  margin: 0 auto;
 }
 
 /* ===========================================

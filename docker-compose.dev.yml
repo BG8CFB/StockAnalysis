@@ -13,6 +13,7 @@ services:
       - /app/node_modules
     environment:
       - VITE_API_BASE_URL=/api
+      - VITE_API_TARGET=http://backend:8000
       - TZ=Asia/Shanghai
     networks:
       - stock-analysis-network
@@ -22,7 +23,7 @@ services:
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
     container_name: stock-analysis-backend-dev
     ports:
       - "8000:8000"

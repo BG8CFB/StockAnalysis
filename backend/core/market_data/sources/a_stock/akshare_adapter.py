@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import pandas as pd
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Callable
 from datetime import datetime
 
 from core.market_data.models import (
@@ -41,6 +41,70 @@ class AkShareAdapter(DataSourceAdapter):
         self.source_name = "akshare"
         # 设置默认优先级（AkShare 作为 A股的备用数据源）
         self._priority = 2
+
+    async def _fetch_with_retry(
+        self,
+        fetch_func: Callable,
+        *args,
+        max_retries: int = 3,
+        base_wait: int = 2,
+        **kwargs
+    ) -> Optional[Any]:
+        """
+        带指数退避的重试机制
+
+        Args:
+            fetch_func: 要执行的函数
+            *args: 位置参数
+            max_retries: 最大重试次数
+            base_wait: 基础等待时间（秒）
+            **kwargs: 关键字参数
+
+        Returns:
+            函数执行结果
+
+        Raises:
+            Exception: 所有重试都失败后抛出原始异常
+        """
+        import requests
+        from requests.exceptions import ConnectionError, RequestException
+
+        for attempt in range(max_retries):
+            try:
+                # 使用 asyncio.to_thread 避免阻塞事件循环
+                return await asyncio.to_thread(fetch_func, *args, **kwargs)
+            except (ConnectionError, RequestException) as e:
+                error_msg = str(e)
+                # 检测网络连接错误
+                if any(
+                    keyword in error_msg
+                    for keyword in [
+                        "Connection aborted",
+                        "RemoteDisconnected",
+                        "Connection reset",
+                        "Timeout",
+                        "网络",
+                    ]
+                ):
+                    if attempt < max_retries - 1:
+                        # 指数退避：2s, 4s, 8s
+                        wait_time = base_wait * (2**attempt)
+                        logger.warning(
+                            f"AkShare network error, waiting {wait_time}s "
+                            f"before retry (attempt {attempt + 1}/{max_retries}): {error_msg}"
+                        )
+                        await asyncio.sleep(wait_time)
+                        continue
+                # 如果不是网络错误，或者已达到最大重试次数，直接抛出
+                logger.error(
+                    f"AkShare fetch failed after {attempt + 1} attempts: {error_msg}"
+                )
+                raise
+            except Exception as e:
+                # 其他类型的错误直接抛出
+                logger.error(f"AkShare fetch failed with non-retryable error: {e}")
+                raise
+        return None
 
     async def connect(self) -> bool:
         """测试连接"""
@@ -117,9 +181,17 @@ class AkShareAdapter(DataSourceAdapter):
             logger.info(
                 f"Fetching daily quotes: symbol={code}, start={start}, end={end}, adjust={adjust}"
             )
-            await asyncio.sleep(1)  # 避免触发反爬虫机制
-            df = self.ak.stock_zh_a_hist(
-                symbol=code, period="daily", start_date=start, end_date=end, adjust=adjust
+
+            # 使用重试机制获取数据
+            df = await self._fetch_with_retry(
+                self.ak.stock_zh_a_hist,
+                symbol=code,
+                period="daily",
+                start_date=start,
+                end_date=end,
+                adjust=adjust,
+                max_retries=3,
+                base_wait=2
             )
 
             if df is None or df.empty:

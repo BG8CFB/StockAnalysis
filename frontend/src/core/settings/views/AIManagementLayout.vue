@@ -1,25 +1,25 @@
 <script setup lang="ts">
 import { ref, defineAsyncComponent, shallowRef, computed } from 'vue'
-import { DataAnalysis, TrendCharts, Setting, ArrowRight, Cpu } from '@element-plus/icons-vue'
+import { Cpu, Connection, ArrowRight } from '@element-plus/icons-vue'
 
-// 当前激活的导航项（默认第一个）
-const activeTab = ref('agent')
+// 当前激活的导航项（默认第一个：AI 模型管理）
+const activeTab = ref('models')
 
 // 异步组件定义
-const AgentConfigView = defineAsyncComponent(() =>
-  import('@modules/trading_agents/views/settings/AgentConfigView.vue')
+const AIModelManagementView = defineAsyncComponent(() =>
+  import('./AIModelManagementView.vue')
 )
-const AnalysisSettingsView = defineAsyncComponent(() =>
-  import('@modules/trading_agents/views/settings/AnalysisSettingsView.vue')
+const MCPServerManagementView = defineAsyncComponent(() =>
+  import('./MCPServerManagementView.vue')
 )
 
 // 当前显示的组件
-const currentComponent = shallowRef(AgentConfigView)
+const currentComponent = shallowRef(AIModelManagementView)
 
 // 菜单配置
 const menuItems = [
-  { key: 'agent', label: '智能体配置', icon: DataAnalysis, component: AgentConfigView },
-  { key: 'analysis', label: '分析设置', icon: TrendCharts, component: AnalysisSettingsView },
+  { key: 'models', label: 'AI 模型管理', icon: Cpu, component: AIModelManagementView },
+  { key: 'mcp', label: 'MCP 服务器管理', icon: Connection, component: MCPServerManagementView },
 ]
 
 // 切换标签
@@ -36,36 +36,15 @@ const activeLabel = computed(() => {
 </script>
 
 <template>
-  <div class="trading-settings-container">
-    <!-- 移动端顶部选项卡 -->
-    <div class="mobile-tabs-wrapper">
-      <div class="mobile-tabs-header">
-        <span class="mobile-tabs-title">Trading Agent</span>
-        <span class="mobile-tabs-current">{{ activeLabel }}</span>
-      </div>
-      <el-tabs
-        v-model="activeTab"
-        class="mobile-tabs"
-        :stretch="true"
-        @tab-click="({ props }) => handleTabChange(menuItems.find(i => i.key === props.name))"
-      >
-        <el-tab-pane
-          v-for="item in menuItems"
-          :key="item.key"
-          :name="item.key"
-          :label="item.label"
-        />
-      </el-tabs>
-    </div>
-
+  <div class="ai-management-container">
     <!-- 左侧导航菜单（桌面端） -->
     <div class="settings-sidebar desktop-sidebar">
       <div class="sidebar-header">
         <h2 class="title">
-          <el-icon class="title-icon"><Cpu /></el-icon>
-          Trading Agent
+          <el-icon :size="20"><Cpu /></el-icon>
+          AI 管理
         </h2>
-        <p class="subtitle">配置智能体参数与分析流程</p>
+        <p class="subtitle">配置 AI 模型与 MCP 服务器</p>
       </div>
 
       <div class="menu-list">
@@ -101,7 +80,7 @@ const activeLabel = computed(() => {
 </template>
 
 <style scoped>
-.trading-settings-container {
+.ai-management-container {
   display: flex;
   height: calc(100vh - 100px);
   background-color: var(--color-bg-page);
@@ -134,12 +113,8 @@ const activeLabel = computed(() => {
   gap: var(--space-2);
 }
 
-.title-icon {
+.title .el-icon {
   color: var(--color-primary);
-  font-size: var(--font-size-xl);
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .subtitle {
@@ -225,66 +200,6 @@ const activeLabel = computed(() => {
 }
 
 /* ============================================
-   移动端顶部选项卡样式
-   ============================================ */
-.mobile-tabs-wrapper {
-  display: none;
-  width: 100%;
-  margin-bottom: var(--space-4);
-}
-
-.mobile-tabs-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-3) var(--space-4);
-  background: var(--color-bg-container);
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-  border-bottom: 1px solid var(--color-border-secondary);
-}
-
-.mobile-tabs-title {
-  font-size: var(--font-size-lg);
-  font-weight: 600;
-  color: var(--color-text-primary);
-}
-
-.mobile-tabs-current {
-  font-size: var(--font-size-sm);
-  color: var(--color-primary);
-}
-
-.mobile-tabs {
-  width: 100%;
-}
-
-.mobile-tabs :deep(.el-tabs__header) {
-  margin-bottom: 0;
-  background: var(--color-bg-container);
-  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
-}
-
-.mobile-tabs :deep(.el-tabs__nav-wrap::after) {
-  display: none;
-}
-
-.mobile-tabs :deep(.el-tabs__item) {
-  padding: 0 var(--space-4);
-  font-size: var(--font-size-base);
-  height: 48px;
-  line-height: 48px;
-}
-
-.mobile-tabs :deep(.el-tabs__item.is-active) {
-  color: var(--color-primary);
-  font-weight: 500;
-}
-
-.mobile-tabs :deep(.el-tabs__active-bar) {
-  background-color: var(--color-primary);
-}
-
-/* ============================================
    响应式设计 - 平板
    ============================================ */
 @media (max-width: 1024px) {
@@ -305,14 +220,10 @@ const activeLabel = computed(() => {
    响应式设计 - 移动端
    ============================================ */
 @media (max-width: 768px) {
-  .trading-settings-container {
+  .ai-management-container {
     flex-direction: column;
     height: auto;
     min-height: calc(100vh - 100px);
-  }
-
-  .mobile-tabs-wrapper {
-    display: block;
   }
 
   .desktop-sidebar {
@@ -335,17 +246,6 @@ const activeLabel = computed(() => {
 @media (max-width: 480px) {
   .content-wrapper {
     padding: var(--space-3);
-  }
-
-  .mobile-tabs-header {
-    padding: var(--space-2) var(--space-3);
-  }
-
-  .mobile-tabs :deep(.el-tabs__item) {
-    padding: 0 var(--space-3);
-    font-size: var(--font-size-sm);
-    height: 44px;
-    line-height: 44px;
   }
 }
 </style>

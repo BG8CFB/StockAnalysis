@@ -73,6 +73,26 @@ class ConcurrencyController:
         except Exception as e:
             logger.error(f"[并发控制] 启动清理失败: {e}")
 
+    # Lua 脚本：原子性检查和获取槽位
+    _ACQUIRE_SLOT_LUA = """
+    local active_tasks_key = KEYS[1]
+    local task_id = ARGV[1]
+    local user_id = ARGV[2]
+    local max_running_tasks = tonumber(ARGV[3])
+
+    -- 获取当前活跃任务数
+    local active_count = redis.call('HLEN', active_tasks_key)
+
+    -- 检查是否超过限制
+    if active_count >= max_running_tasks then
+        return {0, active_count}  -- 槽位已满
+    end
+
+    -- 获取槽位
+    redis.call('HSET', active_tasks_key, task_id, user_id)
+    return {1, active_count + 1}  -- 成功获取
+    """
+
     async def request_execution(
         self,
         model_id: str,
@@ -81,7 +101,7 @@ class ConcurrencyController:
         model_config: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
-        请求执行任务
+        请求执行任务（使用 Lua 脚本确保原子性）
 
         Args:
             model_id: 模型 ID
@@ -96,46 +116,64 @@ class ConcurrencyController:
                 "waiting_count": int,  # 总等待任务数
             }
         """
-        async with self._lock:
-            redis_client = redis_manager.get_client()
+        redis_client = redis_manager.get_client()
 
-            max_concurrency = model_config.get("max_concurrency", 40)
-            task_concurrency = model_config.get("task_concurrency", 2)
-            batch_concurrency = model_config.get("batch_concurrency", 1)
+        max_concurrency = model_config.get("max_concurrency", 40)
+        task_concurrency = model_config.get("task_concurrency", 2)
+        batch_concurrency = model_config.get("batch_concurrency", 1)
 
-            # 检查模型当前活跃任务数
-            active_tasks_key = MODEL_ACTIVE_TASKS_KEY.format(model_id=model_id)
-            active_count = await redis_client.hlen(active_tasks_key)
+        # 计算可同时运行的任务数
+        max_running_tasks = max_concurrency // task_concurrency
 
-            # 计算可同时运行的任务数
-            max_running_tasks = max_concurrency // task_concurrency
+        # 检查批量任务并发限制
+        user_batch_key = USER_ACTIVE_BATCH_TASKS_KEY.format(user_id=user_id)
+        user_batch_count = await redis_client.llen(user_batch_key)
 
-            # 检查批量任务并发限制
-            user_batch_key = USER_ACTIVE_BATCH_TASKS_KEY.format(user_id=user_id)
-            user_batch_count = await redis_client.llen(user_batch_key)
-
-            if user_batch_count >= batch_concurrency:
-                # 用户批量任务数已达上限，任务需要等待
+        if user_batch_count >= batch_concurrency:
+            # 用户批量任务数已达上限，任务需要等待
+            async with self._lock:
                 queue_position = await self._enqueue_task(
                     model_id, task_id, user_id, redis_client
                 )
 
-                waiting_count = await redis_client.llen(
-                    MODEL_WAITING_QUEUE_KEY.format(model_id=model_id)
-                )
+            waiting_count = await redis_client.llen(
+                MODEL_WAITING_QUEUE_KEY.format(model_id=model_id)
+            )
 
+            return {
+                "can_execute": False,
+                "queue_position": queue_position,
+                "waiting_count": waiting_count,
+                "reason": "user_batch_limit",
+            }
+
+        # 使用 Lua 脚本原子性检查和获取槽位
+        active_tasks_key = MODEL_ACTIVE_TASKS_KEY.format(model_id=model_id)
+
+        try:
+            result = await redis_client.eval(
+                self._ACQUIRE_SLOT_LUA,
+                1,  # 1个 key
+                active_tasks_key,
+                task_id,
+                user_id,
+                max_running_tasks
+            )
+
+            if result[0] == 1:
+                # 成功获取槽位
                 return {
-                    "can_execute": False,
-                    "queue_position": queue_position,
-                    "waiting_count": waiting_count,
-                    "reason": "user_batch_limit",
+                    "can_execute": True,
+                    "queue_position": 0,
+                    "waiting_count": 0,
+                    "reason": None,
                 }
-
-            if active_count >= max_running_tasks:
-                # 模型并发数已达上限，任务需要等待
-                queue_position = await self._enqueue_task(
-                    model_id, task_id, user_id, redis_client
-                )
+            else:
+                # 槽位已满，加入队列
+                async with self._lock:
+                    queue_position = await self._enqueue_task(
+                        model_id, task_id, user_id, redis_client
+                    )
 
                 waiting_count = await redis_client.llen(
                     MODEL_WAITING_QUEUE_KEY.format(model_id=model_id)
@@ -148,15 +186,9 @@ class ConcurrencyController:
                     "reason": "model_concurrency_limit",
                 }
 
-            # 可以执行，标记为活跃任务
-            await redis_client.hset(active_tasks_key, task_id, user_id)
-
-            return {
-                "can_execute": True,
-                "queue_position": 0,
-                "waiting_count": 0,
-                "reason": None,
-            }
+        except Exception as e:
+            logger.error(f"请求执行时发生错误: model={model_id}, task={task_id}, error={e}")
+            raise
 
     async def release_execution(
         self,

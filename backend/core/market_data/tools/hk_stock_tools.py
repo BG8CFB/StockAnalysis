@@ -5,13 +5,11 @@
 """
 
 import logging
-from typing import Optional, List, Dict, Any, TYPE_CHECKING
+from typing import Optional, List, Dict, Any
 
 from core.market_data.models import MarketType
 from core.market_data.tools.base_tool import MarketDataToolBase, DataSource
-
-if TYPE_CHECKING:
-    from core.market_data.managers.source_router import DataSourceRouter
+from core.market_data.managers.source_router import DataSourceRouter
 
 logger = logging.getLogger(__name__)
 

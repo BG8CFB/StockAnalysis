@@ -41,6 +41,6 @@
     "glm-plan-bug@zai-coding-plugins": true,
     "superpowers@superpowers-marketplace": true
   },
-  "outputStyle": "通用提示词",
+  "outputStyle": "Default",
   "alwaysThinkingEnabled": true
 }

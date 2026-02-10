@@ -16,13 +16,30 @@ logger = logging.getLogger(__name__)
 class PasswordManager:
     """密码管理器"""
 
+    # bcrypt 最大输入长度（字节）
+    MAX_PASSWORD_BYTES = 72
+
     @staticmethod
     def hash_password(password: str) -> str:
-        """哈希密码"""
-        # bcrypt 限制密码最大72字节，需要截断超长密码
+        """哈希密码
+
+        Args:
+            password: 明文密码
+
+        Returns:
+            哈希后的密码
+
+        Raises:
+            ValueError: 密码超过最大长度限制
+        """
         password_bytes = password.encode('utf-8')
-        if len(password_bytes) > 72:
-            password_bytes = password_bytes[:72]
+
+        # 检查密码长度，超过限制则拒绝而不是截断
+        if len(password_bytes) > PasswordManager.MAX_PASSWORD_BYTES:
+            raise ValueError(
+                f"密码过长，最大支持 {PasswordManager.MAX_PASSWORD_BYTES} 字节 "
+                f"（当前 {len(password_bytes)} 字节）"
+            )
 
         # 使用 bcrypt 生成哈希，使用配置中的 rounds
         salt = bcrypt.gensalt(rounds=settings.BCRYPT_ROUNDS)
@@ -47,17 +64,17 @@ class JWTManager:
     ) -> str:
         """创建访问令牌"""
         to_encode = data.copy()
-        # 使用系统本地时间（自动适配容器时区）
-        now = datetime.now().astimezone()
+        # 统一使用 UTC 时间，避免时区问题
+        now = datetime.utcnow()
         if expires_delta:
             expire = now + expires_delta
         else:
             expire = now + timedelta(
                 minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
             )
-        
-        logger.debug(f"Creating access token. Now: {now}, Expire: {expire}, TZ: {now.tzinfo}")
-        
+
+        logger.debug(f"Creating access token. Now (UTC): {now}, Expire (UTC): {expire}")
+
         to_encode.update({"exp": expire, "type": "access"})
         encoded_jwt = jwt.encode(
             to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM
@@ -71,15 +88,15 @@ class JWTManager:
     ) -> str:
         """创建刷新令牌"""
         to_encode = data.copy()
-        # 使用系统本地时间（自动适配容器时区）
-        now = datetime.now().astimezone()
+        # 统一使用 UTC 时间，避免时区问题
+        now = datetime.utcnow()
         if expires_delta:
             expire = now + expires_delta
         else:
             expire = now + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-            
-        logger.debug(f"Creating refresh token. Now: {now}, Expire: {expire}, TZ: {now.tzinfo}")
-        
+
+        logger.debug(f"Creating refresh token. Now (UTC): {now}, Expire (UTC): {expire}")
+
         to_encode.update({"exp": expire, "type": "refresh"})
         encoded_jwt = jwt.encode(
             to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM

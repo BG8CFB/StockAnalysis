@@ -471,7 +471,7 @@ async def _run_full_sync_task(
 
     sync_service = DataSyncService()
     stock_repo = StockInfoRepository()
-    market_type = MarketType(market.lower())
+    market_type = MarketType(market)
 
     results = {
         "market": market,
@@ -670,7 +670,7 @@ async def get_batch_stock_names(
 
         # 将市场类型字符串转换为枚举
         try:
-            market_type = MarketType(request.market.lower())
+            market_type = MarketType(request.market)
         except ValueError:
             raise HTTPException(
                 status_code=400,
@@ -754,7 +754,7 @@ async def get_stock_name(
 
         # 将市场类型字符串转换为枚举
         try:
-            market_type = MarketType(market.lower())
+            market_type = MarketType(market)  # 直接使用大写格式
         except ValueError:
             raise HTTPException(
                 status_code=400,

@@ -100,10 +100,33 @@ router.beforeEach(async (to, from, next) => {
     return
   }
 
+  // ==================== 等待用户信息加载（修复第一次点击跳转问题）====================
+  // 如果已登录但用户信息还未加载完成（第一次刷新页面时），等待加载完成
+  // 这确保了后续依赖 userInfo 的判断能正确执行
+  if (isLoggedIn && !userStore.userInfo) {
+    console.log('[Router] User is logged in but userInfo not loaded, waiting...')
+    try {
+      // 使用 ensureUserInfoLoaded 确保 userInfo 加载完成
+      await userStore.ensureUserInfoLoaded()
+      console.log('[Router] userInfo loaded successfully', { 
+        role: userStore.userInfo?.role 
+      })
+    } catch (error) {
+      // 加载失败，token 可能已过期，清除状态并跳转到登录页
+      console.error('[Router] Failed to load user info:', error)
+      next({
+        name: 'Login',
+        query: { redirect: to.fullPath }
+      })
+      return
+    }
+  }
+
   // ==================== 管理员权限检查 ====================
   if (adminOnly) {
     // 检查登录状态
     if (!isLoggedIn) {
+      console.log('[Router] Admin route but not logged in, redirecting to Login')
       next({
         name: 'Login',
         query: { redirect: to.fullPath }
@@ -112,9 +135,19 @@ router.beforeEach(async (to, from, next) => {
     }
 
     // 检查管理员权限
+    // 注意：ensureUserInfoLoaded 已确保 userInfo 已加载，可以安全访问
     const role = userStore.userInfo?.role
     const hasAdminPermission = role === 'ADMIN' || role === 'SUPER_ADMIN'
+    
+    console.log('[Router] Admin permission check', {
+      path: to.path,
+      role,
+      hasAdminPermission
+    })
+    
     if (!hasAdminPermission) {
+      // 非管理员访问管理员专属路由时，记录并跳转到 Dashboard
+      console.warn(`[Router] Non-admin user attempted to access admin route: ${to.path}`)
       next({ name: 'Dashboard' })
       return
     }

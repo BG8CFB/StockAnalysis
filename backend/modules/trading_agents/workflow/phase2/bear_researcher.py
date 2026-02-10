@@ -170,6 +170,7 @@ class BearResearcher:
             f"## {report['name']}\n{report['content']}"
             for report in analyst_reports
         ])
+        bull_section = f"# 看涨观点\n{bull_view}" if bull_view else ""
 
         prompt = f"""
 请基于以下分析师报告，从看跌角度分析股票 {state.stock_code}:
@@ -177,7 +178,7 @@ class BearResearcher:
 # 分析师报告
 {reports_summary}
 
-{f"# 看涨观点\n{bull_view}" if bull_view else ""}
+{bull_section}
 
 请提供你的看跌投资方案，包括：
 1. 核心风险逻辑

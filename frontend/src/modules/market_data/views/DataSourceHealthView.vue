@@ -459,7 +459,7 @@ const dataSourceStatusLabel = (status: DataSourceStatus | null) => {
  */
 const getDataSourceStatusTagType = (status: DataSourceStatus | null) => {
   if (!status) return 'info'
-  return DataSourceStatusTagType[status] || ''
+  return DataSourceStatusTagType[status] || 'info'
 }
 
 /**

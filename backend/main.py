@@ -80,19 +80,24 @@ async def lifespan(app: FastAPI):
         await init_database_indexes()
         logger.info("✅ 数据库索引初始化完成")
 
-        # 4. 启动定时任务调度器
+        # 4. 初始化系统配置
+        logger.info("📦 初始化系统配置...")
+        await init_system_config()
+        logger.info("✅ 系统配置初始化完成")
+
+        # 5. 启动定时任务调度器
         logger.info("📦 启动定时任务调度器...")
         init_scheduler()
         logger.info("✅ 定时任务调度器启动成功")
 
-        # 5. 清理并发控制状态（防止死锁）
+        # 6. 清理并发控制状态（防止死锁）
         logger.info("📦 清理并发控制状态...")
         from modules.trading_agents.manager.concurrency_controller import get_concurrency_controller
         concurrency_controller = get_concurrency_controller()
         await concurrency_controller.cleanup_on_startup()
         logger.info("✅ 并发控制状态已清理")
 
-        # 6. 启动市场数据定时调度器
+        # 7. 启动市场数据定时调度器
         await init_market_data_scheduler()
 
         logger.info("=" * 60)
@@ -239,15 +244,10 @@ def create_app() -> FastAPI:
     logger.info("✅ 所有路由已注册")
 
     # ==================== 全局异常处理 ====================
+    from core.exceptions import setup_exception_handlers
 
-    @app.exception_handler(Exception)
-    async def global_exception_handler(request, exc):
-        """全局异常处理器"""
-        logger.error(f"未处理的异常: {exc}", exc_info=True)
-        return JSONResponse(
-            status_code=500,
-            content={"detail": f"内部服务器错误: {str(exc)}"},
-        )
+    setup_exception_handlers(app)
+    logger.info("✅ 全局异常处理器已注册")
 
     # ==================== 健康检查端点 ====================
 
@@ -283,6 +283,27 @@ async def init_database_indexes():
     await stock_indicators_repo.init_indexes()
 
     logger.info("✅ 市场数据模块索引创建完成")
+
+
+async def init_system_config():
+    """
+    初始化系统配置
+
+    在应用启动时自动初始化系统级配置，确保配置始终可用。
+    包括 TradingAgents 全局配置等。
+    """
+    # 初始化 TradingAgents 全局配置
+    from core.settings.services.global_trading_agents_service import ensure_default_config
+
+    try:
+        created = await ensure_default_config()
+        if created:
+            logger.info("✅ TradingAgents 全局配置已创建")
+        else:
+            logger.info("ℹ️ TradingAgents 全局配置已存在")
+    except Exception as e:
+        logger.error(f"❌ 初始化 TradingAgents 全局配置失败: {e}")
+        # 不抛出异常，允许系统继续启动
 
 
 # ==================== 市场数据定时调度器 ====================

@@ -84,6 +84,13 @@ class AIService:
         # 获取模型配置
         config = await self._get_model_config(user_id, model_id)
 
+        # 检查 API Key 是否配置
+        if not config.get("api_key"):
+            raise ValueError(
+                f"AI 模型 {config['model_id']} 未配置 API Key。"
+                f"请在系统设置中配置模型或设置环境变量 ZHIPU_API_KEY。"
+            )
+
         # 获取并发令牌
         async with self.concurrency_manager.acquire(config, user_id):
             # 创建或获取 ChatModel
@@ -145,6 +152,13 @@ class AIService:
         """
         # 获取模型配置
         config = await self._get_model_config(user_id, model_id)
+
+        # 检查 API Key 是否配置
+        if not config.get("api_key"):
+            raise ValueError(
+                f"AI 模型 {config['model_id']} 未配置 API Key。"
+                f"请在系统设置中配置模型或设置环境变量 ZHIPU_API_KEY。"
+            )
 
         # 获取并发令牌
         async with self.concurrency_manager.acquire(config, user_id):

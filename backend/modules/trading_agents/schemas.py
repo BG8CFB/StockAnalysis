@@ -214,7 +214,7 @@ class AnalysisTaskCreate(BaseModel):
     """创建分析任务请求"""
 
     stock_code: str = Field(..., min_length=1, max_length=20, description="股票代码")
-    market: str = Field(default="a_share", description="股票市场：a_share, hong_kong, us")
+    market: str = Field(default="A_STOCK", description="股票市场: A_STOCK, US_STOCK, HK_STOCK")
     trade_date: str = Field(..., min_length=1, max_length=20, description="交易日期")
     data_collection_model: Optional[str] = Field(None, description="数据收集阶段模型ID（第一阶段）")
     debate_model: Optional[str] = Field(None, description="辩论和总结阶段模型ID（第二三四阶段）")
@@ -227,7 +227,7 @@ class BatchTaskCreate(BaseModel):
     """创建批量任务请求"""
 
     stock_codes: List[str] = Field(..., min_length=1, max_length=50, description="股票代码列表")
-    market: str = Field(default="a_share", description="股票市场：a_share, hong_kong, us")
+    market: str = Field(default="A_STOCK", description="股票市场: A_STOCK, US_STOCK, HK_STOCK")
     trade_date: str = Field(..., min_length=1, max_length=20, description="交易日期")
     data_collection_model: Optional[str] = Field(None, description="数据收集阶段模型ID（第一阶段）")
     debate_model: Optional[str] = Field(None, description="辩论和总结阶段模型ID（第二三四阶段）")
@@ -253,7 +253,7 @@ class UnifiedTaskCreate(BaseModel):
         max_length=50,
         description="股票代码列表（1-50个）。单股分析传入单个元素的列表。",
     )
-    market: str = Field(default="a_share", description="股票市场：a_share, hong_kong, us")
+    market: str = Field(default="A_STOCK", description="股票市场: A_STOCK, US_STOCK, HK_STOCK")
     trade_date: str = Field(..., min_length=1, max_length=20, description="交易日期")
     data_collection_model: Optional[str] = Field(None, description="数据收集阶段模型ID（第一阶段）")
     debate_model: Optional[str] = Field(None, description="辩论和总结阶段模型ID（第二三四阶段）")
@@ -271,7 +271,7 @@ class AnalysisTaskResponse(BaseModel):
     id: str
     user_id: str
     stock_code: str
-    market: str = Field(default="a_share", description="股票市场：a_share, hong_kong, us")
+    market: str = Field(default="A_STOCK", description="股票市场: A_STOCK, US_STOCK, HK_STOCK")
     trade_date: str
     status: TaskStatusEnum
     current_phase: int
@@ -331,7 +331,7 @@ class AnalysisTaskResponse(BaseModel):
             id=str(data["_id"]),
             user_id=data["user_id"],
             stock_code=data["stock_code"],
-            market=data.get("market", "a_share"),
+            market=data.get("market", "A_STOCK"),
             trade_date=data["trade_date"],
             status=TaskStatusEnum(data["status"]),
             current_phase=data.get("current_phase", 1),

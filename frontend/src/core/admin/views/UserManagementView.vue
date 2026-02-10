@@ -707,4 +707,48 @@ onMounted(() => {
   display: flex;
   justify-content: flex-end;
 }
+
+/* ============================================
+   响应式设计 - 移动端
+   ============================================ */
+@media (max-width: 768px) {
+  .user-management {
+    padding: 12px;
+  }
+
+  .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .card-header h2 {
+    font-size: 16px;
+  }
+
+  .search-form {
+    margin-bottom: 16px;
+  }
+
+  .search-form :deep(.el-form-item) {
+    margin-bottom: 12px;
+    margin-right: 0;
+    width: 100%;
+  }
+
+  .search-form :deep(.el-form-item__content) {
+    width: 100%;
+  }
+
+  .search-form :deep(.el-input),
+  .search-form :deep(.el-select) {
+    width: 100% !important;
+  }
+
+  .pagination {
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}
 </style>

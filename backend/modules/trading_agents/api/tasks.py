@@ -571,7 +571,7 @@ async def retry_task(
 
         new_request = AnalysisTaskCreate(
             stock_code=original_task["stock_code"],
-            market=original_task.get("market", "a_share"),  # 添加缺失字段
+            market=original_task.get("market", "A_STOCK"),  # 添加缺失字段
             trade_date=original_task["trade_date"],
             stages=AnalysisStagesConfig(**original_stages),  # 使用 stages 字段
             data_collection_model=original_task.get("data_collection_model"),  # 保留模型选择
@@ -1087,3 +1087,52 @@ async def update_public_config(
         raise HTTPException(status_code=404, detail="公共配置更新失败")
 
     return config
+
+
+# =============================================================================
+# 智能体思考过程端点
+# =============================================================================
+
+
+@router.get("/{task_id}/agents/{agent_slug}/thinking")
+async def get_agent_thinking(
+    task_id: str,
+    agent_slug: str,
+    current_user: UserModel = Depends(get_current_active_user),
+):
+    """
+    获取智能体思考过程
+
+    Args:
+        task_id: 任务 ID
+        agent_slug: 智能体标识符
+        current_user: 当前用户
+
+    Returns:
+        智能体思考过程（Markdown 格式）
+    """
+    # 获取任务信息
+    task_manager = get_task_manager()
+    task_info = await task_manager.get_task_status(task_id)
+
+    # 验证任务所有权
+    if task_info["user_id"] != str(current_user.id):
+        raise HTTPException(status_code=403, detail="无权访问此任务")
+
+    # 从任务信息中获取智能体思考过程
+    # 注意：实际实现中，思考过程应该存储在 task_info 的某个字段中
+    # 这里提供一个示例实现
+    agent_thinking = ""
+
+    # 检查任务中是否有智能体思考过程
+    if "agent_traces" in task_info:
+        for trace in task_info["agent_traces"]:
+            if trace.get("agent_slug") == agent_slug and "thinking" in trace:
+                agent_thinking = trace["thinking"]
+                break
+
+    # 如果没有找到思考过程，返回默认内容
+    if not agent_thinking:
+        agent_thinking = f"# 智能体思考过程\n\n## {agent_slug}\n\n思考过程未记录。\n\n请确保智能体配置中启用了思考过程记录功能。"
+
+    return agent_thinking

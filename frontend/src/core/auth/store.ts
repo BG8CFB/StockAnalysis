@@ -197,29 +197,65 @@ export const useUserStore = defineStore('user', () => {
 
   /**
    * 静默初始化（不显示"登录已过期"消息，用于路由守卫）
+   * 这是 ensureUserInfoLoaded 的别名，保持向后兼容性
    */
   async function initializeSilent() {
-    if (token.value) {
-      try {
-        // 使用 skipExpiredMessage 选项，避免在 token 过期时显示错误消息
-        const [user, prefs] = await Promise.all([
-          userApi.getMe({ skipExpiredMessage: true }),
-          userApi.getPreferences({ skipExpiredMessage: true })
-        ])
-        userInfo.value = user
-        preferences.value = prefs
-        if (prefs?.theme) applyTheme(prefs.theme)
-        console.log('[UserStore] initializeSilent success', { user })
-      } catch (error) {
-        console.error('[UserStore] initializeSilent failed', error)
-        // Token 无效，清除状态
-        token.value = null
-        userInfo.value = null
-        preferences.value = null
-        localStorage.removeItem('access_token')
-        localStorage.removeItem('refresh_token')
-        throw error
+    return ensureUserInfoLoaded()
+  }
+
+  /**
+   * 确保用户信息加载完成
+   * 
+   * 设计说明：
+   * 1. 如果 userInfo 已加载，直接返回
+   * 2. 如果有 token 但 userInfo 为空，异步加载用户信息
+   * 3. 加载失败时抛出错误，由调用方处理
+   * 
+   * 使用场景：
+   * - 路由守卫中确保权限检查前 userInfo 已加载
+   * - 需要同步获取用户角色进行权限判断时
+   */
+  async function ensureUserInfoLoaded(): Promise<void> {
+    // 如果 userInfo 已加载，直接返回
+    if (userInfo.value) {
+      return
+    }
+
+    // 如果没有 token，无法加载用户信息
+    if (!token.value) {
+      return
+    }
+
+    try {
+      // 并行加载用户信息和偏好设置
+      const [user, prefs] = await Promise.all([
+        userApi.getMe({ skipExpiredMessage: true }),
+        userApi.getPreferences({ skipExpiredMessage: true })
+      ])
+      
+      userInfo.value = user
+      preferences.value = prefs
+      
+      // 应用主题
+      if (prefs?.theme) {
+        applyTheme(prefs.theme)
       }
+      
+      console.log('[UserStore] ensureUserInfoLoaded success', { 
+        userId: user.id, 
+        role: user.role 
+      })
+    } catch (error) {
+      console.error('[UserStore] ensureUserInfoLoaded failed:', error)
+      
+      // Token 无效，清除状态
+      token.value = null
+      userInfo.value = null
+      preferences.value = null
+      localStorage.removeItem('access_token')
+      localStorage.removeItem('refresh_token')
+      
+      throw error
     }
   }
 
@@ -246,5 +282,6 @@ export const useUserStore = defineStore('user', () => {
     updatePreferences,
     initialize,
     initializeSilent,
+    ensureUserInfoLoaded,
   }
 })

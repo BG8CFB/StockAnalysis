@@ -447,7 +447,8 @@ class ConcurrencyManager:
                 time_since_last_renew = now - lock_info.last_renewed
                 if time_since_last_renew < min_renew_interval:
                     logger.warning(f"续期过于频繁({time_since_last_renew:.2f}s)，可能Redis异常: model={model_id}, user={user_id}")
-                    continue
+                    # 即使检测到频繁续期，也应该正常续期，避免锁过期
+                    # 只记录警告日志，不跳过续期
 
                 # 检查Redis中槽位是否存在
                 exists = await redis.exists(user_key)

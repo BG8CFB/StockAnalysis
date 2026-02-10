@@ -3,7 +3,8 @@ MongoDB 数据库连接管理
 使用 Motor 进行异步操作
 """
 import logging
-from typing import AsyncGenerator, Optional
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator, Optional, Any, Callable
 
 from motor.motor_asyncio import (
     AsyncIOMotorClient,
@@ -64,6 +65,30 @@ class MongoDB:
     def get_collection(self, name: str) -> AsyncIOMotorCollection:
         """获取集合"""
         return self.database[name]
+
+    @asynccontextmanager
+    async def transaction(self):
+        """
+        事务上下文管理器
+
+        使用示例:
+            async with mongodb.transaction() as session:
+                await collection.insert_one(doc, session=session)
+                await collection.update_one(filter, update, session=session)
+
+        Yields:
+            AsyncIOMotorClientSession: MongoDB 会话对象
+        """
+        if self._client is None:
+            raise RuntimeError("MongoDB client not initialized. Call connect() first.")
+
+        async with await self._client.start_session() as session:
+            try:
+                async with session.start_transaction():
+                    yield session
+            except Exception as e:
+                logger.error(f"Transaction failed: {e}")
+                raise
 
 
 # 全局 MongoDB 实例

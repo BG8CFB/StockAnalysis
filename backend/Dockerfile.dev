@@ -1,0 +1,41 @@
+# 后端开发环境 Dockerfile（支持热重载和代码挂载）
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# 配置国内源
+RUN sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/debian.sources && \
+    pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ && \
+    pip config set install.trusted-host mirrors.aliyun.com
+
+# 安装系统依赖
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
+# 设置时区
+ENV TZ=Asia/Shanghai
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+# 安装 Poetry（使用阿里云源）
+RUN pip install --no-cache-dir "poetry>=2.0.0"
+
+# 配置 Poetry
+RUN poetry config virtualenvs.create false
+
+# 复制依赖文件
+COPY pyproject.toml ./
+
+# 安装依赖
+RUN poetry install --no-root
+
+# 暴露端口
+EXPOSE 8000
+
+# 开发环境保持 root 用户，以便代码挂载后可以正常读写
+# 注意：仅用于开发环境，生产环境应使用 Dockerfile（非 root 用户）
+
+# 启动命令（使用 uvicorn 并支持热重载）
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

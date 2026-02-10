@@ -96,7 +96,7 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
   if (initialTask?.phase_executions) {
     initialTask.phase_executions.forEach((phase) => {
       if (phase.agents) {
-        phase.agents.forEach((agent) => {
+        phase.agents.forEach((agent: any) => {
           // 获取显示名称
           const displayName = getAgentDisplayName(agent.slug, agent.name)
           
@@ -208,7 +208,7 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
   // 计算属性：已完成的智能体
   const completedAgents = computed(() => {
     const completed: AgentStatus[] = []
-    state.value.agents.forEach((agent) => {
+    state.value.agents.forEach((agent: any) => {
       if (agent.status === 'completed') {
         completed.push(agent)
       }
@@ -219,7 +219,7 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
   // 计算属性：所有智能体（按完成时间倒序）
   const allAgents = computed(() => {
     const all: AgentStatus[] = []
-    state.value.agents.forEach((agent) => {
+    state.value.agents.forEach((agent: any) => {
       all.push(agent)
     })
     // 按完成时间倒序排列（已完成的在前）
@@ -487,7 +487,7 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
     }
 
     // 标记所有运行中的智能体为失败
-    state.value.agents.forEach((agent) => {
+    state.value.agents.forEach((agent: any) => {
       if (agent.status === 'running') {
         agent.status = 'failed'
         agent.endTime = event.timestamp * 1000

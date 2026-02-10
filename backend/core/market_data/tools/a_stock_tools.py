@@ -5,18 +5,11 @@ A股市场数据工具
 """
 
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from core.market_data.models import MarketType
 from core.market_data.tools.base_tool import DataSource, MarketDataToolBase
-
-if TYPE_CHECKING:
-    from core.market_data.managers.source_router import DataSourceRouter
-else:
-    # 运行时使用 Any 作为类型
-    from typing import Any
-
-    DataSourceRouter = Any  # type: ignore
+from core.market_data.managers.source_router import DataSourceRouter
 
 logger = logging.getLogger(__name__)
 

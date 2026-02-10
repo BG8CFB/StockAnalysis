@@ -766,7 +766,7 @@ async function fetchBatchStockNames() {
 
 // 表单数据
 const formData = reactive({
-  market: StockMarketEnum.A_SHARE,
+  market: StockMarketEnum.A_STOCK,
   stock_codes: [] as string[],
   trade_date: new Date().toISOString().split('T')[0],
   data_collection_model: '', // 数据收集阶段模型
@@ -776,9 +776,9 @@ const formData = reactive({
 
 // 市场选项
 const marketOptions = [
-  { label: 'A股', value: StockMarketEnum.A_SHARE },
-  { label: '港股', value: StockMarketEnum.HONG_KONG },
-  { label: '美股', value: StockMarketEnum.US },
+  { label: 'A股', value: StockMarketEnum.A_STOCK },
+  { label: '港股', value: StockMarketEnum.HK_STOCK },
+  { label: '美股', value: StockMarketEnum.US_STOCK },
 ]
 
 // 输入的文本

@@ -76,9 +76,9 @@ export enum PresetPlatformEnum {
 }
 
 export enum StockMarketEnum {
-  A_SHARE = 'a_share',      // A股
-  HONG_KONG = 'hong_kong',  // 港股
-  US = 'us',                // 美股
+  A_STOCK = 'A_STOCK',      // A股
+  US_STOCK = 'US_STOCK',    // 美股
+  HK_STOCK = 'HK_STOCK',    // 港股
 }
 
 export enum ThinkingModeEnum {

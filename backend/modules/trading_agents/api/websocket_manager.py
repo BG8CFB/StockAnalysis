@@ -8,7 +8,7 @@ import asyncio
 import json
 import logging
 from collections import defaultdict
-from typing import Dict, Set, Any, Optional, List
+from typing import Dict, Set, Any, Optional, List, Callable
 
 from fastapi import WebSocket, WebSocketDisconnect
 
@@ -29,6 +29,7 @@ class WebSocketManager:
     - 按需连接（用户打开详情页面时连接）
     - 单用户最多 5 个连接限制
     - 事件广播（无连接时丢弃事件，不缓存）
+    - 任务级权限验证
     """
 
     # 单用户最大连接数
@@ -40,6 +41,61 @@ class WebSocketManager:
 
         # {websocket: (task_id, user_id)} 反向映射
         self._connection_info: Dict[WebSocket, tuple[str, str]] = {}
+
+        # 任务权限验证回调函数
+        self._task_auth_callback: Optional[Callable[[str, str], bool]] = None
+
+    def set_task_auth_callback(self, callback: Callable[[str, str], bool]) -> None:
+        """
+        设置任务权限验证回调函数
+
+        Args:
+            callback: 回调函数，接收 task_id 和 user_id，返回是否有权限
+        """
+        self._task_auth_callback = callback
+
+    async def _verify_task_access(self, task_id: str, user_id: str) -> bool:
+        """
+        验证用户是否有权访问任务
+
+        Args:
+            task_id: 任务 ID
+            user_id: 用户 ID
+
+        Returns:
+            是否有访问权限
+        """
+        # 如果有自定义验证回调，使用回调
+        if self._task_auth_callback:
+            return self._task_auth_callback(task_id, user_id)
+
+        # 默认验证：从数据库查询任务所属用户
+        try:
+            from core.db.mongodb import mongodb
+            from bson import ObjectId
+
+            task = await mongodb.database.analysis_tasks.find_one(
+                {"_id": ObjectId(task_id)}
+            )
+
+            if not task:
+                logger.warning(f"任务不存在: task_id={task_id}")
+                return False
+
+            # 验证任务是否属于该用户
+            task_user_id = task.get("user_id")
+            if task_user_id != user_id:
+                logger.warning(
+                    f"用户无权访问任务: task_id={task_id}, "
+                    f"task_user={task_user_id}, request_user={user_id}"
+                )
+                return False
+
+            return True
+
+        except Exception as e:
+            logger.error(f"验证任务权限时发生错误: task_id={task_id}, error={e}")
+            return False
 
     async def connect(
         self,
@@ -54,7 +110,19 @@ class WebSocketManager:
             websocket: WebSocket 连接对象
             task_id: 任务 ID
             user_id: 用户 ID
+
+        Raises:
+            WebSocketDisconnect: 权限验证失败时关闭连接
         """
+        # 首先验证用户是否有权访问该任务
+        has_access = await self._verify_task_access(task_id, user_id)
+        if not has_access:
+            logger.warning(
+                f"WebSocket 连接被拒绝: 用户无权访问任务, task={task_id}, user={user_id}"
+            )
+            await websocket.close(code=1008, reason="无权访问该任务")
+            return
+
         # 检查用户连接数
         user_connections = self._get_user_connection_count(user_id)
 

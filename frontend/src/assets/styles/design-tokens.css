@@ -95,15 +95,39 @@
   --font-family-code: 'Fira Code', 'JetBrains Mono', 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace;
   --font-family-number: 'Roboto Mono', 'SF Mono', Consolas, monospace;
 
-  /* 字体大小 Font Sizes */
-  --font-size-xs: 12px;
-  --font-size-sm: 13px;
-  --font-size-base: 14px;
-  --font-size-lg: 16px;
-  --font-size-xl: 18px;
-  --font-size-xxl: 20px;
-  --font-size-xxxl: 24px;
-  --font-size-display: 30px;
+  /* =========================================
+     流体排版系统 Fluid Typography System
+     ========================================= */
+  /*
+     流体排版说明 (根据 2024-2025 最佳实践):
+     - 使用 clamp() 实现字体大小随视口平滑缩放
+     - 公式: clamp(MIN, FLUID, MAX)
+     - MIN: 移动端最小可读尺寸
+     - FLUID: 随视口宽度变化的流体值 (vw 单位)
+     - MAX: 大屏最大尺寸，避免文字过大
+
+     推荐比例:
+     - 基础字体: clamp(14px, 0.8vw + 12px, 16px) ≈ 14-16px
+     - 标题 h1: clamp(24px, 2.5vw + 20px, 48px)
+     - 标题 h2: clamp(20px, 2vw + 16px, 36px)
+     - 标题 h3: clamp(18px, 1.5vw + 14px, 28px)
+     - 小字 xs: clamp(11px, 0.5vw + 10px, 13px)
+
+     单位选择原则 (2024-2025):
+     - rem: 推荐用于字体，尊重用户浏览器设置和缩放
+     - px: 用于边框、阴影、精确视觉效果
+     - vw/vh: 用于流体缩放，需配合 clamp() 限制范围
+  */
+
+  /* 流体字体大小 - 基础 (移动端 ~14px，桌面端 ~16px) */
+  --font-size-xs: clamp(11px, 0.5vw + 10px, 13px);
+  --font-size-sm: clamp(12px, 0.6vw + 11px, 14px);
+  --font-size-base: clamp(14px, 0.8vw + 12px, 16px);
+  --font-size-lg: clamp(15px, 1vw + 13px, 18px);
+  --font-size-xl: clamp(17px, 1.2vw + 14px, 22px);
+  --font-size-xxl: clamp(20px, 1.5vw + 16px, 26px);
+  --font-size-xxxl: clamp(24px, 2vw + 18px, 32px);
+  --font-size-display: clamp(28px, 2.5vw + 22px, 42px);
 
   /* 行高 Line Heights */
   --line-height-tight: 1.25;
@@ -117,21 +141,27 @@
   --font-weight-bold: 700;
 
   /* =========================================
-     间距系统 Spacing System (4px base unit)
+     流体间距系统 Fluid Spacing System
      ========================================= */
+  /*
+     流体间距说明:
+     - 间距随视口宽度平滑缩放
+     - 保持元素间的比例关系
+     - 小屏减小间距，大屏适度增加
+  */
 
   --space-0: 0;
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 20px;
-  --space-6: 24px;
-  --space-8: 32px;
-  --space-10: 40px;
-  --space-12: 48px;
-  --space-16: 64px;
-  --space-20: 80px;
+  --space-1: clamp(2px, 0.4vw + 3px, 6px);
+  --space-2: clamp(4px, 0.6vw + 5px, 10px);
+  --space-3: clamp(8px, 0.8vw + 6px, 14px);
+  --space-4: clamp(12px, 1vw + 8px, 18px);
+  --space-5: clamp(16px, 1.2vw + 10px, 24px);
+  --space-6: clamp(20px, 1.5vw + 12px, 30px);
+  --space-8: clamp(24px, 2vw + 16px, 40px);
+  --space-10: clamp(32px, 2.5vw + 20px, 50px);
+  --space-12: clamp(40px, 3vw + 24px, 60px);
+  --space-16: clamp(48px, 4vw + 32px, 80px);
+  --space-20: clamp(64px, 5vw + 40px, 100px);
 
   /* =========================================
      圆角系统 Border Radius
@@ -189,7 +219,25 @@
      布局系统 Layout System
      ========================================= */
 
-  /* 最大宽度 */
+  /*
+     布局宽度说明 (2024-2025 最佳实践):
+     - 内容宽度限制在 900-1200px 是为了阅读舒适度
+     - 超过这个宽度会增加用户眼球移动负担，降低可读性
+     - 4K 屏幕上 max-width 不是问题，配合流体字体即可
+
+     宽度策略:
+     - 侧边栏固定宽度: 240px (电脑端) / 可变 (移动端抽屉)
+     - 主内容区: 流体宽度，最大 1200px，居中显示
+     - 表格/卡片: 可使用 100% 或固定最大宽度
+
+     为什么 max-width: 1200px 不是问题:
+     - 符合人眼阅读舒适区 (约 60-75 字符/行)
+     - 大屏时内容居中显示，两侧留白合理
+     - 配合流体字体，大屏文字不会显得过小
+  */
+
+  /* 最大宽度 - 限制内容区宽度以保证阅读舒适度 */
+  --max-width-content: clamp(100%, 90vw, 1200px); /* 主内容区: 流体，最大 1200px */
   --max-width-xs: 480px;
   --max-width-sm: 640px;
   --max-width-md: 768px;
@@ -200,7 +248,7 @@
   /* 侧边栏 */
   --sidebar-width: 240px;
   --sidebar-width-collapsed: 64px;
-  --header-height: 60px;
+  --header-height: clamp(48px, 5vh + 46px, 64px);
 
   /* =========================================
      Z-index 层级系统
@@ -214,6 +262,31 @@
   --z-popover: 1060;
   --z-tooltip: 1070;
 }
+
+/* =========================================
+   响应式断点 Breakpoints (viewport width - CSS pixels)
+   ========================================= */
+/* 
+   断点对照表 / Breakpoint Reference:
+   xs:  0-479px      - 小屏手机 (320, 360, 375, 390)
+   sm:  480-767px    - 大屏手机 (393, 402, 410, 412, 414, 428, 430, 440)
+   md:  768-1023px   - 平板竖屏 / 小笔记本
+   lg:  1024-1279px  - 小桌面 / 1080p 未满屏
+   xl:  1280-1919px  - 1080p 全屏 / 小 2K
+   2K:  1920-2559px  - 2K 显示器 / 1080p 缩放
+   4K:  2560px+      - 4K / 超宽屏
+   
+   典型设备视口宽度参考 / Typical Viewport Widths:
+   手机: 320-440px (无论物理分辨率是 1080p/2K，浏览器视口约 360-440px)
+   平板: 768-1024px
+   桌面: 1920px (1080p) / 2560px (2K) / 3840px (4K)
+   
+   实施说明 / Implementation Notes:
+   - 媒体查询使用视口宽度 (CSS 像素)，非物理分辨率
+   - 手机端断点: 768px (xs+sm) / 平板断点: 1024px (md) / 桌面断点: 1920px (lg+) 
+   - 大屏优化: 可使用 min-width: 1920px / 2560px 针对 2K/4K 微调
+   - 触控区最小高度: 44px (移动端可适当减小但不少于 36px)
+*/
 
 /* =========================================
    Dark Mode Support (预留)
@@ -255,4 +328,115 @@
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* =========================================
+   小屏手机适配 Small Screen (≤360px)
+   ========================================= */
+/*
+   小屏手机适配说明:
+   - 针对 320px, 360px, 375px 等小屏幕
+   - 减小内边距和字号
+   - 确保触控区不少于 36px
+   - 简化布局，避免元素过于拥挤
+*/
+
+/* 小屏通用减小 */
+@media (max-width: 360px) {
+  /* 减小全局间距 */
+  body {
+    font-size: 13px;
+  }
+
+  /* 减小 Element Plus 默认间距 */
+  .el-card {
+    --el-card-padding: 12px;
+  }
+
+  .el-button {
+    --el-button-padding-horizontal: 12px;
+  }
+
+  .el-input {
+    --el-input-width: 100%;
+  }
+
+  .el-select {
+    --el-select-width: 100%;
+  }
+
+  /* 减小表格单元格内边距 */
+  .el-table {
+    --el-table-cell-padding: 8px 12px;
+  }
+
+  /* 减小标签间距 */
+  .el-tag {
+    --el-tag-padding: 2px 8px;
+    font-size: 11px;
+  }
+
+  /* 减小对话框内边距 */
+  .el-dialog {
+    --el-dialog-padding: 16px;
+  }
+
+  /* 减小消息提示内边距 */
+  .el-message {
+    --el-message-padding: 10px 14px;
+  }
+}
+
+/* =========================================
+   触控区最小尺寸 Touch Target (≥36px)
+   ========================================= */
+/*
+   触控区要求:
+   - 移动端可点击元素最小 36px × 36px
+   - 间距足够避免误触
+   - 表单项、按钮等需确保触控区大小
+*/
+
+/* 确保按钮触控区足够 */
+@media (max-width: 768px) {
+  .el-button {
+    min-height: 36px;
+    min-width: 36px;
+  }
+
+  .el-menu-item {
+    min-height: 44px;
+  }
+
+  .el-tabs__item {
+    min-height: 44px;
+  }
+
+  /* 表格操作按钮确保可点击 */
+  .el-table .el-button--small {
+    min-width: 28px;
+    min-height: 28px;
+    padding: 6px 8px;
+  }
+
+  /* 下拉选项确保可点击 */
+  .el-select-dropdown__item {
+    min-height: 40px;
+    line-height: 40px;
+  }
+
+  /* 减少元素间紧密排列 */
+  .el-form-item {
+    margin-bottom: 16px;
+  }
+
+  /* 分页按钮 */
+  .el-pagination button {
+    min-width: 28px;
+    height: 28px;
+  }
+
+  .el-pagination .el-input__inner {
+    min-height: 28px;
+  }
 }

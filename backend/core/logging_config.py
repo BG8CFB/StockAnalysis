@@ -3,7 +3,7 @@
 
 日志分层策略:
 - 终端 (StreamHandler): INFO 级别，显示请求、错误、简单状态
-- 文件 (FileHandler): DEBUG 级别，存储详细的调试信息
+- 文件 (RotatingFileHandler): DEBUG 级别，存储详细的调试信息，自动轮转
 
 日志级别使用规范:
 - ERROR: 影响功能的错误，需要立即关注 ❌
@@ -15,6 +15,7 @@ import asyncio
 import functools
 import logging
 import sys
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Callable, Optional, TypeVar
 
@@ -98,15 +99,19 @@ def setup_logging(
     console_handler.setLevel(logging.INFO)  # 终端只显示 INFO 及以上
 
     # ==================== 文件处理器 ====================
-    # 级别: DEBUG，存储详细的调试信息
+    # 级别: DEBUG，存储详细的调试信息，自动轮转
     log_dir = Path("logs")
     log_dir.mkdir(exist_ok=True)
 
     # 根据环境确定日志文件名
     env_name = "development" if settings.DEBUG else "production"
 
-    file_handler = logging.FileHandler(
+    # 使用 RotatingFileHandler 实现日志轮转
+    # maxBytes=10MB, backupCount=5 (保留5个备份文件)
+    file_handler = RotatingFileHandler(
         log_dir / f"app_{env_name}.log",
+        maxBytes=10 * 1024 * 1024,  # 10MB
+        backupCount=5,
         encoding='utf-8'
     )
     file_formatter = logging.Formatter(

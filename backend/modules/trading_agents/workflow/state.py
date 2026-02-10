@@ -3,8 +3,12 @@ TradingAgents 工作流状态定义
 
 不使用 LangGraph，使用简单的字典和 asyncio 调度。
 状态在调度器和各阶段 runner 之间传递。
+
+**版本**: v3.1 (统一状态定义)
+**最后更新**: 2026-01-28
 """
 
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -32,6 +36,53 @@ class RecommendationType(str, Enum):
     STRONG_SELL = "STRONG_SELL"
 
 
+# =============================================================================
+# 辅助数据类（从 models/state.py 迁移）
+# =============================================================================
+
+@dataclass
+class TokenUsage:
+    """Token 使用统计"""
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+
+    def add(self, other: 'TokenUsage') -> 'TokenUsage':
+        """累加 Token 使用量"""
+        return TokenUsage(
+            prompt_tokens=self.prompt_tokens + other.prompt_tokens,
+            completion_tokens=self.completion_tokens + other.completion_tokens,
+            total_tokens=self.total_tokens + other.total_tokens
+        )
+
+
+@dataclass
+class AgentExecution:
+    """智能体执行记录"""
+    slug: str
+    name: str
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    status: str = "pending"
+    token_usage: Optional[TokenUsage] = None
+    error_message: Optional[str] = None
+    output: Optional[str] = None
+
+
+@dataclass
+class PhaseExecution:
+    """阶段执行记录"""
+    phase: int
+    phase_name: str
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    execution_mode: str = "concurrent"  # concurrent / serial
+    max_concurrency: int = 1
+    agents: List[AgentExecution] = field(default_factory=list)
+    token_usage: TokenUsage = field(default_factory=TokenUsage)
+    status: str = "pending"
+
+
 class WorkflowState:
     """
     工作流状态类
@@ -46,19 +97,27 @@ class WorkflowState:
         user_id: str,
         stock_code: str,
         trade_date: str,
-        model_config: Dict[str, Any],
-        agent_config: Dict[str, Any],
+        model_config: Dict[str, Any] = None,
+        agent_config: Dict[str, Any] = None,
+        market: str = "A_STOCK",
         max_debate_rounds: int = 2,
         enable_phase1: bool = True,
         enable_phase2: bool = True,
         enable_phase3: bool = True,
         enable_phase4: bool = True,
     ):
+        # 处理 None 值为空字典
+        if model_config is None:
+            model_config = {}
+        if agent_config is None:
+            agent_config = {}
+
         # ===== 基础信息 =====
         self.task_id = task_id
         self.user_id = user_id
         self.stock_code = stock_code
         self.trade_date = trade_date
+        self.market = market
         self.current_phase = "pending"
         self.status = TaskStatus.PENDING.value
         self.start_time = datetime.now().isoformat()
@@ -106,7 +165,6 @@ class WorkflowState:
 
         # ===== 股票信息 =====
         self.stock_name: Optional[str] = None
-        self.market: Optional[str] = None
 
         # ===== 执行状态 =====
         self.phase_executions: List[Dict[str, Any]] = []
@@ -204,8 +262,9 @@ def create_initial_state(
     user_id: str,
     stock_code: str,
     trade_date: str,
-    model_config: Dict[str, Any],
-    agent_config: Dict[str, Any],
+    model_config: Dict[str, Any] = None,
+    agent_config: Dict[str, Any] = None,
+    market: str = "A_STOCK",
     max_debate_rounds: int = 2,
     enable_phase1: bool = True,
     enable_phase2: bool = True,
@@ -222,6 +281,7 @@ def create_initial_state(
         trade_date: 交易日期
         model_config: 模型配置
         agent_config: 智能体配置
+        market: 市场类型
         max_debate_rounds: 最大辩论轮次
         enable_phase1: 启用第一阶段
         enable_phase2: 启用第二阶段
@@ -231,6 +291,12 @@ def create_initial_state(
     Returns:
         WorkflowState 实例
     """
+    # 处理 None 值为空字典
+    if model_config is None:
+        model_config = {}
+    if agent_config is None:
+        agent_config = {}
+
     return WorkflowState(
         task_id=task_id,
         user_id=user_id,
@@ -238,6 +304,7 @@ def create_initial_state(
         trade_date=trade_date,
         model_config=model_config,
         agent_config=agent_config,
+        market=market,
         max_debate_rounds=max_debate_rounds,
         enable_phase1=enable_phase1,
         enable_phase2=enable_phase2,

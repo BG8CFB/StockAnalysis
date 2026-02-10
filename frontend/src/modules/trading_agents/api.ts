@@ -290,6 +290,13 @@ export const taskApi = {
       failed_tasks: Array<{ task_id: string; reason: string }>
       message: string
     }>(`${TRADING_AGENTS_BASE_URL}/tasks/batch-delete`, params),
+
+  /**
+   * 获取智能体思考过程
+   * 后端: GET /trading-agents/tasks/{task_id}/agents/{agent_slug}/thinking
+   */
+  getAgentThinking: (taskId: string, agentSlug: string) =>
+    httpGet<string>(`${TRADING_AGENTS_BASE_URL}/tasks/${taskId}/agents/${agentSlug}/thinking`),
 }
 
 // =============================================================================

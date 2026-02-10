@@ -120,27 +120,22 @@
             <span>全局设置</span>
           </template>
 
-          <!-- 管理员专区 -->
-          <template v-if="isAdmin">
-            <el-menu-item index="/settings/users">
-              <span class="sub-dot" />
-              <span>用户管理</span>
-            </el-menu-item>
-            <el-menu-item index="/settings/system">
-              <span class="sub-dot" />
-              <span>系统参数</span>
-            </el-menu-item>
-          </template>
-
-          <!-- 核心基础设施 -->
-          <el-menu-item index="/settings/ai-models">
+          <!-- 管理员专区 - 使用 v-show 保持 DOM 结构稳定 -->
+          <!-- 注意：isAdmin 计算属性会在 userInfo 加载前临时返回 false -->
+          <!-- 使用 v-show 而不是 v-if 可以避免菜单闪烁和状态不一致 -->
+          <el-menu-item v-show="isAdmin" index="/settings/users">
             <span class="sub-dot" />
-            <span>AI 模型管理</span>
+            <span>用户管理</span>
+          </el-menu-item>
+          <el-menu-item v-show="isAdmin" index="/settings/system">
+            <span class="sub-dot" />
+            <span>系统参数</span>
           </el-menu-item>
 
-          <el-menu-item index="/settings/mcp-servers">
+          <!-- 核心基础设施 -->
+          <el-menu-item index="/settings/ai-management/models">
             <span class="sub-dot" />
-            <span>MCP 服务器管理</span>
+            <span>AI 管理</span>
           </el-menu-item>
 
           <!-- 业务配置 -->
@@ -285,7 +280,7 @@ async function handleLogout() {
   --sb-border-glow: rgba(59, 130, 246, 0.2);
   --sb-active-bg: #dbeafe; /* Blue 100 */
   --sb-hover-bg: #e2e8f0; /* Slate 200 */
-  --sb-header-height: 72px;
+  --sb-header-height: clamp(56px, 6vh + 50px, 72px);
   --sb-primary: #2563eb; /* Blue 600 */
   --sb-primary-glow: rgba(37, 99, 235, 0.3);
   --sb-accent: #7c3aed; /* Violet 600 */
@@ -322,8 +317,8 @@ async function handleLogout() {
   position: absolute;
   top: -50%;
   right: -20%;
-  width: 200px;
-  height: 200px;
+  width: clamp(120px, 15vw + 80px, 200px);
+  height: clamp(120px, 15vw + 80px, 200px);
   background: radial-gradient(circle, var(--sb-primary-glow) 0%, transparent 70%);
   opacity: 0.15;
   pointer-events: none;
@@ -332,15 +327,15 @@ async function handleLogout() {
 .logo-wrapper {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   position: relative;
   z-index: 1;
 }
 
 /* Logo 图标 - 渐变背景 + 发光效果 */
 .logo-icon {
-  width: 38px;
-  height: 38px;
+  width: clamp(32px, 2vw + 28px, 42px);
+  height: clamp(32px, 2vw + 28px, 42px);
   background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
   border-radius: 50%;
   display: flex;
@@ -358,7 +353,7 @@ async function handleLogout() {
 
 /* Logo 呼吸动画 */
 @keyframes logo-pulse {
-  0%, 100% {
+ 0%, 100% {
     box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
   }
   50% {
@@ -374,7 +369,7 @@ async function handleLogout() {
 }
 
 .logo-text {
-  font-size: 17px;
+  font-size: var(--font-size-lg);
   font-weight: 700;
   color: #1e293b; /* Slate 800 */
   margin: 0;
@@ -385,7 +380,7 @@ async function handleLogout() {
 
 /* 副标题 - 英文 */
 .logo-subtitle {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: #64748b; /* Slate 500 */
   margin: 0;
   letter-spacing: 0.15em;
@@ -400,7 +395,7 @@ async function handleLogout() {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 20px 12px;
+  padding: var(--space-5) var(--space-3);
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
@@ -428,13 +423,13 @@ async function handleLogout() {
    ============================================ */
 .menu-label {
   position: relative;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   text-transform: uppercase;
   color: #94a3b8; /* Slate 400 */
   font-weight: 700;
   letter-spacing: 0.2em;
-  margin: 20px 12px 10px;
-  padding-left: 12px;
+  margin: var(--space-5) var(--space-3) var(--space-3);
+  padding-left: var(--space-3);
   display: flex;
   align-items: center;
 }
@@ -445,22 +440,22 @@ async function handleLogout() {
   position: absolute;
   left: 0;
   width: 2px;
-  height: 10px;
+  height: clamp(8px, 0.5vw + 6px, 12px);
   background: linear-gradient(to bottom, #2563eb, #7c3aed);
   border-radius: 2px;
   box-shadow: 0 0 6px rgba(37, 99, 235, 0.3);
 }
 
-.mt-4 { margin-top: 24px; }
+.mt-4 { margin-top: var(--space-5); }
 
 /* ============================================
    Menu Items - 一级菜单项
    ============================================ */
 :deep(.el-menu-item),
 :deep(.el-sub-menu__title) {
-  height: 42px;
-  line-height: 42px;
-  border-radius: 6px;
+  height: clamp(38px, 2vw + 34px, 46px);
+  line-height: clamp(38px, 2vw + 34px, 46px);
+  border-radius: var(--radius-base);
   margin-bottom: 4px;
   color: var(--sb-text);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -494,8 +489,8 @@ async function handleLogout() {
 /* Icons - 只针对菜单项内的图标 */
 :deep(.el-menu-item .el-icon),
 :deep(.el-sub-menu__title .el-icon) {
-  font-size: 18px;
-  margin-right: 12px;
+  font-size: clamp(16px, 0.5vw + 15px, 20px);
+  margin-right: var(--space-3);
   color: inherit;
 }
 
@@ -516,17 +511,17 @@ async function handleLogout() {
    ============================================ */
 :deep(.el-sub-menu .el-menu) {
   background: var(--sb-bg-submenu) !important;
-  border-radius: 6px;
-  padding: 8px 0;
+  border-radius: var(--radius-base);
+  padding: var(--space-2) 0;
   margin-top: 4px;
 }
 
 /* Level 2 Items - 二级菜单项 */
 :deep(.el-sub-menu .el-menu-item) {
-  height: 36px;
-  line-height: 36px;
-  font-size: 13px;
-  padding-left: 48px !important;
+  height: clamp(32px, 1.5vw + 28px, 40px);
+  line-height: clamp(32px, 1.5vw + 28px, 40px);
+  font-size: var(--font-size-sm);
+  padding-left: var(--space-6) !important;
   border-left-width: 2px;
   margin-bottom: 2px;
 }
@@ -537,7 +532,7 @@ async function handleLogout() {
   height: 3px;
   border-radius: 50%;
   background-color: #94a3b8; /* Slate 400 */
-  margin-right: 12px;
+  margin-right: var(--space-3);
   transition: all 0.2s;
   display: inline-block;
 }
@@ -551,18 +546,18 @@ async function handleLogout() {
    Footer - 底部用户卡片
    ============================================ */
 .sidebar-footer {
-  padding: 12px;
+  padding: var(--space-3);
   border-top: 1px solid var(--sb-border);
 }
 
 .user-card {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px;
+  gap: var(--space-3);
+  padding: var(--space-3);
   background: #ffffff;
   border: 1px solid var(--sb-border);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -585,18 +580,18 @@ async function handleLogout() {
 
 .user-name {
   color: #1e293b; /* Slate 800 */
-  font-size: 14px;
+  font-size: var(--font-size-base);
   font-weight: 600;
   white-space: nowrap;
 }
 
 .user-role {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: #2563eb; /* Blue 600 */
   background: #dbeafe; /* Blue 100 */
   border: 1px solid #bfdbfe; /* Blue 200 */
-  padding: 2px 8px;
-  border-radius: 8px;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-base);
   display: inline-block;
   margin-top: 2px;
 }
@@ -640,10 +635,43 @@ async function handleLogout() {
 
 .collapsed .user-card {
   justify-content: center;
-  padding: 8px;
+  padding: var(--space-2);
 }
 
 .collapsed .user-avatar {
   margin: 0;
+}
+
+/* ============================================
+   Mobile Drawer - 移动端抽屉模式
+   ============================================ */
+@media (max-width: 768px) {
+  .sidebar-container {
+    position: fixed;
+    left: 0;
+    top: 0;
+    height: 100vh;
+    z-index: 1000;
+    /* 默认隐藏到左侧 */
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 4px 0 16px rgba(0, 0, 0, 0.15);
+  }
+
+  /* 移动端展开状态 */
+  .sidebar-container.mobile-open {
+    transform: translateX(0);
+  }
+
+  /* 移动端宽度调整为适配屏幕 */
+  .sidebar-container {
+    width: clamp(260px, 70vw + 60px, 320px);
+  }
+
+  /* 确保在移动端遮罩之上时用户卡片等元素不溢出 */
+  .sidebar-scroll-area {
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
 }
 </style>
