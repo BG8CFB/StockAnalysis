@@ -142,8 +142,8 @@ const renderedContent = computed(() => {
 /**
  * 获取推荐结果对应的标签类型
  */
-function getRecommendationType(): string {
-  const typeMap: Record<string, string> = {
+function getRecommendationType(): 'primary' | 'success' | 'warning' | 'info' | 'danger' {
+  const typeMap: Record<string, 'primary' | 'success' | 'warning' | 'info' | 'danger'> = {
     '买入': 'success',
     '卖出': 'danger',
     '持有': 'info',

@@ -824,6 +824,7 @@ async function handleSubmit() {
         stage3: {
           enabled: stagesConfig.stage3.enabled,
           debate: stagesConfig.stage3.debate,
+          concurrency: stagesConfig.stage3.concurrency,
         },
         stage4: {
           enabled: true,

@@ -13,6 +13,7 @@ import { eventBus, Events } from '@core/events/bus'
 export interface ApiResponse<T = unknown> {
   success: boolean
   data?: T
+  message?: string // 添加 message 字段以支持直接格式响应
   error?: {
     code: string
     message: string
@@ -36,7 +37,7 @@ interface ExtendedAxiosRequestConfig extends AxiosRequestConfig {
 
 // ==================== 创建 Axios 实例 ====================
 
-const baseURL: string = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api'
+const baseURL: string = (import.meta.env?.VITE_API_BASE_URL as string | undefined) || '/api'
 
 const http: AxiosInstance = axios.create({
   baseURL,
@@ -160,7 +161,11 @@ http.interceptors.response.use(
         processQueue(null, response.access_token)
 
         // 重试原请求
-        extendedConfig.headers.Authorization = `Bearer ${response.access_token}`
+        if (extendedConfig.headers) {
+          extendedConfig.headers.Authorization = `Bearer ${response.access_token}`
+        } else {
+          extendedConfig.headers = { Authorization: `Bearer ${response.access_token}` }
+        }
         return http(extendedConfig)
       } catch (refreshError) {
         // 刷新失败，清除状态并跳转登录

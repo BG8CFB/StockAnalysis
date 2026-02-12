@@ -174,11 +174,3 @@ export const adminApi = {
   deleteUser: (id: string) =>
     httpDelete(`/admin/users/${id}`),
 }
-
-// 导出类型
-export type {
-  UserListQuery,
-  CreateUserRequest,
-  UpdateUserRequest,
-  UserListItemResponse,
-}

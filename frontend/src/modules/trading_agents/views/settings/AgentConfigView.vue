@@ -320,8 +320,8 @@ function getCurrentPhaseDesc() {
 
 // 获取阶段智能体数量
 function getPhaseAgentCount(phaseKey: string) {
-  const phase = currentConfig.value?.[phaseKey as keyof typeof currentConfig.value]
-  return phase?.agents?.filter(a => a.enabled).length || 0
+  const phase = currentConfig.value?.[phaseKey as keyof typeof currentConfig.value] as { agents?: Array<{ enabled: boolean }> } | undefined
+  return phase?.agents?.filter((a: { enabled: boolean }) => a.enabled).length || 0
 }
 
 // 配置模式切换
@@ -399,7 +399,7 @@ async function handleRestoreDefault() {
         type: 'error',
       }
     )
-    await store.restorePublicConfig()
+    await store.resetAgentConfig()
     ElMessage.success('公共配置已恢复为默认值')
   } catch (error: any) {
     if (error !== 'cancel') {

@@ -1,9 +1,14 @@
 /**
  * 用户状态管理
+ *
+ * 设计原则：
+ * - 认证状态由 token 决定（同步）
+ * - userInfo 按需加载：登录成功后 / 路由守卫中（页面刷新时）
+ * - 路由守卫可异步等待 userInfo 加载完成
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { authApi, userApi, type UserInfo, type UserPreferences, type User } from './api'
+import { authApi, userApi, type UserInfo, type UserPreferences } from './api'
 import { eventBus, Events } from '@core/events/bus'
 
 export const useUserStore = defineStore('user', () => {
@@ -19,35 +24,30 @@ export const useUserStore = defineStore('user', () => {
   const isLoggedIn = computed(() => !!token.value)
   const email = computed(() => userInfo.value?.email ?? '')
   const userId = computed(() => userInfo.value?.id ?? '')
-  const isAdmin = computed(() => userInfo.value?.role === 'ADMIN' || userInfo.value?.role === 'SUPER_ADMIN')
+  const isAdmin = computed(() => {
+    const role = userInfo.value?.role
+    return role === 'ADMIN' || role === 'SUPER_ADMIN'
+  })
   const theme = computed(() => preferences.value?.theme ?? 'light')
 
   // ==================== 方法 ====================
 
   /**
-   * 用户登录 - 支持用户名或邮箱
+   * 用户登录
    */
-  async function login(
-    account: string,
-    password: string
-  ) {
+  async function login(account: string, password: string) {
     console.log('[UserStore] login called', { account })
     loading.value = true
     try {
-      const response = await authApi.login({
-        account,
-        password,
-      })
+      const response = await authApi.login({ account, password })
       console.log('[UserStore] Login API success', response)
+
       token.value = response.access_token
       localStorage.setItem('access_token', response.access_token)
       localStorage.setItem('refresh_token', response.refresh_token)
 
-      // 获取用户信息
-      // 登录刚成功时，如果获取用户信息失败（如 token 问题），不要显示"过期"提示，而是由 catch 块处理
-      console.log('[UserStore] Fetching user info after login...')
-      await fetchUserInfo(true)
-      console.log('[UserStore] User info fetched', userInfo.value)
+      // 登录成功后立即加载用户信息和偏好
+      await ensureUserInfoLoaded()
 
       // 触发登录事件
       eventBus.emit(Events.USER_LOGIN, userInfo.value)
@@ -55,13 +55,8 @@ export const useUserStore = defineStore('user', () => {
       return true
     } catch (error) {
       console.error('[UserStore] Login failed:', error)
-      // 登录失败，确保清除状态
-      token.value = null
-      userInfo.value = null
-      preferences.value = null
-      localStorage.removeItem('access_token')
-      localStorage.removeItem('refresh_token')
-      throw error // Re-throw to let caller handle specific errors (like captcha)
+      clearState()
+      throw error
     } finally {
       loading.value = false
     }
@@ -69,8 +64,6 @@ export const useUserStore = defineStore('user', () => {
 
   /**
    * 用户注册
-   * 注意：注册后返回 User 信息，不是 Token
-   * 如果用户状态是 active，会自动登录；如果是 pending，需要等待审核
    */
   async function register(
     email: string,
@@ -87,13 +80,9 @@ export const useUserStore = defineStore('user', () => {
         confirm_password: confirmPassword,
       })
 
-      // 根据用户状态决定下一步操作
       if (user.status === 'active') {
-        // 用户已激活，自动登录
-        const loginSuccess = await login(email, password)
-        return loginSuccess
+        return await login(email, password)
       } else if (user.status === 'pending') {
-        // 用户待审核，返回 false 让前端显示需要审核的消息
         return { needsApproval: true, user }
       } else if (user.status === 'disabled') {
         throw new Error('账号已被禁用')
@@ -119,14 +108,7 @@ export const useUserStore = defineStore('user', () => {
     } catch (error) {
       console.error('Logout API failed:', error)
     } finally {
-      // 无论 API 是否成功，都清除本地状态
-      token.value = null
-      userInfo.value = null
-      preferences.value = null
-      localStorage.removeItem('access_token')
-      localStorage.removeItem('refresh_token')
-
-      // 触发登出事件
+      clearState()
       eventBus.emit(Events.USER_LOGOUT)
     }
   }
@@ -136,9 +118,6 @@ export const useUserStore = defineStore('user', () => {
    */
   async function fetchUserInfo(skipExpiredMessage = false) {
     if (!token.value) return
-
-    // 401 错误由 HTTP 拦截器统一处理
-    // 如果指定了 skipExpiredMessage，则传递给 API
     userInfo.value = await userApi.getMe({ skipExpiredMessage })
   }
 
@@ -150,7 +129,6 @@ export const useUserStore = defineStore('user', () => {
 
     try {
       preferences.value = await userApi.getPreferences()
-      // 应用主题
       applyTheme(preferences.value.theme)
     } catch (error) {
       console.error('Failed to fetch preferences:', error)
@@ -187,74 +165,59 @@ export const useUserStore = defineStore('user', () => {
   }
 
   /**
-   * 初始化（从本地存储恢复状态）
+   * 清除所有状态
    */
-  async function initialize() {
-    if (token.value) {
-      await Promise.all([fetchUserInfo(), fetchPreferences()])
-    }
-  }
-
-  /**
-   * 静默初始化（不显示"登录已过期"消息，用于路由守卫）
-   * 这是 ensureUserInfoLoaded 的别名，保持向后兼容性
-   */
-  async function initializeSilent() {
-    return ensureUserInfoLoaded()
+  function clearState() {
+    token.value = null
+    userInfo.value = null
+    preferences.value = null
+    localStorage.removeItem('access_token')
+    localStorage.removeItem('refresh_token')
   }
 
   /**
    * 确保用户信息加载完成
-   * 
-   * 设计说明：
-   * 1. 如果 userInfo 已加载，直接返回
-   * 2. 如果有 token 但 userInfo 为空，异步加载用户信息
-   * 3. 加载失败时抛出错误，由调用方处理
-   * 
-   * 使用场景：
-   * - 路由守卫中确保权限检查前 userInfo 已加载
-   * - 需要同步获取用户角色进行权限判断时
+   *
+   * 调用场景：
+   * 1. 登录成功后 - 立即加载用户信息
+   * 2. 路由守卫中 - 页面刷新时按需加载
+   *
+   * 注意：
+   * - 如果 userInfo 已加载，直接返回
+   * - 如果没有 token，抛出错误（调用方应处理）
+   * - 加载失败时清除状态并抛出错误
    */
   async function ensureUserInfoLoaded(): Promise<void> {
-    // 如果 userInfo 已加载，直接返回
+    // 已加载，跳过
     if (userInfo.value) {
       return
     }
 
-    // 如果没有 token，无法加载用户信息
+    // 无 token，抛出错误
     if (!token.value) {
-      return
+      throw new Error('No token available')
     }
 
     try {
-      // 并行加载用户信息和偏好设置
       const [user, prefs] = await Promise.all([
         userApi.getMe({ skipExpiredMessage: true }),
         userApi.getPreferences({ skipExpiredMessage: true })
       ])
-      
+
       userInfo.value = user
       preferences.value = prefs
-      
-      // 应用主题
+
       if (prefs?.theme) {
         applyTheme(prefs.theme)
       }
-      
-      console.log('[UserStore] ensureUserInfoLoaded success', { 
-        userId: user.id, 
-        role: user.role 
+
+      console.log('[UserStore] ensureUserInfoLoaded success', {
+        userId: user.id,
+        role: user.role
       })
     } catch (error) {
       console.error('[UserStore] ensureUserInfoLoaded failed:', error)
-      
-      // Token 无效，清除状态
-      token.value = null
-      userInfo.value = null
-      preferences.value = null
-      localStorage.removeItem('access_token')
-      localStorage.removeItem('refresh_token')
-      
+      clearState()
       throw error
     }
   }
@@ -280,8 +243,7 @@ export const useUserStore = defineStore('user', () => {
     fetchUserInfo,
     fetchPreferences,
     updatePreferences,
-    initialize,
-    initializeSilent,
+    clearState,
     ensureUserInfoLoaded,
   }
 })

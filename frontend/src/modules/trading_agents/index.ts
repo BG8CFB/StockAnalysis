@@ -3,8 +3,8 @@
  */
 
 // 设置模块
-export { default as AgentConfigView } from './views/AgentConfigView.vue'
-export { default as AnalysisSettingsView } from './views/AnalysisSettingsView.vue'
+export { default as AgentConfigView } from './views/settings/AgentConfigView.vue'
+export { default as AnalysisSettingsView } from './views/settings/AnalysisSettingsView.vue'
 
 // 分析模块
 export { default as SingleAnalysisView } from './views/analysis/SingleAnalysisView.vue'

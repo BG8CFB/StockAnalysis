@@ -37,7 +37,7 @@
             @touchstart="startDrag"
           >
             <el-icon :size="20">
-              <component :is="isDragging ? 'ArrowRight' : 'ArrowDoubleRight'" />
+              <component :is="isDragging ? 'ArrowRight' : 'DArrowRight'" />
             </el-icon>
           </div>
           <div
@@ -94,7 +94,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { ArrowRight, ArrowDoubleRight, Check, Close, Refresh } from '@element-plus/icons-vue'
+import { ArrowRight, DArrowRight, Check, Close, Refresh } from '@element-plus/icons-vue'
 import { httpPost, httpGet } from '@core/api/http'
 
 export interface CaptchaData {

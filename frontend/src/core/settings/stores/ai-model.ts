@@ -5,10 +5,11 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { modelApi } from '../api/ai-model'
-import type {
-  AIModelConfig,
-  AIModelConfigCreate,
-  AIModelConfigUpdate,
+import {
+  PlatformTypeEnum,
+  type AIModelConfig,
+  type AIModelConfigCreate,
+  type AIModelConfigUpdate,
 } from '../types/ai-model'
 
 export const useAIModelStore = defineStore('aiModel', () => {
@@ -92,12 +93,18 @@ export const useAIModelStore = defineStore('aiModel', () => {
 
   // 测试模型连接
   async function testModelConnection(data: {
+    platform_type?: string
     api_base_url: string
     api_key: string
     model_id: string
   }) {
     try {
-      const result = await modelApi.testModelConnection(data)
+      // 添加 platform_type 如果没有提供
+      const requestData = {
+        ...data,
+        platform_type: (data.platform_type as PlatformTypeEnum) || PlatformTypeEnum.CUSTOM,
+      }
+      const result = await modelApi.testModelConnection(requestData)
       if (result.success) {
         ElMessage.success(`连接成功，延迟 ${result.latency_ms}ms`)
       } else {

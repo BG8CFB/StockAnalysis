@@ -423,7 +423,8 @@ const availableModels = computed(() => {
 })
 
 // 获取提供商标签
-function getProviderLabel(provider: string): string {
+function getProviderLabel(provider?: string): string {
+  if (!provider) return '未知'
   return PROVIDER_PRESETS[provider as keyof typeof PROVIDER_PRESETS]?.name || provider
 }
 

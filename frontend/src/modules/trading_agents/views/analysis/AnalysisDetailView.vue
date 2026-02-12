@@ -371,8 +371,8 @@ const progressState = computed(() => progressStateRaw.value)
 /**
  * 获取状态类型
  */
-function getStatusType(status: TaskStatusEnum): string {
-  const typeMap: Record<string, string> = {
+function getStatusType(status: TaskStatusEnum): 'primary' | 'success' | 'warning' | 'info' | 'danger' {
+  const typeMap: Record<string, 'primary' | 'success' | 'warning' | 'info' | 'danger'> = {
     [TaskStatusEnum.PENDING]: 'info',
     [TaskStatusEnum.RUNNING]: 'warning',
     [TaskStatusEnum.COMPLETED]: 'success',

@@ -74,6 +74,7 @@ export interface ToolCallRecord {
   status: 'running' | 'completed' | 'failed'
   startTime: number
   endTime?: number
+  duration?: number
 }
 
 // 分析进度状态
@@ -95,21 +96,20 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
   const initialAgents = new Map<string, AgentStatus>()
   if (initialTask?.phase_executions) {
     initialTask.phase_executions.forEach((phase) => {
-      if (phase.agents) {
-        phase.agents.forEach((agent: any) => {
-          // 获取显示名称
-          const displayName = getAgentDisplayName(agent.slug, agent.name)
-          
-          initialAgents.set(agent.slug, {
-            slug: agent.slug,
-            name: displayName,
-            status: agent.status === 'completed' ? 'completed' :
-                    agent.status === 'running' ? 'running' :
-                    agent.status === 'failed' ? 'failed' : 'pending',
-            startTime: agent.started_at ? new Date(agent.started_at).getTime() : null,
-            endTime: agent.completed_at ? new Date(agent.completed_at).getTime() : null,
-            report: agent.output || undefined
-          })
+      // PhaseExecution 包含单个 agent 信息
+      if (phase.agent) {
+        const agent: any = { slug: phase.agent, name: phase.agent, status: phase.status, started_at: phase.started_at, completed_at: phase.completed_at }
+        // 获取显示名称
+        const displayName = getAgentDisplayName(agent.slug, agent.name)
+
+        initialAgents.set(agent.slug, {
+          slug: agent.slug,
+          name: displayName,
+          status: agent.status === 'completed' ? 'completed' :
+                  agent.status === 'running' ? 'running' :
+                  agent.status === 'failed' ? 'failed' : 'pending',
+          startTime: agent.started_at ? new Date(agent.started_at).getTime() : null,
+          endTime: agent.completed_at ? new Date(agent.completed_at).getTime() : null
         })
       }
     })

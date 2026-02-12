@@ -94,8 +94,8 @@ const displayCalls = computed(() => {
 /**
  * 获取时间线类型
  */
-function getTimelineType(status: string): string {
-  const typeMap: Record<string, string> = {
+function getTimelineType(status: string): 'primary' | 'success' | 'warning' | 'info' | 'danger' {
+  const typeMap: Record<string, 'primary' | 'success' | 'warning' | 'info' | 'danger'> = {
     running: 'primary',
     completed: 'success',
     failed: 'danger',
@@ -118,8 +118,8 @@ function getTimelineIcon(status: string) {
 /**
  * 获取状态标签类型
  */
-function getStatusType(status: string): string {
-  const typeMap: Record<string, string> = {
+function getStatusType(status: string): 'primary' | 'success' | 'warning' | 'info' | 'danger' {
+  const typeMap: Record<string, 'primary' | 'success' | 'warning' | 'info' | 'danger'> = {
     running: 'warning',
     completed: 'success',
     failed: 'danger',

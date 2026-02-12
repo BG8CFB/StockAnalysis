@@ -633,7 +633,8 @@ const estimateTime = computed(() => {
 })
 
 // 获取提供商标签
-function getProviderLabel(provider: string): string {
+function getProviderLabel(provider?: string): string {
+  if (!provider) return '未知'
   return PROVIDER_PRESETS[provider as keyof typeof PROVIDER_PRESETS]?.name || provider
 }
 
@@ -958,6 +959,7 @@ async function handleSubmit() {
         stage3: {
           enabled: stagesConfig.stage3.enabled,
           debate: stagesConfig.stage3.debate,
+          concurrency: stagesConfig.stage3.concurrency,
         },
         stage4: {
           enabled: true,

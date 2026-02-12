@@ -1345,7 +1345,7 @@ async function handleDelete(server: MCPServerConfig) {
         type: 'warning',
       }
     )
-    await store.deleteServer(server.id, server.is_system)
+    await store.deleteServer(server.id)
   } catch {
     // 用户取消
   }
@@ -1397,18 +1397,20 @@ async function handleTest(server: MCPServerConfig) {
 // =============================================================================
 
 // 获取传输模式标签类型
-function getTransportTagType(transport: TransportModeEnum) {
-  const types: Record<TransportModeEnum, string> = {
+function getTransportTagType(transport: TransportModeEnum): 'primary' | 'success' | 'warning' | 'info' | 'danger' {
+  const types: Record<TransportModeEnum, 'primary' | 'success' | 'warning' | 'info' | 'danger'> = {
     [TransportModeEnum.STDIO]: 'primary',
     [TransportModeEnum.SSE]: 'success',
     [TransportModeEnum.HTTP]: 'warning',
+    [TransportModeEnum.STREAMABLE_HTTP]: 'warning',
+    [TransportModeEnum.WEBSOCKET]: 'warning',
   }
   return types[transport] || 'info'
 }
 
 // 获取状态标签类型
-function getStatusTagType(status: MCPServerStatusEnum) {
-  const types: Record<MCPServerStatusEnum, string> = {
+function getStatusTagType(status: MCPServerStatusEnum): 'primary' | 'success' | 'warning' | 'info' | 'danger' {
+  const types: Record<MCPServerStatusEnum, 'primary' | 'success' | 'warning' | 'info' | 'danger'> = {
     [MCPServerStatusEnum.AVAILABLE]: 'success',
     [MCPServerStatusEnum.UNAVAILABLE]: 'danger',
     [MCPServerStatusEnum.UNKNOWN]: 'info',

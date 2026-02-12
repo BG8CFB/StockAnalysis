@@ -232,7 +232,7 @@ async function handleRegister() {
         // 注册成功并自动登录
         ElMessage.success('注册成功')
         await router.push('/dashboard')
-      } else if (result?.needsApproval) {
+      } else if (result && typeof result === 'object' && 'needsApproval' in result && result.needsApproval) {
         // 注册成功但需要审核
         ElMessage.success('注册成功，请等待管理员审核')
         await router.push('/login')

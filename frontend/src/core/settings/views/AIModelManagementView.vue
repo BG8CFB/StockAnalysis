@@ -681,7 +681,7 @@
                     v-model="formData.timeout_seconds"
                     :min="10"
                     :max="600"
-                    :controls-position="right"
+                    controls-position="right"
                   />
                   <span class="unit-label">秒</span>
                 </div>
@@ -842,7 +842,7 @@
                       class="header-key"
                     />
                     <el-input
-                      v-model="formData.custom_headers[key]"
+                      v-model="customHeaders[key]"
                       placeholder="Header Value"
                       class="header-value"
                     />
@@ -951,7 +951,7 @@ import {
   type AIModelConfig,
   type AIModelConfigCreate
 } from '../types/ai-model'
-import { PRESET_PLATFORMS, getPresetPlatforms } from '@core/model/platforms'
+import { PRESET_PLATFORMS, getPresetPlatforms, type PresetPlatform } from '@core/model/platforms'
 import { modelApi } from '../api/ai-model'
 
 const userStore = useUserStore()
@@ -1007,7 +1007,7 @@ const formData = reactive<AIModelConfigCreate>({
   api_base_url: '',
   api_key: '',
   model_id: '',
-  custom_headers: {},
+  custom_headers: {} as Record<string, string>,
   max_concurrency: 40,
   task_concurrency: 2,
   batch_concurrency: 1,
@@ -1021,13 +1021,16 @@ const formData = reactive<AIModelConfigCreate>({
   is_system: false,
 })
 
+// 自定义请求头的计算属性（解决模板类型问题）
+const customHeaders = computed(() => formData.custom_headers || {})
+
 // 获取预设平台列表
 const presetPlatforms = computed(() => getPresetPlatforms())
 
 // 当前选中的预设平台配置
 const currentPresetPlatform = computed(() => {
   if (formData.platform_type === PlatformTypeEnum.PRESET && formData.platform_name) {
-    return PRESET_PLATFORMS[formData.platform_name]
+    return PRESET_PLATFORMS[formData.platform_name as PresetPlatform] || null
   }
   return null
 })
@@ -1168,13 +1171,16 @@ function handleModelChange() {
 
 // 添加自定义请求头
 function addCustomHeader() {
-  const key = `custom-header-${Object.keys(formData.custom_headers).length + 1}`
-  formData.custom_headers[key] = ''
+  const headers = formData.custom_headers || {}
+  const key = `custom-header-${Object.keys(headers).length + 1}`
+  formData.custom_headers = { ...headers, [key]: '' }
 }
 
 // 删除自定义请求头
 function removeCustomHeader(key: string) {
-  delete formData.custom_headers[key]
+  if (formData.custom_headers) {
+    delete formData.custom_headers[key]
+  }
 }
 
 // 验证并发参数

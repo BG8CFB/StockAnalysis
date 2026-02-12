@@ -79,7 +79,6 @@ const renderedContent = computed(() => {
     marked.setOptions({
       breaks: true, // 支持换行
       gfm: true, // 启用 GitHub 风格 Markdown
-      mangle: false
     })
 
     // 解析 Markdown

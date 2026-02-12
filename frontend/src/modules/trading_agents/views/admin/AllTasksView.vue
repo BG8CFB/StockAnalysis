@@ -325,8 +325,8 @@ async function handleDelete(task: any) {
 }
 
 // 获取状态类型
-function getStatusType(status: string): string {
-  const typeMap: Record<string, string> = {
+function getStatusType(status: string): 'primary' | 'success' | 'warning' | 'info' | 'danger' {
+  const typeMap: Record<string, 'primary' | 'success' | 'warning' | 'info' | 'danger'> = {
     pending: 'info',
     running: 'warning',
     completed: 'success',

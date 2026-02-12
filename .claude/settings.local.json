@@ -16,7 +16,8 @@
       "mcp__chrome-devtools__*",
       "mcp__ide__*",
       "mcp__4_5v_mcp__*",
-      "mcp__milk_tea_server__*"
+      "mcp__milk_tea_server__*",
+      "WebFetch(*:*)"
     ],
     "deny": [],
     "ask": []

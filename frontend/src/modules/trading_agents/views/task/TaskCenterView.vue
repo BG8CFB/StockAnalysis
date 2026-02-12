@@ -24,7 +24,7 @@
           :class="['stats-item', item.type]"
         >
           <span class="stats-label-text">{{ item.label }}</span>
-          <span class="stats-count">{{ statusCounts[item.key] || 0 }}</span>
+          <span class="stats-count">{{ statusCountsMap[item.key] || 0 }}</span>
         </div>
       </div>
     </div>
@@ -419,18 +419,43 @@ const statusTabs = [
 
 // 统计条配置
 const statsItems = [
-  { key: 'all', label: '全部', type: 'primary' },
-  { key: 'running', label: '进行中', type: 'warning' },
-  { key: 'completed', label: '完成', type: 'success' },
-  { key: 'failed', label: '失败', type: 'orange' },
-  { key: 'cancelled', label: '取消', type: 'gray' },
+  { key: 'all', label: '全部', type: 'primary' as const },
+  { key: 'running', label: '进行中', type: 'warning' as const },
+  { key: 'completed', label: '已完成', type: 'success' as const },
+  { key: 'failed', label: '已失败', type: 'danger' as const },
+  { key: 'cancelled', label: '已取消', type: 'info' as const },
 ]
+
+// 状态数量映射（用于模板访问）
+const statusCountsMap = computed(() => statusCounts.value as unknown as Record<string, number>)
 
 // 当前激活的状态标签
 const activeStatusTab = ref<string>('all')
 
 // 状态数量统计
-const statusCounts = ref<Record<string, number>>({})
+interface StatusCounts {
+  all: number
+  running: number
+  completed: number
+  failed: number
+  cancelled: number
+  _detail?: {
+    pending: number
+    running: number
+    completed: number
+    failed: number
+    cancelled: number
+    stopped: number
+  }
+}
+
+const statusCounts = ref<StatusCounts>({
+  all: 0,
+  running: 0,
+  completed: 0,
+  failed: 0,
+  cancelled: 0
+})
 
 // 搜索参数
 const searchParams = reactive({
@@ -814,8 +839,8 @@ async function handleBatchDelete() {
 /**
  * 获取状态类型
  */
-function getStatusType(status: TaskStatusEnum): string {
-  const typeMap: Record<string, string> = {
+function getStatusType(status: TaskStatusEnum): 'primary' | 'success' | 'warning' | 'info' | 'danger' {
+  const typeMap: Record<string, 'primary' | 'success' | 'warning' | 'info' | 'danger'> = {
     [TaskStatusEnum.PENDING]: 'info',
     [TaskStatusEnum.RUNNING]: 'warning',
     [TaskStatusEnum.COMPLETED]: 'success',
@@ -846,8 +871,8 @@ function getStatusLabel(status: TaskStatusEnum): string {
 /**
  * 获取推荐结果类型
  */
-function getRecommendationType(recommendation: string): string {
-  const typeMap: Record<string, string> = {
+function getRecommendationType(recommendation: string): 'primary' | 'success' | 'warning' | 'info' | 'danger' {
+  const typeMap: Record<string, 'primary' | 'success' | 'warning' | 'info' | 'danger'> = {
     'buy': 'success',
     'sell': 'danger',
     'hold': 'info',
@@ -870,8 +895,8 @@ function getRecommendationLabel(recommendation: string): string {
 /**
  * 获取风险等级类型
  */
-function getRiskLevelType(riskLevel: string): string {
-  const typeMap: Record<string, string> = {
+function getRiskLevelType(riskLevel: string): 'primary' | 'success' | 'warning' | 'info' | 'danger' {
+  const typeMap: Record<string, 'primary' | 'success' | 'warning' | 'info' | 'danger'> = {
     'high': 'danger',
     'medium': 'warning',
     'low': 'success',

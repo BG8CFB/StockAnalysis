@@ -15,9 +15,10 @@ export type {
   LoginRequest,
   RegisterRequest,
   TokenResponse,
-  CaptchaGenerateResponse,
-  CaptchaRequiredResponse,
   UserInfo,
   UserPreferences,
   UpdatePreferencesRequest,
 } from '@core/auth/api'
+
+// 验证码类型（如果需要可以取消注释）
+// export type { CaptchaGenerateResponse, CaptchaRequiredResponse } from '../components/SliderCaptcha.vue'

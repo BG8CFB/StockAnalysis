@@ -377,10 +377,35 @@ export interface AnalysisStagesConfig {
   stage4: Stage4Config
 }
 
+// 阶段执行记录
+export interface PhaseExecution {
+  phase: number
+  agent: string
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  started_at: string | null
+  completed_at: string | null
+  result?: string
+  error?: string
+}
+
+// 工具调用记录
+export interface ToolCallRecord {
+  toolName: string
+  agentName: string
+  status: 'running' | 'completed' | 'failed'
+  startTime: string
+  endTime?: string
+  duration?: number
+  input?: Record<string, unknown>
+  output?: string
+  error?: string
+}
+
 export interface AnalysisTask {
   id: string
   user_id: string
   stock_code: string
+  stock_name?: string  // 股票名称
   market: StockMarketEnum
   trade_date: string
   status: TaskStatusEnum
@@ -394,6 +419,7 @@ export interface AnalysisTask {
   sell_price: number | null
   token_usage?: TokenUsage
   risk_level?: string
+  accurate?: boolean  // 是否准确（用于对比分析）
   error_message: string | null
   error_details: Record<string, unknown> | null
   phase_executions?: PhaseExecution[]

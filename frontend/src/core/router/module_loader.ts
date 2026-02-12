@@ -46,14 +46,14 @@ const moduleRoutes: RouteRecordRaw[] = [
     component: () => import('@modules/ask_stock/views/AskStockView.vue'),
     meta: { requiresAuth: true, title: 'AI 问股' },
   },
-  // 市场数据模块 - 系统监控（保留原有路由作为兼容）
+  // 市场数据模块 - 系统监控
   {
     path: '/core/monitor/data-source-status',
     name: 'DataSourceMonitor',
     component: () => import('@modules/market_data/views/DataSourceHealthView.vue'),
     meta: { requiresAuth: true, title: '数据源状态监控' },
   },
-  // 市场数据模块 - 保留原有路由作为兼容
+  // 市场数据模块 - 数据同步
   {
     path: '/settings/data-sync',
     name: 'DataSync',
@@ -79,7 +79,7 @@ const moduleRoutes: RouteRecordRaw[] = [
     component: () => import('@modules/trading_agents/views/analysis/AnalysisDetailView.vue'),
     meta: { requiresAuth: true, title: '分析详情' },
   },
-  // TradingAgents 任务中心（融合版）
+  // TradingAgents 任务中心
   {
     path: '/trading-agents/tasks',
     name: 'TaskCenter',
@@ -94,13 +94,18 @@ const moduleRoutes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, title: '历史对比' },
   },
   // ==================== 设置页面统一布局 ====================
-  // 使用嵌套路由确保菜单激活状态正确
   {
     path: '/settings',
     name: 'Settings',
     component: () => import('@core/settings/views/SettingsLayoutView.vue'),
     meta: { requiresAuth: true, title: '全局设置' },
     children: [
+      // 默认重定向到 AI 管理（所有用户都可访问）
+      {
+        path: '',
+        name: 'SettingsIndex',
+        redirect: '/settings/ai-management/models'
+      },
       // 用户设置（个人配置）
       {
         path: 'user',
@@ -129,8 +134,7 @@ const moduleRoutes: RouteRecordRaw[] = [
         children: [
           {
             path: '',
-            name: 'AIManagementIndex',
-            redirect: () => '/settings/ai-management/models'
+            redirect: '/settings/ai-management/models'
           },
           {
             path: 'models',
@@ -149,11 +153,11 @@ const moduleRoutes: RouteRecordRaw[] = [
       // 兼容旧路径 - 重定向到新路径
       {
         path: 'ai-models',
-        redirect: () => '/settings/ai-management/models'
+        redirect: '/settings/ai-management/models'
       },
       {
         path: 'mcp-servers',
-        redirect: () => '/settings/ai-management/mcp'
+        redirect: '/settings/ai-management/mcp'
       },
       {
         path: 'data-sources',
@@ -179,12 +183,6 @@ const moduleRoutes: RouteRecordRaw[] = [
         component: () => import('@modules/trading_agents/views/settings/AnalysisSettingsView.vue'),
         meta: { requiresAuth: true, title: '分析设置' },
       },
-      // 重定向：访问 /settings 时根据权限跳转到合适的页面
-      {
-        path: '',
-        name: 'SettingsIndex',
-        redirect: () => '/settings/ai-management/models'
-      }
     ]
   },
   // TradingAgents 管理员页面
@@ -192,7 +190,7 @@ const moduleRoutes: RouteRecordRaw[] = [
     path: '/admin/all-tasks',
     name: 'AdminAllTasks',
     component: () => import('@modules/trading_agents/views/admin/AllTasksView.vue'),
-    meta: {requiresAuth: true, title: '所有任务管理', adminOnly: true},
+    meta: { requiresAuth: true, title: '所有任务管理', adminOnly: true },
   },
   {
     path: '/admin/alerts',

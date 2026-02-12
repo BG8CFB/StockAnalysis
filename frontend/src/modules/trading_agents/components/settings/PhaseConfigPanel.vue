@@ -440,7 +440,7 @@ import {
   Reading,
   TrendCharts as ChartIcon,
 } from '@element-plus/icons-vue'
-import type { AgentConfig, Phase1Config, Phase2Config, Phase3Config, Phase4Config, AIModelConfig, MCPServerConfig } from '../types'
+import type { AgentConfig, Phase1Config, Phase2Config, Phase3Config, Phase4Config, AIModelConfig, MCPServerConfig } from '../../types'
 
 interface Props {
   phase: number
@@ -461,7 +461,7 @@ const isPhase1 = computed(() => props.phase === 1)
 
 // 已启用的智能体数量
 const enabledAgentsCount = computed(() => {
-  return localConfig.agents.filter(a => a.enabled).length
+  return localConfig.agents.filter((a: { enabled: boolean }) => a.enabled).length
 })
 
 // 获取智能体图标
@@ -509,7 +509,7 @@ watch(() => props.config, (newConfig) => {
     // 使用深拷贝避免引用问题
     localConfig.enabled = newConfig.enabled
     // 深拷贝 agents 数组，确保引用变化时能触发更新
-    localConfig.agents = newConfig.agents.map(agent => ({ ...agent }))
+    localConfig.agents = newConfig.agents.map((agent: any) => ({ ...agent }))
     // Phase 1 特有属性
     if (props.phase === 1 && 'max_concurrency' in newConfig) {
       (localConfig as any).max_concurrency = newConfig.max_concurrency
