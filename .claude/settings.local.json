@@ -2,36 +2,21 @@
   "includeCoAuthoredBy": false,
   "permissions": {
     "allow": [
+      "WebSearch",
       "Bash",
+      "Bash(*:*)",
       "Edit",
       "Skill",
-      "mcp__web-search-prime__webSearchPrime",
-      "mcp__web-reader__webReader",
-      "mcp__zread__get_repo_structure",
+      "mcp__*",
+      "mcp__MiniMax__*",
+      "mcp__web-search-prime__*",
+      "mcp__web-reader__*",
+      "mcp__zai-mcp-server__*",
+      "mcp__zread__*",
       "mcp__chrome-devtools__*",
       "mcp__ide__*",
       "mcp__4_5v_mcp__*",
-      "mcp__web-search-prime__webSearchPrime",
-      "mcp__web-reader__webReader",
-      "mcp__zread__*",
-      "mcp__milk_tea_server__*",
-      "mcp__zai-mcp-server__*",
-      "Bash(cd:*)",
-      "Bash(npm:*)",
-      "Bash(setx:*)",
-      "Bash(echo:*)",
-      "Bash(python:*)",
-      "Bash(timeout:*)",
-      "Bash(rm:*)",
-      "Bash(ls:*)",
-      "SlashCommand(/commit)",
-      "Bash(git:*)",
-      "Bash(mkdir:*)",
-      "mcp__acp__Bash",
-      "mcp__fetch__fetch",
-      "mcp__context7__resolve-library-id",
-      "mcp__context7__query-docs",
-      "mcp__MiniMax__web_search"
+      "mcp__milk_tea_server__*"
     ],
     "deny": [],
     "ask": []
@@ -41,6 +26,6 @@
     "glm-plan-bug@zai-coding-plugins": true,
     "superpowers@superpowers-marketplace": true
   },
-  "outputStyle": "Default",
+  "outputStyle": "通用提示词",
   "alwaysThinkingEnabled": true
 }
