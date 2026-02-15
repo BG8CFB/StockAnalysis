@@ -19,14 +19,17 @@ RUN apt-get update && apt-get install -y \
 ENV TZ=Asia/Shanghai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-# 安装 Poetry（使用阿里云源）
+# 安装 Poetry（使用已配置的阿里云 pip 源）
 RUN pip install --no-cache-dir "poetry>=2.0.0"
 
-# 配置 Poetry
+# 配置 Poetry：禁用虚拟环境
 RUN poetry config virtualenvs.create false
 
 # 复制依赖文件
 COPY pyproject.toml ./
+
+# 为当前项目添加国内 PyPI 源（需在含 pyproject.toml 的目录下执行）
+RUN poetry source add --priority=primary aliyun https://mirrors.aliyun.com/pypi/simple/
 
 # 安装依赖
 RUN poetry install --no-root
