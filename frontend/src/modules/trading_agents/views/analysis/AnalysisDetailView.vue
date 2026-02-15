@@ -298,7 +298,7 @@ import AgentThinkingDialog from '../../components/analysis/AgentThinkingDialog.v
 const route = useRoute()
 const router = useRouter()
 
-// 任务 ID
+// 任务 ID - 使用 watch 监听变化
 const taskId = computed(() => route.params.taskId as string)
 
 // 任务信息
@@ -329,13 +329,59 @@ const selectedAgentName = ref('')
 const selectedAgentThinking = ref('')
 const thinkingLoading = ref(false)
 
-// WebSocket 连接
-const ws = useWebSocket({
-  taskId: taskId.value,
-  onEvent: handleWebSocketEvent,
-  onStatusChange: handleWsStatusChange,
-  onError: handleWsError,
-})
+// WebSocket 连接 - 延迟初始化，等待 taskId 有效
+const ws = ref<ReturnType<typeof useWebSocket> | null>(null)
+
+// WebSocket 是否已连接
+const wsConnected = ref(false)
+
+/**
+ * 初始化 WebSocket 连接
+ */
+function initWebSocket(tid: string) {
+  // 如果已有连接，先断开
+  if (ws.value) {
+    ws.value.disconnect()
+  }
+
+  // 创建新的 WebSocket 连接（不管任务状态是什么，都先连接）
+  ws.value = useWebSocket({
+    taskId: tid,
+    onEvent: handleWebSocketEvent,
+    onStatusChange: handleWsStatusChange,
+    onError: handleWsError,
+  })
+
+  // 立即连接 WebSocket
+  if (ws.value) {
+    ws.value.connect()
+  }
+}
+
+/**
+ * WebSocket 状态变化
+ * 最佳实践：WebSocket 是主要方案，无需轮询
+ */
+function handleWsStatusChange(status: WebSocketStatus) {
+  console.log('[AnalysisDetail] WebSocket 状态:', status)
+
+  if (status === WebSocketStatus.CONNECTED) {
+    // WebSocket 连接成功，实时推送已启用
+    wsConnected.value = true
+    ElMessage.success('已连接到任务进度实时更新')
+  } else if (status === WebSocketStatus.ERROR || status === WebSocketStatus.DISCONNECTED) {
+    // WebSocket 断开或出错
+    wsConnected.value = false
+
+    // 如果任务还在运行，WebSocket 断开后提示用户
+    if (task.value?.status === TaskStatusEnum.RUNNING) {
+      ElMessage.warning('实时连接断开，正在尝试重连...')
+    }
+  } else if (status === WebSocketStatus.RECONNECTING) {
+    // 正在重连
+    console.log('[AnalysisDetail] WebSocket 正在重连...')
+  }
+}
 
 // 计算属性：当前阶段索引
 const currentPhaseIndex = computed(() => {
@@ -432,34 +478,75 @@ function formatTokenCount(count: number): string {
 
 /**
  * WebSocket 事件处理
+ * 实时更新任务状态和进度
  */
 function handleWebSocketEvent(event: any) {
+  // 处理进度事件
   handleProgressEvent(event)
 
   // 更新 Token 使用
   if (event.data?.token_usage) {
     tokenUsage.updateTokenUsage(event.data.token_usage)
   }
-}
 
-/**
- * WebSocket 状态变化
- */
-function handleWsStatusChange(status: WebSocketStatus) {
-  console.log('[AnalysisDetail] WebSocket 状态:', status)
+  // 同步更新 task 对象的状态（避免轮询）
+  if (event.event_type === 'task_completed') {
+    if (task.value) {
+      task.value.status = TaskStatusEnum.COMPLETED
+      task.value.progress = 100
+      task.value.completed_at = new Date(event.timestamp * 1000).toISOString()
+      if (event.data?.final_report) {
+        task.value.final_report = event.data.final_report
+      }
+      if (event.data?.final_recommendation) {
+        task.value.final_recommendation = event.data.final_recommendation
+      }
+      if (event.data?.buy_price) {
+        task.value.buy_price = event.data.buy_price
+      }
+      if (event.data?.sell_price) {
+        task.value.sell_price = event.data.sell_price
+      }
+      if (event.data?.risk_level) {
+        task.value.risk_level = event.data.risk_level
+      }
+    }
+  } else if (event.event_type === 'task_failed') {
+    if (task.value) {
+      task.value.status = TaskStatusEnum.FAILED
+      task.value.completed_at = new Date(event.timestamp * 1000).toISOString()
+    }
+  } else if (event.event_type === 'task_cancelled' || event.event_type === 'task_stopped') {
+    if (task.value) {
+      task.value.status = event.event_type === 'task_cancelled' ? TaskStatusEnum.CANCELLED : TaskStatusEnum.STOPPED
+      task.value.completed_at = new Date(event.timestamp * 1000).toISOString()
+    }
+  } else if (event.event_type === 'progress_update') {
+    // 同步进度
+    if (task.value && typeof event.data?.progress === 'number') {
+      task.value.progress = event.data.progress
+    }
+  } else if (event.event_type === 'phase_started') {
+    // 同步阶段
+    if (task.value && typeof event.data?.phase === 'number') {
+      task.value.current_phase = event.data.phase
+    }
+  }
 }
 
 /**
  * WebSocket 错误
+ * 最佳实践：WebSocket 会自动重连，无需手动启动轮询
  */
 function handleWsError(err: Error) {
   console.error('[AnalysisDetail] WebSocket 错误:', err)
-  // WebSocket 连接失败不影响任务详情显示，仅记录错误
-  // 实时更新功能会失效，但用户仍可查看静态数据
+  wsConnected.value = false
+  // useWebSocket 会自动尝试重连，无需额外处理
 }
 
 /**
- * 加载任务信息
+ * 加载任务信息（仅初始化时调用一次）
+ * 后续所有更新通过 WebSocket 实时推送
  */
 async function loadTask() {
   loading.value = true
@@ -469,17 +556,17 @@ async function loadTask() {
     const response = await taskApi.getTask(taskId.value)
     task.value = response
 
-    // 更新进度状态
+    // 更新进度状态（不重置，避免页面抖动）
     if (response) {
-      // 重置并初始化进度状态
-      progress.reset()
+      // 只在首次加载时设置初始状态
       if (response.current_phase) {
         progress.state.value.currentPhase = response.current_phase
       }
       if (response.progress) {
         progress.state.value.progress = response.progress
       }
-      if (response.reports) {
+      // 从数据库恢复已生成的报告
+      if (response.reports && Object.keys(response.reports).length > 0) {
         progress.state.value.reports = new Map(Object.entries(response.reports))
       }
       if (response.created_at) {
@@ -523,9 +610,7 @@ async function handleStop() {
 
     await taskApi.cancelTask(taskId.value)
     ElMessage.success('已停止分析')
-
-    // 刷新任务状态
-    await loadTask()
+    // WebSocket 会推送 task_cancelled 事件，无需手动刷新
   } catch (err) {
     // 用户取消或错误
     if (err !== 'cancel') {
@@ -562,27 +647,47 @@ async function handleShowThinking(agent: AgentStatus) {
   }
 }
 
-// 组件挂载
+// 组件挂载 - 先拉取任务（触发 401 时刷新 token），再连 WebSocket
+// 最佳实践：WebSocket 作为主要实时推送方案，无需轮询
 onMounted(async () => {
+  // 等待 taskId 有效
+  if (!taskId.value) {
+    console.warn('[AnalysisDetail] taskId 为空，等待路由参数解析...')
+    return
+  }
+
+  // 先拉取任务数据：若 token 过期会 401，拦截器刷新后重试，保证后续 WS 使用新 token
   await loadTask()
 
-  // 连接 WebSocket
-  if (task.value?.status === TaskStatusEnum.RUNNING) {
-    ws.connect()
-  }
+  // 再连接 WebSocket（使用刷新后的 token）
+  initWebSocket(taskId.value)
+
+  // WebSocket 会自动推送实时更新，无需轮询
 })
 
 // 组件卸载
 onUnmounted(() => {
-  ws.disconnect()
+  ws.value?.disconnect()
 })
 
-// 监听任务状态变化
-watch(() => task.value?.status, (newStatus) => {
-  if (newStatus === TaskStatusEnum.RUNNING && ws.status.value === WebSocketStatus.DISCONNECTED) {
-    ws.connect()
-  } else if (newStatus === TaskStatusEnum.COMPLETED || newStatus === TaskStatusEnum.FAILED) {
-    ws.disconnect()
+// 监听任务 ID 变化 - 断开旧 WS、拉取新任务、重连 WS
+watch(taskId, async (newTaskId) => {
+  if (!newTaskId || loading.value) return
+  ws.value?.disconnect()
+  wsConnected.value = false
+  await loadTask()
+  initWebSocket(newTaskId)
+})
+
+// 监听任务状态变化 - 在任务完成时断开 WebSocket
+watch(() => task.value?.status, (newStatus, oldStatus) => {
+  console.log('[AnalysisDetail] 任务状态变化:', oldStatus, '->', newStatus)
+
+  if (newStatus === TaskStatusEnum.COMPLETED || newStatus === TaskStatusEnum.FAILED || newStatus === TaskStatusEnum.CANCELLED || newStatus === TaskStatusEnum.STOPPED) {
+    // 任务结束，断开 WebSocket
+    console.log('[AnalysisDetail] 任务结束，断开 WebSocket')
+    ws.value?.disconnect()
+    wsConnected.value = false
   }
 })
 </script>

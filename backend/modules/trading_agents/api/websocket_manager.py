@@ -152,7 +152,10 @@ class WebSocketManager:
 
             # 验证任务是否属于该用户
             task_user_id = task.get("user_id")
-            if task_user_id != user_id:
+            # 统一转换为字符串比较，避免类型不匹配（如 str vs PyObjectId）
+            task_user_id_str = str(task_user_id) if task_user_id else ""
+            user_id_str = str(user_id) if user_id else ""
+            if task_user_id_str != user_id_str:
                 logger.warning(
                     f"用户无权访问任务: task_id={task_id}, "
                     f"task_user={task_user_id}, request_user={user_id}"

@@ -120,13 +120,19 @@ http.interceptors.response.use(
         return handleTokenExpired(extendedConfig)
       }
 
-      // 如果没有 refresh_token，直接清除状态并跳转登录如果正在刷新 token，将请求加入队列
+      // 如果正在刷新 token，将请求加入队列，重试时必须使用新 token
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject })
         })
-          .then(() => {
-            // 刷新成功，重试原请求
+          .then((value: unknown) => {
+            // 刷新成功，用新 token 更新请求头后重试（processQueue 传入的 token）
+            const newToken = value as string | null | undefined
+            if (newToken && extendedConfig.headers) {
+              extendedConfig.headers.Authorization = `Bearer ${newToken}`
+            } else if (newToken) {
+              extendedConfig.headers = { Authorization: `Bearer ${newToken}` }
+            }
             return http(extendedConfig)
           })
           .catch((err) => {

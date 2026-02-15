@@ -100,18 +100,18 @@ async def execute_phase2(
     await websocket_manager.broadcast_event(state.task_id, phase_agents_event)
     logger.info(f"[Phase 2] 已发送智能体列表事件, 智能体数量: {len(agents_config)}")
 
-    # 创建智能体实例
+    # 创建智能体实例（传入 task_id 和 websocket_manager 用于工具调用事件推送）
     agents = {}
     for agent_config in agents_config:
         slug = agent_config["slug"]
         if slug == "bull-researcher":
-            agents["bull"] = BullResearcher(model, agent_config)
+            agents["bull"] = BullResearcher(model, agent_config, task_id=state.task_id, websocket_manager=websocket_manager)
         elif slug == "bear-researcher":
-            agents["bear"] = BearResearcher(model, agent_config)
+            agents["bear"] = BearResearcher(model, agent_config, task_id=state.task_id, websocket_manager=websocket_manager)
         elif slug == "research-manager":
-            agents["manager"] = ResearchManager(model, agent_config)
+            agents["manager"] = ResearchManager(model, agent_config, task_id=state.task_id, websocket_manager=websocket_manager)
         elif slug == "trader":
-            agents["trader"] = Trader(model, agent_config)
+            agents["trader"] = Trader(model, agent_config, task_id=state.task_id, websocket_manager=websocket_manager)
 
     # 检查必需智能体（Trader 可选）
     if "bull" not in agents or "bear" not in agents or "manager" not in agents:

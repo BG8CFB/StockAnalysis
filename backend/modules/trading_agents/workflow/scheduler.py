@@ -365,7 +365,20 @@ class WorkflowScheduler:
                         progress_data["buy_price"] = state.buy_price
                     if hasattr(state, 'sell_price'):
                         progress_data["sell_price"] = state.sell_price
-                
+
+                # 任务完成时保存最终报告（实时推送到前端）
+                if event == "task_completed":
+                    if hasattr(state, 'final_report'):
+                        progress_data["final_report"] = state.final_report
+                    if hasattr(state, 'final_recommendation'):
+                        progress_data["final_recommendation"] = state.final_recommendation
+                    if hasattr(state, 'risk_level'):
+                        progress_data["risk_level"] = state.risk_level
+                    if hasattr(state, 'buy_price'):
+                        progress_data["buy_price"] = state.buy_price
+                    if hasattr(state, 'sell_price'):
+                        progress_data["sell_price"] = state.sell_price
+
                 # 在每个阶段完成时保存工具调用记录
                 if event.endswith("_complete"):
                     if hasattr(state, 'tool_calls'):

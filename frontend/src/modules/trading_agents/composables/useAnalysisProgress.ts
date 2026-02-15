@@ -415,14 +415,18 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
 
   /**
    * 处理工具调用
+   * 兼容后端 tool_input/input、agent_name/agent_slug
    */
   function handleToolCall(event: TaskEvent) {
-    const { tool_name, agent_name, input } = event.data
+    const d = event.data as Record<string, unknown>
+    const tool_name = (d.tool_name ?? '') as string
+    const agent_name = (d.agent_name ?? d.agent_slug ?? '') as string
+    const inputVal = d.input ?? d.tool_input ?? ''
 
     const toolCall: ToolCallRecord = {
-      toolName: tool_name as string,
-      agentName: agent_name as string,
-      input: JSON.stringify(input),
+      toolName: tool_name,
+      agentName: agent_name,
+      input: typeof inputVal === 'string' ? inputVal : JSON.stringify(inputVal),
       status: 'running',
       startTime: event.timestamp * 1000,
     }
@@ -432,18 +436,23 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
 
   /**
    * 处理工具结果
+   * 兼容后端 output 为 string 或 object
    */
   function handleToolResult(event: TaskEvent) {
-    const { tool_name, output, success } = event.data
+    const d = event.data as Record<string, unknown>
+    const tool_name = (d.tool_name ?? '') as string
+    const output = d.output
+    const success = (d.success ?? false) as boolean
 
-    // 找到对应的工具调用记录并更新
     const toolCall = state.value.toolCalls.find(
       (tc) => tc.toolName === tool_name && tc.status === 'running'
     )
 
     if (toolCall) {
       toolCall.status = success ? 'completed' : 'failed'
-      toolCall.output = JSON.stringify(output)
+      toolCall.output = output !== undefined && output !== null
+        ? (typeof output === 'string' ? output : JSON.stringify(output))
+        : ''
       toolCall.endTime = event.timestamp * 1000
     }
   }

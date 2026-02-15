@@ -806,7 +806,7 @@ async function handleSubmit() {
 
   submitting.value = true
   try {
-    const { id } = await store.createTasks({
+    const { id, result } = await store.createTasks({
       stock_codes: [formData.stock_code],  // 单股作为数组传入
       market: formData.market,
       trade_date: formData.trade_date,
@@ -831,9 +831,17 @@ async function handleSubmit() {
         },
       },
     })
+
+    // 检查任务 ID 是否有效
+    if (!id) {
+      ElMessage.error('任务创建失败：无法获取任务ID')
+      console.error('[SingleAnalysis] 任务创建失败，API 返回:', result)
+      return
+    }
+
     router.push({
       name: 'AnalysisDetail',
-      params: { taskId: id },  // 统一接口返回 task_id 或 batch_id
+      params: { taskId: id },
     })
   } catch (error) {
     console.error('创建任务失败:', error)

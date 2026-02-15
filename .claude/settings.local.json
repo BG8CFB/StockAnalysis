@@ -17,7 +17,8 @@
       "mcp__ide__*",
       "mcp__4_5v_mcp__*",
       "mcp__milk_tea_server__*",
-      "WebFetch(*:*)"
+      "WebFetch(*:*)",
+      "mcp__web-search-prime__webSearchPrime"
     ],
     "deny": [],
     "ask": []

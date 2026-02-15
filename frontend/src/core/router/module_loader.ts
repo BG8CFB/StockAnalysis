@@ -134,6 +134,7 @@ const moduleRoutes: RouteRecordRaw[] = [
         children: [
           {
             path: '',
+            name: 'AIManagementIndex',
             redirect: '/settings/ai-management/models'
           },
           {

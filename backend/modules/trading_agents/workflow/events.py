@@ -209,6 +209,7 @@ class AgentMessageEvent(TaskEvent):
 class ToolCalledEvent(TaskEvent):
     """工具调用事件"""
     agent_slug: str = ""
+    agent_name: str = ""
     tool_name: str = ""
     tool_input: str = ""
 
@@ -216,8 +217,10 @@ class ToolCalledEvent(TaskEvent):
         self.event_type = EventType.TOOL_CALLED
         self.data = {
             "agent_slug": self.agent_slug,
+            "agent_name": self.agent_name,
             "tool_name": self.tool_name,
             "tool_input": self.tool_input,
+            "input": self.tool_input,  # 前端兼容
         }
 
 
@@ -483,12 +486,14 @@ def create_tool_called_event(
     task_id: str,
     agent_slug: str,
     tool_name: str,
-    tool_input: str
+    tool_input: str,
+    agent_name: str = "",
 ) -> ToolCalledEvent:
     """创建工具调用事件"""
     return ToolCalledEvent(
         task_id=task_id,
         agent_slug=agent_slug,
+        agent_name=agent_name or agent_slug,
         tool_name=tool_name,
         tool_input=tool_input
     )

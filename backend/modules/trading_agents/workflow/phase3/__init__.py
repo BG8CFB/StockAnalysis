@@ -96,20 +96,20 @@ async def execute_phase3(
     await websocket_manager.broadcast_event(state.task_id, phase_agents_event)
     logger.info(f"[Phase 3] 已发送智能体列表事件, 智能体数量: {len(agents_config)}")
 
-    # 创建智能体实例
+    # 创建智能体实例（传入 task_id 和 websocket_manager 用于工具调用事件推送）
     debators = []
     risk_manager = None
 
     for agent_config in agents_config:
         slug = agent_config["slug"]
         if slug == "aggressive-debator":
-            debators.append(AggressiveDebator(model, agent_config))
+            debators.append(AggressiveDebator(model, agent_config, task_id=state.task_id, websocket_manager=websocket_manager))
         elif slug == "neutral-debator":
-            debators.append(NeutralDebator(model, agent_config))
+            debators.append(NeutralDebator(model, agent_config, task_id=state.task_id, websocket_manager=websocket_manager))
         elif slug == "conservative-debator":
-            debators.append(ConservativeDebator(model, agent_config))
+            debators.append(ConservativeDebator(model, agent_config, task_id=state.task_id, websocket_manager=websocket_manager))
         elif slug == "risk-manager":
-            risk_manager = RiskManager(model, agent_config)
+            risk_manager = RiskManager(model, agent_config, task_id=state.task_id, websocket_manager=websocket_manager)
 
     if not debators:
         logger.warning("[Phase 3] 没有策略分析师")
