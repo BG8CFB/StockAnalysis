@@ -238,8 +238,7 @@ function showUserMenu() {
  * 设计说明：
  * 1. 显示确认对话框
  * 2. 调用 userStore.logout() 清除状态并触发 USER_LOGOUT 事件
- * 3. 路由守卫监听事件并自动跳转到登录页（router/index.ts:149-159）
- * 4. 不需要手动调用 router.push，避免重复跳转
+ * 3. 主动跳转到登录页（此时 router-view 已渲染，不会造成死锁）
  */
 async function handleLogout() {
   try {
@@ -253,14 +252,10 @@ async function handleLogout() {
       }
     )
 
-    // userStore.logout() 会：
-    // 1. 清除本地认证状态（token, userInfo, preferences, localStorage）
-    // 2. 触发 USER_LOGOUT 事件
-    // 3. 路由守卫监听到事件后自动跳转到登录页
     await userStore.logout()
 
-    // 注意：不需要手动调用 router.push('/login')
-    // 路由守卫已经监听 USER_LOGOUT 事件并处理跳转
+    // 用户主动退出时立即跳转登录页（router-view 已渲染，安全）
+    router.push({ name: 'Login' })
     ElMessage.success('已安全退出')
   } catch {
     // 用户取消操作，不做任何事

@@ -3,8 +3,8 @@
  *
  * 设计原则：
  * - 认证状态由 token 决定（同步）
- * - userInfo 按需加载：登录成功后 / 路由守卫中（页面刷新时）
- * - 路由守卫可异步等待 userInfo 加载完成
+ * - userInfo 按需加载：登录成功后 / App.vue 启动时（有 token 时后台加载）
+ * - 路由守卫只检查 token，不检查 userInfo
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
@@ -18,6 +18,7 @@ export const useUserStore = defineStore('user', () => {
   const userInfo = ref<UserInfo | null>(null)
   const preferences = ref<UserPreferences | null>(null)
   const loading = ref(false)
+  let userInfoLoadingPromise: Promise<void> | null = null
 
   // ==================== 计算属性 ====================
 
@@ -180,12 +181,12 @@ export const useUserStore = defineStore('user', () => {
    *
    * 调用场景：
    * 1. 登录成功后 - 立即加载用户信息
-   * 2. 路由守卫中 - 页面刷新时按需加载
+   * 2. 应用启动时 - 自动加载用户信息（App.vue onMounted）
    *
    * 注意：
    * - 如果 userInfo 已加载，直接返回
    * - 如果没有 token，抛出错误（调用方应处理）
-   * - 加载失败时清除状态并抛出错误
+   * - 加载失败时清除状态并抛出错误（HTTP 拦截器会处理 401）
    */
   async function ensureUserInfoLoaded(): Promise<void> {
     // 已加载，跳过
@@ -198,28 +199,39 @@ export const useUserStore = defineStore('user', () => {
       throw new Error('No token available')
     }
 
-    try {
-      const [user, prefs] = await Promise.all([
-        userApi.getMe({ skipExpiredMessage: true }),
-        userApi.getPreferences({ skipExpiredMessage: true })
-      ])
-
-      userInfo.value = user
-      preferences.value = prefs
-
-      if (prefs?.theme) {
-        applyTheme(prefs.theme)
-      }
-
-      console.log('[UserStore] ensureUserInfoLoaded success', {
-        userId: user.id,
-        role: user.role
-      })
-    } catch (error) {
-      console.error('[UserStore] ensureUserInfoLoaded failed:', error)
-      clearState()
-      throw error
+    // 并发去重：避免多个调用同时触发鉴权/刷新流程，造成启动卡顿或竞态
+    if (userInfoLoadingPromise) {
+      return userInfoLoadingPromise
     }
+
+    userInfoLoadingPromise = (async () => {
+      try {
+        // 启动阶段改为串行加载，避免并发 401 + refresh 队列导致的复杂边界问题
+        const user = await userApi.getMe({ skipExpiredMessage: true })
+        const prefs = await userApi.getPreferences({ skipExpiredMessage: true })
+
+        userInfo.value = user
+        preferences.value = prefs
+
+        if (prefs?.theme) {
+          applyTheme(prefs.theme)
+        }
+
+        console.log('[UserStore] ensureUserInfoLoaded success', {
+          userId: user.id,
+          role: user.role
+        })
+      } catch (error) {
+        console.error('[UserStore] ensureUserInfoLoaded failed:', error)
+        // 不再调用 clearState()，由 HTTP 拦截器统一处理
+        // 避免重复清除导致的状态管理混乱
+        throw error
+      } finally {
+        userInfoLoadingPromise = null
+      }
+    })()
+
+    return userInfoLoadingPromise
   }
 
   return {

@@ -2,9 +2,10 @@
  * 应用入口
  *
  * 企业级最佳实践：
- * 1. main.ts 只负责插件注册，不预加载业务数据
- * 2. 用户信息在路由守卫中按需加载（有 token 时）
- * 3. 登录成功后立即加载用户信息
+ * 1. main.ts 只负责插件注册和应用挂载
+ * 2. 用户信息在应用启动时自动加载（App.vue onMounted）
+ * 3. 路由守卫只做同步权限检查，无异步操作
+ * 4. 登录成功后立即加载用户信息
  */
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'

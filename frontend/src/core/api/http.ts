@@ -218,8 +218,8 @@ http.interceptors.response.use(
  * 处理 Token 过期
  *
  * 设计说明：
- * 1. 清除本地认证状态（Pinia store + localStorage）
- * 2. 触发 USER_LOGOUT 事件，让路由守卫处理跳转到登录页
+ * 1. 调用 store.clearState() 统一清除认证状态
+ * 2. 触发 USER_LOGOUT 事件（仅用于通知，不执行路由跳转）
  * 3. 返回错误，让调用方知道请求失败
  *
  * @param config 请求配置（用于检查是否跳过错误消息）
@@ -227,25 +227,19 @@ http.interceptors.response.use(
 function handleTokenExpired(config?: ExtendedAxiosRequestConfig) {
   console.log('[Http] handleTokenExpired called', { skipMessage: config?.skipExpiredMessage })
 
-  // 1. 清除本地认证状态
+  // 调用 store 的统一清除方法，避免状态不一致
   const userStore = useUserStore()
-  userStore.token = null
-  userStore.userInfo = null
-  userStore.preferences = null
-  localStorage.removeItem('access_token')
-  localStorage.removeItem('refresh_token')
+  userStore.clearState()
 
-  // 2. 只在非静默模式下显示错误消息
+  // 只在非静默模式下显示错误消息
   const skipMessage = config?.skipExpiredMessage === true
   if (!skipMessage) {
     ElMessage.error('登录已过期，请重新登录')
   }
 
-  // 3. 触发登出事件，路由守卫会监听此事件并跳转到登录页
-  // 详见 router/index.ts:149-159
+  // 触发登出事件（仅用于通知，不执行路由跳转）
   eventBus.emit(Events.USER_LOGOUT)
 
-  // 4. 返回特定的错误类型，让调用方知道请求失败
   return Promise.reject(new Error('Token expired'))
 }
 

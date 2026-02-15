@@ -2,10 +2,10 @@
  * 路由配置
  *
  * 企业级最佳实践：
- * 1. 路由守卫支持 async/await
- * 2. 用户信息按需加载（有 token 时）
- * 3. 使用 Promise 缓存避免重复请求
- * 4. 权限检查在 userInfo 加载完成后进行
+ * 1. 认证检查只基于 isLoggedIn（有无 token），不检查 userInfo
+ * 2. userInfo 由 App.vue 启动时后台加载，不作为路由访问条件
+ * 3. token 无效时 API 返回 401，HTTP 拦截器清除认证状态
+ * 4. 管理员页面：userInfo 未加载时暂时放行，由页面组件内部检查
  */
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
@@ -42,9 +42,8 @@ const router = createRouter({
 })
 
 // ==================== 缓存变量 ====================
-// 用于避免重复请求
+// 用于避免重复请求系统状态
 let systemStatusPromise: Promise<void> | null = null
-let userInfoPromise: Promise<void> | null = null
 
 // ==================== 路由守卫 ====================
 
@@ -52,9 +51,8 @@ let userInfoPromise: Promise<void> | null = null
  * 全局前置守卫
  *
  * 设计原则：
- * - 支持异步操作
- * - 使用缓存避免重复请求
- * - 用户信息按需加载
+ * - 认证只检查 token（isLoggedIn），不检查 userInfo，避免无限重定向循环
+ * - 系统状态使用缓存避免重复请求
  */
 router.beforeEach(async (to) => {
   // 设置页面标题
@@ -96,38 +94,26 @@ router.beforeEach(async (to) => {
 
   // ==================== 2. 认证检查 ====================
   if (requiresAuth) {
-    // 未登录 → 跳转登录页
+    // 未登录（无 token）→ 跳转登录页
     if (!userStore.isLoggedIn) {
       return {
         name: 'Login',
         query: { redirect: to.fullPath }
       }
     }
-
-    // 已登录但 userInfo 未加载 → 等待加载（使用缓存避免重复请求）
-    if (!userStore.userInfo) {
-      if (!userInfoPromise) {
-        userInfoPromise = userStore.ensureUserInfoLoaded().finally(() => {
-          userInfoPromise = null
-        })
-      }
-      try {
-        await userInfoPromise
-      } catch {
-        // 加载失败（token 无效），清除状态并跳转登录页
-        return {
-          name: 'Login',
-          query: { redirect: to.fullPath }
-        }
-      }
-    }
+    // 已登录（有 token）→ 允许访问
+    // userInfo 由 App.vue 启动时加载，不作为路由访问条件
+    // 如果 token 无效，API 请求会返回 401，HTTP 拦截器会处理清除和重定向
   }
 
   // ==================== 3. 管理员权限检查 ====================
   if (adminOnly) {
-    const role = userStore.userInfo?.role
+    // 如果 userInfo 还没加载完，暂时放行（等加载完后页面组件内部会检查）
+    if (!userStore.userInfo) {
+      return
+    }
+    const role = userStore.userInfo.role
     const hasAdminPermission = role === 'ADMIN' || role === 'SUPER_ADMIN'
-
     if (!hasAdminPermission) {
       console.warn(`[Router] Access denied: ${to.path}`)
       return { name: 'Dashboard' }
@@ -146,14 +132,11 @@ router.beforeEach(async (to) => {
 
 // ==================== 监听登录/登出事件 ====================
 
+// 移除 router.push，让路由守卫自然处理重定向
+// 当用户下次访问受保护页面时，守卫会检测到未认证并自动跳转
 eventBus.on(Events.USER_LOGOUT, () => {
-  const currentRoute = router.currentRoute.value
-  if (currentRoute.meta.requiresAuth !== false) {
-    router.push({
-      name: 'Login',
-      query: { redirect: currentRoute.fullPath }
-    })
-  }
+  console.log('[Router] USER_LOGOUT event received, auth state cleared')
+  // 如果当前在受保护的页面，路由守卫会在下次导航时自动重定向
 })
 
 eventBus.on(Events.USER_LOGIN, () => {
