@@ -32,6 +32,7 @@ from modules.trading_agents.workflow.events import (
     create_progress_update_event,
     create_report_generated_event,
 )
+from modules.trading_agents.workflow.callbacks import WebSocketCallbackHandler
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +68,9 @@ class Phase1AgentFactory:
         agent_config: Dict[str, Any],
         tools: List[BaseTool],
         model_id: str,
-        user_id: str = "system"
+        user_id: str = "system",
+        task_id: str = None,
+        websocket_manager: Any = None,
     ):
         """
         创建单个智能体 (LangChain 0.3+ create_agent API)
@@ -77,6 +80,8 @@ class Phase1AgentFactory:
             tools: 工具列表
             model_id: 模型 ID
             user_id: 用户 ID
+            task_id: 任务 ID（用于回调推送）
+            websocket_manager: WebSocket 管理器实例
 
         Returns:
             AgentExecutor 实例
@@ -87,11 +92,23 @@ class Phase1AgentFactory:
         # 构建系统提示词
         system_prompt_str = self._build_system_prompt(agent_config)
 
+        # 创建回调处理器（用于推送工具调用事件）
+        callbacks = []
+        if task_id and websocket_manager:
+            callback_handler = WebSocketCallbackHandler(
+                task_id=task_id,
+                agent_slug=agent_config.get("slug", "unknown"),
+                agent_name=agent_config.get("name", "unknown"),
+                websocket_manager=websocket_manager,
+            )
+            callbacks.append(callback_handler)
+
         # 使用 LangChain 0.3+ 的 create_agent
+        # 注意: callbacks 不能在这里传递，需要在 ainvoke 时通过 config 传递
         agent = create_agent(
             model,
             tools,
-            system_prompt=system_prompt_str
+            system_prompt=system_prompt_str,
         )
 
         logger.debug(
@@ -102,7 +119,7 @@ class Phase1AgentFactory:
             f"用户: {user_id}"
         )
 
-        return agent
+        return agent, callbacks
 
     def _build_system_prompt(self, agent_config: Dict[str, Any]) -> str:
         """
@@ -140,7 +157,8 @@ class Phase1AgentFactory:
         agent,
         agent_config: Dict[str, Any],
         state: WorkflowState,
-        user_prompt: str
+        user_prompt: str,
+        callbacks: List[Any] = None,
     ) -> Dict[str, Any]:
         """
         执行智能体
@@ -150,6 +168,7 @@ class Phase1AgentFactory:
             agent_config: 智能体配置
             state: 工作流状态
             user_prompt: 用户提示词
+            callbacks: 回调处理器列表
 
         Returns:
             执行结果
@@ -176,7 +195,13 @@ class Phase1AgentFactory:
                 ]
             }
 
-            result = await agent.ainvoke(inputs)
+            # 通过 config 传递 callbacks（LangChain 1.x 方式）
+            if callbacks:
+                from langchain_core.callbacks import CallbackManager
+                config = {"configurable": {"callbacks": CallbackManager(callbacks)}}
+                result = await agent.ainvoke(inputs, config=config)
+            else:
+                result = await agent.ainvoke(inputs)
 
             # 提取输出
             output = self._extract_output(result)
@@ -408,9 +433,9 @@ async def execute_phase1(
         try:
             if semaphore:
                 async with semaphore:
-                    result = await _execute_agent_internal(factory, agent_config, state, model_id)
+                    result = await _execute_agent_internal(factory, agent_config, state, model_id, websocket_manager)
             else:
-                result = await _execute_agent_internal(factory, agent_config, state, model_id)
+                result = await _execute_agent_internal(factory, agent_config, state, model_id, websocket_manager)
 
             # 发送智能体完成事件
             if result and result.get("output"):
@@ -493,29 +518,33 @@ async def _execute_agent_internal(
     factory: "Phase1AgentFactory",
     agent_config: Dict[str, Any],
     state: WorkflowState,
-    model_id: str
+    model_id: str,
+    websocket_manager: Any = None,
 ) -> Dict[str, Any]:
     """内部函数：执行单个智能体"""
     # 加载工具（MCP + Local）
     tools = await load_agent_tools(agent_config, state.user_id, state)
 
-    # 创建智能体
-    agent = await factory.create_agent(
+    # 创建智能体（传入回调处理器用于推送工具调用事件）
+    agent, callbacks = await factory.create_agent(
         agent_config,
         tools,
         model_id,
-        user_id=state.user_id
+        user_id=state.user_id,
+        task_id=state.task_id,
+        websocket_manager=websocket_manager,
     )
 
     # 构建用户提示词
     user_prompt = _build_user_prompt(state, agent_config)
 
-    # 执行智能体
+    # 执行智能体（传递 callbacks 以便在 ainvoke 时使用）
     result = await factory.execute_agent(
         agent,
         agent_config,
         state,
-        user_prompt
+        user_prompt,
+        callbacks=callbacks,
     )
 
     return result

@@ -25,6 +25,8 @@ class TaskStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    STOPPED = "stopped"
+    EXPIRED = "expired"
 
 
 class RecommendationType(str, Enum):

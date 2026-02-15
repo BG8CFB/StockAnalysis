@@ -8,13 +8,14 @@ Phase 2: 看跌分析师
 """
 
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 
 from langchain_core.language_models import BaseChatModel
 
 from langchain.agents import create_agent
 from modules.trading_agents.models.state import WorkflowState, TaskStatus
+from modules.trading_agents.workflow.callbacks import WebSocketCallbackHandler
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,9 @@ class BearResearcher:
     def __init__(
         self,
         model: BaseChatModel,
-        config: Optional[Dict[str, Any]] = None
+        config: Optional[Dict[str, Any]] = None,
+        task_id: str = None,
+        websocket_manager: Any = None,
     ):
         """
         初始化看跌分析师
@@ -37,23 +40,35 @@ class BearResearcher:
         Args:
             model: LLM 模型
             config: 智能体配置
+            task_id: 任务 ID（用于回调推送）
+            websocket_manager: WebSocket 管理器实例
         """
         self.model = model
         self.config = config or {}
+        self.task_id = task_id
+        self.websocket_manager = websocket_manager
+        # 创建回调处理器
+        self.callbacks = []
+        if self.task_id and self.websocket_manager:
+            self.callbacks.append(WebSocketCallbackHandler(
+                task_id=self.task_id,
+                agent_slug="bear_researcher",
+                agent_name="看跌分析师",
+                websocket_manager=self.websocket_manager,
+            ))
         self.agent = self._create_agent()
 
     def _create_agent(self):
         """创建智能体实例 (LangChain 1.1.0 create_agent API)"""
         system_prompt_str = self._build_system_prompt()
-        
         # 使用 LangChain 1.1.0 的 create_agent
+        # 注意: callbacks 不能在这里传递，需要在 ainvoke 时通过 config 传递
         graph = create_agent(
             model=self.model,
             tools=[],
             system_prompt=system_prompt_str,
-            debug=False
+            debug=False,
         )
-        
         return graph
 
     def _build_system_prompt(self) -> str:
@@ -136,7 +151,12 @@ class BearResearcher:
         try:
             # 调用智能体 (使用 LangGraph create_agent 的正确输入格式)
             prompt_text = messages[0]["content"] if messages else "Please analyze."
-            result = await self.agent.ainvoke({"messages": [{"role": "user", "content": prompt_text}]}, config={"recursion_limit": 10})
+            # 通过 config 传递 callbacks
+            config = {"recursion_limit": 10}
+            if self.callbacks:
+                from langchain_core.callbacks import CallbackManager
+                config["configurable"] = {"callbacks": CallbackManager(self.callbacks)}
+            result = await self.agent.ainvoke({"messages": [{"role": "user", "content": prompt_text}]}, config=config)
 
             # 提取输出
             output = self._extract_output(result)
