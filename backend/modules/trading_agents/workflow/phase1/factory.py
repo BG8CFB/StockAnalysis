@@ -33,6 +33,10 @@ from modules.trading_agents.workflow.events import (
     create_report_generated_event,
 )
 from modules.trading_agents.workflow.callbacks import WebSocketCallbackHandler
+from modules.trading_agents.workflow.agent_helpers import (
+    handle_agent_started,
+    handle_agent_completed,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -394,8 +398,8 @@ async def execute_phase1(
         ]
 
     if not enabled_agents:
-        logger.warning("[Phase 1] 没有启用的智能体")
-        state.status = TaskStatus.COMPLETED
+        logger.warning("[Phase 1] 没有启用的智能体，跳过 Phase 1")
+        # 注意：不修改 state.status，让调度器继续执行后续阶段
         return state
 
     concurrency_str = str(max_concurrency) if max_concurrency else "无限制"
@@ -408,7 +412,9 @@ async def execute_phase1(
         phase_name="信息收集与基础分析",
         execution_mode="concurrent",
         max_concurrency=max_concurrency or 0,
-        agents=enabled_agents
+        agents=enabled_agents,
+        total_executions=state.phase_agent_counts.get(1, len(enabled_agents)),
+        phase_progress_weight=(state.phase_agent_counts.get(1, len(enabled_agents)) / state.total_agent_executions * 100) if state.total_agent_executions > 0 else 0
     )
     await websocket_manager.broadcast_event(state.task_id, phase_agents_event)
     logger.info(f"[Phase 1] 已发送智能体列表事件, 智能体数量: {len(enabled_agents)}")
@@ -421,14 +427,13 @@ async def execute_phase1(
 
     async def execute_single_agent(agent_config: Dict[str, Any]) -> Dict[str, Any]:
         """执行单个智能体（带并发控制和事件发送）"""
-        # 发送智能体开始事件
-        agent_started_event = create_agent_started_event(
-            task_id=state.task_id,
+        # 处理智能体开始
+        await handle_agent_started(
+            state=state,
             agent_slug=agent_config["slug"],
-            agent_name=agent_config["name"]
+            agent_name=agent_config["name"],
+            websocket_manager=websocket_manager
         )
-        await websocket_manager.broadcast_event(state.task_id, agent_started_event)
-        logger.info(f"[Phase 1] 智能体开始: {agent_config['slug']} ({agent_config['name']})")
 
         try:
             if semaphore:
@@ -437,25 +442,16 @@ async def execute_phase1(
             else:
                 result = await _execute_agent_internal(factory, agent_config, state, model_id, websocket_manager)
 
-            # 发送智能体完成事件
+            # 处理智能体完成
             if result and result.get("output"):
-                # 发送报告生成事件
-                report_event = create_report_generated_event(
-                    task_id=state.task_id,
+                await handle_agent_completed(
+                    state=state,
                     agent_slug=agent_config["slug"],
                     agent_name=agent_config["name"],
-                    content=result["output"]
+                    output=result["output"],
+                    websocket_manager=websocket_manager,
+                    save_report=True
                 )
-                await websocket_manager.broadcast_event(state.task_id, report_event)
-
-                agent_completed_event = create_agent_completed_event(
-                    task_id=state.task_id,
-                    agent_slug=agent_config["slug"],
-                    agent_name=agent_config["name"],
-                    token_usage={}  # 暂无 token 用量
-                )
-                await websocket_manager.broadcast_event(state.task_id, agent_completed_event)
-                logger.info(f"[Phase 1] 智能体完成: {agent_config['slug']}")
 
             return result
         except Exception as e:

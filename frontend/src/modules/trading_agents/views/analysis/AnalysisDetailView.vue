@@ -64,156 +64,56 @@
       v-else-if="task && progressState"
       class="analysis-content"
     >
-      <!-- 进度概览 -->
-      <el-card
-        shadow="never"
-        class="overview-card"
-      >
-        <div class="overview-grid">
-          <div class="overview-item">
-            <div class="item-label">
-              当前阶段
-            </div>
-            <div class="item-value">
-              {{ currentPhaseInfo?.name || '-' }}
-            </div>
+      <!-- 简洁进度条 -->
+      <el-card shadow="never" class="compact-progress-card">
+        <div class="progress-container">
+          <div class="progress-bar-wrapper">
+            <el-progress
+              :percentage="progressState.progress"
+              :status="progressStatus"
+              :stroke-width="16"
+              :show-text="true"
+            />
           </div>
-          <div class="overview-item">
-            <div class="item-label">
-              分析进度
+          <div class="progress-info">
+            <div class="info-item">
+              <span class="info-label">当前阶段:</span>
+              <el-tag type="primary" size="default">
+                Phase {{ progressState.currentPhase }}
+              </el-tag>
             </div>
-            <div class="item-value">
-              <el-progress
-                :percentage="progressState.progress"
-                :status="progressStatus"
-                :stroke-width="8"
-              />
-            </div>
-          </div>
-          <div class="overview-item">
-            <div class="item-label">
-              已耗时
-            </div>
-            <div class="item-value">
-              {{ formatDuration(elapsedSeconds) }}
-            </div>
-          </div>
-          <div class="overview-item">
-            <div class="item-label">
-              智能体
-            </div>
-            <div class="item-value">
-              {{ completedAgentsCount }}/{{ totalAgentsCount }}
+            <div class="info-item" v-if="runningAgents.length > 0">
+              <span class="info-label">正在执行:</span>
+              <el-tag type="warning" size="default">
+                {{ runningAgents[0].name }}
+              </el-tag>
             </div>
           </div>
         </div>
       </el-card>
 
+      <!-- 关键指标卡片 -->
+      <KeyMetricsCard
+        v-if="task && task.final_recommendation"
+        :recommendation="task.final_recommendation"
+        :buy-price="task.buy_price"
+        :sell-price="task.sell_price"
+        :risk-level="task.risk_level"
+      />
+
       <!-- 主要内容区域 -->
       <el-row :gutter="20">
-        <!-- 左侧：进度和报告 -->
+        <!-- 左侧：报告 -->
         <el-col :span="16">
-          <!-- 阶段进度 -->
-          <el-card
-            shadow="never"
-            class="phase-card"
-          >
-            <template #header>
-              <span>分析阶段</span>
-            </template>
-
-            <el-steps
-              :active="currentPhaseIndex"
-              align-center
-            >
-              <el-step
-                v-for="phase in PHASES"
-                :key="phase.id"
-                :title="phase.name"
-                :description="phase.description"
-              />
-            </el-steps>
-          </el-card>
-
-          <!-- 当前运行的智能体 -->
-          <el-card
-            v-if="runningAgents.length > 0"
-            shadow="never"
-            class="agents-card"
-          >
-            <template #header>
-              <span>运行中的智能体</span>
-            </template>
-
-            <div class="running-agents">
-              <AgentStatusCard
-                v-for="agent in runningAgents"
-                :key="agent.slug"
-                :agent="agent"
-                :show-thinking="true"
-                @show-thinking="handleShowThinking"
-              />
-            </div>
-          </el-card>
-
-          <!-- 已完成的智能体 -->
-          <el-card
-            v-if="completedAgents.length > 0"
-            shadow="never"
-            class="agents-card"
-          >
-            <template #header>
-              <span>已完成的智能体 ({{ completedAgents.length }})</span>
-            </template>
-
-            <div class="completed-agents">
-              <AgentStatusCard
-                v-for="agent in completedAgents"
-                :key="agent.slug"
-                :agent="agent"
-                :show-thinking="true"
-                @show-thinking="handleShowThinking"
-              />
-            </div>
-          </el-card>
-
-          <!-- 已生成的报告 -->
-          <el-card
-            v-if="generatedReports.length > 0"
-            shadow="never"
-            class="reports-card"
-          >
-            <template #header>
-              <span>分析报告 ({{ generatedReports.length }})</span>
-            </template>
-
-            <div class="reports-list">
-              <ReportCard
-                v-for="report in generatedReports"
-                :key="report.agent"
-                :agent-name="report.name"
-                :report="report.report"
-              />
-            </div>
-          </el-card>
-
-          <!-- 最终报告 -->
-          <el-card
-            v-if="showFinalReport"
-            shadow="never"
-            class="final-report-card"
-          >
-            <StreamingReport
-              :content="task.final_report || undefined"
-              :recommendation="task.final_recommendation"
-              :buy-price="task.buy_price"
-              :sell-price="task.sell_price"
-              :total-tokens="task.token_usage?.total_tokens || 0"
-              :estimated-cost="estimatedCost.value"
-              :is-complete="task.status === TaskStatusEnum.COMPLETED"
-              :is-streaming="false"
-            />
-          </el-card>
+          <!-- 智能体报告标签页 -->
+          <AgentReportTabs
+            :reports="progressState.reports"
+            :agents="progressState.agents"
+            :final-report="task?.final_report"
+            :final-recommendation="task?.final_recommendation"
+            :buy-price="task?.buy_price"
+            :sell-price="task?.sell_price"
+          />
         </el-col>
 
         <!-- 右侧：工具调用和状态 -->
@@ -294,6 +194,8 @@ import ToolCallLog from '../../components/analysis/ToolCallLog.vue'
 import ReportCard from '../../components/analysis/ReportCard.vue'
 import StreamingReport from '../../components/analysis/StreamingReport.vue'
 import AgentThinkingDialog from '../../components/analysis/AgentThinkingDialog.vue'
+import AgentReportTabs from '../../components/analysis/AgentReportTabs.vue'
+import KeyMetricsCard from '../../components/analysis/KeyMetricsCard.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -309,7 +211,7 @@ const error = ref(false)
 // 分析进度 - 初始化为空，在任务加载后更新
 const progress = useAnalysisProgress()
 const {
-  state: progressStateRaw,
+  state: progressStateBase,
   currentPhaseInfo,
   completedAgentsCount,
   totalAgentsCount,
@@ -385,7 +287,7 @@ function handleWsStatusChange(status: WebSocketStatus) {
 
 // 计算属性：当前阶段索引
 const currentPhaseIndex = computed(() => {
-  return Math.max(0, progressStateRaw.value.currentPhase - 1)
+  return Math.max(0, progressStateBase.value.currentPhase - 1)
 })
 
 // 计算属性：进度状态
@@ -412,7 +314,7 @@ const tokenStats = computed(() => tokenUsage.totalUsage)
 const estimatedCost = computed(() => tokenUsage.estimatedCost)
 
 // 计算属性：进度状态
-const progressState = computed(() => progressStateRaw.value)
+const progressState = computed(() => progressStateBase.value)
 
 /**
  * 获取状态类型
@@ -805,5 +707,39 @@ watch(() => task.value?.status, (newStatus, oldStatus) => {
 
 .stat-total {
   font-weight: 600;
+}
+
+/* 简洁进度卡片 */
+.compact-progress-card {
+  margin-bottom: 20px;
+}
+
+.progress-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.progress-bar-wrapper {
+  width: 100%;
+}
+
+.progress-info {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.info-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.info-label {
+  font-size: 14px;
+  color: var(--el-text-color-secondary);
+  font-weight: 500;
 }
 </style>

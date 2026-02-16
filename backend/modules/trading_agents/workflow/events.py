@@ -108,6 +108,8 @@ class PhaseAgentsEvent(TaskEvent):
     max_concurrency: int = 1
     concurrent_group: str = ""
     agents: List[Dict[str, Any]] = field(default_factory=list)
+    total_executions: int = 0  # 该阶段总执行次数
+    phase_progress_weight: float = 0.0  # 该阶段进度权重（百分比）
 
     def __post_init__(self):
         self.event_type = EventType.PHASE_AGENTS
@@ -118,6 +120,8 @@ class PhaseAgentsEvent(TaskEvent):
             "max_concurrency": self.max_concurrency,
             "concurrent_group": self.concurrent_group,
             "agents": self.agents,
+            "total_executions": self.total_executions,
+            "phase_progress_weight": self.phase_progress_weight,
         }
 
 
@@ -177,6 +181,9 @@ class AgentCompletedEvent(TaskEvent):
     agent_slug: str = ""
     agent_name: str = ""
     token_usage: Dict[str, int] = field(default_factory=dict)
+    progress: float = 0.0  # 当前整体进度
+    completed_agents: int = 0  # 已完成智能体数
+    total_agents: int = 0  # 总智能体数
 
     def __post_init__(self):
         self.event_type = EventType.AGENT_COMPLETED
@@ -184,6 +191,9 @@ class AgentCompletedEvent(TaskEvent):
             "agent_slug": self.agent_slug,
             "agent_name": self.agent_name,
             "token_usage": self.token_usage,
+            "progress": self.progress,
+            "completed_agents": self.completed_agents,
+            "total_agents": self.total_agents,
         }
 
 @dataclass
@@ -387,7 +397,9 @@ def create_phase_agents_event(
     execution_mode: str,
     max_concurrency: int,
     concurrent_group: str = "",
-    agents: Optional[List[Dict[str, Any]]] = None
+    agents: Optional[List[Dict[str, Any]]] = None,
+    total_executions: int = 0,
+    phase_progress_weight: float = 0.0
 ) -> PhaseAgentsEvent:
     """创建阶段智能体列表事件"""
     return PhaseAgentsEvent(
@@ -397,7 +409,9 @@ def create_phase_agents_event(
         execution_mode=execution_mode,
         max_concurrency=max_concurrency,
         concurrent_group=concurrent_group,
-        agents=agents or []
+        agents=agents or [],
+        total_executions=total_executions,
+        phase_progress_weight=phase_progress_weight
     )
 
 
@@ -452,14 +466,20 @@ def create_agent_completed_event(
     task_id: str,
     agent_slug: str,
     agent_name: str,
-    token_usage: Dict[str, int]
+    token_usage: Dict[str, int],
+    progress: float = 0.0,
+    completed_agents: int = 0,
+    total_agents: int = 0
 ) -> AgentCompletedEvent:
     """创建智能体完成事件"""
     return AgentCompletedEvent(
         task_id=task_id,
         agent_slug=agent_slug,
         agent_name=agent_name,
-        token_usage=token_usage
+        token_usage=token_usage,
+        progress=progress,
+        completed_agents=completed_agents,
+        total_agents=total_agents
     )
 
 

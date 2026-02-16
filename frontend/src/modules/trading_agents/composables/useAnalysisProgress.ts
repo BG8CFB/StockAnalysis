@@ -86,6 +86,9 @@ interface ProgressState {
   reports: Map<string, string>
   startTime: number
   endTime: number | null
+  // 新增字段：细粒度进度追踪
+  totalAgentExecutions: number
+  phaseAgentCounts: Record<number, number>
 }
 
 /**
@@ -143,6 +146,9 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
     reports: new Map(Object.entries(initialTask?.reports || {})),
     startTime: initialTask?.created_at ? new Date(initialTask.created_at).getTime() : Date.now(),
     endTime: initialTask?.completed_at ? new Date(initialTask.completed_at).getTime() : null,
+    // 新增字段初始化
+    totalAgentExecutions: 0,
+    phaseAgentCounts: {}
   })
 
   // 事件历史
@@ -352,6 +358,7 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
    */
   function handleAgentStarted(event: TaskEvent) {
     const { agent_slug, agent_name } = event.data
+    console.log('[AnalysisProgress] Agent started:', agent_slug, agent_name)
     currentAgent.value = agent_slug as string
 
     // 获取显示名称（处理后端可能传回英文名的情况）
@@ -363,6 +370,7 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
       existing.status = 'running'
       existing.name = displayName // 更新名称
       existing.startTime = event.timestamp * 1000
+      console.log('[AnalysisProgress] Updated existing agent to running:', agent_slug, 'Total agents:', state.value.agents.size)
       return
     }
 
@@ -375,14 +383,15 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
     }
 
     state.value.agents.set(agent_slug as string, agent)
+    console.log('[AnalysisProgress] Created new running agent:', agent_slug, 'Total agents:', state.value.agents.size)
   }
 
   /**
    * 处理智能体完成
-   * 进度：优先使用后端下发的 progress；否则按「已完成数/总智能体数」估算，总数不写死。
+   * 进度：优先使用后端下发的 progress、completed_agents 和 total_agents
    */
   function handleAgentCompleted(event: TaskEvent) {
-    const { agent_slug, report, content, progress: backendProgress, total_agents } = event.data
+    const { agent_slug, report, content, progress: backendProgress, completed_agents, total_agents } = event.data
     const agent = state.value.agents.get(agent_slug as string)
 
     if (agent) {
@@ -396,20 +405,14 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
       }
     }
 
-    // 进度：优先使用后端下发的数字类型 progress
+    // 进度：优先使用后端下发的 progress
     if (typeof backendProgress === 'number') {
       state.value.progress = Math.min(Math.max(backendProgress, 0), 100)
-      return
     }
-    // 否则按「已完成智能体数 / 总智能体数」估算（总数不写死，与后端口径一致）
-    const total = typeof total_agents === 'number' && total_agents > 0
-      ? total_agents
-      : state.value.agents.size
-    if (total > 0) {
-      const completed = Array.from(state.value.agents.values()).filter(
-        (a) => a.status === 'completed'
-      ).length
-      state.value.progress = Math.min(Math.round((completed / total) * 100), 100)
+
+    // 如果后端提供了 completed_agents 和 total_agents，可以更新 totalAgentExecutions
+    if (typeof total_agents === 'number' && total_agents > 0) {
+      state.value.totalAgentExecutions = total_agents
     }
   }
 
@@ -549,16 +552,24 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
    * 处理阶段智能体列表
    */
   function handlePhaseAgents(event: TaskEvent) {
-    const { agents, phase } = event.data
+    const { agents, phase, total_executions, phase_progress_weight } = event.data
     console.log('[AnalysisProgress] Received phase agents:', agents, 'Phase:', phase)
+
+    // 更新阶段智能体数量
+    if (typeof phase === 'number' && typeof total_executions === 'number') {
+      state.value.phaseAgentCounts[phase] = total_executions
+      // 重新计算总执行次数
+      state.value.totalAgentExecutions = Object.values(state.value.phaseAgentCounts).reduce((a, b) => a + b, 0)
+    }
+
     if (Array.isArray(agents)) {
       // 更新当前阶段的智能体列表
       agents.forEach((agent: any) => {
         const { slug, name } = agent
-        
+
         // 获取显示名称
         const displayName = getAgentDisplayName(slug, name)
-        
+
         if (!state.value.agents.has(slug)) {
           state.value.agents.set(slug, {
             slug: slug || 'unknown',
@@ -590,6 +601,8 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
       reports: new Map(),
       startTime: Date.now(),
       endTime: null,
+      totalAgentExecutions: 0,
+      phaseAgentCounts: {}
     }
     events.value = []
     currentAgent.value = null

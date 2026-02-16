@@ -39,6 +39,10 @@ from modules.trading_agents.workflow.events import (
     create_agent_completed_event,
     create_report_generated_event,
 )
+from modules.trading_agents.workflow.agent_helpers import (
+    handle_agent_started,
+    handle_agent_completed,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +95,9 @@ async def execute_phase3(
         phase_name="策略风格与风险评估",
         execution_mode="hybrid",  # 混合模式（策略师并发，风控串行）
         max_concurrency=3,  # 3个策略师并发
-        agents=agents_config
+        agents=agents_config,
+        total_executions=state.phase_agent_counts.get(3, 4),
+        phase_progress_weight=(state.phase_agent_counts.get(3, 4) / state.total_agent_executions * 100) if state.total_agent_executions > 0 else 0
     )
     await websocket_manager.broadcast_event(state.task_id, phase_agents_event)
     logger.info(f"[Phase 3] 已发送智能体列表事件, 智能体数量: {len(agents_config)}")
@@ -132,30 +138,26 @@ async def execute_phase3(
     # 并发执行所有策略分析师
     async def execute_debator(debator):
         # 发送策略分析师开始事件
-        await websocket_manager.broadcast_event(state.task_id, create_agent_started_event(
-            task_id=state.task_id,
+        await handle_agent_started(
+            state=state,
             agent_slug=debator.slug,
-            agent_name=debator.name
-        ))
-        
+            agent_name=debator.name,
+            websocket_manager=websocket_manager
+        )
+
         try:
             result = await debator.analyze(state, state.investment_decision)
-            
+
             if result and result.get("output"):
-                # 发送报告生成事件
-                await websocket_manager.broadcast_event(state.task_id, create_report_generated_event(
-                    task_id=state.task_id,
-                    agent_slug=result["slug"],
-                    agent_name=result["name"],
-                    content=result["output"]
-                ))
                 # 发送策略分析师完成事件
-                await websocket_manager.broadcast_event(state.task_id, create_agent_completed_event(
-                    task_id=state.task_id,
+                await handle_agent_completed(
+                    state=state,
                     agent_slug=result["slug"],
                     agent_name=result["name"],
-                    token_usage={}  # 暂无 token 用量
-                ))
+                    output=result["output"],
+                    websocket_manager=websocket_manager,
+                    save_report=True
+                )
             return result
         except Exception as e:
             logger.error(f"[Phase 3] 策略分析师 {debator.slug} 执行异常: {e}")
@@ -181,27 +183,24 @@ async def execute_phase3(
 
     # 执行风险管理委员会主席（串行，等待所有策略分析师完成）
     # 发送风险管理委员会主席开始事件
-    await websocket_manager.broadcast_event(state.task_id, create_agent_started_event(
-        task_id=state.task_id,
+    await handle_agent_started(
+        state=state,
         agent_slug="risk-manager",
-        agent_name="风险管理委员会主席"
-    ))
+        agent_name="风险管理委员会主席",
+        websocket_manager=websocket_manager
+    )
     manager_result = await risk_manager.assess(state, strategy_reports, state.investment_decision)
 
     # 发送风险管理委员会主席完成事件
     if manager_result and manager_result.get("output"):
-        await websocket_manager.broadcast_event(state.task_id, create_report_generated_event(
-            task_id=state.task_id,
+        await handle_agent_completed(
+            state=state,
             agent_slug="risk-manager",
             agent_name="风险管理委员会主席",
-            content=manager_result["output"]
-        ))
-        await websocket_manager.broadcast_event(state.task_id, create_agent_completed_event(
-            task_id=state.task_id,
-            agent_slug="risk-manager",
-            agent_name="风险管理委员会主席",
-            token_usage={}  # 暂无 token 用量
-        ))
+            output=manager_result["output"],
+            websocket_manager=websocket_manager,
+            save_report=True
+        )
 
     # 更新状态
     if manager_result.get("decision"):
@@ -245,9 +244,6 @@ async def execute_phase3(
 
     state.phase_executions.append(phase3_execution)
 
-    # 更新进度
-    state.progress = 75.0  # Phase 3 完成后进度 75%
-
-    logger.info(f"[Phase 3] 完成, 最终推荐: {state.final_recommendation}")
+    logger.info(f"[Phase 3] 完成, 最终推荐: {state.final_recommendation}, 进度: {state.progress:.1f}%")
 
     return state

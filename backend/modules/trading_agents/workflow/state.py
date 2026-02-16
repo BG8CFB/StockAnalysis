@@ -173,6 +173,11 @@ class WorkflowState:
         self.progress: float = 0.0
         self.completed_at: Optional[str] = None
 
+        # ===== 细粒度进度追踪 =====
+        self.total_agent_executions = 0      # 总智能体执行次数
+        self.completed_agent_executions = 0  # 已完成智能体执行次数
+        self.phase_agent_counts: Dict[int, int] = {}  # 各阶段智能体数量映射
+
         # ===== 元数据 =====
         self.token_usage: List[Dict[str, Any]] = []
         self.errors: List[Dict[str, Any]] = []
@@ -186,6 +191,57 @@ class WorkflowState:
             return enabled_count if enabled_count > 0 else 4
         except Exception:
             return 4
+
+    def calculate_progress(self) -> float:
+        """
+        计算当前进度（基于智能体执行情况）
+
+        Returns:
+            进度百分比 (0.0 - 100.0)，保留一位小数
+        """
+        if self.total_agent_executions == 0:
+            return 0.0
+        # 保留一位小数，避免无限循环小数（如 6.6666667%）
+        return round((self.completed_agent_executions / self.total_agent_executions) * 100, 1)
+
+    def initialize_progress_tracking(self, phase1_count: int, debate_rounds: int = 2) -> None:
+        """
+        初始化进度追踪
+
+        Args:
+            phase1_count: Phase 1 的智能体数量
+            debate_rounds: Phase 2 的辩论轮数（默认 2）
+        """
+        # Phase 1: N 个分析师
+        phase1_executions = phase1_count
+
+        # Phase 2: 辩论轮数 × 2 (bull + bear) + 2 (manager + trader)
+        # 例如：2 轮辩论 = 2×2 + 2 = 6 次执行
+        phase2_executions = debate_rounds * 2 + 2
+
+        # Phase 3: 4 个智能体（3 个策略师 + 1 个风控）
+        phase3_executions = 4
+
+        # Phase 4: 1 个智能体（总结智能体）
+        phase4_executions = 1
+
+        # 存储各阶段智能体数量
+        self.phase_agent_counts = {
+            1: phase1_executions,
+            2: phase2_executions,
+            3: phase3_executions,
+            4: phase4_executions
+        }
+
+        # 计算总智能体执行次数
+        self.total_agent_executions = (
+            phase1_executions + phase2_executions +
+            phase3_executions + phase4_executions
+        )
+
+        # 初始化进度为 0
+        self.completed_agent_executions = 0
+        self.progress = 0.0
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典（用于 API 返回）"""

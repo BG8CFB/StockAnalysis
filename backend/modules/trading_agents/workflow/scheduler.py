@@ -106,17 +106,27 @@ class WorkflowScheduler:
         )
         state.stock_name = stock_name
 
+        # 获取阶段配置（提前获取，用于初始化进度追踪）
+        if stages is None:
+            stages = {}
+        phase1_config = stages.get("stage1") or stages.get("phase1") or {}
+        phase2_config = stages.get("stage2") or stages.get("phase2") or {}
+        phase3_config = stages.get("stage3") or stages.get("phase3") or {}
+        phase4_config = stages.get("stage4") or stages.get("phase4") or {}
+
+        # 初始化细粒度进度追踪
+        phase1_agent_count = len(selected_agents) if selected_agents else 6  # 默认6个分析师
+        debate_rounds = phase2_config.get("debate", {}).get("rounds", 2)  # 默认2轮辩论
+        state.initialize_progress_tracking(phase1_agent_count, debate_rounds)
+        logger.info(
+            f"[调度器] 初始化进度追踪: Phase1={phase1_agent_count}个智能体, "
+            f"辩论轮数={debate_rounds}, 总执行次数={state.total_agent_executions}"
+        )
+
         logger.info(f"[调度器] 开始任务: {task_id}, {stock_code}")
         self._notify_progress(state, "task_created", "任务创建")
 
         try:
-            # 获取阶段配置
-            if stages is None:
-                stages = {}
-            phase1_config = stages.get("stage1") or stages.get("phase1") or {}
-            phase2_config = stages.get("stage2") or stages.get("phase2") or {}
-            phase3_config = stages.get("stage3") or stages.get("phase3") or {}
-            phase4_config = stages.get("stage4") or stages.get("phase4") or {}
 
             # 获取模型
             data_collection_model_instance = await self.ai_service.get_model_async(data_collection_model or "claude-sonnet-4-20250514", user_id)
