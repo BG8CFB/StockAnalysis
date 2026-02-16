@@ -1,1 +1,22 @@
+# JSON文件使用LF
 *.json text eol=lf
+
+# 前端源代码文件统一使用LF（跨平台一致性）
+*.vue text eol=lf
+*.js text eol=lf
+*.ts text eol=lf
+*.jsx text eol=lf
+*.tsx text eol=lf
+*.css text eol=lf
+*.scss text eol=lf
+*.html text eol=lf
+
+# Python文件使用LF
+*.py text eol=lf
+
+# Shell脚本必须使用LF
+*.sh text eol=lf
+
+# Windows批处理文件使用CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
