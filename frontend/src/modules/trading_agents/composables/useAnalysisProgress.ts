@@ -270,8 +270,14 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
   /**
    * 处理 WebSocket 事件
    */
+  const MAX_EVENTS = 500      // 最多保留 500 条事件历史
+
   function handleEvent(event: TaskEvent) {
     events.value.push(event)
+    // 防止事件数组无限增长导致内存泄漏
+    if (events.value.length > MAX_EVENTS) {
+      events.value.splice(0, events.value.length - MAX_EVENTS)
+    }
 
     switch (event.event_type) {
       case 'task_started':
@@ -435,6 +441,11 @@ export function useAnalysisProgress(initialTask?: AnalysisTask) {
     }
 
     state.value.toolCalls.push(toolCall)
+    // 防止工具调用记录无限增长（recentToolCalls 只取最后 10 条，但底层数组持续扩张）
+    const MAX_TOOL_CALLS = 200
+    if (state.value.toolCalls.length > MAX_TOOL_CALLS) {
+      state.value.toolCalls.splice(0, state.value.toolCalls.length - MAX_TOOL_CALLS)
+    }
   }
 
   /**

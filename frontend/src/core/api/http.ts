@@ -69,7 +69,7 @@ http.interceptors.request.use(
 
 // 标记是否正在刷新 token
 let isRefreshing = false
-// 存储等待刷新完成的请求
+// 存储等待刷新完成的请求（移除冗余的 config 字段，该字段从未被 processQueue 使用）
 let failedQueue: Array<{
   resolve: (value?: unknown) => void
   reject: (reason?: unknown) => void
@@ -94,15 +94,10 @@ http.interceptors.response.use(
   async (error: AxiosError<ApiResponse>) => {
     const extendedConfig = error.config as ExtendedAxiosRequestConfig
 
-    // 跳过错误处理的情况
-    if (extendedConfig?.skipErrorHandler) {
-      return Promise.reject(error)
-    }
-
     const status = error.response?.status
     const data = error.response?.data
 
-    // ==================== 401 处理：Token 过期 ====================
+    // ==================== 401 处理：Token 过期（必须在 skipErrorHandler 之前，两者语义独立）====================
     if (status === 401 && extendedConfig && !extendedConfig._retry) {
       console.log('[Http] 401 Interceptor triggered', { url: extendedConfig.url, isRefreshing })
 
@@ -120,7 +115,7 @@ http.interceptors.response.use(
         return handleTokenExpired(extendedConfig)
       }
 
-      // 如果正在刷新 token，将请求加入队列，重试时必须使用新 token
+      // 如果正在刷新 token，将请求加入队列
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject })
@@ -133,6 +128,8 @@ http.interceptors.response.use(
             } else if (newToken) {
               extendedConfig.headers = { Authorization: `Bearer ${newToken}` }
             }
+            // 标记为重试，避免无限循环
+            extendedConfig._retry = true
             return http(extendedConfig)
           })
           .catch((err) => {
@@ -182,6 +179,11 @@ http.interceptors.response.use(
       }
     }
 
+    // skipErrorHandler：只跳过 UI 错误提示，不影响上方的 token 刷新逻辑
+    if (extendedConfig?.skipErrorHandler) {
+      return Promise.reject(error)
+    }
+
     // ==================== 其他错误处理 ====================
     if (status) {
       switch (status) {
@@ -203,16 +205,16 @@ http.interceptors.response.use(
           if (data?.error?.message) {
             ElMessage.error(data.error.message)
           } else if (error.message) {
-            // 避免重复显示 axios 的超时消息
-            if (!error.message.includes('timeout')) {
-              ElMessage.error(error.message)
-            }
+            ElMessage.error(error.message)
           } else {
             ElMessage.error('请求失败，请稍后重试')
           }
       }
+    } else if (error.code === 'ECONNABORTED' || error.message?.toLowerCase().includes('timeout')) {
+      // 请求超时（明确提示，不静默丢弃）
+      ElMessage.error('请求超时，请检查网络后重试')
     } else {
-      // 网络错误
+      // 其他网络错误
       ElMessage.error('网络连接失败，请检查网络设置')
     }
 

@@ -1,8 +1,13 @@
 <template>
-  <el-card shadow="never" class="key-metrics-card">
+  <el-card
+    shadow="never"
+    class="key-metrics-card"
+  >
     <!-- 投资建议头部 -->
     <div class="recommendation-header">
-      <div class="recommendation-label">投资建议</div>
+      <div class="recommendation-label">
+        投资建议
+      </div>
       <el-tag
         :type="getRecommendationType()"
         size="large"
@@ -16,7 +21,9 @@
     <div class="metrics-grid">
       <!-- 买入价格 -->
       <div class="metric-item">
-        <div class="metric-label">买入价格</div>
+        <div class="metric-label">
+          买入价格
+        </div>
         <div class="metric-value primary">
           {{ buyPrice ? `¥${buyPrice.toFixed(2)}` : '-' }}
         </div>
@@ -24,7 +31,9 @@
 
       <!-- 卖出价格 -->
       <div class="metric-item">
-        <div class="metric-label">卖出价格</div>
+        <div class="metric-label">
+          卖出价格
+        </div>
         <div class="metric-value primary">
           {{ sellPrice ? `¥${sellPrice.toFixed(2)}` : '-' }}
         </div>
@@ -32,8 +41,13 @@
 
       <!-- 风险等级 -->
       <div class="metric-item">
-        <div class="metric-label">风险等级</div>
-        <div class="metric-value" :class="getRiskClass()">
+        <div class="metric-label">
+          风险等级
+        </div>
+        <div
+          class="metric-value"
+          :class="getRiskClass()"
+        >
           {{ riskLevel || '-' }}
         </div>
       </div>

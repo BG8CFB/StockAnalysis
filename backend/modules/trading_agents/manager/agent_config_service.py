@@ -6,7 +6,7 @@
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from core.db.mongodb import mongodb
@@ -242,7 +242,7 @@ class AgentConfigService:
                 phase4_data["agents"] = self._deduplicate_agents_by_slug(phase4_data["agents"])
             update_data["phase4"] = phase4_data
 
-        update_data["updated_at"] = datetime.utcnow()
+        update_data["updated_at"] = datetime.now(timezone.utc)
 
         if doc:
             # 更新现有公共配置
@@ -319,8 +319,8 @@ class AgentConfigService:
             "phase2": phase2.model_dump(mode='json') if phase2 else None,
             "phase3": phase3.model_dump(mode='json') if phase3 else None,
             "phase4": phase4.model_dump(mode='json') if phase4 else None,
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc),
         }
 
         result = await collection.insert_one(doc)
@@ -382,8 +382,8 @@ class AgentConfigService:
             "phase2": phase2.model_dump(mode='json') if phase2 else None,
             "phase3": phase3.model_dump(mode='json') if phase3 else None,
             "phase4": phase4.model_dump(mode='json') if phase4 else None,
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc),
         }
 
         result = await collection.insert_one(doc)
@@ -444,8 +444,8 @@ class AgentConfigService:
                 "phase2": phase2.model_dump(mode='json') if phase2 else None,
                 "phase3": phase3.model_dump(mode='json') if phase3 else None,
                 "phase4": phase4.model_dump(mode='json') if phase4 else None,
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow(),
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc),
                 "_source": "yaml",  # 标记来源
             }
 
@@ -664,7 +664,7 @@ class AgentConfigService:
 
         # 标记为已自定义
         update_data["is_customized"] = True
-        update_data["updated_at"] = datetime.utcnow()
+        update_data["updated_at"] = datetime.now(timezone.utc)
 
         # 执行更新
         await collection.update_one(
@@ -799,7 +799,7 @@ class AgentConfigService:
             "phase2": phase2.model_dump(mode='json') if phase2 else None,
             "phase3": phase3.model_dump(mode='json') if phase3 else None,
             "phase4": phase4.model_dump(mode='json') if phase4 else None,
-            "updated_at": datetime.utcnow(),
+            "updated_at": datetime.now(timezone.utc),
         }
 
         # 使用 upsert
@@ -876,8 +876,8 @@ class AgentConfigService:
             "phase2": phase2.model_dump(mode='json') if phase2 else None,
             "phase3": phase3.model_dump(mode='json') if phase3 else None,
             "phase4": phase4.model_dump(mode='json') if phase4 else None,
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc),
         }
 
         result = await collection.insert_one(doc)

@@ -2,9 +2,12 @@
 基于角色的访问控制 (RBAC) 工具
 """
 from enum import Enum
-from typing import Set
+from functools import wraps
+from typing import Set, Callable
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, Depends
+
+from core.auth.models import UserModel
 
 
 class Role(str, Enum):
@@ -93,20 +96,27 @@ def has_all_permissions(role: Role, permissions: Set[Permission]) -> bool:
 
 
 def require_permission(permission: Permission):
-    """权限检查装饰器工厂"""
-    from functools import wraps
+    """权限检查装饰器工厂
 
-    from core.auth.models import UserModel
-
-    def decorator(func):
+    注意：使用此装饰器的路由必须通过 Depends(get_current_user) 注入 current_user 参数。
+    装饰器会验证 current_user 是否存在，如果不存在则抛出 401 错误。
+    """
+    def decorator(func: Callable):
         @wraps(func)
         async def wrapper(*args, **kwargs):
-            # 从依赖注入获取当前用户
+            # 严格检查 current_user 是否存在
             user: UserModel = kwargs.get("current_user")
-            if not user:
+            if user is None:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="未认证"
+                    detail="未认证：缺少用户信息，请确保路由使用了 Depends(get_current_user)"
+                )
+
+            # 验证 user 是 UserModel 实例
+            if not isinstance(user, UserModel):
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="内部错误：用户信息类型不正确"
                 )
 
             user_role = Role(user.role)
@@ -122,18 +132,24 @@ def require_permission(permission: Permission):
 
 
 def require_role(*roles: Role):
-    """角色检查装饰器工厂"""
-    from functools import wraps
+    """角色检查装饰器工厂
 
-    def decorator(func):
+    注意：使用此装饰器的路由必须通过 Depends(get_current_user) 注入 current_user 参数。
+    """
+    def decorator(func: Callable):
         @wraps(func)
         async def wrapper(*args, **kwargs):
-            from core.auth.models import UserModel
             user: UserModel = kwargs.get("current_user")
-            if not user:
+            if user is None:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="未认证"
+                    detail="未认证：缺少用户信息，请确保路由使用了 Depends(get_current_user)"
+                )
+
+            if not isinstance(user, UserModel):
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="内部错误：用户信息类型不正确"
                 )
 
             user_role = Role(user.role)

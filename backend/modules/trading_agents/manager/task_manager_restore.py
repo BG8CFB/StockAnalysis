@@ -6,7 +6,7 @@
 
 import logging
 from typing import Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from bson import ObjectId
 
 from core.db.mongodb import mongodb
@@ -173,7 +173,7 @@ async def _mark_task_failed(
             "$set": {
                 "status": TaskStatusEnum.FAILED.value,
                 "error_message": reason,
-                "completed_at": datetime.utcnow(),
+                "completed_at": datetime.now(timezone.utc),
             }
         }
     )

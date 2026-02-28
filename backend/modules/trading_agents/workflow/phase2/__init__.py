@@ -22,7 +22,7 @@ __all__ = [
 
 import logging
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 
 from langchain_core.language_models import BaseChatModel
 
@@ -133,7 +133,7 @@ async def execute_phase2(
     phase2_execution = PhaseExecution(
         phase=2,
         phase_name="多空博弈与投资决策",
-        started_at=datetime.utcnow(),
+        started_at=datetime.now(timezone.utc),
         execution_mode="mixed",
         max_concurrency=2  # 看涨和看跌可以并行
     )
@@ -296,7 +296,7 @@ async def execute_phase2(
         if trader_result.get("output"):
             state.trading_plan = {
                 "content": trader_result["output"],
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
             # 发送交易员完成事件
             await handle_agent_completed(
@@ -309,7 +309,7 @@ async def execute_phase2(
             )
 
     # 更新执行记录
-    phase2_execution.completed_at = datetime.utcnow()
+    phase2_execution.completed_at = datetime.now(timezone.utc)
     phase2_execution.status = TaskStatus.COMPLETED
 
     # 添加智能体执行记录

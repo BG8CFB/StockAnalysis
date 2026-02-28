@@ -5,7 +5,7 @@
 """
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List, Callable
 from dataclasses import dataclass, field
 from enum import Enum
@@ -54,7 +54,7 @@ class AlertEvent:
     user_id: Optional[str] = None
     task_id: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     resolved: bool = False
     resolved_at: Optional[datetime] = None
 
@@ -127,24 +127,20 @@ class QuotaExhaustedTrigger(AlertTrigger):
         self,
         user_id: str,
         model_id: str,
+        queue_position: Optional[int] = None,
         **context
     ) -> Optional[AlertEvent]:
-        # 检查配额是否耗尽
-        from modules.trading_agents.manager.concurrency import get_concurrency_manager
-        concurrency = get_concurrency_manager()
-        has_quota = await concurrency.try_acquire_public_quota(user_id)
-
-        if not has_quota:
+        # 通过队列位置判断配额是否耗尽
+        # queue_position > 0 表示任务在等待队列中
+        if queue_position is not None and queue_position > 5:
             return AlertEvent(
                 event_type=self.event_type,
                 severity=self.severity,
-                title=f"公共模型配额耗尽",
-                description=f"用户 {user_id} 的公共模型配额已耗尽，请稍后重试",
+                title=f"模型并发资源紧张",
+                description=f"用户 {user_id} 的任务在队列位置 {queue_position}，当前资源紧张",
                 user_id=user_id,
-                metadata={"model_id": model_id}
+                metadata={"model_id": model_id, "queue_position": queue_position}
             )
-        # 释放配额（因为只是检查）
-        await concurrency.release_public_quota(user_id)
         return None
 
 
@@ -307,7 +303,7 @@ class WebSocketAlertChannel(AlertChannel):
 
     async def send(self, alert: AlertEvent) -> bool:
         if self.ws_manager is None:
-            self.ws_manager = get_ws_manager()
+            self.ws_manager = await get_ws_manager()
 
         if alert.user_id:
             # 发送给特定用户
@@ -525,7 +521,7 @@ class AlertManager:
             from bson import ObjectId
             result = await mongodb.database.alerts.update_one(
                 {"_id": ObjectId(alert_id)},
-                {"$set": {"resolved": True, "resolved_at": datetime.utcnow()}}
+                {"$set": {"resolved": True, "resolved_at": datetime.now(timezone.utc)}}
             )
             return result.modified_count > 0
         except Exception as e:

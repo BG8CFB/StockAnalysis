@@ -38,17 +38,29 @@
           }"
         >
           <div class="agent-icon">
-            <el-icon v-if="agent.status === 'completed'" :size="20">
+            <el-icon
+              v-if="agent.status === 'completed'"
+              :size="20"
+            >
               <CircleCheck />
             </el-icon>
-            <el-icon v-else-if="agent.status === 'running'" :size="20" class="rotating">
+            <el-icon
+              v-else-if="agent.status === 'running'"
+              :size="20"
+              class="rotating"
+            >
               <Loading />
             </el-icon>
-            <el-icon v-else :size="20">
+            <el-icon
+              v-else
+              :size="20"
+            >
               <Clock />
             </el-icon>
           </div>
-          <div class="agent-name">{{ agent.displayName }}</div>
+          <div class="agent-name">
+            {{ agent.displayName }}
+          </div>
         </div>
       </div>
     </div>

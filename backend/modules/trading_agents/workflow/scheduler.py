@@ -22,7 +22,7 @@ TradingAgents 工作流调度器
 import asyncio
 import logging
 from typing import Dict, Any, Optional, Callable
-from datetime import datetime
+from datetime import datetime, timezone
 
 from modules.trading_agents.models.state import (
     WorkflowState,
@@ -101,7 +101,7 @@ class WorkflowScheduler:
             task_id=task_id,
             user_id=user_id,
             stock_code=stock_code,
-            trade_date=trade_date or datetime.utcnow().strftime("%Y-%m-%d"),
+            trade_date=trade_date or datetime.now(timezone.utc).strftime("%Y-%m-%d"),
             market=market
         )
         state.stock_name = stock_name
@@ -130,20 +130,23 @@ class WorkflowScheduler:
 
             # 获取模型
             data_collection_model_instance = await self.ai_service.get_model_async(data_collection_model or "claude-sonnet-4-20250514", user_id)
-            
+
             # 确保 debate_model 有效
             if not debate_model:
                 # 如果没有指定，尝试使用 data_collection_model 或默认模型
                 debate_model = data_collection_model or "claude-haiku-4-20250514"
-            
+
             debate_model_instance = await self.ai_service.get_model_async(debate_model, user_id)
-            
-            # 检查模型实例是否有有效的 API Key (如果 API Key 为空，get_model_async 会返回空配置的实例)
-            # 这里我们通过检查私有属性 _api_key 来验证 (LangChain Adapter 实现)
-            # 或者尝试获取默认模型作为兜底
-            if not getattr(debate_model_instance, "api_key", None) and not getattr(debate_model_instance, "openai_api_key", None):
-                 logger.warning(f"[调度器] Debate model {debate_model} API Key 为空，尝试使用 Data Collection model")
-                 debate_model_instance = data_collection_model_instance
+
+            # 检查辩论模型是否可用（通过检查模型是否为空或无效）
+            # 如果模型获取失败，回退到数据收集模型
+            if debate_model_instance is None:
+                logger.warning(f"[调度器] Debate model {debate_model} 获取失败，使用 Data Collection model")
+                debate_model_instance = data_collection_model_instance
+            elif hasattr(debate_model_instance, 'model') and debate_model_instance.model is None:
+                # LangChain 模型实例可能返回空模型
+                logger.warning(f"[调度器] Debate model {debate_model} 配置无效，使用 Data Collection model")
+                debate_model_instance = data_collection_model_instance
 
             # Phase 1: 信息收集与基础分析（所有分析师并发，受 task_concurrency 控制）
             if phase1_config.get("enabled", True):
@@ -190,8 +193,8 @@ class WorkflowScheduler:
                 logger.info(f"[调度器] Phase 3 完成, 推荐: {state.final_recommendation}")
                 self._notify_progress(state, "phase3_complete", "Phase 3 完成")
 
-            # Phase 4: 总结智能体（必须执行，提供最终投资建议和价格预测）
-            if should_continue(state):
+            # Phase 4: 总结智能体（遵循 stages.stage4.enabled 配置）
+            if phase4_config.get("enabled", True) and should_continue(state):
                 self._notify_progress(state, "phase4_start", "开始 Phase 4: 总结智能体")
 
                 state = await phase4.execute_phase4(
@@ -209,7 +212,7 @@ class WorkflowScheduler:
             # 任务完成
             state.status = TaskStatus.COMPLETED
             state.current_phase = 0
-            state.completed_at = datetime.utcnow()
+            state.completed_at = datetime.now(timezone.utc)
             state.progress = 100.0
 
             self._notify_progress(state, "task_completed", "任务完成")
@@ -221,7 +224,7 @@ class WorkflowScheduler:
             logger.warning(f"[调度器] 任务被取消: {task_id}")
             state.status = TaskStatus.CANCELLED
             state.current_phase = 0
-            state.completed_at = datetime.utcnow()
+            state.completed_at = datetime.now(timezone.utc)
             self._notify_progress(state, "task_cancelled", "任务已取消")
             raise
 
@@ -229,7 +232,7 @@ class WorkflowScheduler:
             logger.error(f"[调度器] 任务失败: {task_id}, 错误: {e}")
             state.status = TaskStatus.FAILED
             state.current_phase = 0
-            state.completed_at = datetime.utcnow()
+            state.completed_at = datetime.now(timezone.utc)
             state.error_message = str(e)
             self._notify_progress(state, "task_failed", f"任务失败: {str(e)}")
             raise
@@ -343,7 +346,7 @@ class WorkflowScheduler:
                     "progress": state.progress,
                     "stock_code": state.stock_code,
                     "stock_name": state.stock_name,
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
 
                 # 在 Phase 完成时添加报告数据，用于数据库保存
@@ -445,7 +448,7 @@ class WorkflowScheduler:
         """
         report = f"""# {state.stock_name or state.stock_code} 投资分析报告
 
-**生成时间**: {datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")}
+**生成时间**: {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")}
 **股票代码**: {state.stock_code}
 **市场**: {state.market}
 

@@ -8,7 +8,7 @@ LangChain 回调处理器 - 用于推送工具调用事件到前端
 """
 import logging
 from typing import Any, Dict
-from datetime import datetime
+from datetime import datetime, timezone
 
 try:
     from langchain_core.callbacks.base import AsyncCallbackHandler
@@ -69,7 +69,7 @@ class WebSocketCallbackHandler(AsyncCallbackHandler):
         event_data = {
             "event_type": "tool_called",
             "task_id": self.task_id,
-            "timestamp": datetime.utcnow().timestamp(),
+            "timestamp": datetime.now(timezone.utc).timestamp(),
             "data": {
                 "agent_slug": self.agent_slug,
                 "agent_name": self.agent_name,

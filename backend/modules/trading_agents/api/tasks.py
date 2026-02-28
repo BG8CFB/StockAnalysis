@@ -5,6 +5,7 @@
 import asyncio
 import json
 import logging
+import secrets
 from typing import Optional
 
 from bson import ObjectId
@@ -19,6 +20,7 @@ from core.auth.rbac import Role
 # 修复循环导入：从本地模块导入
 from core.background_tasks import create_analysis_task_background
 from core.db.mongodb import mongodb
+from core.db.redis import UserRedisKey, get_redis
 from core.settings.services.user_service import get_user_settings_service
 from core.user.dependencies import get_current_admin_user
 from core.user.models import UserModel
@@ -76,19 +78,15 @@ async def create_tasks(
     stock_codes = request.stock_codes
     stock_count = len(stock_codes)
 
-    # 调试日志
+    user_id_str = str(current_user.id) if current_user.id is not None else "None"
     logger.info(
-        f"创建任务请求: current_user.id={current_user.id}, type={type(current_user.id)}, stock_count={stock_count}"
+        f"创建任务请求: user_id={user_id_str}, stock_count={stock_count}"
     )
 
-    # 配额检查（所有任务）
-    for i in range(stock_count):
-        user_id_str = str(current_user.id) if current_user.id is not None else "None"
-        logger.info(f"配额检查 #{i+1}: user_id={user_id_str}")
-        allowed, error_msg = await settings_service.check_task_quota(user_id_str)
-        logger.info(f"配额检查结果: allowed={allowed}, error={error_msg}")
-        if not allowed:
-            raise HTTPException(status_code=429, detail=f"配额不足: {error_msg}")
+    # 配额检查：一次性检查 stock_count 个任务的配额，防止循环检查时的竞争绕过
+    allowed, error_msg = await settings_service.check_task_quota_batch(user_id_str, stock_count)
+    if not allowed:
+        raise HTTPException(status_code=429, detail=f"配额不足: {error_msg}")
 
     # 获取用户配置
     config = {}
@@ -332,10 +330,42 @@ async def get_task(
         raise
 
 
+# 短期 ticket 有效期（秒），用于 SSE/WS 认证，避免 JWT 出现在 URL
+STREAM_TICKET_TTL = 90
+
+
+@router.post("/{task_id}/stream-ticket")
+async def create_stream_ticket(
+    task_id: str,
+    current_user: UserModel = Depends(get_current_active_user),
+):
+    """
+    获取 SSE/WebSocket 短期认证 ticket。
+
+    使用方式：先调用本接口（需 Authorization Header），再用返回的 ticket 连接
+    GET /stream?ticket=xxx 或 WebSocket ?ticket=xxx，避免将 JWT 放在 URL 中。
+    """
+    task_manager = get_task_manager()
+    try:
+        task_info = await task_manager.get_task_status(task_id)
+    except Exception as e:
+        if "not found" in str(e):
+            raise HTTPException(status_code=404, detail="任务不存在")
+        raise
+    if task_info.get("user_id") != str(current_user.id):
+        raise HTTPException(status_code=403, detail="无权访问此任务")
+
+    ticket = secrets.token_urlsafe(32)
+    redis = await get_redis()
+    await redis.set(UserRedisKey.stream_ticket(ticket), str(current_user.id), ex=STREAM_TICKET_TTL)
+    return {"ticket": ticket, "expires_in": STREAM_TICKET_TTL}
+
+
 @router.get("/{task_id}/stream")
 async def stream_task(
     task_id: str,
     token: Optional[str] = Query(None, description="访问令牌（用于 SSE 连接认证）"),
+    ticket: Optional[str] = Query(None, description="短期 ticket，优先于 token 使用"),
     current_user: UserModel = Depends(get_current_user_from_query),
 ):
     """
@@ -663,17 +693,19 @@ async def clear_tasks_by_status(
         {"statuses": status_list, "count": count, "delete_reports": delete_reports},
     )
 
-    # 执行删除
-    delete_result = await mongodb.database.analysis_tasks.delete_many(query)
-
-    # 如果需要删除关联报告
+    # 先查询 task_ids（必须在删除前执行，否则删除后查询结果为空）
+    task_ids = []
     if delete_reports:
-        # 查询已删除任务的 ID
         task_ids = [
             str(tid) for tid in await mongodb.database.analysis_tasks.distinct("_id", query)
         ]
-        if task_ids:
-            await mongodb.database.analysis_reports.delete_many({"task_id": {"$in": task_ids}})
+
+    # 执行删除
+    delete_result = await mongodb.database.analysis_tasks.delete_many(query)
+
+    # 删除关联报告（使用删除前查询到的 task_ids）
+    if delete_reports and task_ids:
+        await mongodb.database.analysis_reports.delete_many({"task_id": {"$in": task_ids}})
 
     # 记录审计日志
     audit_logger = get_audit_logger()

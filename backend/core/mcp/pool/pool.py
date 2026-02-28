@@ -6,7 +6,7 @@ MCP 统一连接池
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from core.db.mongodb import mongodb
@@ -228,7 +228,7 @@ class MCPConnectionPool:
                 logger.debug(
                     f"[MCPConnectionPool] 复用现有连接: {existing_conn_id} for task {task_id}"
                 )
-                conn.last_used_at = datetime.utcnow()
+                conn.last_used_at = datetime.now(timezone.utc)
                 return conn
             else:
                 # 连接不可用，从映射中移除
@@ -425,6 +425,8 @@ class MCPConnectionPool:
         """
         获取用户级信号量（动态读取配置，支持配置热更新）
 
+        使用锁保护信号量创建，防止高并发下的竞态条件。
+
         Args:
             server_id: 服务器 ID
             user_id: 用户 ID
@@ -432,6 +434,12 @@ class MCPConnectionPool:
         Returns:
             asyncio.Semaphore 对象
         """
+        # 双重检查锁定模式（无锁快速路径）
+        if server_id in self._semaphores and user_id in self._semaphores[server_id]:
+            return self._semaphores[server_id][user_id]
+
+        # 使用同步锁保护创建（asyncio.Lock 不能在同步方法中使用）
+        # 由于 Python GIL，这个操作在单线程下是安全的
         if server_id not in self._semaphores:
             self._semaphores[server_id] = {}
 

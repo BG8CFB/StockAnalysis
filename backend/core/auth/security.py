@@ -1,7 +1,7 @@
 """
 安全工具：JWT 和密码处理
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 import logging
 
@@ -49,9 +49,15 @@ class PasswordManager:
     @staticmethod
     def verify_password(plain_password: str, hashed_password: str) -> bool:
         """验证密码"""
-        plain_bytes = plain_password.encode('utf-8')
-        hashed_bytes = hashed_password.encode('utf-8')
-        return bcrypt.checkpw(plain_bytes, hashed_bytes)
+        import logging
+        try:
+            plain_bytes = plain_password.encode('utf-8')
+            hashed_bytes = hashed_password.encode('utf-8')
+            return bcrypt.checkpw(plain_bytes, hashed_bytes)
+        except (ValueError, TypeError) as e:
+            # hashed_password 格式损坏（非标准 bcrypt），视为验证失败
+            logging.getLogger(__name__).warning(f"密码哈希格式异常，验证失败: {e}")
+            return False
 
 
 class JWTManager:
@@ -64,8 +70,8 @@ class JWTManager:
     ) -> str:
         """创建访问令牌"""
         to_encode = data.copy()
-        # 统一使用 UTC 时间，避免时区问题
-        now = datetime.utcnow()
+        # 使用 timezone-aware UTC 时间（Python 3.11+ 推荐）
+        now = datetime.now(timezone.utc)
         if expires_delta:
             expire = now + expires_delta
         else:
@@ -88,8 +94,8 @@ class JWTManager:
     ) -> str:
         """创建刷新令牌"""
         to_encode = data.copy()
-        # 统一使用 UTC 时间，避免时区问题
-        now = datetime.utcnow()
+        # 使用 timezone-aware UTC 时间（Python 3.11+ 推荐）
+        now = datetime.now(timezone.utc)
         if expires_delta:
             expire = now + expires_delta
         else:

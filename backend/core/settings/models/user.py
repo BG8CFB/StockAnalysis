@@ -9,7 +9,7 @@
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field
 
@@ -147,8 +147,8 @@ class UserSettings(BaseModel):
     quota_info: UserQuotaInfo = Field(default_factory=UserQuotaInfo)
 
     # 时间戳
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # =============================================================================
@@ -237,7 +237,7 @@ class UserSettingsResponse(BaseModel):
 
                 return parser.isoparse(value["$date"])
             # 默认返回当前时间
-            return datetime.utcnow()
+            return datetime.now(timezone.utc)
 
         # 获取并清理 quota_info 数据
         quota_data = data.get("quota_info", {})
@@ -290,7 +290,7 @@ class SettingsExport(BaseModel):
     """配置导出格式（不包含敏感信息）"""
 
     version: str = Field(default="1.0", description="配置版本")
-    exported_at: datetime = Field(default_factory=datetime.utcnow)
+    exported_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     core_settings: CoreSettings
     notification_settings: NotificationSettings
     trading_agents_settings: TradingAgentsSettings

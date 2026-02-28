@@ -5,7 +5,7 @@
 import logging
 import json
 import secrets
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from bson import ObjectId
@@ -142,8 +142,8 @@ class UserService:
             "is_verified": False,
             "created_by": None,
             "last_login_at": None,
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc),
         }
 
         try:
@@ -234,9 +234,9 @@ class UserService:
         # 9. 更新最后登录时间
         await self.db.users.update_one(
             {"_id": user["_id"]},
-            {"$set": {"last_login_at": datetime.utcnow()}}
+            {"$set": {"last_login_at": datetime.now(timezone.utc)}}
         )
-        user["last_login_at"] = datetime.utcnow()
+        user["last_login_at"] = datetime.now(timezone.utc)
         # 使用 model_validate 处理 MongoDB 返回的字典（Pydantic v2 推荐方式）
         user_model = UserModel.model_validate(user)
 
@@ -245,8 +245,10 @@ class UserService:
         access_token = jwt_manager.create_access_token(token_data)
         refresh_token = jwt_manager.create_refresh_token(token_data)
 
-        # 11. 缓存会话到 Redis
-        session_key = UserRedisKey.session(str(user_model.id), access_token[:16])
+        # 11. 缓存会话到 Redis（使用 token 的 SHA-256 前 16 字符作为标识，避免固定前缀碰撞）
+        import hashlib
+        token_hash = hashlib.sha256(access_token.encode()).hexdigest()[:16]
+        session_key = UserRedisKey.session(str(user_model.id), token_hash)
         await redis.set(
             session_key,
             str(user_model.id),
@@ -320,7 +322,7 @@ class UserService:
             if existing:
                 raise ValueError("该用户名已被其他用户使用")
 
-        update_data["updated_at"] = datetime.utcnow()
+        update_data["updated_at"] = datetime.now(timezone.utc)
 
         await self.db.users.update_one(
             {"_id": ObjectId(user_id)},
@@ -508,7 +510,7 @@ class UserService:
             {
                 "$set": {
                     "hashed_password": hashed_password,
-                    "updated_at": datetime.utcnow(),
+                    "updated_at": datetime.now(timezone.utc),
                 }
             }
         )
@@ -548,7 +550,7 @@ class UserService:
             "action": action,
             "reason": reason,
             "ip_address": ip_address,
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
         }
         await self.db.audit_logs.insert_one(log_doc)
 

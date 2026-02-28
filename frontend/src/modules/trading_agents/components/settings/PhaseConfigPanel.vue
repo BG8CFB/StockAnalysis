@@ -231,7 +231,7 @@
                     <div class="server-main">
                       <el-checkbox
                         :model-value="agentForm.enabled_mcp_servers.includes(server.name)"
-                        @click.stop.native="toggleMCPServer(server.name)"
+                        @click.stop="toggleMCPServer(server.name)"
                       />
                       <div class="server-info">
                         <div class="server-name">

@@ -6,7 +6,7 @@
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List
 
 from core.db.mongodb import mongodb
@@ -99,7 +99,7 @@ class ReportArchivalService:
         traces_col = mongodb.get_collection("agent_traces")
 
         # 计算归档阈值
-        archive_threshold = datetime.utcnow() - timedelta(days=self.archive_days)
+        archive_threshold = datetime.now(timezone.utc) - timedelta(days=self.archive_days)
 
         # 查找已完成的旧任务
         query = {
@@ -141,7 +141,7 @@ class ReportArchivalService:
                     "risk_level": task_doc.get("risk_level"),
                     "token_usage": task_doc.get("token_usage", {}),
                     "status": task_doc["status"],
-                    "archived_at": datetime.utcnow(),
+                    "archived_at": datetime.now(timezone.utc),
                 }
 
                 # 插入归档集合
@@ -159,7 +159,7 @@ class ReportArchivalService:
                             "trade_plan": None,
                             "risk_assessment": None,
                             "analyst_reports": {},
-                            "archived_at": datetime.utcnow(),
+                            "archived_at": datetime.now(timezone.utc),
                         }
                     }
                 )

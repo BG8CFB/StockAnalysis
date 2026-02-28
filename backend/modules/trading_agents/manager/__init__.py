@@ -51,13 +51,6 @@ from .task_expiry import (
     TaskExpiryHandler,
     get_expiry_handler,
 )
-from .concurrency import (
-    ConcurrencyManager,
-    QuotaInfo,
-    LockInfo,
-    concurrency_manager,
-    get_concurrency_manager,
-)
 
 __all__ = [
     # Exceptions
@@ -87,9 +80,4 @@ __all__ = [
     "get_task_queue_manager",
     "TaskExpiryHandler",
     "get_expiry_handler",
-    "ConcurrencyManager",
-    "QuotaInfo",
-    "LockInfo",
-    "concurrency_manager",
-    "get_concurrency_manager",
 ]

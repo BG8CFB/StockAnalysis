@@ -3,7 +3,7 @@
 处理系统初始化、状态检查等
 """
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from bson import ObjectId
@@ -65,7 +65,7 @@ async def _get_system_status_from_db() -> dict:
             {
                 "$set": {
                     "initialized": True,
-                    "auto_fixed_at": datetime.utcnow(),
+                    "auto_fixed_at": datetime.now(timezone.utc),
                     "fix_reason": "admin_exists_but_config_not_initialized"
                 }
             },
@@ -98,7 +98,7 @@ async def get_system_status():
         # 检查缓存是否有效
         if _status_cache is not None:
             cache_time = _status_cache.get("time")
-            if cache_time and (datetime.utcnow().timestamp() - cache_time) < _CACHE_TTL:
+            if cache_time and (datetime.now(timezone.utc).timestamp() - cache_time) < _CACHE_TTL:
                 # 返回缓存数据
                 return {k: v for k, v in _status_cache.items() if k != "time"}
 
@@ -106,7 +106,7 @@ async def get_system_status():
         status_data = await _get_system_status_from_db()
 
         # 更新缓存
-        _status_cache = {**status_data, "time": datetime.utcnow().timestamp()}
+        _status_cache = {**status_data, "time": datetime.now(timezone.utc).timestamp()}
 
         return {k: v for k, v in status_data.items() if k != "time"}
 
@@ -165,8 +165,8 @@ async def initialize_system(data: SystemInitRequest):
             "is_verified": True,  # 超级管理员默认已验证
             "created_by": None,
             "last_login_at": None,
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc),
         }
 
         result = await db.users.insert_one(user_doc)
@@ -177,7 +177,7 @@ async def initialize_system(data: SystemInitRequest):
             {
                 "$set": {
                     "initialized": True,
-                    "initialized_at": datetime.utcnow(),
+                    "initialized_at": datetime.now(timezone.utc),
                     "initialized_by": str(result.inserted_id),
                 }
             },

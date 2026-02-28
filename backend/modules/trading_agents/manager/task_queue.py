@@ -7,7 +7,7 @@ import asyncio
 import json
 import logging
 from typing import Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 from core.db.redis import redis_manager
 
@@ -65,7 +65,7 @@ class TaskQueueManager:
                 "stock_code": stock_code,
                 "priority": priority,
                 "metadata": metadata or {},
-                "enqueued_at": datetime.utcnow().isoformat(),
+                "enqueued_at": datetime.now(timezone.utc).isoformat(),
             }
 
             # 如果有优先级，使用优先级队列

@@ -32,6 +32,8 @@ class ConcurrencyManager:
         self._user_semaphores: Dict[str, asyncio.Semaphore] = {}
         self._system_semaphore = asyncio.Semaphore(self.config.max_system_concurrent)
         self._lock = asyncio.Lock()
+        # 维护独立计数器，避免依赖 Semaphore._value 私有属性
+        self._system_in_use: int = 0
 
     @asynccontextmanager
     async def acquire(self, model_config: Dict, user_id: str):
@@ -61,6 +63,7 @@ class ConcurrencyManager:
                 timeout=self.config.queue_timeout
             )
             system_acquired = True
+            self._system_in_use += 1
             logger.debug(f"系统并发令牌已获取: user={user_id}")
 
             # 等待用户级令牌
@@ -92,6 +95,7 @@ class ConcurrencyManager:
                 logger.debug(f"用户并发令牌已释放: user={user_id}")
             if system_acquired:
                 self._system_semaphore.release()
+                self._system_in_use = max(0, self._system_in_use - 1)
                 logger.debug(f"系统并发令牌已释放: user={user_id}")
 
     async def _get_user_semaphore(self, user_id: str) -> asyncio.Semaphore:
@@ -117,8 +121,8 @@ class ConcurrencyManager:
         return {
             "max_user_concurrent": self.config.max_user_concurrent,
             "max_system_concurrent": self.config.max_system_concurrent,
-            "system_available": self._system_semaphore._value,
-            "system_in_use": self.config.max_system_concurrent - self._system_semaphore._value,
+            "system_available": self.config.max_system_concurrent - self._system_in_use,
+            "system_in_use": self._system_in_use,
             "active_users": len(self._user_semaphores),
         }
 

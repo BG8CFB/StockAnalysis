@@ -9,7 +9,7 @@ TradingAgents 用户设置服务
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from bson import ObjectId
 
@@ -77,13 +77,13 @@ class TradingAgentsSettingsService:
         update_data = {
             "user_id": user_id,
             "settings": settings.model_dump(),
-            "updated_at": datetime.utcnow(),
+            "updated_at": datetime.now(timezone.utc),
         }
 
         # 使用 upsert：如果不存在则创建，存在则更新
         await collection.update_one(
             {"user_id": user_id},
-            {"$set": update_data, "$setOnInsert": {"created_at": datetime.utcnow()}},
+            {"$set": update_data, "$setOnInsert": {"created_at": datetime.now(timezone.utc)}},
             upsert=True
         )
 

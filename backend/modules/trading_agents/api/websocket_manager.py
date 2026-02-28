@@ -61,14 +61,15 @@ class WebSocketManager:
         # 清理任务标志
         self._cleanup_task: Optional[asyncio.Task] = None
 
-        # 启动清理任务
-        self._start_cleanup_task()
-
     def _start_cleanup_task(self) -> None:
-        """启动定期清理陈旧连接的后台任务"""
+        """启动定期清理陈旧连接的后台任务（必须在事件循环内调用）"""
         if self._cleanup_task is None or self._cleanup_task.done():
             self._cleanup_task = asyncio.create_task(self._cleanup_stale_connections())
             logger.info("[WebSocketManager] 已启动陈旧连接清理任务")
+
+    async def initialize(self) -> None:
+        """初始化 WebSocket 管理器（在应用启动时调用，确保事件循环已就绪）"""
+        self._start_cleanup_task()
 
     async def _cleanup_stale_connections(self) -> None:
         """
@@ -222,7 +223,7 @@ class WebSocketManager:
             {
                 "event_type": "connection_established",
                 "task_id": task_id,
-                "timestamp": asyncio.get_event_loop().time(),
+                "timestamp": asyncio.get_running_loop().time(),
             }
         )
 
@@ -293,8 +294,10 @@ class WebSocketManager:
         event_data = event.to_dict()
 
         # 向所有连接的客户端推送事件
-        for user_id, websockets in self._connections[task_id].items():
-            for ws in list(websockets):  # 使用 list 复制以避免迭代时修改
+        # 复制外层字典防止 disconnect() 在迭代中修改字典（字典大小变化导致 RuntimeError）
+        task_conns = dict(self._connections.get(task_id, {}))
+        for user_id, websockets in task_conns.items():
+            for ws in list(websockets):
                 try:
                     # 更新最后活跃时间
                     if ws in self._connection_info:

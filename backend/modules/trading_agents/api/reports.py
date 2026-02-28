@@ -11,6 +11,7 @@ TradingAgents API 路由聚合
 """
 
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
@@ -32,29 +33,38 @@ websocket_router = APIRouter(prefix="/trading-agents", tags=["TradingAgents - We
 async def websocket_endpoint(
     websocket: WebSocket,
     task_id: str,
-    token: str = Query(...),
+    token: Optional[str] = Query(None),
+    ticket: Optional[str] = Query(None),
 ):
     """
-    WebSocket 连接端点
+    WebSocket 连接端点。
 
-    用于实时接收任务进度和事件。
-
-    Args:
-        websocket: WebSocket 连接
-        task_id: 任务 ID
-        token: 访问令牌（通过查询参数传递）
+    支持 token 或 ticket 认证；优先使用 ticket，避免 JWT 出现在 URL。
     """
-    # 验证 token 获取用户 ID
-    try:
-        payload = jwt_manager.verify_token(token, "access")
-        if not payload:
-            raise ValueError("Invalid token")
-        user_id = payload.get("sub")
-        if not user_id:
-            raise ValueError("Missing user_id in token")
-    except Exception as e:
-        logger.warning(f"WebSocket 令牌验证失败: {e}")
-        await websocket.close(code=4001, reason="无效的访问令牌")
+    user_id = None
+
+    if ticket:
+        try:
+            from core.db.redis import UserRedisKey, get_redis
+            redis = await get_redis()
+            key = UserRedisKey.stream_ticket(ticket)
+            raw = await redis.get(key)
+            await redis.delete(key)
+            if raw:
+                user_id = raw.strip()
+        except Exception as e:
+            logger.warning(f"WebSocket ticket 验证失败: {e}")
+
+    if user_id is None and token:
+        try:
+            payload = jwt_manager.verify_token(token, "access")
+            if payload:
+                user_id = payload.get("sub")
+        except Exception as e:
+            logger.warning(f"WebSocket 令牌验证失败: {e}")
+
+    if not user_id:
+        await websocket.close(code=4001, reason="无效的访问令牌或 ticket")
         return
 
     ws_manager: WebSocketManager = get_ws_manager()

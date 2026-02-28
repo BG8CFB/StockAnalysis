@@ -1,8 +1,17 @@
 <template>
-  <el-card shadow="never" class="phase-report-tabs">
-    <el-tabs v-model="activeTab" type="card">
+  <el-card
+    shadow="never"
+    class="phase-report-tabs"
+  >
+    <el-tabs
+      v-model="activeTab"
+      type="card"
+    >
       <!-- Phase 1 报告 -->
-      <el-tab-pane label="Phase 1 报告" name="phase1">
+      <el-tab-pane
+        label="Phase 1 报告"
+        name="phase1"
+      >
         <div class="reports-container">
           <ReportCard
             v-for="report in phase1Reports"
@@ -10,12 +19,18 @@
             :agent-name="report.name"
             :report="report.report"
           />
-          <el-empty v-if="phase1Reports.length === 0" description="暂无报告" />
+          <el-empty
+            v-if="phase1Reports.length === 0"
+            description="暂无报告"
+          />
         </div>
       </el-tab-pane>
 
       <!-- Phase 2 报告 -->
-      <el-tab-pane label="Phase 2 报告" name="phase2">
+      <el-tab-pane
+        label="Phase 2 报告"
+        name="phase2"
+      >
         <div class="reports-container">
           <ReportCard
             v-for="report in phase2Reports"
@@ -23,12 +38,18 @@
             :agent-name="report.name"
             :report="report.report"
           />
-          <el-empty v-if="phase2Reports.length === 0" description="暂无报告" />
+          <el-empty
+            v-if="phase2Reports.length === 0"
+            description="暂无报告"
+          />
         </div>
       </el-tab-pane>
 
       <!-- Phase 3 报告 -->
-      <el-tab-pane label="Phase 3 报告" name="phase3">
+      <el-tab-pane
+        label="Phase 3 报告"
+        name="phase3"
+      >
         <div class="reports-container">
           <ReportCard
             v-for="report in phase3Reports"
@@ -36,7 +57,10 @@
             :agent-name="report.name"
             :report="report.report"
           />
-          <el-empty v-if="phase3Reports.length === 0" description="暂无报告" />
+          <el-empty
+            v-if="phase3Reports.length === 0"
+            description="暂无报告"
+          />
         </div>
       </el-tab-pane>
 
@@ -65,14 +89,15 @@ import { ref, computed } from 'vue'
 import ReportCard from './ReportCard.vue'
 import StreamingReport from './StreamingReport.vue'
 import type { AgentStatus } from '../../composables/useAnalysisProgress'
+import { getAgentDisplayName } from '../../composables/useAnalysisProgress'
 
 interface Props {
   reports: Map<string, string>
   agents: Map<string, AgentStatus>
   finalReport?: string
-  finalRecommendation?: string
-  buyPrice?: number
-  sellPrice?: number
+  finalRecommendation?: string | null  // 接受 string | null | undefined
+  buyPrice?: number | null  // 接受 number | null | undefined
+  sellPrice?: number | null  // 接受 number | null | undefined
 }
 
 const props = defineProps<Props>()
@@ -117,7 +142,7 @@ function getReportsByAgents(agentSlugs: string[]) {
       const agentInfo = props.agents.get(slug)
       reports.push({
         agent: slug,
-        name: agentInfo?.name || slug,
+        name: getAgentDisplayName(slug, agentInfo?.name),
         report
       })
     }

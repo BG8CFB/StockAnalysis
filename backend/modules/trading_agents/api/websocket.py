@@ -34,29 +34,37 @@ def get_ws_manager() -> WebSocketManager:
 async def websocket_task_updates(
     websocket: WebSocket,
     task_id: str,
-    token: str = Query(..., description="JWT 认证令牌")
+    token: Optional[str] = Query(None, description="JWT 认证令牌"),
+    ticket: Optional[str] = Query(None, description="短期 ticket，优先于 token"),
 ):
     """
-    任务进度更新 WebSocket 端点
-
-    Args:
-        websocket: WebSocket 连接
-        task_id: 任务 ID
-        token: JWT 认证令牌
+    任务进度更新 WebSocket 端点。支持 token 或 ticket 认证；优先 ticket，避免 JWT 出现在 URL。
     """
-    # 验证用户认证
-    try:
-        user = await verify_token_only(token)
-    except Exception as e:
-        logger.warning(f"WebSocket 认证失败: {e}")
+    user_id = None
+
+    if ticket:
+        try:
+            from core.db.redis import UserRedisKey, get_redis
+            redis = await get_redis()
+            key = UserRedisKey.stream_ticket(ticket)
+            raw = await redis.get(key)
+            await redis.delete(key)
+            if raw:
+                user_id = raw.strip()
+        except Exception as e:
+            logger.warning(f"WebSocket ticket 验证失败: {e}")
+
+    if user_id is None and token:
+        try:
+            user = await verify_token_only(token)
+            if user:
+                user_id = str(user.id)
+        except Exception as e:
+            logger.warning(f"WebSocket 令牌验证失败: {e}")
+
+    if not user_id:
         await websocket.close(code=1008, reason="认证失败")
         return
-
-    if not user:
-        await websocket.close(code=1008, reason="认证失败")
-        return
-
-    user_id = user.id
 
     # 获取管理器
     ws_manager = get_ws_manager()

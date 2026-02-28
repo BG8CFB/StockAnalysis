@@ -10,7 +10,7 @@ TradingAgents 数据模型
 - 用户设置模型
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -350,7 +350,7 @@ class AnalysisTaskResponse(BaseModel):
             token_usage=data.get("token_usage", {}),
             error_message=data.get("error_message"),
             error_details=data.get("error_details"),
-            created_at=parse_datetime(data.get("created_at")) or datetime.utcnow(),
+            created_at=parse_datetime(data.get("created_at")) or datetime.now(timezone.utc),
             started_at=parse_datetime(data.get("started_at")),
             completed_at=parse_datetime(data.get("completed_at")),
             expired_at=parse_datetime(data.get("expired_at")),
@@ -448,7 +448,7 @@ class AnalysisReportResponse(BaseModel):
             buy_price=data.get("buy_price"),
             sell_price=data.get("sell_price"),
             token_usage=data.get("token_usage", {}),
-            created_at=parse_datetime(data.get("created_at")) or datetime.utcnow(),
+            created_at=parse_datetime(data.get("created_at")) or datetime.now(timezone.utc),
         )
 
 
@@ -737,8 +737,8 @@ class UserAgentConfigResponse(BaseModel):
             phase2=phase2,
             phase3=phase3,
             phase4=phase4,
-            created_at=parse_datetime(data.get("created_at")) or datetime.utcnow(),
-            updated_at=parse_datetime(data.get("updated_at")) or datetime.utcnow(),
+            created_at=parse_datetime(data.get("created_at")) or datetime.now(timezone.utc),
+            updated_at=parse_datetime(data.get("updated_at")) or datetime.now(timezone.utc),
         )
 
 
@@ -789,8 +789,8 @@ class TradingAgentsSettingsResponse(BaseModel):
             id=str(data["_id"]),
             user_id=data["user_id"],
             settings=settings,
-            created_at=parse_datetime(data.get("created_at")) or datetime.utcnow(),
-            updated_at=parse_datetime(data.get("updated_at")) or datetime.utcnow(),
+            created_at=parse_datetime(data.get("created_at")) or datetime.now(timezone.utc),
+            updated_at=parse_datetime(data.get("updated_at")) or datetime.now(timezone.utc),
         )
 
 

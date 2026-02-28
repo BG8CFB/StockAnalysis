@@ -22,7 +22,7 @@ __all__ = [
 
 import logging
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 
 from langchain_core.language_models import BaseChatModel
 
@@ -130,7 +130,7 @@ async def execute_phase3(
     phase3_execution = PhaseExecution(
         phase=3,
         phase_name="策略风格与风险评估",
-        started_at=datetime.utcnow(),
+        started_at=datetime.now(timezone.utc),
         execution_mode="mixed",
         max_concurrency=len(debators)  # 策略分析师可以并行
     )
@@ -168,8 +168,11 @@ async def execute_phase3(
 
     # 处理策略分析师结果
     strategy_reports = []
+    failed_count = 0
     for i, result in enumerate(strategy_results):
         if isinstance(result, Exception):
+            logger.error(f"[Phase 3] 策略分析师 {i} 执行异常: {result}")
+            failed_count += 1
             continue
 
         if result and result.get("output"):
@@ -178,8 +181,20 @@ async def execute_phase3(
                 "slug": result["slug"],
                 "name": result["name"],
                 "content": result["output"],
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             })
+        else:
+            failed_count += 1
+
+    # 关键修复：检查所有策略分析师是否都失败
+    if len(strategy_reports) == 0:
+        logger.error(f"[Phase 3] 所有策略分析师都执行失败 ({failed_count}/{len(debators)})")
+        state.status = TaskStatus.FAILED
+        state.error_message = f"所有策略分析师执行失败 ({failed_count}/{len(debators)})"
+        return state
+
+    if failed_count > 0:
+        logger.warning(f"[Phase 3] 部分策略分析师失败: {failed_count}/{len(debators)}")
 
     # 执行风险管理委员会主席（串行，等待所有策略分析师完成）
     # 发送风险管理委员会主席开始事件
@@ -189,7 +204,11 @@ async def execute_phase3(
         agent_name="风险管理委员会主席",
         websocket_manager=websocket_manager
     )
-    manager_result = await risk_manager.assess(state, strategy_reports, state.investment_decision)
+    try:
+        manager_result = await risk_manager.assess(state, strategy_reports, state.investment_decision)
+    except Exception as e:
+        logger.error(f"[Phase 3] 风险管理委员会主席执行异常: {e}", exc_info=True)
+        manager_result = None
 
     # 发送风险管理委员会主席完成事件
     if manager_result and manager_result.get("output"):
@@ -202,8 +221,8 @@ async def execute_phase3(
             save_report=True
         )
 
-    # 更新状态
-    if manager_result.get("decision"):
+    # 更新状态（需先检查 manager_result 非 None）
+    if manager_result and manager_result.get("decision"):
         decision = manager_result["decision"]
         state.risk_approval = decision
         # 添加报告内容到 risk_approval，以便持久化
@@ -217,7 +236,7 @@ async def execute_phase3(
             state.risk_level = decision["risk_level"]
 
     # 更新执行记录
-    phase3_execution.completed_at = datetime.utcnow()
+    phase3_execution.completed_at = datetime.now(timezone.utc)
     phase3_execution.status = TaskStatus.COMPLETED
 
     # 添加智能体执行记录
@@ -243,6 +262,7 @@ async def execute_phase3(
     )
 
     state.phase_executions.append(phase3_execution)
+    state.progress = 75.0
 
     logger.info(f"[Phase 3] 完成, 最终推荐: {state.final_recommendation}, 进度: {state.progress:.1f}%")
 

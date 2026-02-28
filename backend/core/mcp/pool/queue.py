@@ -6,7 +6,7 @@ MCP 请求队列管理
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
@@ -107,7 +107,7 @@ class MCPRequest:
         self.user_id = user_id
         self.callback = callback
         self.timeout = timeout
-        self.created_at = datetime.utcnow()
+        self.created_at = datetime.now(timezone.utc)
         self.started_at: Optional[datetime] = None
         self.completed_at: Optional[datetime] = None
 
@@ -134,7 +134,7 @@ class MCPRequest:
         """获取等待时长（秒）"""
         if self.started_at:
             return (self.started_at - self.created_at).total_seconds()
-        return (datetime.utcnow() - self.created_at).total_seconds()
+        return (datetime.now(timezone.utc) - self.created_at).total_seconds()
 
     @property
     def processing_time(self) -> Optional[float]:
@@ -146,7 +146,7 @@ class MCPRequest:
     @property
     def total_time(self) -> float:
         """获取总时长（秒）"""
-        end_time = self.completed_at or datetime.utcnow()
+        end_time = self.completed_at or datetime.now(timezone.utc)
         return (end_time - self.created_at).total_seconds()
 
     def __repr__(self) -> str:

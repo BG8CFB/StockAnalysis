@@ -221,7 +221,7 @@ async def get_task_statistics(
     获取任务统计信息（管理员）
     """
     from core.db.mongodb import mongodb
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     task_manager = get_task_manager()
 
@@ -239,7 +239,7 @@ async def get_task_statistics(
     total_tasks = await collection.count_documents({})
 
     # 今日任务数
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     today_tasks = await collection.count_documents({
         "created_at": {"$gte": today_start}
     })
@@ -469,7 +469,7 @@ async def get_alerts_stats(
     获取告警统计信息（管理员）
     """
     from core.db.mongodb import mongodb
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     alerts_collection = mongodb.database.alerts
 
@@ -483,7 +483,7 @@ async def get_alerts_stats(
     critical = await alerts_collection.count_documents({"severity": "critical", "resolved": False})
 
     # 今日新增告警数
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     today = await alerts_collection.count_documents({"timestamp": {"$gte": today_start}})
 
     # 按严重程度统计

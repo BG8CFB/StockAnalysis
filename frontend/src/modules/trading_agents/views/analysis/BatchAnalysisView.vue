@@ -815,12 +815,27 @@ const stagesConfig = reactive<AnalysisStagesConfig>({
   },
 })
 
+// 根据市场类型动态选择代码格式验证规则
+const stockCodePattern = computed(() => {
+  switch (formData.market) {
+    case StockMarketEnum.A_STOCK:
+      return /^\d{6}$/            // A 股：6 位数字（如 600000）
+    case StockMarketEnum.HK_STOCK:
+      return /^\d{3,5}$/           // 港股：3-5 位数字（如 700、00700）
+    case StockMarketEnum.US_STOCK:
+      return /^[A-Za-z]{1,5}$/    // 美股：1-5 位字母（如 AAPL）
+    default:
+      return /^\d{6}$/
+  }
+})
+
 // 股票代码列表
 const codesList = computed(() => {
+  const pattern = stockCodePattern.value
   const lines = codesText.value
     .split('\n')
     .map(line => line.trim())
-    .filter(line => line && /^\d{6}$/.test(line))
+    .filter(line => line && pattern.test(line))
 
   // 去重
   return Array.from(new Set(lines))

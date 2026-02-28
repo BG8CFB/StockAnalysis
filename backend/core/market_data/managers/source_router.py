@@ -429,15 +429,56 @@ def get_source_router() -> DataSourceRouter:
     """
     获取全局数据源路由器单例
 
+    默认创建支持多市场（A股、美股、港股）的路由器。
+    如果需要自定义配置，可使用 set_source_router() 覆盖。
+
     Returns:
         数据源路由器实例
     """
     global _source_router
     if _source_router is None:
-        # 创建默认路由器（使用 AkShare，不需要 API Key）
-        akshare = AkShareAdapter(config={})
-        _source_router = DataSourceRouter(sources=[akshare])
-        logger.info("Created default source router with AkShare")
+        from core.config import TUSHARE_TOKEN
+
+        # 创建多市场支持的路由器
+        sources = []
+
+        # A股数据源
+        try:
+            akshare = AkShareAdapter(config={})
+            sources.append(akshare)
+        except Exception as e:
+            logger.warning(f"Failed to create AkShare adapter: {e}")
+
+        if TUSHARE_TOKEN:
+            try:
+                tushare = TuShareAdapter(config={"api_token": TUSHARE_TOKEN})
+                sources.append(tushare)
+            except Exception as e:
+                logger.warning(f"Failed to create TuShare adapter: {e}")
+
+        # 美股数据源
+        try:
+            yahoo_us = YahooFinanceAdapter(config={})
+            sources.append(yahoo_us)
+        except Exception as e:
+            logger.warning(f"Failed to create Yahoo Finance adapter: {e}")
+
+        # 港股数据源
+        try:
+            akshare_hk = AkShareHKAdapter(config={})
+            sources.append(akshare_hk)
+        except Exception as e:
+            logger.warning(f"Failed to create AkShare HK adapter: {e}")
+
+        try:
+            yahoo_hk = YahooHKAdapter(config={})
+            sources.append(yahoo_hk)
+        except Exception as e:
+            logger.warning(f"Failed to create Yahoo HK adapter: {e}")
+
+        _source_router = DataSourceRouter(sources=sources)
+        logger.info(f"Created source router with adapters: {[s.source_name for s in sources]}")
+
     return _source_router
 
 

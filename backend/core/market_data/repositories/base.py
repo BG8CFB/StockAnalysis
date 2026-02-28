@@ -182,7 +182,9 @@ class BaseRepository:
             if limit > 0:
                 cursor = cursor.limit(limit)
 
-            return await cursor.to_list(length=None)
+            # 设置合理上限，防止一次性加载海量数据导致 OOM
+            max_limit = max(limit, 10000) if limit > 0 else 10000
+            return await cursor.to_list(length=max_limit)
         except Exception as e:
             logger.error(f"Failed to find many in {self.collection_name}: {e}")
             raise

@@ -20,11 +20,14 @@ const protectedRoutes = moduleRoutes.filter(r => r.meta?.requiresAuth !== false 
 const notFoundRoute = moduleRoutes.find(r => r.name === 'NotFound')
 
 const routes: RouteRecordRaw[] = [
-  { path: '/', redirect: '/dashboard' },
   {
     path: '/',
     component: () => import('@core/layout/MainLayout.vue'),
-    children: protectedRoutes,
+    children: [
+      // 根路径重定向内联为子路由，消除重复的 path: '/'
+      { path: '', redirect: '/dashboard' },
+      ...protectedRoutes,
+    ],
   },
   ...publicRoutes,
 ]
@@ -108,11 +111,15 @@ router.beforeEach(async (to) => {
 
   // ==================== 3. 管理员权限检查 ====================
   if (adminOnly) {
-    // 如果 userInfo 还没加载完，暂时放行（等加载完后页面组件内部会检查）
+    // 等待 userInfo 加载完毕再做权限判断，不能直接放行
     if (!userStore.userInfo) {
-      return
+      try {
+        await userStore.fetchUserInfo()
+      } catch {
+        return { name: 'Login', query: { redirect: to.fullPath } }
+      }
     }
-    const role = userStore.userInfo.role
+    const role = userStore.userInfo?.role
     const hasAdminPermission = role === 'ADMIN' || role === 'SUPER_ADMIN'
     if (!hasAdminPermission) {
       console.warn(`[Router] Access denied: ${to.path}`)
@@ -132,18 +139,29 @@ router.beforeEach(async (to) => {
 
 // ==================== 监听登录/登出事件 ====================
 
-// 移除 router.push，让路由守卫自然处理重定向
-// 当用户下次访问受保护页面时，守卫会检测到未认证并自动跳转
-eventBus.on(Events.USER_LOGOUT, () => {
-  console.log('[Router] USER_LOGOUT event received, auth state cleared')
-  // 如果当前在受保护的页面，路由守卫会在下次导航时自动重定向
+// 保存取消订阅函数，防止 Vite HMR 时监听器累积
+const unsubLogout = eventBus.on(Events.USER_LOGOUT, () => {
+  // Token 过期后主动跳转登录页，不依赖用户手动触发导航
+  const current = router.currentRoute.value
+  const requiresAuth = current.meta?.requiresAuth !== false
+  if (requiresAuth) {
+    router.push({ name: 'Login', query: { redirect: current.fullPath } })
+  }
 })
 
-eventBus.on(Events.USER_LOGIN, () => {
+const unsubLogin = eventBus.on(Events.USER_LOGIN, () => {
   const currentRoute = router.currentRoute.value
   if (currentRoute.name === 'Login' || currentRoute.name === 'Register') {
     router.push({ name: 'Dashboard' })
   }
 })
+
+// Vite HMR 清理，防止热更新时重复注册监听器
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    unsubLogout()
+    unsubLogin()
+  })
+}
 
 export default router

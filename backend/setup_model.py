@@ -5,7 +5,7 @@ import sys
 sys.path.insert(0, '.')
 
 from motor.motor_asyncio import AsyncIOMotorClient
-from datetime import datetime
+from datetime import datetime, timezone
 from bson import ObjectId
 
 async def setup_model():
@@ -29,8 +29,8 @@ async def setup_model():
         "batch_concurrency": 2,
         "thinking_enabled": False,
         "thinking_mode": "auto",
-        "created_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow()
+        "created_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(timezone.utc)
     }
 
     # 删除旧模型（如果存在）
@@ -46,7 +46,7 @@ async def setup_model():
         {"$set": {
             "settings.trading_agents_settings.data_collection_model_id": model_id,
             "settings.trading_agents_settings.debate_model_id": model_id,
-            "updated_at": datetime.utcnow()
+            "updated_at": datetime.now(timezone.utc)
         }}
     )
     print("用户默认模型已更新")

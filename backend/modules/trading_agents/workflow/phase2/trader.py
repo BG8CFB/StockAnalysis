@@ -9,7 +9,7 @@ Phase 3: 交易执行策划
 
 import logging
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from langchain_core.language_models import BaseChatModel
 from langchain.agents import create_agent
@@ -298,7 +298,7 @@ async def execute_phase3(
     phase3_execution = PhaseExecution(
         phase=3,
         phase_name="交易执行策划",
-        started_at=datetime.utcnow(),
+        started_at=datetime.now(timezone.utc),
         execution_mode="serial",
         max_concurrency=1
     )
@@ -310,11 +310,11 @@ async def execute_phase3(
     if result["output"]:
         state.trading_plan = {
             "content": result["output"],
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
     # 更新执行记录
-    phase3_execution.completed_at = datetime.utcnow()
+    phase3_execution.completed_at = datetime.now(timezone.utc)
     phase3_execution.status = TaskStatus.COMPLETED if not result["error"] else TaskStatus.FAILED
 
     state.phase_executions.append(phase3_execution)

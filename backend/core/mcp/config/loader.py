@@ -29,33 +29,41 @@ logger = logging.getLogger(__name__)
 
 def load_db_config_sync() -> Dict[str, Any]:
     """
-    从数据库加载配置（同步版本）
+    从数据库加载配置（同步版本，仅作兼容保留）
+
+    Motor 是纯异步驱动，无法在同步上下文中调用。此函数始终返回空字典。
+    异步上下文请使用 load_db_config_async() 代替。
+
+    Returns:
+        空字典（占位）
+    """
+    return {}
+
+
+async def load_db_config_async() -> Dict[str, Any]:
+    """
+    从数据库异步加载 MCP 系统配置
 
     尝试从 MongoDB 读取系统配置，如果失败则返回空字典。
-    注意：由于 MongoDB 使用 motor（异步），此函数在没有初始化时会返回空配置。
 
     Returns:
         数据库配置字典
     """
     try:
-        # 动态导入避免循环依赖
         from core.db.mongodb import mongodb
 
-        # 检查数据库是否已初始化
         if mongodb._database is None:
             logger.debug("数据库未初始化，跳过数据库配置加载")
             return {}
 
         collection = mongodb.get_collection("mcp_settings")
-        # 注意：find_one 在未初始化时会抛出异常，由 except 捕获
-        doc = collection.find_one({"_id": "system"})
+        doc = await collection.find_one({"_id": "system"})
 
         if doc:
             doc.pop("_id", None)
             logger.info("从数据库加载 MCP 系统配置")
             return _convert_db_config_to_yaml_format(doc)
     except RuntimeError as e:
-        # 明确捕获 MongoDB 未初始化错误，并不做处理，视为正常情况
         if "Call connect() first" in str(e):
             return {}
         logger.warning(f"从数据库加载配置出现运行时错误: {e}")
@@ -119,6 +127,8 @@ def _convert_db_config_to_yaml_format(db_config: Dict[str, Any]) -> Dict[str, An
 # =============================================================================
 
 _mcp_config_cache: Optional[Dict[str, Any]] = None
+_mcp_config_cache_timestamp: float = 0.0
+_MCP_CONFIG_TTL: int = 300  # 缓存 TTL 5 分钟（秒）
 
 
 # =============================================================================
@@ -245,7 +255,55 @@ def merge_configs(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, A
 
 def load_mcp_config(config_path: Optional[Path] = None, use_cache: bool = True) -> Dict[str, Any]:
     """
-    加载 MCP 配置（完整流程）
+    加载 MCP 配置（完整流程，同步版本，不包含数据库配置）
+
+    加载优先级：
+    1. YAML 文件默认配置
+    2. 环境变量覆盖
+
+    注意：数据库配置仅在异步版本 load_mcp_config_async() 中生效。
+    推荐在应用启动后调用 refresh_mcp_config_from_db() 加载数据库配置。
+
+    Args:
+        config_path: 配置文件路径，默认使用 default_config.yaml
+        use_cache: 是否使用缓存的配置
+
+    Returns:
+        配置字典
+    """
+    global _mcp_config_cache, _mcp_config_cache_timestamp
+
+    import time
+
+    # 使用缓存（添加 TTL 检查）
+    if use_cache and _mcp_config_cache is not None:
+        if time.time() - _mcp_config_cache_timestamp < _MCP_CONFIG_TTL:
+            return _mcp_config_cache
+        else:
+            logger.info("[MCP Config] 缓存已过期，重新加载配置")
+            _mcp_config_cache = None
+
+    # 1. 加载 YAML 默认配置
+    yaml_config = load_yaml_config(config_path)
+
+    # 2. 加载环境变量覆盖（最高优先级）
+    env_overrides = get_env_overrides()
+
+    # 3. 最终合并
+    final_config = merge_configs(yaml_config, env_overrides)
+
+    # 缓存配置（更新时间戳）
+    _mcp_config_cache = final_config
+    _mcp_config_cache_timestamp = time.time()
+
+    return final_config
+
+
+async def load_mcp_config_async(
+    config_path: Optional[Path] = None, use_cache: bool = True
+) -> Dict[str, Any]:
+    """
+    加载 MCP 配置（完整流程，异步版本，包含数据库配置）
 
     加载优先级：
     1. 数据库配置（用户通过前端修改）
@@ -258,24 +316,25 @@ def load_mcp_config(config_path: Optional[Path] = None, use_cache: bool = True) 
 
     Returns:
         配置字典
-
-    Raises:
-        FileNotFoundError: 配置文件不存在
-        ValueError: YAML 格式错误或 pyyaml 未安装
     """
-    global _mcp_config_cache
+    global _mcp_config_cache, _mcp_config_cache_timestamp
 
-    # 使用缓存
+    import time
+
     if use_cache and _mcp_config_cache is not None:
-        return _mcp_config_cache
+        if time.time() - _mcp_config_cache_timestamp < _MCP_CONFIG_TTL:
+            return _mcp_config_cache
+        else:
+            logger.info("[MCP Config] 缓存已过期，重新加载配置")
+            _mcp_config_cache = None
 
     # 1. 加载 YAML 默认配置
     yaml_config = load_yaml_config(config_path)
 
-    # 2. 加载数据库配置（优先级高于 YAML）
-    db_overrides = load_db_config_sync()
+    # 2. 从数据库加载配置（异步，含用户修改的设置）
+    db_overrides = await load_db_config_async()
 
-    # 3. 合并数据库配置和 YAML 配置
+    # 3. 合并：数据库配置覆盖 YAML
     base_config = merge_configs(yaml_config, db_overrides)
 
     # 4. 加载环境变量覆盖（最高优先级）
@@ -284,10 +343,20 @@ def load_mcp_config(config_path: Optional[Path] = None, use_cache: bool = True) 
     # 5. 最终合并
     final_config = merge_configs(base_config, env_overrides)
 
-    # 缓存配置
     _mcp_config_cache = final_config
+    _mcp_config_cache_timestamp = time.time()
 
     return final_config
+
+
+async def refresh_mcp_config_from_db() -> Dict[str, Any]:
+    """
+    从数据库刷新 MCP 配置缓存（应用启动时调用）
+
+    Returns:
+        刷新后的配置字典
+    """
+    return await load_mcp_config_async(use_cache=False)
 
 
 def get_mcp_config(*keys: str, default: Any = None) -> Any:
@@ -334,8 +403,9 @@ def reload_mcp_config(config_path: Optional[Path] = None) -> Dict[str, Any]:
     Returns:
         配置字典
     """
-    global _mcp_config_cache
+    global _mcp_config_cache, _mcp_config_cache_timestamp
     _mcp_config_cache = None
+    _mcp_config_cache_timestamp = 0.0
 
     # 重置所有信号量，让新配置立即生效
     from core.mcp.pool.pool import get_mcp_connection_pool
@@ -345,6 +415,18 @@ def reload_mcp_config(config_path: Optional[Path] = None) -> Dict[str, Any]:
     logger.info("[MCP Config] 配置已重新加载，所有信号量已重置")
 
     return load_mcp_config(config_path, use_cache=False)
+
+
+def clear_mcp_config_cache() -> None:
+    """
+    清除配置缓存（用于配置更新时自动清除）
+
+    调用此方法后，下次 get_mcp_config 会重新加载配置
+    """
+    global _mcp_config_cache, _mcp_config_cache_timestamp
+    _mcp_config_cache = None
+    _mcp_config_cache_timestamp = 0.0
+    logger.info("[MCP Config] 配置缓存已清除")
 
 
 # =============================================================================

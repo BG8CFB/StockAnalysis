@@ -2,7 +2,7 @@
  * 系统设置状态管理
  */
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { systemSettingsApi } from '../api/system'
 import type { SystemConfig, SystemStatus, SystemInfo } from '../types/system'
 
@@ -11,13 +11,19 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
   const systemConfig = ref<SystemConfig | null>(null)
   const systemStatus = ref<SystemStatus | null>(null)
   const systemInfo = ref<SystemInfo | null>(null)
-  const loading = ref(false)
+
+  // 使用引用计数代替共享 boolean，防止并发操作互相覆盖 loading 状态
+  const loadingCount = ref(0)
+  const loading = computed(() => loadingCount.value > 0)
+
+  function startLoading() { loadingCount.value++ }
+  function stopLoading() { loadingCount.value = Math.max(0, loadingCount.value - 1) }
 
   /**
    * 获取系统状态
    */
   async function fetchSystemStatus() {
-    loading.value = true
+    startLoading()
     try {
       const status = await systemSettingsApi.getSystemStatus()
       systemStatus.value = status
@@ -26,7 +32,7 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
       console.error('获取系统状态失败:', error)
       throw error
     } finally {
-      loading.value = false
+      stopLoading()
     }
   }
 
@@ -34,7 +40,7 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
    * 获取系统配置
    */
   async function fetchSystemConfig() {
-    loading.value = true
+    startLoading()
     try {
       const config = await systemSettingsApi.getSystemConfig()
       systemConfig.value = config
@@ -43,7 +49,7 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
       console.error('获取系统配置失败:', error)
       throw error
     } finally {
-      loading.value = false
+      stopLoading()
     }
   }
 
@@ -51,10 +57,9 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
    * 更新系统配置
    */
   async function updateConfig(configUpdates: Partial<SystemConfig>) {
-    loading.value = true
+    startLoading()
     try {
       const response = await systemSettingsApi.updateSystemConfig(configUpdates)
-      // 更新本地状态
       if (systemConfig.value) {
         Object.assign(systemConfig.value, response.config)
       }
@@ -63,7 +68,7 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
       console.error('更新系统配置失败:', error)
       throw error
     } finally {
-      loading.value = false
+      stopLoading()
     }
   }
 
@@ -71,7 +76,7 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
    * 获取完整系统信息
    */
   async function fetchSystemInfo() {
-    loading.value = true
+    startLoading()
     try {
       const info = await systemSettingsApi.getSystemInfo()
       systemInfo.value = info
@@ -80,17 +85,15 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
       console.error('获取系统信息失败:', error)
       throw error
     } finally {
-      loading.value = false
+      stopLoading()
     }
   }
 
   return {
-    // 状态
     systemConfig,
     systemStatus,
     systemInfo,
     loading,
-    // 方法
     fetchSystemStatus,
     fetchSystemConfig,
     updateConfig,

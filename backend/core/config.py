@@ -30,7 +30,15 @@ REDIS_SOCKET_TIMEOUT: int = int(os.getenv("REDIS_SOCKET_TIMEOUT", "5"))
 REDIS_SOCKET_CONNECT_TIMEOUT: int = int(os.getenv("REDIS_SOCKET_CONNECT_TIMEOUT", "5"))
 
 # JWT配置
-SECRET_KEY: str = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
+# 安全要求：SECRET_KEY 必须至少 32 字符，生产环境必须使用环境变量设置
+_secret_key_default = "dev-secret-key-change-in-production-at-least-64-characters-long-for-security"
+SECRET_KEY: str = os.getenv("SECRET_KEY", _secret_key_default)
+# 开发环境检查
+if SECRET_KEY == _secret_key_default and os.getenv("ENVIRONMENT", "development") == "production":
+    raise ValueError("生产环境必须设置 SECRET_KEY 环境变量")
+if len(SECRET_KEY) < 32:
+    raise ValueError(f"SECRET_KEY 长度不足，当前 {len(SECRET_KEY)} 字符，至少需要 32 字符")
+
 ALGORITHM: str = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
@@ -47,6 +55,11 @@ LOGIN_FAIL_WINDOW: int = int(os.getenv("LOGIN_FAIL_WINDOW", "300"))
 # IP 信任配置
 IP_TRUST_THRESHOLD: int = int(os.getenv("IP_TRUST_THRESHOLD", "5"))
 IP_TRUST_EXPIRE_DAYS: int = int(os.getenv("IP_TRUST_EXPIRE_DAYS", "30"))
+
+# 可信代理 IP 列表（逗号分隔），只有来自这些 IP 的 X-Forwarded-For 才被信任
+# 示例：TRUSTED_PROXIES=127.0.0.1,10.0.0.1
+_trusted_proxies_raw = os.getenv("TRUSTED_PROXIES", "127.0.0.1,::1")
+TRUSTED_PROXIES: set = {ip.strip() for ip in _trusted_proxies_raw.split(",") if ip.strip()}
 
 # 图形验证码配置
 CAPTCHA_ENABLED: bool = os.getenv("CAPTCHA_ENABLED", "true").lower() == "true"

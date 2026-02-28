@@ -6,7 +6,7 @@
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from bson import ObjectId
@@ -103,7 +103,7 @@ class TaskManager:
             },
             "error_message": None,
             "error_details": None,
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
             "started_at": None,
             "completed_at": None,
             "expired_at": None,
@@ -191,8 +191,11 @@ class TaskManager:
                 logger.error(f"找不到新创建的任务: task_id={task_id}")
                 continue
 
+            # 标记任务为运行中（与单任务 create_task_background 保持一致）
+            await self.mark_task_running(task_id)
+
             # 使用数据库中的正确信息
-            asyncio.create_task(
+            bg_task = asyncio.create_task(
                 self.execute_analysis_workflow(
                     task_id=task_id,
                     user_id=user_id,
@@ -205,8 +208,11 @@ class TaskManager:
                         debate_model=task_doc.get("debate_model"),
                     ),
                     _skip_model_loading=True,  # 跳过模型加载（已在后台任务中完成）
-                )
+                ),
+                name=f"workflow-{task_id}",
             )
+            # 保存引用防止垃圾回收
+            self._running_tasks[task_id] = bg_task
 
         logger.info(
             f"创建批量任务: batch_id={result['batch_id']}, "
@@ -474,7 +480,7 @@ class TaskManager:
                 "$set": {
                     "status": TaskStatusEnum.CANCELLED.value,
                     "interrupt_signal": True,
-                    "completed_at": datetime.utcnow(),
+                    "completed_at": datetime.now(timezone.utc),
                 }
             },
         )
@@ -535,7 +541,7 @@ class TaskManager:
                 "$set": {
                     "status": TaskStatusEnum.STOPPED.value,
                     "interrupt_signal": True,
-                    "completed_at": datetime.utcnow(),
+                    "completed_at": datetime.now(timezone.utc),
                 }
             },
         )
@@ -638,7 +644,7 @@ class TaskManager:
 
         update_data = {
             "status": TaskStatusEnum.COMPLETED.value,
-            "completed_at": datetime.utcnow(),
+            "completed_at": datetime.now(timezone.utc),
             "progress": 100.0,
         }
 
@@ -768,7 +774,7 @@ class TaskManager:
                     "status": TaskStatusEnum.FAILED.value,
                     "error_message": error_message,
                     "error_details": error_details,
-                    "completed_at": datetime.utcnow(),
+                    "completed_at": datetime.now(timezone.utc),
                 }
             },
         )
@@ -809,7 +815,7 @@ class TaskManager:
             {
                 "$set": {
                     "status": TaskStatusEnum.RUNNING.value,
-                    "started_at": datetime.utcnow(),
+                    "started_at": datetime.now(timezone.utc),
                 }
             },
         )
@@ -956,10 +962,13 @@ class TaskManager:
         except Exception as e:
             logger.warning(f"[{task_id}] 获取 batch_id 失败，使用 None: {e}")
             batch_id = None
+            task_doc = None
 
-        # 用于并发控制
-        data_collection_model_id = None
-        debate_model_id = None
+        # 用于并发控制与调度器（批量子任务时从任务文档/request 解析）
+        data_collection_model_id: Optional[str] = None
+        debate_model_id: Optional[str] = None
+        data_collection_model_obj = None
+        debate_model_obj = None
 
         try:
             # 1. 加载用户智能体配置
@@ -1036,6 +1045,24 @@ class TaskManager:
                 )
                 logger.debug(f"任务 {task_id} 已落库 model_id 等字段")
 
+            # _skip_model_loading 时从任务文档或 request 解析 model id，并获取 model 对象（供并发与 task_concurrency 使用）
+            if _skip_model_loading and (not data_collection_model_id or not debate_model_id):
+                from core.ai.model import get_model_service as _get_model_service
+
+                _model_service = _get_model_service()
+                data_collection_model_id = data_collection_model_id or (
+                    task_doc.get("data_collection_model_id") if task_doc else None
+                ) or request.data_collection_model
+                debate_model_id = debate_model_id or (
+                    task_doc.get("debate_model_id") if task_doc else None
+                ) or request.debate_model
+                if data_collection_model_id:
+                    data_collection_model_obj = await _model_service.get_model(
+                        data_collection_model_id, user_id
+                    )
+                if debate_model_id:
+                    debate_model_obj = await _model_service.get_model(debate_model_id, user_id)
+
             # 请求并发控制
             from modules.trading_agents.manager.concurrency_controller import (
                 get_concurrency_controller,
@@ -1043,11 +1070,13 @@ class TaskManager:
 
             concurrency_controller = get_concurrency_controller()
 
+            # 预先获取模型服务（避免条件分支内 NameError）
+            from core.ai.model import get_model_service
+
+            model_service = get_model_service()
+
             # 为数据收集模型请求并发
             if data_collection_model_id:
-                from core.ai.model import get_model_service
-
-                model_service = get_model_service()
                 # 使用异步方法获取模型
                 data_collection_model_obj = await model_service.get_model(
                     data_collection_model_id, user_id
@@ -1202,7 +1231,7 @@ class TaskManager:
                             "current_phase": progress_data.get("current_phase", 0),
                             "progress": progress_data.get("progress", 0.0),
                             "status": progress_data.get("status", TaskStatusEnum.RUNNING.value),
-                            "updated_at": datetime.utcnow(),
+                            "updated_at": datetime.now(timezone.utc),
                         }
 
                         # 准备 reports 字段更新 (Map[slug, content_string])
@@ -1423,13 +1452,8 @@ class TaskManager:
                     f"减少并发任务计数失败: task_id={task_id}, user_id={user_id}, error={e}"
                 )
 
-            # 释放 MCP 连接（标记任务失败）
-            try:
-                pool = get_mcp_connection_pool()
-                await pool.mark_task_failed(task_id)
-                logger.info(f"已释放任务 {task_id} 的 MCP 连接（失败状态）")
-            except Exception as e:
-                logger.error(f"释放 MCP 连接失败: task_id={task_id}, error={e}")
+            # MCP 连接释放已在 complete_task 和 fail_task 中处理
+            # 此处不需要再次调用，避免覆盖任务完成状态
 
     async def _resolve_model_with_fallback(
         self,

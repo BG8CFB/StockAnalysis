@@ -50,6 +50,9 @@ from core.market_data.services.startup_data_service import StartupDataService
 # 配置彩色日志
 logger = logging.getLogger(__name__)
 
+# 保存后台 Task 引用，防止被垃圾回收器提前回收
+_background_tasks: set = set()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -97,7 +100,19 @@ async def lifespan(app: FastAPI):
         await concurrency_controller.cleanup_on_startup()
         logger.info("✅ 并发控制状态已清理")
 
-        # 7. 启动市场数据定时调度器
+        # 7. 初始化 WebSocket 管理器（需在事件循环就绪后启动清理任务）
+        logger.info("📦 初始化 WebSocket 管理器...")
+        from modules.trading_agents.api.websocket_manager import websocket_manager
+        await websocket_manager.initialize()
+        logger.info("✅ WebSocket 管理器初始化完成")
+
+        # 8. 从数据库刷新 MCP 配置缓存（确保用户配置生效）
+        logger.info("📦 加载 MCP 数据库配置...")
+        from core.mcp.config.loader import refresh_mcp_config_from_db
+        await refresh_mcp_config_from_db()
+        logger.info("✅ MCP 配置已从数据库加载")
+
+        # 9. 启动市场数据定时调度器
         await init_market_data_scheduler()
 
         logger.info("=" * 60)
@@ -448,7 +463,9 @@ async def _run_startup_check(startup_service: StartupDataService):
         if health_check_tasks:
             logger.info(f"📊 启动后台健康检查任务，共 {len(health_check_tasks)} 个检查项...")
             # 使用 create_task 在后台并行执行健康检查
-            asyncio.create_task(_run_health_checks(startup_service, health_check_tasks))
+            _task = asyncio.create_task(_run_health_checks(startup_service, health_check_tasks))
+            _background_tasks.add(_task)
+            _task.add_done_callback(_background_tasks.discard)
 
     except Exception as e:
         logger.error(f"❌ 后台启动检查任务失败: {e}", exc_info=True)
@@ -514,8 +531,10 @@ async def init_market_data_scheduler() -> None:
         # 启动时数据检查和补录（异步后台执行，不阻塞启动）
         logger.info("📊 启动后台数据检查和补录任务（异步）...")
         startup_service = StartupDataService(_data_sync_service)
-        # 使用 create_task 在后台运行，不阻塞主程序启动
-        asyncio.create_task(_run_startup_check(startup_service))
+        # 使用 create_task 在后台运行，不阻塞主程序启动（保存引用防止垃圾回收）
+        _task = asyncio.create_task(_run_startup_check(startup_service))
+        _background_tasks.add(_task)
+        _task.add_done_callback(_background_tasks.discard)
 
     except Exception as e:
         logger.error(f"❌ 市场数据定时调度器启动失败: {e}", exc_info=True)

@@ -3,7 +3,7 @@
 管理系统配置
 """
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -42,7 +42,7 @@ class SettingsService:
     """系统设置服务"""
 
     def __init__(self) -> None:
-        self.startup_time = datetime.utcnow()
+        self.startup_time = datetime.now(timezone.utc)
 
     @property
     def db(self) -> AsyncIOMotorDatabase:
@@ -97,7 +97,7 @@ class SettingsService:
                 "$set": {
                     "value": current_config,
                     "updated_by": admin_id,
-                    "updated_at": datetime.utcnow(),
+                    "updated_at": datetime.now(timezone.utc),
                 }
             },
             upsert=True,
@@ -126,7 +126,7 @@ class SettingsService:
             "user_id": user_id,
             "action": action,
             "details": details,
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
         }
         await self.db.audit_logs.insert_one(log_doc)
 
@@ -187,8 +187,8 @@ class SettingsService:
             "registration_open": config.get("ENABLE_REGISTRATION", True),
 
             # 其他信息
-            "server_time": datetime.utcnow().isoformat(),
-            "uptime": int((datetime.utcnow() - self.startup_time).total_seconds()),
+            "server_time": datetime.now(timezone.utc).isoformat(),
+            "uptime": int((datetime.now(timezone.utc) - self.startup_time).total_seconds()),
 
             # 兼容旧字段 (可选)
             "config": config,

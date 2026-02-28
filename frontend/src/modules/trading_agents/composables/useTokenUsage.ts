@@ -225,7 +225,7 @@ export function useTokenUsage(initialTask?: AnalysisTask) {
   function addTokenUsage(prompt: number, completion: number) {
     promptTokens.value += prompt
     completionTokens.value += completion
-    totalTokens.value = prompt + completion
+    totalTokens.value += prompt + completion  // 累加而非覆盖
   }
 
   /**

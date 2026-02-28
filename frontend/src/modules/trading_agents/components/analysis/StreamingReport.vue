@@ -58,14 +58,14 @@
       </div>
       <div class="recommendation-body">
         <div
-          v-if="buyPrice"
+          v-if="buyPrice != null"
           class="price-item"
         >
           <span class="price-label">建议买入价:</span>
           <span class="price-value">¥{{ buyPrice.toFixed(2) }}</span>
         </div>
         <div
-          v-if="sellPrice"
+          v-if="sellPrice != null"
           class="price-item"
         >
           <span class="price-label">建议卖出价:</span>
@@ -92,13 +92,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { computed, watch } from 'vue'
 import { Document } from '@element-plus/icons-vue'
-import type { RecommendationEnum } from '../../types'
+import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 
 interface Props {
   content?: string
-  recommendation?: RecommendationEnum | null
+  recommendation?: string | null  // 接受字符串类型（如 "买入"、"卖出"、"持有"）
   buyPrice?: number | null
   sellPrice?: number | null
   totalTokens?: number
@@ -120,23 +121,34 @@ const props = withDefaults(defineProps<Props>(), {
   showTokenStats: true,
 })
 
-// 显示的内容
-const displayContent = ref(props.content || '')
-
-// 监听内容变化
-watch(() => props.content, (newContent) => {
-  displayContent.value = newContent || ''
-})
+// 显示的内容（使用 computed 替代冗余的 ref + watch 镜像）
+const displayContent = computed(() => props.content || '')
 
 // 流动动画类
 const streamClass = computed(() => {
   return props.isStreaming ? 'streaming' : ''
 })
 
-// 渲染的内容
+// 渲染的内容（使用 marked + DOMPurify 替代有缺陷的自定义 formatMarkdown）
 const renderedContent = computed(() => {
   if (!displayContent.value) return ''
-  return formatMarkdown(displayContent.value)
+  try {
+    const html = marked.parse(displayContent.value) as string
+    return DOMPurify.sanitize(html, {
+      USE_PROFILES: { html: true },
+      ALLOWED_TAGS: [
+        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        'strong', 'em', 'del', 'pre', 'code',
+        'a', 'ol', 'ul', 'li', 'p', 'br',
+        'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
+        'hr', 'img',
+      ],
+      ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'src', 'alt'],
+      ALLOW_DATA_ATTR: false,
+    })
+  } catch {
+    return DOMPurify.sanitize(displayContent.value)
+  }
 })
 
 /**
@@ -164,32 +176,6 @@ function formatTokenCount(count: number): string {
   return count.toString()
 }
 
-/**
- * 简单的 Markdown 渲染
- */
-function formatMarkdown(text: string): string {
-  return text
-    // 标题
-    .replace(/^### (.*$)/gim, '<h4>$1</h4>')
-    .replace(/^## (.*$)/gim, '<h3>$1</h3>')
-    .replace(/^# (.*$)/gim, '<h2>$1</h2>')
-    // 粗体
-    .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
-    // 斜体
-    .replace(/\*(.*?)\*/gim, '<em>$1</em>')
-    // 代码块
-    .replace(/```([\s\S]*?)```/gim, '<pre class="code-block"><code>$1</code></pre>')
-    // 行内代码
-    .replace(/`([^`]+)`/gim, '<code class="inline-code">$1</code>')
-    // 链接
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/gim, '<a href="$2" target="_blank">$1</a>')
-    // 列表
-    .replace(/^\d+\. (.*$)/gim, '<ol><li>$1</li></ol>')
-    .replace(/^- (.*$)/gim, '<ul><li>$1</li></ul>')
-    // 换行
-    .replace(/\n\n/gim, '</p><p>')
-    .replace(/\n/gim, '<br>')
-}
 </script>
 
 <style scoped>
@@ -225,7 +211,8 @@ function formatMarkdown(text: string): string {
   font-weight: 600;
 }
 
-.streaming .el-icon {
+/* 修正：.streaming 和 .el-icon 在同一元素上，使用并列选择器而非后代选择器 */
+.el-icon.streaming {
   animation: pulse 1.5s ease-in-out infinite;
 }
 

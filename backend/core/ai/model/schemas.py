@@ -4,7 +4,7 @@ AI 模型配置数据模型
 定义 AI 模型配置的 Pydantic 模型，用于请求验证、响应序列化和数据存储。
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -292,8 +292,8 @@ class AIModelConfigResponse(AIModelConfigBase):
             custom_thinking_price=data.get("custom_thinking_price"),
             is_system=data.get("is_system", False),
             owner_id=data.get("owner_id"),
-            created_at=_parse_datetime(data.get("created_at")) or datetime.utcnow(),
-            updated_at=_parse_datetime(data.get("updated_at")) or datetime.utcnow(),
+            created_at=_parse_datetime(data.get("created_at")) or datetime.now(timezone.utc),
+            updated_at=_parse_datetime(data.get("updated_at")) or datetime.now(timezone.utc),
             masked_api_key=masked,
         )
 

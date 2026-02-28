@@ -1,7 +1,7 @@
 """
 用户核心数据模型
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Literal, Optional
 
@@ -42,8 +42,8 @@ class UserModel(BaseModel):
     is_verified: bool = False
     created_by: Optional[PyObjectId] = None
     last_login_at: Optional[datetime] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     model_config = {
         "populate_by_name": True,

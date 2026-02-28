@@ -11,7 +11,7 @@ TradingAgents 全局配置服务 (改进版)
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from bson import ObjectId
@@ -76,8 +76,8 @@ async def ensure_default_config() -> bool:
     # 创建默认配置
     default_config = DEFAULT_CONFIG.copy()
     default_config["_id"] = DOCUMENT_ID
-    default_config["created_at"] = datetime.utcnow()
-    default_config["updated_at"] = datetime.utcnow()
+    default_config["created_at"] = datetime.now(timezone.utc)
+    default_config["updated_at"] = datetime.now(timezone.utc)
     default_config["version"] = "1.0"
 
     await collection.insert_one(default_config)
@@ -127,7 +127,7 @@ async def update_global_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
     collection = mongodb.get_collection(COLLECTION_NAME)
 
     # 构建更新字段
-    update_fields = {"updated_at": datetime.utcnow()}
+    update_fields = {"updated_at": datetime.now(timezone.utc)}
 
     # 只更新 TradingAgentsSettings 中定义的有效字段
     valid_fields = set(TradingAgentsSettings.model_fields.keys())

@@ -5,7 +5,7 @@ MCP 系统配置数据库服务
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 from core.db.mongodb import mongodb
@@ -47,7 +47,7 @@ async def update_system_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
     """
     collection = mongodb.get_collection(COLLECTION_NAME)
 
-    settings["updated_at"] = datetime.utcnow()
+    settings["updated_at"] = datetime.now(timezone.utc)
 
     await collection.update_one(
         {"_id": DOCUMENT_ID},

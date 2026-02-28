@@ -65,7 +65,10 @@
       class="analysis-content"
     >
       <!-- 简洁进度条 -->
-      <el-card shadow="never" class="compact-progress-card">
+      <el-card
+        shadow="never"
+        class="compact-progress-card"
+      >
         <div class="progress-container">
           <div class="progress-bar-wrapper">
             <el-progress
@@ -78,13 +81,22 @@
           <div class="progress-info">
             <div class="info-item">
               <span class="info-label">当前阶段:</span>
-              <el-tag type="primary" size="default">
+              <el-tag
+                type="primary"
+                size="default"
+              >
                 Phase {{ progressState.currentPhase }}
               </el-tag>
             </div>
-            <div class="info-item" v-if="runningAgents.length > 0">
+            <div
+              v-if="runningAgents.length > 0"
+              class="info-item"
+            >
               <span class="info-label">正在执行:</span>
-              <el-tag type="warning" size="default">
+              <el-tag
+                type="warning"
+                size="default"
+              >
                 {{ runningAgents[0].name }}
               </el-tag>
             </div>
@@ -513,10 +525,14 @@ async function handleStop() {
     await taskApi.cancelTask(taskId.value)
     ElMessage.success('已停止分析')
     // WebSocket 会推送 task_cancelled 事件，无需手动刷新
-  } catch (err) {
-    // 用户取消或错误
-    if (err !== 'cancel') {
+  } catch (err: unknown) {
+    // ElMessageBox 取消时抛出 'cancel' 字符串（部分版本抛出 { action: 'cancel' }）
+    const isCancelled =
+      err === 'cancel' ||
+      (typeof err === 'object' && err !== null && (err as { action?: string }).action === 'cancel')
+    if (!isCancelled) {
       console.error('停止任务失败:', err)
+      ElMessage.error('停止任务失败，请重试')
     }
   }
 }

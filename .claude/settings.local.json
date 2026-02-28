@@ -17,17 +17,16 @@
       "mcp__ide__*",
       "mcp__4_5v_mcp__*",
       "mcp__milk_tea_server__*",
-      "WebFetch(*:*)",
-      "mcp__web-search-prime__webSearchPrime"
+      "mcp__web-search-prime__webSearchPrime",
+      "Bash(dir backendmodules)",
+      "WebFetch(domain:github.com)"
     ],
     "deny": [],
     "ask": []
   },
   "enabledPlugins": {
-    "glm-plan-usage@zai-coding-plugins": true,
-    "glm-plan-bug@zai-coding-plugins": true,
     "superpowers@superpowers-marketplace": true
   },
-  "outputStyle": "通用提示词",
+  "outputStyle": "Default",
   "alwaysThinkingEnabled": true
 }

@@ -51,7 +51,7 @@
       :gutter="16"
     >
       <el-col
-        v-for="(config, index) in filteredConfigs"
+        v-for="config in filteredConfigs"
         :key="`${config.source_id}-${config.market}`"
         :xs="24"
         :sm="12"

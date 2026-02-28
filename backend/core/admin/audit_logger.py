@@ -5,7 +5,7 @@
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from bson import ObjectId
 
@@ -51,7 +51,7 @@ class AuditLogger:
                 "details": details or {},
                 "ip_address": ip_address,
                 "user_agent": user_agent,
-                "created_at": datetime.utcnow(),
+                "created_at": datetime.now(timezone.utc),
             }
 
             await db.audit_logs.insert_one(log_doc)

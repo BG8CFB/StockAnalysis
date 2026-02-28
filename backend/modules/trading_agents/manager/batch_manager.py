@@ -8,11 +8,16 @@
 - 多用户隔离，每个用户独立的批量任务队列
 - 批量并发数从模型配置读取
 - 批量上下文持久化到 Mongo，支持重启后恢复未完成批量
+
+**并发安全说明**：
+- 所有对 _batch_contexts 的操作都在 _lock 保护下进行
+- on_task_completed 中的任务创建在同一锁内完成，避免竞争条件
 """
 
 import asyncio
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from bson import ObjectId
@@ -46,6 +51,7 @@ class BatchTaskContext:
     created_tasks: List[str] = field(default_factory=list)  # 已创建的任务 ID
     pending_stocks: List[str] = field(default_factory=list)  # 待处理的股票代码
     running_count: int = 0  # 当前运行中的任务数
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))  # 创建时间
 
 
 def _context_to_doc(ctx: BatchTaskContext) -> Dict[str, Any]:
@@ -61,6 +67,7 @@ def _context_to_doc(ctx: BatchTaskContext) -> Dict[str, Any]:
         "created_tasks": ctx.created_tasks,
         "pending_stocks": ctx.pending_stocks,
         "running_count": ctx.running_count,
+        "created_at": ctx.created_at,
     }
 
 
@@ -77,6 +84,7 @@ def _doc_to_context(doc: Dict[str, Any]) -> BatchTaskContext:
         created_tasks=doc.get("created_tasks", []),
         pending_stocks=doc.get("pending_stocks", []),
         running_count=doc.get("running_count", 0),
+        created_at=doc.get("created_at", datetime.now(timezone.utc)),
     )
 
 

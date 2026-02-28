@@ -9,7 +9,7 @@ Phase 1 智能体工厂
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from langchain.agents import create_agent
@@ -23,6 +23,7 @@ from modules.trading_agents.models.state import (
     TaskStatus,
     WorkflowState,
 )
+from modules.trading_agents.workflow.state import TokenUsage
 from modules.trading_agents.workflow.events import (
     EventType,
     create_event,
@@ -185,7 +186,7 @@ class Phase1AgentFactory:
             slug=agent_slug,
             name=agent_name,
             status=TaskStatus.RUNNING,
-            started_at=datetime.utcnow()
+            started_at=datetime.now(timezone.utc)
         )
 
         try:
@@ -199,28 +200,30 @@ class Phase1AgentFactory:
                 ]
             }
 
-            # 通过 config 传递 callbacks（LangChain 1.x 方式）
+            # LangChain 0.3+ 正确传递 callbacks 的方式：直接放在 config 顶层，不是 configurable 下
             if callbacks:
                 from langchain_core.callbacks import CallbackManager
-                config = {"configurable": {"callbacks": CallbackManager(callbacks)}}
-                result = await agent.ainvoke(inputs, config=config)
+                run_config = {"callbacks": CallbackManager(handlers=callbacks)}
+                result = await agent.ainvoke(inputs, config=run_config)
             else:
                 result = await agent.ainvoke(inputs)
 
             # 提取输出
             output = self._extract_output(result)
 
+            # 提取 Token 使用量
+            token_usage = self._extract_token_usage(result)
+
             # 更新执行记录
-            execution.completed_at = datetime.utcnow()
+            execution.completed_at = datetime.now(timezone.utc)
             execution.status = TaskStatus.COMPLETED
             execution.output = output
-
-            # TODO: 提取 Token 使用量（从 LLM 响应中）
-            # execution.token_usage = TokenUsage(...)
+            execution.token_usage = token_usage
 
             logger.info(
                 f"[Phase 1] 智能体完成: {agent_slug} ({agent_name}), "
-                f"输出长度: {len(output) if output else 0}"
+                f"输出长度: {len(output) if output else 0}, "
+                f"tokens: {token_usage.total_tokens if token_usage else 'N/A'}"
             )
 
             return {
@@ -234,7 +237,7 @@ class Phase1AgentFactory:
         except Exception as e:
             logger.error(f"[Phase 1] 智能体失败: {agent_slug} ({agent_name}), error={e}")
 
-            execution.completed_at = datetime.utcnow()
+            execution.completed_at = datetime.now(timezone.utc)
             execution.status = TaskStatus.FAILED
             execution.error_message = str(e)
 
@@ -275,76 +278,85 @@ class Phase1AgentFactory:
 
         return str(result)
 
+    def _extract_token_usage(self, result: Any) -> Optional[TokenUsage]:
+        """
+        从 agent 结果中提取 Token 使用量
+
+        Args:
+            result: agent 返回结果
+
+        Returns:
+            TokenUsage 对象或 None
+        """
+        try:
+            if isinstance(result, dict):
+                messages = result.get("messages", [])
+                if messages:
+                    # 遍历消息查找 usage_metadata
+                    total_prompt = 0
+                    total_completion = 0
+                    found_usage = False
+
+                    for msg in messages:
+                        # 尝试获取 usage_metadata
+                        usage_metadata = None
+                        if hasattr(msg, "usage_metadata"):
+                            usage_metadata = msg.usage_metadata
+                        elif isinstance(msg, dict):
+                            usage_metadata = msg.get("usage_metadata")
+
+                        if usage_metadata:
+                            found_usage = True
+                            # 提取 token 数量
+                            if isinstance(usage_metadata, dict):
+                                total_prompt += usage_metadata.get("input_tokens", 0)
+                                total_completion += usage_metadata.get("output_tokens", 0)
+                            elif hasattr(usage_metadata, "input_tokens"):
+                                total_prompt += usage_metadata.input_tokens or 0
+                                total_completion += usage_metadata.output_tokens or 0
+
+                    if found_usage:
+                        return TokenUsage(
+                            prompt_tokens=total_prompt,
+                            completion_tokens=total_completion,
+                            total_tokens=total_prompt + total_completion
+                        )
+        except Exception as e:
+            logger.debug(f"提取 Token 使用量失败: {e}")
+
+        return None
+
 
 # =============================================================================
 # 工具加载器
 # =============================================================================
 
-async def load_agent_tools(
+async def load_local_tools(
     agent_config: Dict[str, Any],
     user_id: str,
-    state: WorkflowState
-) -> List:
-    """
-    为智能体加载工具（MCP + Local）
-
-    Args:
-        agent_config: 智能体配置
-        user_id: 用户 ID
-        state: 工作流状态
-
-    Returns:
-        工具列表
-    """
-    from langchain_core.tools import BaseTool
-
-    tools: List[BaseTool] = []
-
-    # 1. 加载 MCP 工具
-    mcp_servers = agent_config.get("mcp_servers", [])
-    if mcp_servers:
-        try:
-            from modules.trading_agents.tools.mcp.connector import MCPConnector
-
-            logger.info(f"[Phase 1] 为智能体 {agent_config['slug']} 加载 MCP 工具: {mcp_servers}")
-
-            async with MCPConnector(
-                user_id=user_id,
-                task_id=state.task_id,
-                server_names=mcp_servers
-            ) as connector:
-                mcp_tools = await connector.get_tools()
-                tools.extend(mcp_tools)
-                logger.info(f"[Phase 1] 从 MCP 获取了 {len(mcp_tools)} 个工具")
-        except Exception as e:
-            logger.error(f"[Phase 1] 加载 MCP 工具失败: {e}")
-
-    # 2. 加载 Local 工具
+    state: WorkflowState,
+    tools: List,
+) -> None:
+    """加载 Local 工具（无需连接管理，直接附加到 tools 列表）"""
     local_tools = agent_config.get("local_tools", [])
-    if local_tools:
-        try:
-            from core.market_data.managers.source_router import get_source_router
-            from modules.trading_agents.tools.local_tools_adapter import create_local_tools
+    if not local_tools:
+        return
+    try:
+        from core.market_data.managers.source_router import get_source_router
+        from modules.trading_agents.tools.local_tools_adapter import create_local_tools
 
-            logger.info(f"[Phase 1] 为智能体 {agent_config['slug']} 加载 Local 工具: {local_tools}")
-
-            # 获取数据源路由器
-            source_router = get_source_router()
-
-            # 创建 Local 工具（传入 market 以选择正确的工具）
-            local_tool_instances = create_local_tools(
-                user_id=user_id,
-                source_router=source_router,
-                tool_names=local_tools,
-                market=state.market  # 传递市场类型，选择正确的工具
-            )
-            tools.extend(local_tool_instances)
-            logger.info(f"[Phase 1] 创建了 {len(local_tool_instances)} 个 Local 工具")
-        except Exception as e:
-            logger.error(f"[Phase 1] 加载 Local 工具失败: {e}")
-
-    logger.info(f"[Phase 1] 智能体 {agent_config['slug']} 总共有 {len(tools)} 个工具")
-    return tools
+        logger.info(f"[Phase 1] 为智能体 {agent_config['slug']} 加载 Local 工具: {local_tools}")
+        source_router = get_source_router()
+        local_tool_instances = create_local_tools(
+            user_id=user_id,
+            source_router=source_router,
+            tool_names=local_tools,
+            market=state.market,
+        )
+        tools.extend(local_tool_instances)
+        logger.info(f"[Phase 1] 创建了 {len(local_tool_instances)} 个 Local 工具")
+    except Exception as e:
+        logger.error(f"[Phase 1] 加载 Local 工具失败: {e}")
 
 
 # =============================================================================
@@ -385,7 +397,7 @@ async def execute_phase1(
     # 更新状态
     state.current_phase = 1
     state.status = TaskStatus.RUNNING
-    state.started_at = datetime.utcnow()
+    state.started_at = datetime.now(timezone.utc)
 
     # 获取已启用的智能体
     enabled_agents = get_enabled_agents(config, "phase1")
@@ -477,7 +489,7 @@ async def execute_phase1(
                 "slug": result["slug"],
                 "name": result["name"],
                 "content": result["output"],
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             })
 
         # 更新执行记录
@@ -517,9 +529,52 @@ async def _execute_agent_internal(
     model_id: str,
     websocket_manager: Any = None,
 ) -> Dict[str, Any]:
-    """内部函数：执行单个智能体"""
-    # 加载工具（MCP + Local）
-    tools = await load_agent_tools(agent_config, state.user_id, state)
+    """内部函数：执行单个智能体（MCP 连接在整个执行期间保持打开）"""
+    from langchain_core.tools import BaseTool
+
+    tools: List[BaseTool] = []
+
+    mcp_servers = agent_config.get("mcp_servers", [])
+
+    # MCP 工具需要在连接存活期间执行智能体，因此使用 async with 包裹整个执行过程
+    if mcp_servers:
+        try:
+            from modules.trading_agents.tools.mcp.connector import MCPConnector
+
+            logger.info(f"[Phase 1] 为智能体 {agent_config['slug']} 加载 MCP 工具: {mcp_servers}")
+
+            async with MCPConnector(
+                user_id=state.user_id,
+                task_id=state.task_id,
+                server_names=mcp_servers,
+            ) as connector:
+                # 连接存活期间加载工具
+                mcp_tools = await connector.get_tools()
+                tools.extend(mcp_tools)
+                logger.info(f"[Phase 1] 从 MCP 获取了 {len(mcp_tools)} 个工具")
+
+                # Local 工具也在此加载（与 MCP 工具合并）
+                await load_local_tools(agent_config, state.user_id, state, tools)
+                logger.info(f"[Phase 1] 智能体 {agent_config['slug']} 总共有 {len(tools)} 个工具")
+
+                # 创建智能体并执行（MCP 连接在此期间保持打开）
+                agent, callbacks = await factory.create_agent(
+                    agent_config, tools, model_id,
+                    user_id=state.user_id, task_id=state.task_id,
+                    websocket_manager=websocket_manager,
+                )
+                user_prompt = _build_user_prompt(state, agent_config)
+                return await factory.execute_agent(
+                    agent, agent_config, state,
+                    user_prompt=user_prompt, callbacks=callbacks,
+                )
+        except Exception as e:
+            logger.error(f"[Phase 1] MCP 工具加载/执行失败: {agent_config['slug']}, error={e}")
+            raise
+
+    # 没有 MCP 工具时，直接加载 Local 工具并执行
+    await load_local_tools(agent_config, state.user_id, state, tools)
+    logger.info(f"[Phase 1] 智能体 {agent_config['slug']} 总共有 {len(tools)} 个工具")
 
     # 创建智能体（传入回调处理器用于推送工具调用事件）
     agent, callbacks = await factory.create_agent(

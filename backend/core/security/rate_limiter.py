@@ -2,9 +2,16 @@
 Redis 滑动窗口限流器
 基于 Redis Sorted Set 实现高效的滑动窗口限流算法
 参考: https://upstash.com/blog/rate-limiting-with-python
+
+降级策略说明：
+- 当 Redis 不可用时，使用本地内存限流作为降级方案
+- 本地限流使用简单的字典存储，仅作为应急措施
+- 记录错误日志并告警，提醒运维人员处理
 """
+import asyncio
 import logging
 import time
+from collections import defaultdict
 from functools import wraps
 from typing import Optional
 
@@ -14,6 +21,10 @@ from core.config import settings
 from core.db.redis import get_redis
 
 logger = logging.getLogger(__name__)
+
+# 本地限流存储（Redis 不可用时的降级方案）
+_local_rate_limit_store: dict[str, list[float]] = defaultdict(list)
+_local_rate_limit_lock = asyncio.Lock()
 
 
 class RateLimitExceeded(HTTPException):
@@ -41,16 +52,51 @@ class RateLimiter:
     - 将每个请求的时间戳作为 score 存入 Sorted Set
     - 移除窗口外的旧记录
     - 统计当前窗口内的请求数
+
+    降级策略：
+    - 当 Redis 不可用时，自动切换到本地内存限流
+    - 本地限流仅作为应急措施，不保证多实例一致性
     """
 
     def __init__(self):
         self._redis = None
+        self._redis_available = True
+        self._last_redis_error_time = 0.0
 
     async def _get_redis(self):
         """获取 Redis 客户端"""
         if self._redis is None:
             self._redis = await get_redis()
         return self._redis
+
+    async def _check_local_rate_limit(
+        self,
+        key: str,
+        max_requests: int,
+        window_seconds: int,
+    ) -> tuple[bool, int]:
+        """本地限流检查（Redis 不可用时的降级方案）"""
+        async with _local_rate_limit_lock:
+            now = time.time()
+            window_start = now - window_seconds
+
+            # 获取该 key 的请求列表
+            requests = _local_rate_limit_store[key]
+
+            # 移除窗口外的请求
+            requests[:] = [t for t in requests if t > window_start]
+
+            # 检查是否超过限制
+            if len(requests) >= max_requests:
+                # 计算最早请求的剩余时间
+                if requests:
+                    retry_after = int(requests[0] + window_seconds - now) + 1
+                    return False, max(1, retry_after)
+                return False, window_seconds
+
+            # 添加当前请求
+            requests.append(now)
+            return True, 0
 
     async def is_allowed(
         self,
@@ -73,38 +119,43 @@ class RateLimiter:
         window_start = now - window_seconds
 
         try:
-            # 使用 pipeline 减少网络往返
+            # 第一步：清理窗口外的旧记录并检查当前计数（不记录当前请求）
             pipe = redis.pipeline()
-
-            # 移除窗口外的记录
             pipe.zremrangebyscore(key, 0, window_start)
-
-            # 统计当前窗口内的请求数
             pipe.zcard(key)
-
-            # 添加当前请求
-            pipe.zadd(key, {str(now): now})
-
-            # 设置过期时间（窗口时间 + 1秒，避免永久存储）
-            pipe.expire(key, window_seconds + 1)
-
             results = await pipe.execute()
             current_count = results[1]
 
             if current_count >= max_requests:
-                # 计算最早请求的剩余时间
+                # 被拒绝：不将当前请求加入计数，避免越拒绝越锁死
                 earliest = await redis.zrange(key, 0, 0, withscores=True)
                 if earliest:
                     retry_after = int(earliest[0][1] + window_seconds - now) + 1
-                    return False, retry_after
+                    return False, max(1, retry_after)
                 return False, window_seconds
+
+            # 第二步：仅在允许时才记录当前请求
+            pipe2 = redis.pipeline()
+            pipe2.zadd(key, {str(now): now})
+            pipe2.expire(key, window_seconds + 1)
+            await pipe2.execute()
 
             return True, 0
 
         except Exception as e:
-            # Redis 故障时降级：允许请求通过
-            logger.warning(f"Rate limiter error, allowing request: {e}")
-            return True, 0
+            # Redis 故障时降级到本地限流
+            now = time.time()
+
+            # 每 60 秒记录一次告警日志
+            if now - self._last_redis_error_time > 60:
+                logger.error(
+                    f"Rate limiter Redis error, falling back to local rate limiting: {e}. "
+                    f"This is a degraded mode and may not work correctly in multi-instance deployments."
+                )
+                self._last_redis_error_time = now
+
+            self._redis_available = False
+            return await self._check_local_rate_limit(key, max_requests, window_seconds)
 
     async def reset(self, key: str) -> None:
         """重置限流计数"""
@@ -197,27 +248,31 @@ def rate_limit(
 def get_client_ip(request: Request) -> str:
     """获取客户端真实 IP
 
-    优先从代理头获取，考虑各种代理场景
+    仅在来自可信代理 IP 时才信任 X-Forwarded-For，防止客户端伪造。
+    可信代理通过 TRUSTED_PROXIES 环境变量配置。
     """
-    # 检查代理头
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        # X-Forwarded-For 可能包含多个 IP，取第一个
-        return forwarded.split(",")[0].strip()
+    from core.config import TRUSTED_PROXIES
 
-    real_ip = request.headers.get("X-Real-IP")
-    if real_ip:
-        return real_ip
+    # 获取直接连接方的真实 IP
+    direct_ip = request.client.host if request.client else None
 
-    cf_connecting_ip = request.headers.get("CF-Connecting-IP")
-    if cf_connecting_ip:
-        return cf_connecting_ip
+    # 仅信任来自可信代理的转发头
+    if direct_ip in TRUSTED_PROXIES:
+        forwarded = request.headers.get("X-Forwarded-For")
+        if forwarded:
+            # X-Forwarded-For: client, proxy1, proxy2 —— 取最左侧的客户端 IP
+            return forwarded.split(",")[0].strip()
 
-    # 回退到直接连接的 IP
-    if request.client:
-        return request.client.host
+        real_ip = request.headers.get("X-Real-IP")
+        if real_ip:
+            return real_ip
 
-    return "unknown"
+        cf_connecting_ip = request.headers.get("CF-Connecting-IP")
+        if cf_connecting_ip:
+            return cf_connecting_ip
+
+    # 非可信代理或无代理头，直接使用连接 IP
+    return direct_ip or "unknown"
 
 
 # 全局限流器实例

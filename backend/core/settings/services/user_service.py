@@ -6,7 +6,7 @@
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from bson import ObjectId, json_util
 
@@ -240,12 +240,13 @@ class UserSettingsService:
         collection = self.db.user_settings
 
         # 构建更新字段（使用 $set 更新嵌套字段）
-        set_fields = {"updated_at": datetime.utcnow()}
+        set_fields = {"updated_at": datetime.now(timezone.utc)}
 
         for key, value in update_data.items():
-            if value:  # 跳过空字典
+            if isinstance(value, dict) and value:  # 跳过真正的空字典，但允许 False/0/"" 等 falsy 值
                 for field, field_value in value.items():
-                    set_fields[f"{key}.{field}"] = field_value
+                    if field_value is not None:  # 仅跳过 None，允许 False/0/"" 等合法值
+                        set_fields[f"{key}.{field}"] = field_value
 
         # 更新数据库
         await collection.update_one(
@@ -324,6 +325,48 @@ class UserSettingsService:
 
         return True, ""
 
+    async def check_task_quota_batch(self, user_id: str, count: int) -> tuple[bool, str]:
+        """
+        检查批量任务配额（一次性检查 count 个任务，防止循环检查时的竞争绕过）
+
+        Args:
+            user_id: 用户 ID
+            count: 需要创建的任务数量
+
+        Returns:
+            (是否允许创建, 错误消息)
+        """
+        quota = await self.get_quota_info(user_id)
+        if not quota:
+            return True, ""
+
+        remaining = quota.tasks_limit - quota.tasks_used
+        if remaining < count:
+            audit_logger = get_audit_logger()
+            await audit_logger.log_task_quota_exceeded(
+                user_id=user_id,
+                quota_type="monthly_tasks",
+                limit=quota.tasks_limit,
+            )
+            return False, (
+                f"配额不足：需要 {count} 个任务配额，"
+                f"剩余 {max(0, remaining)}（月度上限 {quota.tasks_limit}）"
+            )
+
+        if quota.concurrent_tasks + count > quota.concurrent_limit:
+            audit_logger = get_audit_logger()
+            await audit_logger.log_task_quota_exceeded(
+                user_id=user_id,
+                quota_type="concurrent_tasks",
+                limit=quota.concurrent_limit,
+            )
+            return False, (
+                f"并发配额不足：当前已有 {quota.concurrent_tasks} 个并发任务，"
+                f"上限 {quota.concurrent_limit}"
+            )
+
+        return True, ""
+
     async def increment_task_usage(self, user_id: str) -> None:
         """
         增加任务使用计数
@@ -340,7 +383,7 @@ class UserSettingsService:
                     "quota_info.tasks_used": 1,
                     "quota_info.concurrent_tasks": 1
                 },
-                "$set": {"updated_at": datetime.utcnow()}
+                "$set": {"updated_at": datetime.now(timezone.utc)}
             },
             upsert=False  # 配额记录应该在用户注册时创建
         )
@@ -361,7 +404,7 @@ class UserSettingsService:
                         "quota_info.storage_used_mb": 0.0,
                         "quota_info.storage_limit_mb": 500,
                         "quota_info.concurrent_limit": 5,
-                        "updated_at": datetime.utcnow()
+                        "updated_at": datetime.now(timezone.utc)
                     }
                 },
                 upsert=True
@@ -387,28 +430,26 @@ class UserSettingsService:
         # 如果 concurrent_tasks 已经是 0，$max 会保持为 0，-1 后变成 -1（仍然有问题）
         # 正确的做法：先判断是否 > 0
 
-        # 方案：先获取当前值，只有当值 > 0 时才减少
-        user_doc = await collection.find_one(
-            {"user_id": ObjectId(user_id)},
-            {"quota_info.concurrent_tasks": 1}
+        # 使用条件更新实现原子操作，消除 TOCTOU 竞态条件
+        # 仅在 concurrent_tasks > 0 时才执行减法，防止并发调用导致负数
+        from datetime import timezone
+        result = await collection.update_one(
+            {"user_id": ObjectId(user_id), "quota_info.concurrent_tasks": {"$gt": 0}},
+            {
+                "$inc": {"quota_info.concurrent_tasks": -1},
+                "$set": {"updated_at": datetime.now(timezone.utc)}
+            }
         )
 
-        if user_doc:
-            current_concurrent = user_doc.get("quota_info", {}).get("concurrent_tasks", 0)
-            if current_concurrent > 0:
-                # 只有当前值大于 0 时才减少
-                await collection.update_one(
-                    {"user_id": ObjectId(user_id)},
-                    {
-                        "$inc": {"quota_info.concurrent_tasks": -1},
-                        "$set": {"updated_at": datetime.utcnow()}
-                    }
-                )
+        if result.matched_count == 0:
+            # 用户不存在或计数已为 0
+            user_doc = await collection.find_one(
+                {"user_id": ObjectId(user_id)}, {"quota_info.concurrent_tasks": 1}
+            )
+            if not user_doc:
+                logger.warning(f"用户配额记录不存在，跳过减少并发计数: user_id={user_id}")
             else:
-                # 当前值已经是 0，不执行减少操作
                 logger.debug(f"concurrent_tasks 已经是 0，跳过减少: user_id={user_id}")
-        else:
-            logger.warning(f"用户配额记录不存在，跳过减少并发计数: user_id={user_id}")
 
         # 清除缓存
         redis = await get_redis()
@@ -459,7 +500,7 @@ class UserSettingsService:
                 {
                     "$set": {
                         "quota_info.concurrent_tasks": actual_count,
-                        "updated_at": datetime.utcnow()
+                        "updated_at": datetime.now(timezone.utc)
                     }
                 }
             )
@@ -504,7 +545,7 @@ class UserSettingsService:
             {"user_id": ObjectId(user_id)},
             {
                 "$inc": {"quota_info.storage_used_mb": size_mb},
-                "$set": {"updated_at": datetime.utcnow()}
+                "$set": {"updated_at": datetime.now(timezone.utc)}
             }
         )
 
@@ -532,7 +573,7 @@ class UserSettingsService:
 
         return SettingsExport(
             version="1.0",
-            exported_at=datetime.utcnow(),
+            exported_at=datetime.now(timezone.utc),
             core_settings=settings.core_settings,
             notification_settings=settings.notification_settings,
             trading_agents_settings=settings.trading_agents_settings,
@@ -558,7 +599,7 @@ class UserSettingsService:
         if import_data.merge_strategy == "replace":
             # 完全覆盖模式：直接替换所有配置
             update_doc = {
-                "updated_at": datetime.utcnow()
+                "updated_at": datetime.now(timezone.utc)
             }
 
             if import_data.core_settings:
@@ -576,7 +617,7 @@ class UserSettingsService:
 
         else:
             # 合并模式：只更新提供的字段
-            set_fields = {"updated_at": datetime.utcnow()}
+            set_fields = {"updated_at": datetime.now(timezone.utc)}
 
             if import_data.core_settings:
                 for key, value in import_data.core_settings.model_dump(exclude_unset=True).items():

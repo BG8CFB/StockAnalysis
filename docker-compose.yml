@@ -23,10 +23,17 @@ services:
     environment:
       - ENVIRONMENT=production
       - MONGODB_URL=mongodb://mongodb:27017
-      - MONGODB_DB_NAME=stock_analysis
+      - MONGODB_DATABASE=stock_analysis
+      - DATABASE_NAME=stock_analysis
       - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=${SECRET_KEY:-default-secret-key-change-in-production}
+      - SECRET_KEY=${SECRET_KEY:-this-is-a-production-secret-key-must-be-at-least-32-characters-long}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost}
+      - LOG_LEVEL=INFO
+      - DATA_SOURCE_RATE_LIMIT_WINDOW=60
+      - DATA_SOURCE_RATE_LIMIT_MAX_REQUESTS=1
+      - DATA_SOURCE_MAX_FAILURES=3
+      - DATA_SOURCE_HEALTH_CHECK_INTERVAL=300
+      - MONGODB_BULK_WRITE_BATCH_SIZE=1000
       - TZ=Asia/Shanghai
     depends_on:
       - mongodb

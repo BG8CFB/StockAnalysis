@@ -9,7 +9,7 @@ Phase 4: 总结智能体
 
 import logging
 from typing import Any, Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from langchain_core.language_models import BaseChatModel
 from langchain.agents import create_agent
@@ -441,7 +441,7 @@ async def execute_phase4(
     phase4_execution = PhaseExecution(
         phase=4,
         phase_name="总结智能体",
-        started_at=datetime.utcnow(),
+        started_at=datetime.now(timezone.utc),
         execution_mode="serial",
         max_concurrency=1
     )
@@ -472,7 +472,7 @@ async def execute_phase4(
     if result.get("output"):
         state.summary_report = {
             "content": result["output"],
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
     if result.get("decision"):
@@ -486,7 +486,7 @@ async def execute_phase4(
             state.price_predictions = decision["price_predictions"]
 
     # 更新执行记录
-    phase4_execution.completed_at = datetime.utcnow()
+    phase4_execution.completed_at = datetime.now(timezone.utc)
     phase4_execution.status = TaskStatus.COMPLETED
 
     # 添加智能体执行记录
@@ -503,7 +503,7 @@ async def execute_phase4(
     state.phase_executions.append(phase4_execution)
 
     state.status = TaskStatus.COMPLETED
-    state.completed_at = datetime.utcnow()
+    state.completed_at = datetime.now(timezone.utc)
 
     logger.info(f"[Phase 4] 完成, 最终推荐: {state.final_recommendation}, 进度: {state.progress:.1f}%")
 

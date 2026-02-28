@@ -4,7 +4,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from core.user.service import UserService, UserExistsError, InvalidCredentialsError, IPBlockedError, InvalidUserStatusError
 from core.user.models import (
     UserModel, LoginRequest, RegisterRequest, TokenResponse,
-    RequestPasswordResetRequest, ResetPasswordRequest
+    RequestPasswordResetRequest, ResetPasswordRequest, UpdateUserRequest
 )
 from core.user.dependencies import get_current_user, get_current_active_user
 from core.auth.security import jwt_manager
@@ -84,7 +84,7 @@ async def read_users_me(current_user: UserModel = Depends(get_current_active_use
 
 @router.put("/users/me", response_model=UserModel)
 async def update_users_me(
-    data: dict,
+    data: UpdateUserRequest,
     current_user: UserModel = Depends(get_current_active_user),
 ):
     """更新当前用户信息"""
@@ -137,11 +137,12 @@ async def request_password_reset(
     """用户请求密码重置"""
     try:
         client_ip = request.client.host
-        reset_token = await user_service.request_password_reset(
+        await user_service.request_password_reset(
             data.email,
             client_ip,
         )
-        return {"success": True, "token": reset_token}
+        # 不在响应中返回 token，防止绕过邮件验证步骤直接获取重置凭据
+        return {"success": True, "message": "若该邮箱已注册，重置链接将发送至邮箱"}
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

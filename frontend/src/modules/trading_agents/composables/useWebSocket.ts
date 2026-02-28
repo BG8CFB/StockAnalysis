@@ -2,10 +2,13 @@
  * WebSocket 连接管理 Composable
  * 实现按需连接、断线重连、心跳检测等功能
  *
+ * 认证：通过短期 ticket 连接，避免 JWT 出现在 URL。
+ *
  * @see docs/design.md 第827-873行 WebSocket 重连策略
  */
 import { ref, computed, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { taskApi } from '../api'
 import type { TaskEvent, TaskEventHandler } from '../types'
 
 // WebSocket 连接状态
@@ -300,51 +303,40 @@ export function useWebSocket(options: WebSocketOptions) {
   }
 
   /**
-   * 连接 WebSocket
+   * 连接 WebSocket（先获取短期 ticket，再用 ticket 连接，避免 token 出现在 URL）
    */
-  function connect() {
+  async function connect() {
     if (ws && ws.readyState === WebSocket.OPEN) {
-      console.log('[WebSocket] 已经连接')
       return
     }
 
-    // 清除现有连接
     if (ws) {
       ws.close()
       ws = null
     }
 
-    // 获取 token
-    const token = localStorage.getItem('access_token')
-    if (!token) {
-      console.error('[WebSocket] 未找到访问令牌')
-      setStatus(WebSocketStatus.ERROR)
-      onError?.(new Error('未找到访问令牌'))
-      return
-    }
-
-    // 构建 WebSocket URL（携带 token 作为查询参数）
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const host = window.location.host
-    const wsUrl = `${protocol}//${host}${WS_CONFIG.WS_ENDPOINT(taskId)}?token=${encodeURIComponent(token)}`
-
-    console.log('[WebSocket] 正在连接:', wsUrl)
-
     setStatus(WebSocketStatus.CONNECTING)
 
     try {
-      ws = new WebSocket(wsUrl)
+      const res = await taskApi.getStreamTicket(taskId)
+      const ticket = res?.ticket
+      if (!ticket) {
+        throw new Error('未获取到 stream ticket')
+      }
 
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      const host = window.location.host
+      const wsUrl = `${protocol}//${host}${WS_CONFIG.WS_ENDPOINT(taskId)}?ticket=${encodeURIComponent(ticket)}`
+
+      ws = new WebSocket(wsUrl)
       ws.onopen = handleOpen
       ws.onmessage = handleMessage
       ws.onclose = handleClose
       ws.onerror = handleError
     } catch (error) {
-      console.error('[WebSocket] 创建连接失败:', error)
+      console.error('[WebSocket] 获取 ticket 或创建连接失败:', error)
       setStatus(WebSocketStatus.ERROR)
       onError?.(error as Error)
-
-      // 尝试重连
       if (autoReconnect) {
         reconnect()
       }

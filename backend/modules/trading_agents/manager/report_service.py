@@ -5,7 +5,7 @@
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any
 from bson import ObjectId
 
@@ -102,7 +102,7 @@ class ReportService:
             "analyst_reports": task_doc.get("reports", {}),
             "trade_plan": task_doc.get("trade_plan"),
             "risk_assessment": task_doc.get("risk_assessment"),
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
             "archived_at": None,
         }
 
@@ -227,7 +227,7 @@ class ReportService:
         reports_col = await self._get_reports_collection()
 
         # 计算时间范围
-        start_date = datetime.utcnow() - timedelta(days=days)
+        start_date = datetime.now(timezone.utc) - timedelta(days=days)
 
         # 聚合查询
         # 注意：数据库中 recommendation 字段存储的是枚举的中文值（"买入", "卖出", "持有"）

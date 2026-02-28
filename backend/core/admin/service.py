@@ -3,7 +3,7 @@
 处理用户审核、管理、列表查询等
 """
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from bson import ObjectId
@@ -169,8 +169,8 @@ class AdminService:
                     "status": UserStatus.ACTIVE,
                     "is_active": True,
                     "reviewed_by": ObjectId(admin_id),
-                    "reviewed_at": datetime.utcnow(),
-                    "updated_at": datetime.utcnow(),
+                    "reviewed_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(timezone.utc),
                 }
             }
         )
@@ -210,9 +210,9 @@ class AdminService:
                     "status": UserStatus.REJECTED,
                     "is_active": False,
                     "reviewed_by": ObjectId(admin_id),
-                    "reviewed_at": datetime.utcnow(),
+                    "reviewed_at": datetime.now(timezone.utc),
                     "reject_reason": reason,
-                    "updated_at": datetime.utcnow(),
+                    "updated_at": datetime.now(timezone.utc),
                 }
             }
         )
@@ -252,7 +252,7 @@ class AdminService:
                 "$set": {
                     "status": UserStatus.DISABLED,
                     "is_active": False,
-                    "updated_at": datetime.utcnow(),
+                    "updated_at": datetime.now(timezone.utc),
                 }
             }
         )
@@ -291,7 +291,7 @@ class AdminService:
                 "$set": {
                     "status": UserStatus.ACTIVE,
                     "is_active": True,
-                    "updated_at": datetime.utcnow(),
+                    "updated_at": datetime.now(timezone.utc),
                 }
             }
         )
@@ -328,9 +328,9 @@ class AdminService:
                     "status": UserStatus.ACTIVE,
                     "is_active": True,
                     "reviewed_by": ObjectId(admin_id),
-                    "reviewed_at": datetime.utcnow(),
+                    "reviewed_at": datetime.now(timezone.utc),
                     "reject_reason": None,
-                    "updated_at": datetime.utcnow(),
+                    "updated_at": datetime.now(timezone.utc),
                 }
             }
         )
@@ -388,8 +388,8 @@ class AdminService:
             "is_verified": True,
             "created_by": ObjectId(created_by) if created_by else None,
             "last_login_at": None,
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc),
         }
 
         result = await self.db.users.insert_one(user_doc)
@@ -431,7 +431,7 @@ class AdminService:
             if existing:
                 raise ValueError("该用户名已被其他用户使用")
 
-        update_data["updated_at"] = datetime.utcnow()
+        update_data["updated_at"] = datetime.now(timezone.utc)
 
         await self.db.users.update_one(
             {"_id": ObjectId(user_id)},
@@ -462,7 +462,7 @@ class AdminService:
             {
                 "$set": {
                     "role": new_role,
-                    "updated_at": datetime.utcnow(),
+                    "updated_at": datetime.now(timezone.utc),
                 }
             }
         )
@@ -565,7 +565,7 @@ class AdminService:
         Returns:
             清理的用户数量
         """
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
 
         # 查找需要删除的用户
         cursor = self.db.users.find({
@@ -616,7 +616,7 @@ class AdminService:
                     "$set": {
                         "status": UserStatus.DISABLED,
                         "is_active": False,
-                        "updated_at": datetime.utcnow(),
+                        "updated_at": datetime.now(timezone.utc),
                     }
                 }
             )
@@ -624,12 +624,14 @@ class AdminService:
             # 2. 清理所有 Redis session（踢出登录）
             try:
                 redis = await get_redis()
-                # 删除所有匹配该用户的 session keys
+                # 使用非阻塞的 SCAN 逐步遍历，避免 KEYS 命令在大数据量时阻塞 Redis
                 pattern = f"user:{user_id}:session:*"
-                keys = await redis.keys(pattern)
-                if keys:
-                    await redis.delete(*keys)
-                    logger.info(f"已清理异常用户 {user_id} 的 {len(keys)} 个会话")
+                deleted_count = 0
+                async for key in redis.scan_iter(match=pattern):
+                    await redis.delete(key)
+                    deleted_count += 1
+                if deleted_count > 0:
+                    logger.info(f"已清理异常用户 {user_id} 的 {deleted_count} 个会话")
             except Exception as e:
                 logger.error(f"清理异常用户 {user_id} 的会话失败: {e}")
 
@@ -657,7 +659,7 @@ class AdminService:
             "target_user_id": ObjectId(target_user_id) if target_user_id else None,
             "action": action,
             "reason": reason,
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
         }
         await self.db.audit_logs.insert_one(log_doc)
 

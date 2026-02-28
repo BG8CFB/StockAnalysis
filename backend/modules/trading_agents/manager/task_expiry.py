@@ -6,12 +6,18 @@
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from core.db.mongodb import mongodb
+from core.mcp.pool.pool import get_mcp_connection_pool
 from modules.trading_agents.schemas import TaskStatusEnum
-from modules.trading_agents.manager.concurrency import get_concurrency_manager
+
+
+def _get_batch_manager():
+    """延迟导入 BatchTaskManager，避免循环依赖"""
+    from modules.trading_agents.manager.batch_manager import get_batch_task_manager
+    return get_batch_task_manager()
 
 
 logger = logging.getLogger(__name__)
@@ -91,12 +97,12 @@ class TaskExpiryHandler:
         collection = mongodb.get_collection("analysis_tasks")
 
         # 计算超时阈值
-        timeout_threshold = datetime.utcnow() - timedelta(hours=self.timeout_hours)
+        timeout_threshold = datetime.now(timezone.utc) - timedelta(hours=self.timeout_hours)
 
-        # 查找运行中且超时的任务
+        # 查找运行中且超时的任务（使用 started_at 判断实际执行时长，而非创建时间）
         query = {
             "status": TaskStatusEnum.RUNNING.value,
-            "created_at": {"$lt": timeout_threshold},
+            "started_at": {"$lt": timeout_threshold, "$ne": None},
         }
 
         expired_tasks = await collection.find(query).to_list(None)
@@ -108,33 +114,55 @@ class TaskExpiryHandler:
         logger.info(f"发现 {len(expired_tasks)} 个过期任务")
 
         # 处理每个过期任务
-        concurrency = get_concurrency_manager()
-
         for task_doc in expired_tasks:
             task_id = str(task_doc["_id"])
             user_id = task_doc["user_id"]
             stock_code = task_doc.get("stock_code", "未知")
 
             try:
-                # 更新任务状态为过期
-                await collection.update_one(
-                    {"_id": task_doc["_id"]},
+                # 原子更新：仅在仍为 RUNNING 状态时才过期，避免 TOCTOU 竞态
+                update_result = await collection.update_one(
+                    {"_id": task_doc["_id"], "status": TaskStatusEnum.RUNNING.value},
                     {
                         "$set": {
                             "status": TaskStatusEnum.EXPIRED.value,
-                            "expired_at": datetime.utcnow(),
+                            "expired_at": datetime.now(timezone.utc),
                             "error_message": f"任务执行超时（超过 {self.timeout_hours} 小时）",
                         }
                     }
                 )
 
-                # 释放模型配额（如果使用了公共模型）
-                # 这里需要根据任务配置判断是否使用公共模型
-                # 简化处理：尝试释放配额，如果不存在则忽略
+                if update_result.modified_count == 0:
+                    # 任务在扫描期间已被其他操作更改状态，跳过
+                    logger.debug(f"任务状态已变更，跳过过期处理: task_id={task_id}")
+                    continue
+
+                # 释放 MCP 连接（防止连接泄漏）
                 try:
-                    await concurrency.release_public_quota(user_id)
-                except Exception:
-                    pass  # 忽略配额释放错误
+                    mcp_pool = get_mcp_connection_pool()
+                    await mcp_pool.mark_task_failed(task_id)
+                    logger.info(f"已释放过期任务的 MCP 连接: task_id={task_id}")
+                except Exception as mcp_error:
+                    logger.warning(
+                        f"释放 MCP 连接失败（任务可能没有 MCP 连接）: "
+                        f"task_id={task_id}, error={mcp_error}"
+                    )
+
+                # 通知 BatchTaskManager，确保批量任务队列继续推进
+                batch_id = task_doc.get("batch_id")
+                if batch_id:
+                    try:
+                        batch_manager = _get_batch_manager()
+                        await batch_manager.on_task_completed(task_id, batch_id)
+                        logger.info(
+                            f"已通知 BatchTaskManager 过期任务: "
+                            f"task_id={task_id}, batch_id={batch_id}"
+                        )
+                    except Exception as batch_error:
+                        logger.error(
+                            f"通知 BatchTaskManager 失败: "
+                            f"task_id={task_id}, batch_id={batch_id}, error={batch_error}"
+                        )
 
                 logger.info(
                     f"任务已标记为过期: task_id={task_id}, "
@@ -161,38 +189,43 @@ class TaskExpiryHandler:
 
         try:
             from bson import ObjectId
-            task_doc = await collection.find_one({"_id": ObjectId(task_id)})
 
-            if not task_doc:
-                logger.warning(f"任务不存在: task_id={task_id}")
-                return False
-
-            if task_doc["status"] != TaskStatusEnum.RUNNING.value:
-                logger.warning(
-                    f"任务不在运行状态，无法标记过期: "
-                    f"task_id={task_id}, status={task_doc['status']}"
-                )
-                return False
-
-            # 更新任务状态为过期
-            await collection.update_one(
-                {"_id": ObjectId(task_id)},
+            # 原子更新：条件写入，仅当状态为 RUNNING 时才修改，消除 TOCTOU 竞态
+            result = await collection.update_one(
+                {"_id": ObjectId(task_id), "status": TaskStatusEnum.RUNNING.value},
                 {
                     "$set": {
                         "status": TaskStatusEnum.EXPIRED.value,
-                        "expired_at": datetime.utcnow(),
+                        "expired_at": datetime.now(timezone.utc),
                         "error_message": f"任务执行超时（超过 {self.timeout_hours} 小时）",
                     }
                 }
             )
 
-            # 释放模型配额
-            user_id = task_doc["user_id"]
-            concurrency = get_concurrency_manager()
+            if result.modified_count == 0:
+                # 任务不存在或不在 RUNNING 状态
+                task_doc = await collection.find_one(
+                    {"_id": ObjectId(task_id)}, {"status": 1}
+                )
+                if not task_doc:
+                    logger.warning(f"任务不存在: task_id={task_id}")
+                else:
+                    logger.warning(
+                        f"任务不在运行状态，无法标记过期: "
+                        f"task_id={task_id}, status={task_doc.get('status')}"
+                    )
+                return False
+
+            # 释放 MCP 连接（防止连接泄漏）
             try:
-                await concurrency.release_public_quota(user_id)
-            except Exception:
-                pass
+                mcp_pool = get_mcp_connection_pool()
+                await mcp_pool.mark_task_failed(task_id)
+                logger.info(f"已释放过期任务的 MCP 连接: task_id={task_id}")
+            except Exception as mcp_error:
+                logger.debug(
+                    f"释放 MCP 连接失败（任务可能没有 MCP 连接）: "
+                    f"task_id={task_id}, error={mcp_error}"
+                )
 
             logger.info(f"任务已手动标记为过期: task_id={task_id}")
 

@@ -32,11 +32,18 @@ services:
     environment:
       - ENVIRONMENT=development
       - MONGODB_URL=mongodb://mongodb:27017
-      - MONGODB_DB_NAME=stock_analysis
+      - MONGODB_DATABASE=stock_analysis
+      - DATABASE_NAME=stock_analysis
       - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=dev-secret-key-for-testing-only
+      - SECRET_KEY=dev-secret-key-for-testing-only-not-for-production
       - DEBUG=true
       - CORS_ORIGINS=http://localhost:5173,http://localhost:8000
+      - LOG_LEVEL=DEBUG
+      - DATA_SOURCE_RATE_LIMIT_WINDOW=60
+      - DATA_SOURCE_RATE_LIMIT_MAX_REQUESTS=1
+      - DATA_SOURCE_MAX_FAILURES=3
+      - DATA_SOURCE_HEALTH_CHECK_INTERVAL=300
+      - MONGODB_BULK_WRITE_BATCH_SIZE=1000
       - TZ=Asia/Shanghai
     depends_on:
       - mongodb
@@ -49,8 +56,6 @@ services:
   mongodb:
     image: mongo:7
     container_name: stock-analysis-mongodb-dev
-    ports:
-      - "27017:27017"
     volumes:
       - mongodb_data:/data/db
       - ./docker/mongodb/init:/docker-entrypoint-initdb.d:ro
@@ -65,8 +70,6 @@ services:
   redis:
     image: redis:7-alpine
     container_name: stock-analysis-redis-dev
-    ports:
-      - "6379:6379"
     command: redis-server /usr/local/etc/redis/redis.conf
     volumes:
       - ./docker/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro

@@ -4,7 +4,7 @@ MCP 数据模型
 定义 MCP 服务器配置相关的 Pydantic 模型。
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -188,8 +188,8 @@ class MCPServerConfigResponse(MCPServerConfigBase):
             owner_id=data.get("owner_id"),
             status=MCPServerStatusEnum(data.get("status", "unknown")),
             last_check_at=_parse_datetime(data.get("last_check_at")),
-            created_at=_parse_datetime(data.get("created_at")) or datetime.utcnow(),
-            updated_at=_parse_datetime(data.get("updated_at")) or datetime.utcnow(),
+            created_at=_parse_datetime(data.get("created_at")) or datetime.now(timezone.utc),
+            updated_at=_parse_datetime(data.get("updated_at")) or datetime.now(timezone.utc),
         )
 
 

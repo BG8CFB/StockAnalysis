@@ -2,10 +2,12 @@
 Redis 连接管理
 用于缓存、会话管理和限流
 """
+import asyncio
 import logging
 from typing import Optional
 
 from redis.asyncio import Redis as AsyncRedis
+from redis.asyncio.connection import ConnectionPool
 
 from core.config import settings
 
@@ -17,23 +19,39 @@ class RedisManager:
 
     def __init__(self) -> None:
         self._client: Optional[AsyncRedis] = None
+        self._pool: Optional[ConnectionPool] = None
 
     def connect(self) -> None:
         """建立 Redis 连接"""
         if self._client is None:
-            self._client = AsyncRedis.from_url(
+            self._pool = ConnectionPool.from_url(
                 settings.REDIS_URL,
                 max_connections=settings.REDIS_MAX_CONNECTIONS,
                 decode_responses=True,
+                retry_on_timeout=True,  # 超时自动重试
+                health_check_interval=30,  # 健康检查间隔 30 秒
                 socket_timeout=settings.REDIS_SOCKET_TIMEOUT,
                 socket_connect_timeout=settings.REDIS_SOCKET_CONNECT_TIMEOUT,
             )
+            self._client = AsyncRedis(connection_pool=self._pool)
 
-    def close(self) -> None:
+    async def close(self) -> None:
         """关闭 Redis 连接"""
         if self._client:
-            # 简单地断开连接
-            self._client = None
+            try:
+                await self._client.aclose()
+            except Exception as e:
+                logger.warning(f"关闭 Redis 客户端时出错: {e}")
+            finally:
+                self._client = None
+
+        if self._pool:
+            try:
+                await self._pool.disconnect()
+            except Exception as e:
+                logger.warning(f"断开 Redis 连接池时出错: {e}")
+            finally:
+                self._pool = None
 
     async def ping(self) -> bool:
         """检查 Redis 连接状态"""
@@ -122,6 +140,11 @@ class UserRedisKey:
         """IP 登录该用户的次数"""
         return f"ip_trust:user:{user_id}:ip:{ip}:logins"
 
+    @staticmethod
+    def stream_ticket(ticket: str) -> str:
+        """SSE/WebSocket 短期认证 ticket（避免 token 出现在 URL）"""
+        return f"stream_ticket:{ticket}"
+
 
 async def connect_to_redis() -> None:
     """启动时连接 Redis"""
@@ -135,5 +158,5 @@ async def connect_to_redis() -> None:
 
 async def close_redis() -> None:
     """关闭时断开 Redis 连接"""
-    redis_manager.close()
+    await redis_manager.close()
     logger.info("Closed Redis connection")

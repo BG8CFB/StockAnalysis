@@ -7,7 +7,7 @@ AI 使用统计和成本追踪
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
@@ -55,7 +55,7 @@ class AIUsageRecord:
     tool_calls: Dict[str, ToolCallRecord] = field(default_factory=dict)
 
     # 时间戳
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     # 额外信息
     metadata: Dict[str, Any] = field(default_factory=dict)

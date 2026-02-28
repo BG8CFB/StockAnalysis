@@ -8,7 +8,7 @@ API Key 使用加密存储保护。
 import asyncio
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from bson import ObjectId
@@ -101,8 +101,8 @@ class AIModelService:
             "custom_thinking_price": request.custom_thinking_price,
             "is_system": request.is_system,
             "owner_id": None if request.is_system else user_id,
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc),
         }
 
         # 插入数据库
@@ -434,7 +434,7 @@ class AIModelService:
         if request.custom_thinking_price is not None:
             update_data["custom_thinking_price"] = request.custom_thinking_price
 
-        update_data["updated_at"] = datetime.utcnow()
+        update_data["updated_at"] = datetime.now(timezone.utc)
 
         # 执行更新
         await collection.update_one(

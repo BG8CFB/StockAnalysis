@@ -12,7 +12,7 @@ import asyncio
 import json
 import logging
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from collections import deque
 
 from core.db.redis import redis_manager
@@ -364,7 +364,7 @@ class ConcurrencyController:
         task_data = {
             "task_id": task_id,
             "user_id": user_id,
-            "enqueued_at": datetime.utcnow().isoformat(),
+            "enqueued_at": datetime.now(timezone.utc).isoformat(),
         }
 
         await redis_client.rpush(waiting_queue_key, json.dumps(task_data))
@@ -438,14 +438,14 @@ class ConcurrencyController:
         Raises:
             asyncio.TimeoutError: 等待超时时抛出
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         redis_client = redis_manager.get_client()
         pubsub = None
 
         try:
             while True:
                 # 检查是否超时
-                elapsed = (datetime.utcnow() - start_time).total_seconds()
+                elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
                 if elapsed >= timeout:
                     raise asyncio.TimeoutError(
                         f"任务 {task_id} 等待执行超时（{timeout}秒），"

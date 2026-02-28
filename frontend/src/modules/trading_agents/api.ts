@@ -234,6 +234,16 @@ export const taskApi = {
     httpDelete<{ success: boolean; message: string }>(`${TRADING_AGENTS_BASE_URL}/tasks/${taskId}`),
 
   /**
+   * 获取 SSE/WebSocket 短期认证 ticket（避免 JWT 出现在 URL）
+   * 后端: POST /trading-agents/tasks/{id}/stream-ticket
+   */
+  getStreamTicket: (taskId: string) =>
+    httpPost<{ ticket: string; expires_in: number }>(
+      `${TRADING_AGENTS_BASE_URL}/tasks/${taskId}/stream-ticket`,
+      {}
+    ),
+
+  /**
    * 获取任务队列位置
    * 后端: GET /trading-agents/tasks/{id}/queue-position
    */

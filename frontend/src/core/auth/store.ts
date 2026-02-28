@@ -119,7 +119,16 @@ export const useUserStore = defineStore('user', () => {
    */
   async function fetchUserInfo(skipExpiredMessage = false) {
     if (!token.value) return
-    userInfo.value = await userApi.getMe({ skipExpiredMessage })
+    try {
+      userInfo.value = await userApi.getMe({ skipExpiredMessage })
+    } catch (error: unknown) {
+      // 401 由 HTTP 拦截器处理（token 刷新或跳转登录），此处只记录其他错误
+      const axiosError = error as { response?: { status?: number } }
+      if (axiosError?.response?.status !== 401) {
+        console.error('[Auth] 获取用户信息失败:', error)
+      }
+      throw error
+    }
   }
 
   /**

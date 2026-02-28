@@ -104,29 +104,16 @@ class GetStockQuotesTool(BaseTool):
             ))
         return self._tool_instance
 
-    def _run(self, symbol: str, market: str = "A_STOCK") -> Dict[str, Any]:
-        """同步执行获取行情"""
-        import asyncio
+    async def _arun(self, symbol: str, market: str = "A_STOCK") -> Dict[str, Any]:
+        """异步执行获取行情（LangChain 优先调用此方法）"""
         try:
-            # 如果传入的 market 与工具初始化时的不同，重新获取工具实例
             if market != self.market:
                 tool_class = get_tool_class_for_market(market)
                 tool = tool_class(user_id=self.user_id, source_router=self.source_router)
             else:
                 tool = self.tool_instance
 
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(
-                        asyncio.run,
-                        tool.get_realtime_quote(symbol)
-                    )
-                    quote = future.result(timeout=30)
-            else:
-                quote = asyncio.run(tool.get_realtime_quote(symbol))
-
+            quote = await tool.get_realtime_quote(symbol)
             if quote:
                 return {
                     "symbol": quote.get("symbol"),
@@ -147,6 +134,15 @@ class GetStockQuotesTool(BaseTool):
         except Exception as e:
             logger.error(f"获取股票行情失败: {e}")
             return {"error": str(e)}
+
+    def _run(self, symbol: str, market: str = "A_STOCK") -> Dict[str, Any]:
+        """同步执行（回退方案，非异步上下文使用）"""
+        import asyncio
+        try:
+            return asyncio.run(self._arun(symbol, market))
+        except RuntimeError:
+            # 已在运行的事件循环中不能再调用 asyncio.run，返回错误
+            return {"error": "无法在同步上下文中调用异步工具，请通过异步接口调用"}
 
 
 class GetStockInfoTool(BaseTool):
@@ -179,9 +175,8 @@ class GetStockInfoTool(BaseTool):
             ))
         return self._tool_instance
 
-    def _run(self, symbol: str, market: str = "A_STOCK") -> Dict[str, Any]:
-        """同步执行获取公司信息"""
-        import asyncio
+    async def _arun(self, symbol: str, market: str = "A_STOCK") -> Dict[str, Any]:
+        """异步执行获取公司信息"""
         try:
             if market != self.market:
                 tool_class = get_tool_class_for_market(market)
@@ -189,18 +184,7 @@ class GetStockInfoTool(BaseTool):
             else:
                 tool = self.tool_instance
 
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(
-                        asyncio.run,
-                        tool.get_stock_info(symbol)
-                    )
-                    info = future.result(timeout=30)
-            else:
-                info = asyncio.run(tool.get_stock_info(symbol))
-
+            info = await tool.get_stock_info(symbol)
             if info:
                 return {
                     "symbol": info.get("symbol"),
@@ -215,6 +199,14 @@ class GetStockInfoTool(BaseTool):
         except Exception as e:
             logger.error(f"获取公司信息失败: {e}")
             return {"error": str(e)}
+
+    def _run(self, symbol: str, market: str = "A_STOCK") -> Dict[str, Any]:
+        """同步执行（回退方案）"""
+        import asyncio
+        try:
+            return asyncio.run(self._arun(symbol, market))
+        except RuntimeError:
+            return {"error": "无法在同步上下文中调用异步工具，请通过异步接口调用"}
 
 
 class GetStockListTool(BaseTool):
@@ -247,9 +239,8 @@ class GetStockListTool(BaseTool):
             ))
         return self._tool_instance
 
-    def _run(self, limit: int = 100, market: str = "A_STOCK") -> List[Dict[str, Any]]:
-        """同步执行获取股票列表"""
-        import asyncio
+    async def _arun(self, limit: int = 100, market: str = "A_STOCK") -> List[Dict[str, Any]]:
+        """异步执行获取股票列表"""
         try:
             if market != self.market:
                 tool_class = get_tool_class_for_market(market)
@@ -257,21 +248,18 @@ class GetStockListTool(BaseTool):
             else:
                 tool = self.tool_instance
 
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(
-                        asyncio.run,
-                        tool.get_stock_list(limit)
-                    )
-                    stocks = future.result(timeout=30)
-            else:
-                stocks = asyncio.run(tool.get_stock_list(limit))
-
+            stocks = await tool.get_stock_list(limit)
             return stocks[:limit] if stocks else []
         except Exception as e:
             logger.error(f"获取股票列表失败: {e}")
+            return []
+
+    def _run(self, limit: int = 100, market: str = "A_STOCK") -> List[Dict[str, Any]]:
+        """同步执行（回退方案）"""
+        import asyncio
+        try:
+            return asyncio.run(self._arun(limit, market))
+        except RuntimeError:
             return []
 
 

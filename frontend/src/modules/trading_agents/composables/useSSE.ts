@@ -2,10 +2,13 @@
  * SSE (Server-Sent Events) 流式输出 Composable
  * 用于接收第四阶段总结智能体的流式报告输出
  *
+ * 认证：通过短期 ticket 连接，避免 JWT 出现在 URL（先请求 stream-ticket 再连接）。
+ *
  * @see docs/design.md 第1388-1423行 API 路由设计
  */
 import { ref, computed, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { taskApi } from '../api'
 
 // SSE 连接状态
 export enum SSEStatus {
@@ -69,12 +72,8 @@ export function useSSE(options: SSEOptions) {
   // 错误信息
   const error = ref<Error | null>(null)
 
-  // SSE 端点
-  const getSSEEndpoint = () => {
-    const token = localStorage.getItem('access_token')
-    const baseEndpoint = `/api/trading-agents/tasks/${taskId}/stream`
-    return token ? `${baseEndpoint}?token=${encodeURIComponent(token)}` : baseEndpoint
-  }
+  const apiBase = (import.meta.env?.VITE_API_BASE_URL as string) || '/api'
+  const streamPath = `${apiBase}/trading-agents/tasks/${taskId}/stream`
 
   // 计算属性：是否已连接
   const isConnected = computed(() => status.value === SSEStatus.OPEN)
@@ -153,41 +152,40 @@ export function useSSE(options: SSEOptions) {
   }
 
   /**
-   * 连接 SSE
+   * 连接 SSE（先获取短期 ticket，再用 ticket 连接，避免 token 出现在 URL）
    */
-  function connect() {
+  async function connect() {
     if (eventSource && eventSource.readyState === EventSource.OPEN) {
-      console.log('[SSE] 已经连接')
       return
     }
 
-    // 清除现有连接
     if (eventSource) {
       eventSource.close()
       eventSource = null
     }
 
-    // 重置状态
     receivedText.value = ''
     isComplete.value = false
     error.value = null
-
-    const sseUrl = getSSEEndpoint()
-    console.log('[SSE] 正在连接:', sseUrl)
-
     setStatus(SSEStatus.CONNECTING)
 
     try {
+      const res = await taskApi.getStreamTicket(taskId)
+      const ticket = res?.ticket
+      if (!ticket) {
+        throw new Error('未获取到 stream ticket')
+      }
+      const sseUrl = `${streamPath}?ticket=${encodeURIComponent(ticket)}`
       eventSource = new EventSource(sseUrl)
-
       eventSource.onopen = handleOpen
       eventSource.onmessage = handleMessage
       eventSource.onerror = handleError
     } catch (err) {
-      console.error('[SSE] 创建连接失败:', err)
+      console.error('[SSE] 获取 ticket 或创建连接失败:', err)
       setStatus(SSEStatus.ERROR)
       error.value = err as Error
       onError?.(err as Error)
+      ElMessage.error('连接失败，请重试')
     }
   }
 

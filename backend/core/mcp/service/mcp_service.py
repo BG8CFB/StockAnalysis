@@ -8,7 +8,7 @@ import asyncio
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from bson import ObjectId
@@ -103,8 +103,8 @@ class MCPService:
             # 状态 - 创建后立即进行连接检测
             "status": MCPServerStatusEnum.UNKNOWN.value,
             "last_check_at": None,
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc),
         }
 
         # 插入数据库
@@ -284,7 +284,7 @@ class MCPService:
         if request.enabled is not None:
             update_data["enabled"] = request.enabled
 
-        update_data["updated_at"] = datetime.utcnow()
+        update_data["updated_at"] = datetime.now(timezone.utc)
 
         # 执行更新
         await collection.update_one(
@@ -569,7 +569,7 @@ class MCPService:
             {
                 "$set": {
                     "status": status.value,
-                    "last_check_at": datetime.utcnow(),
+                    "last_check_at": datetime.now(timezone.utc),
                 }
             }
         )

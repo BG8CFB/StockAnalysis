@@ -6,7 +6,7 @@ MCP 服务器健康检查后台任务
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from core.db.mongodb import mongodb
@@ -139,7 +139,7 @@ class MCPHealthChecker:
 
         try:
             # 检查状态是否需要更新
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             last_check = server.last_check_at
 
             # 如果状态较新，跳过检查
@@ -272,7 +272,7 @@ class MCPHealthChecker:
                 {
                     "$set": {
                         "status": status.value,
-                        "last_check_at": datetime.utcnow(),
+                        "last_check_at": datetime.now(timezone.utc),
                     }
                 }
             )

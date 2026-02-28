@@ -1,6 +1,12 @@
 <template>
-  <el-card shadow="never" class="agent-report-tabs">
-    <el-tabs v-model="activeTab" type="card">
+  <el-card
+    shadow="never"
+    class="agent-report-tabs"
+  >
+    <el-tabs
+      v-model="activeTab"
+      type="card"
+    >
       <!-- 智能体报告标签（按执行顺序） -->
       <el-tab-pane
         v-for="report in sortedReports"
@@ -8,7 +14,10 @@
         :label="report.name"
         :name="report.agent"
       >
-        <div class="report-content" v-html="renderMarkdown(report.report)"></div>
+        <div
+          class="report-content"
+          v-html="renderMarkdown(report.report)"
+        />
       </el-tab-pane>
 
       <!-- 最终报告 -->
@@ -41,19 +50,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 import StreamingReport from './StreamingReport.vue'
 import type { AgentStatus } from '../../composables/useAnalysisProgress'
-import { getAgentDisplayName, AGENT_NAME_MAPPING } from '../../composables/useAnalysisProgress'
+import { getAgentDisplayName } from '../../composables/useAnalysisProgress'
 
 interface Props {
   reports: Map<string, string>
   agents: Map<string, AgentStatus>
   finalReport?: string
-  finalRecommendation?: string
-  buyPrice?: number
-  sellPrice?: number
+  finalRecommendation?: string | null  // 接受 string | null | undefined
+  buyPrice?: number | null  // 接受 number | null | undefined
+  sellPrice?: number | null  // 接受 number | null | undefined
 }
 
 const props = defineProps<Props>()
@@ -82,58 +92,66 @@ const agentOrder = [
   'summarizer'
 ]
 
-// 渲染 Markdown
+// 渲染 Markdown（加 DOMPurify 净化防止 XSS）
 function renderMarkdown(content: string): string {
   if (!content) return ''
   try {
-    return marked(content) as string
+    const html = marked.parse(content) as string
+    return DOMPurify.sanitize(html, {
+      USE_PROFILES: { html: true },
+      ALLOWED_TAGS: [
+        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        'strong', 'em', 'del', 'pre', 'code',
+        'a', 'ol', 'ul', 'li', 'p', 'br',
+        'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
+        'hr', 'img',
+      ],
+      ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'src', 'alt'],
+    })
   } catch (error) {
     console.error('Markdown 渲染失败:', error)
-    return content
+    return DOMPurify.sanitize(content)
   }
 }
 
-// 按智能体顺序排序报告
+// 按智能体顺序排序报告（纯计算，不含副作用）
 const sortedReports = computed(() => {
   const reports: { agent: string; name: string; report: string }[] = []
 
-  // 按预定义顺序添加报告
   for (const slug of agentOrder) {
     const report = props.reports.get(slug)
     if (report) {
       const agentInfo = props.agents.get(slug)
-      // 使用 getAgentDisplayName 获取中文名称
       const displayName = getAgentDisplayName(slug, agentInfo?.name)
-      reports.push({
-        agent: slug,
-        name: displayName,
-        report
-      })
+      reports.push({ agent: slug, name: displayName, report })
     }
   }
 
-  // 添加其他未在列表中的报告
   props.reports.forEach((report, slug) => {
     if (!agentOrder.includes(slug) && slug !== 'final_report') {
       const agentInfo = props.agents.get(slug)
       const displayName = getAgentDisplayName(slug, agentInfo?.name)
-      reports.push({
-        agent: slug,
-        name: displayName,
-        report
-      })
+      reports.push({ agent: slug, name: displayName, report })
     }
   })
 
-  // 自动激活第一个标签
-  if (reports.length > 0 && !activeTab.value) {
-    activeTab.value = reports[0].agent
-  } else if (props.finalReport && !activeTab.value) {
-    activeTab.value = 'final'
-  }
-
   return reports
 })
+
+// 用 watch 初始化 activeTab，避免在 computed 中产生副作用
+watch(
+  sortedReports,
+  (newReports) => {
+    if (!activeTab.value) {
+      if (newReports.length > 0) {
+        activeTab.value = newReports[0].agent
+      } else if (props.finalReport) {
+        activeTab.value = 'final'
+      }
+    }
+  },
+  { immediate: true }
+)
 </script>
 
 <style scoped>
