@@ -7,7 +7,10 @@ from typing import Set, Callable
 
 from fastapi import HTTPException, status, Depends
 
-from core.auth.models import UserModel
+# 避免循环导入，使用 TYPE_CHECKING
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from core.user.models import UserModel
 
 
 class Role(str, Enum):
@@ -104,6 +107,9 @@ def require_permission(permission: Permission):
     def decorator(func: Callable):
         @wraps(func)
         async def wrapper(*args, **kwargs):
+            # 延迟导入以避免循环依赖
+            from core.user.models import UserModel
+            
             # 严格检查 current_user 是否存在
             user: UserModel = kwargs.get("current_user")
             if user is None:
@@ -139,6 +145,9 @@ def require_role(*roles: Role):
     def decorator(func: Callable):
         @wraps(func)
         async def wrapper(*args, **kwargs):
+            # 延迟导入以避免循环依赖
+            from core.user.models import UserModel
+
             user: UserModel = kwargs.get("current_user")
             if user is None:
                 raise HTTPException(
