@@ -35,7 +35,7 @@ services:
       - MONGODB_DATABASE=stock_analysis
       - DATABASE_NAME=stock_analysis
       - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=dev-secret-key-for-testing-only-not-for-production
+      - SECRET_KEY=dev-secret-key-for-testing-only-not-for-production-at-least-64-characters-long-for-security-check
       - DEBUG=true
       - CORS_ORIGINS=http://localhost:5173,http://localhost:8000
       - LOG_LEVEL=DEBUG

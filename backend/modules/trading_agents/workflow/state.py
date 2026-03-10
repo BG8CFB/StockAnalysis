@@ -99,8 +99,8 @@ class WorkflowState:
         user_id: str,
         stock_code: str,
         trade_date: str,
-        model_config: Dict[str, Any] = None,
-        agent_config: Dict[str, Any] = None,
+        model_config: Optional[Dict[str, Any]] = None,
+        agent_config: Optional[Dict[str, Any]] = None,
         market: str = "A_STOCK",
         max_debate_rounds: int = 2,
         enable_phase1: bool = True,
@@ -169,7 +169,7 @@ class WorkflowState:
         self.stock_name: Optional[str] = None
 
         # ===== 执行状态 =====
-        self.phase_executions: List[Dict[str, Any]] = []
+        self.phase_executions: List[PhaseExecution] = []
         self.progress: float = 0.0
         self.completed_at: Optional[str] = None
 

@@ -291,7 +291,11 @@ async def execute_phase3(
     if not trader:
         logger.error("[Phase 3] 缺少交易员智能体")
         state.status = TaskStatus.FAILED
-        state.error_message = "缺少交易员智能体"
+        state.errors.append({
+            "phase": 3,
+            "error": "缺少交易员智能体",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        })
         return state
 
     # 创建阶段执行记录

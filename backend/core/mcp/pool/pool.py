@@ -283,7 +283,7 @@ class MCPConnectionPool:
             # 确保在任何情况下都释放信号量
             # 注意：连接创建成功后，信号量会在 release_connection 中释放
             # 这里只在异常时释放
-            if 'conn' not in locals() or conn.connection_id not in self._connections:
+            if 'conn' not in locals() or (conn is not None and getattr(conn, 'connection_id', None) not in self._connections):
                 semaphore.release()
                 logger.debug(f"[MCPConnectionPool] 连接创建失败，已释放信号量: server={server_id}, user={user_id}")
 

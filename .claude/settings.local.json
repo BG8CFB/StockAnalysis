@@ -2,11 +2,19 @@
   "includeCoAuthoredBy": false,
   "permissions": {
     "allow": [
-      "WebSearch",
+      "*",
       "Bash",
       "Bash(*:*)",
       "Edit",
+      "Write",
+      "Read",
+      "Glob",
+      "Grep",
       "Skill",
+      "WebSearch",
+      "WebFetch",
+      "Agent",
+      "TodoWrite",
       "mcp__*",
       "mcp__MiniMax__*",
       "mcp__web-search-prime__*",
@@ -17,16 +25,15 @@
       "mcp__ide__*",
       "mcp__4_5v_mcp__*",
       "mcp__milk_tea_server__*",
-      "mcp__web-search-prime__webSearchPrime",
-      "Bash(dir backendmodules)",
-      "WebFetch(domain:github.com)"
+      "mcp__context7__*",
+      "mcp__memory__*",
+      "mcp__fetch__*",
+      "mcp__sequential-thinking__*"
     ],
     "deny": [],
     "ask": []
   },
-  "enabledPlugins": {
-    "superpowers@superpowers-marketplace": true
-  },
+  "enabledPlugins": {},
   "outputStyle": "Default",
   "alwaysThinkingEnabled": true
 }

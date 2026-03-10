@@ -260,7 +260,7 @@ class MCPService:
                 raise ValueError(f"环境变量格式无效: {e}")
 
         # 构建更新数据
-        update_data = {}
+        update_data: Dict[str, Any] = {}
         if request.name is not None:
             update_data["name"] = request.name
         if request.transport is not None:

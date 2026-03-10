@@ -46,7 +46,7 @@ class AIMessage:
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典格式"""
-        result = {
+        result: Dict[str, Any] = {
             "role": self.role,
             "content": self.content,
         }
@@ -103,7 +103,7 @@ class AIResponse:
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典格式"""
-        result = {
+        result: Dict[str, Any] = {
             "content": self.content,
         }
         if self.reasoning_content is not None:

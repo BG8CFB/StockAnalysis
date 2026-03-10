@@ -71,17 +71,23 @@
       <!-- 主内容 -->
       <el-main class="main-content">
         <router-view v-slot="{ Component, route: currentRouteSlot }">
-          <transition
-            :name="getTransitionName(currentRouteSlot)"
-            mode="out-in"
-            @before-enter="handleBeforeEnter"
-            @after-enter="handleAfterEnter"
-          >
-            <component
-              :is="Component"
-              :key="currentRouteSlot.path"
-            />
-          </transition>
+          <!-- 
+            使用 Grid 布局 + mode="default" 解决路由跳转时的"跳动"问题
+            原理：Grid 允许新旧组件重叠显示，避免了 out-in 模式下的高度塌陷
+          -->
+          <div class="route-transition-container">
+            <transition
+              :name="getTransitionName(currentRouteSlot)"
+              @before-enter="handleBeforeEnter"
+              @after-enter="handleAfterEnter"
+            >
+              <component
+                :is="Component"
+                :key="currentRouteSlot.path"
+                class="route-component"
+              />
+            </transition>
+          </div>
         </router-view>
       </el-main>
     </el-container>
@@ -362,26 +368,41 @@ onUnmounted(() => {
    页面过渡动画 Page Transitions
    =========================================== */
 
-/* 淡入滑动 Fade Slide */
+/* 路由组件容器 - Grid 布局使得过渡动画重叠 */
+.route-transition-container {
+  display: grid;
+  width: 100%;
+  position: relative;
+  /* 确保溢出内容被裁剪，防止滑动时出现横向滚动条 */
+  overflow: hidden;
+}
+
+/* 路由组件 - 强制重叠在同一网格单元 */
+.route-component {
+  grid-area: 1 / 1;
+  width: 100%;
+}
+
+/* 淡入滑动 Fade Slide - 标准平滑过渡 */
 .fade-slide-enter-active,
 .fade-slide-leave-active {
-  transition: all var(--duration-slow) var(--ease-out-cubic);
+  transition: all 0.3s ease-out;
 }
 
 .fade-slide-enter-from {
   opacity: 0;
-  transform: translateY(10px);
+  transform: translateX(-20px);
 }
 
 .fade-slide-leave-to {
   opacity: 0;
-  transform: translateY(-10px);
+  transform: translateX(20px);
 }
 
 /* 淡入 Fade */
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity var(--duration-base) var(--ease-out-cubic);
+  transition: opacity 0.2s ease;
 }
 
 .fade-enter-from,
@@ -392,7 +413,7 @@ onUnmounted(() => {
 /* 滑动 Slide */
 .slide-enter-active,
 .slide-leave-active {
-  transition: all var(--duration-slow) var(--ease-out-cubic);
+  transition: all 0.3s ease-out;
 }
 
 .slide-enter-from {

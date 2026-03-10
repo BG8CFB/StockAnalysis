@@ -76,12 +76,14 @@ class AlertTrigger:
 
     async def check_and_trigger(
         self,
+        *args,
         **context
     ) -> Optional[AlertEvent]:
         """
         检查条件并触发告警
 
         Args:
+            *args: 位置参数（子类可以定义特定参数）
             **context: 检查上下文
 
         Returns:

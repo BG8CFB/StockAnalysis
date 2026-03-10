@@ -1,4 +1,4 @@
-"""
+﻿"""
 WebSocket 事件定义
 
 定义所有 WebSocket 事件类型和格式。
@@ -68,7 +68,7 @@ class TaskEvent:
 
     所有 WebSocket 事件的基础数据结构。
     """
-    event_type: EventType = None  # Set by subclasses in __post_init__
+    event_type: Optional[EventType] = None  # Set by subclasses in __post_init__
     task_id: str = ""
     timestamp: float = field(default_factory=lambda: datetime.now().timestamp())
     data: Dict[str, Any] = field(default_factory=dict)
@@ -90,7 +90,7 @@ class PhaseStartedEvent(TaskEvent):
     phase_name: str = ""
     total_agents: int = 0
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.event_type = EventType.PHASE_STARTED
         self.data = {
             "phase": self.phase,
@@ -111,7 +111,7 @@ class PhaseAgentsEvent(TaskEvent):
     total_executions: int = 0  # 该阶段总执行次数
     phase_progress_weight: float = 0.0  # 该阶段进度权重（百分比）
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.event_type = EventType.PHASE_AGENTS
         self.data = {
             "phase": self.phase,
@@ -134,7 +134,7 @@ class ConcurrentGroupStartedEvent(TaskEvent):
     max_concurrency: int = 1
     estimated_duration_sec: int = 0
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.event_type = EventType.CONCURRENT_GROUP_STARTED
         self.data = {
             "group_id": self.group_id,
@@ -152,7 +152,7 @@ class ConcurrentGroupCompletedEvent(TaskEvent):
     phase: int = 0
     total_agents: int = 0
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.event_type = EventType.CONCURRENT_GROUP_COMPLETED
         self.data = {
             "group_id": self.group_id,
@@ -167,7 +167,7 @@ class AgentStartedEvent(TaskEvent):
     agent_slug: str = ""
     agent_name: str = ""
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.event_type = EventType.AGENT_STARTED
         self.data = {
             "agent_slug": self.agent_slug,
@@ -185,7 +185,7 @@ class AgentCompletedEvent(TaskEvent):
     completed_agents: int = 0  # 已完成智能体数
     total_agents: int = 0  # 总智能体数
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.event_type = EventType.AGENT_COMPLETED
         self.data = {
             "agent_slug": self.agent_slug,
@@ -205,7 +205,7 @@ class AgentMessageEvent(TaskEvent):
     content: str = ""
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.event_type = EventType.AGENT_MESSAGE
         self.data = {
             "agent_slug": self.agent_slug,
@@ -223,7 +223,7 @@ class ToolCalledEvent(TaskEvent):
     tool_name: str = ""
     tool_input: str = ""
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.event_type = EventType.TOOL_CALLED
         self.data = {
             "agent_slug": self.agent_slug,
@@ -243,7 +243,7 @@ class ToolResultEvent(TaskEvent):
     output: str = ""
     error: Optional[str] = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.event_type = EventType.TOOL_RESULT
         self.data = {
             "agent_slug": self.agent_slug,
@@ -261,7 +261,7 @@ class ToolDisabledEvent(TaskEvent):
     tool_name: str = ""
     reason: str = ""
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.event_type = EventType.TOOL_DISABLED
         self.data = {
             "agent_slug": self.agent_slug,
@@ -277,7 +277,7 @@ class ReportGeneratedEvent(TaskEvent):
     agent_name: str = ""
     content: str = ""
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.event_type = EventType.REPORT_GENERATED
         self.data = {
             "agent_slug": self.agent_slug,
@@ -293,7 +293,7 @@ class ReportStreamChunkEvent(TaskEvent):
     chunk: str = ""
     is_final: bool = False
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.event_type = EventType.REPORT_STREAM_CHUNK
         self.data = {
             "agent_slug": self.agent_slug,
@@ -308,7 +308,7 @@ class ProgressUpdateEvent(TaskEvent):
     progress: float = 0.0
     message: str = ""
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.event_type = EventType.PROGRESS_UPDATE
         self.data = {
             "progress": self.progress,
@@ -324,7 +324,7 @@ class TaskCompletedEvent(TaskEvent):
     sell_price: Optional[float] = None
     total_token_usage: Dict[str, int] = field(default_factory=dict)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.event_type = EventType.TASK_COMPLETED
         self.data = {
             "final_recommendation": self.final_recommendation,
@@ -340,7 +340,7 @@ class TaskFailedEvent(TaskEvent):
     error_message: str = ""
     error_details: Optional[Dict[str, Any]] = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.event_type = EventType.TASK_FAILED
         self.data = {
             "error_message": self.error_message,
@@ -594,3 +594,5 @@ def create_progress_update_event(
         progress=progress,
         message=message
     )
+
+
