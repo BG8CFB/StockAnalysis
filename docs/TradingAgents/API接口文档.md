@@ -615,11 +615,11 @@ onMessage((event) => {
 
 ## 四、智能体配置接口
 
-### 4.1 获取用户配置
+### 4.1 获取全局配置
 
 **接口**：`GET /api/trading-agents/agent-config`
 
-**描述**：获取当前用户的智能体配置
+**描述**：获取全局智能体配置（所有用户共享同一配置）
 
 **前端调用**：
 - **页面**: 智能体配置管理 (`AgentConfigView.vue`)、单股分析页 (`SingleAnalysisView.vue`)
@@ -682,11 +682,11 @@ getAgentConfig({ include_prompts: false })
 
 ---
 
-### 4.2 更新用户配置
+### 4.2 更新全局配置
 
 **接口**：`PUT /api/trading-agents/agent-config`
 
-**描述**：更新用户智能体配置
+**描述**：更新全局智能体配置（仅管理员可操作）
 
 **前端调用**：
 - **页面**: 智能体配置管理 (`AgentConfigView.vue`)
@@ -726,7 +726,7 @@ updateConfig({
 
 **接口**：`POST /api/trading-agents/agent-config/reset`
 
-**描述**：重置用户配置为公共配置（模板）
+**描述**：重置全局配置为默认配置（模板）
 
 **前端调用**：
 - **页面**: 智能体配置管理 (`AgentConfigView.vue`)
@@ -742,7 +742,7 @@ updateConfig({
 
 **接口**：`POST /api/trading-agents/agent-config/export`
 
-**描述**：导出用户配置为 JSON
+**描述**：导出全局配置为 JSON
 
 **前端调用**：
 - **页面**: 智能体配置管理 (`AgentConfigView.vue`)
@@ -854,20 +854,20 @@ updateConfig({
 
 ---
 
-### 4.10 恢复公共配置为默认（管理员）
+### 4.10 恢复全局配置为默认（管理员）
 
 **接口**：`POST /api/trading-agents/admin/public-config/reset`
 
 **权限**：仅 ADMIN/SUPER_ADMIN
 
-**描述**：用默认配置覆盖公共配置
+**描述**：用默认配置覆盖全局配置
 
 **前端调用**：
-- **页面**: 智能体配置管理 (`AgentConfigView.vue` - 管理员编辑公共配置模式)
-- **方法**: `resetPublicConfig()`
+- **页面**: 智能体配置管理 (`AgentConfigView.vue` - 管理员编辑模式)
+- **方法**: `resetGlobalConfig()`
 
 **逻辑**：
-- 用 `agents_default.yaml` 覆盖 `agents_public.yaml`
+- 用 `agents_default.yaml` 覆盖全局配置
 - 等同于"恢复出厂设置"
 
 ---
@@ -876,7 +876,7 @@ updateConfig({
 
 **接口**：`GET /api/trading-agents/agent-config/status`
 
-**描述**：获取当前用户的配置来源状态
+**描述**：获取全局配置来源状态
 
 **前端调用**：
 - **页面**: 智能体配置管理 (`AgentConfigView.vue`)
@@ -886,48 +886,48 @@ updateConfig({
 
 ```json
 {
-  "source": "personal",           // personal/public/default
-  "is_customized": true,          // 是否使用个人配置
+  "source": "global",             // global/public/default
+  "is_customized": true,          // 是否使用全局自定义配置
   "has_customization": true,      // 是否有自定义配置
   "can_edit_prompts": false       // 是否可编辑提示词（仅管理员）
 }
 ```
 
 **状态说明**：
-- `personal`: 使用数据库个人配置
+- `global`: 使用数据库全局配置
 - `public`: 使用公共配置 YAML 文件
 - `default`: 使用默认配置 YAML 文件（兜底）
 
 ---
 
-### 4.12 导出个人配置
+### 4.12 导出全局配置
 
 **接口**：`GET /api/trading-agents/agent-config/export`
 
-**描述**：导出个人配置为 YAML 文件
+**描述**：导出全局配置为 YAML 文件
 
 **前端调用**：
 - **页面**: 智能体配置管理 (`AgentConfigView.vue`)
-- **方法**: `exportPersonalConfig()`
+- **方法**: `exportGlobalConfig()`
 
 **响应**：YAML 文件下载
 
 **逻辑**：
-- 从数据库读取用户配置
+- 从数据库读取全局配置
 - 转换为 YAML 格式
 - 返回文件下载
 
 ---
 
-### 4.13 导入个人配置
+### 4.13 导入全局配置
 
 **接口**：`POST /api/trading-agents/agent-config/import`
 
-**描述**：导入 YAML 文件作为个人配置
+**描述**：导入 YAML 文件作为全局配置
 
 **前端调用**：
 - **页面**: 智能体配置管理 (`AgentConfigView.vue`)
-- **方法**: `importPersonalConfig(file)`
+- **方法**: `importGlobalConfig(file)`
 
 **请求**：`multipart/form-data` 上传 YAML 文件
 

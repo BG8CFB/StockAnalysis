@@ -128,29 +128,32 @@ TradingAgents 采用简单的函数式调度架构，通过单一调度文件协
 
 ```
 backend/modules/trading_agents/
-├── workflow/                  # 工作流调度器（v3.0 精简优化）
-│   ├── scheduler.py            # 工作流调度器
+├── workflow/                  # 工作流调度器 + 四阶段智能体
+│   ├── scheduler.py           # 工作流调度器
 │   ├── events.py              # 事件定义
 │   ├── state.py               # 状态管理
-│   ├── phase1/                # Phase 1: 信息收集与基础分析
+│   ├── agent_helpers.py       # 智能体辅助函数
+│   ├── callbacks.py           # 回调函数
+│   ├── phase1/                # Phase 1: 信息收集与基础分析（并行6个分析师）
 │   │   ├── template.py        # 智能体模板
 │   │   └── factory.py         # 动态创建智能体
 │   ├── phase2/                # Phase 2: 多空博弈与投资决策
-│   │   ├── bull_researcher.py
-│   │   ├── bear_researcher.py
-│   │   └── research_manager.py
-│   ├── phase3/                # Phase 3: 交易执行策划
-│   │   └── trader.py
-│   └── phase4/                # Phase 4: 策略风格与风险评估
-│       ├── aggressive_debator.py
-│       ├── neutral_debator.py
-│       ├── conservative_debator.py
-│       └── risk_manager.py
-├── manager/                   # 任务管理器与并发控制
+│   │   ├── bull_researcher.py  # 看涨分析师
+│   │   ├── bear_researcher.py  # 看跌分析师
+│   │   ├── research_manager.py # 投资组合经理
+│   │   └── trader.py           # 专业交易员（制定交易计划）
+│   ├── phase3/                # Phase 3: 策略风格与风险评估
+│   │   ├── aggressive_debator.py   # 激进策略分析师
+│   │   ├── neutral_debator.py      # 中性策略分析师
+│   │   ├── conservative_debator.py # 保守策略分析师
+│   │   └── risk_manager.py         # 风险管理委员会主席
+│   └── phase4/                # Phase 4: 总结智能体
+│       └── summarizer.py      # 总结智能体
+├── manager/                   # 任务管理器与并发控制（含业务服务）
 │   ├── task_manager.py        # 任务管理器
 │   ├── task_manager_restore.py # 任务恢复管理器
 │   ├── concurrency_controller.py # 并发控制器
-│   ├── concurrency.py         # 并发控制实现
+│   ├── task_queue.py          # 任务队列
 │   ├── batch_manager.py       # 批量任务管理
 │   ├── database.py            # 数据库操作
 │   ├── report_service.py      # 报告服务
@@ -165,8 +168,17 @@ backend/modules/trading_agents/
 │   ├── tasks.py               # 任务 API
 │   └── reports.py             # 报告 API
 ├── config/                    # 配置管理
+│   ├── agents/                # 智能体 YAML 配置文件
+│   │   ├── agents_default.yaml # 默认配置（只读）
+│   │   ├── agents_public.yaml  # 公共配置（管理员可修改）
+│   │   ├── phase1-default.yaml
+│   │   ├── phase2-default.yaml
+│   │   ├── phase3-default.yaml
+│   │   └── phase4-default.yaml
 │   ├── merger.py              # 配置合并服务
 │   └── loader.py              # 配置加载器
+├── models/                    # 数据模型
+│   └── state.py               # 工作流状态模型
 └── tools/                     # 工具集成
     ├── local_tools_adapter.py # 本地工具适配器
     └── mcp/                   # MCP 工具
