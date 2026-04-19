@@ -31,6 +31,7 @@ from modules.trading_agents.models.state import (
     create_initial_state,
 )
 from modules.trading_agents.workflow import phase1, phase2, phase3, phase4
+from modules.trading_agents.workflow.callbacks import TokenUsageCallback
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,8 @@ class WorkflowScheduler:
 
         # 运行中的任务（用于取消）
         self._running_tasks: Dict[str, asyncio.Task] = {}
+        # Token 使用量追踪回调（每次 run 创建新实例）
+        self._token_callback: Optional[TokenUsageCallback] = None
 
     async def run(
         self,
@@ -154,6 +157,14 @@ class WorkflowScheduler:
                 )
                 debate_model_instance = data_collection_model_instance
 
+            # 创建 Token 使用量追踪回调（每个任务独立）
+            self._token_callback = TokenUsageCallback()
+
+            # 将回调绑定到模型实例，所有通过该模型的 LLM 调用都会被自动统计
+            debate_model_tracked = debate_model_instance.with_config(
+                {"callbacks": [self._token_callback]}
+            )
+
             # Phase 1: 信息收集与基础分析（所有分析师并发，受 task_concurrency 控制）
             if phase1_config.get("enabled", True):
                 self._notify_progress(state, "phase1_start", "开始 Phase 1: 信息收集与基础分析")
@@ -165,6 +176,7 @@ class WorkflowScheduler:
                     selected_agents=selected_agents,
                     model_id=data_collection_model,
                     max_concurrency=data_collection_task_concurrency,
+                    token_callback=self._token_callback,
                 )
 
                 logger.info(f"[调度器] Phase 1 完成: {len(state.analyst_reports)} 份报告")
@@ -177,7 +189,7 @@ class WorkflowScheduler:
                 debate_rounds = phase2_config.get("debate", {}).get("rounds", 2)
 
                 state = await phase2.execute_phase2(
-                    state, debate_model_instance, self.agent_config, debate_rounds=debate_rounds
+                    state, debate_model_tracked, self.agent_config, debate_rounds=debate_rounds
                 )
 
                 logger.info(f"[调度器] Phase 2 完成: {len(state.debate_turns)} 轮辩论")
@@ -187,7 +199,7 @@ class WorkflowScheduler:
             if phase3_config.get("enabled", True) and should_continue(state):
                 self._notify_progress(state, "phase3_start", "开始 Phase 3: 策略风格与风险评估")
 
-                state = await phase3.execute_phase3(state, debate_model_instance, self.agent_config)
+                state = await phase3.execute_phase3(state, debate_model_tracked, self.agent_config)
 
                 logger.info(f"[调度器] Phase 3 完成, 推荐: {state.final_recommendation}")
                 self._notify_progress(state, "phase3_complete", "Phase 3 完成")
@@ -196,13 +208,30 @@ class WorkflowScheduler:
             if phase4_config.get("enabled", True) and should_continue(state):
                 self._notify_progress(state, "phase4_start", "开始 Phase 4: 总结智能体")
 
-                state = await phase4.execute_phase4(state, debate_model_instance, self.agent_config)
+                state = await phase4.execute_phase4(state, debate_model_tracked, self.agent_config)
 
                 logger.info(f"[调度器] Phase 4 完成, 推荐: {state.final_recommendation}")
                 self._notify_progress(state, "phase4_complete", "Phase 4 完成")
 
             # 生成最终报告
             state.final_report = self._generate_final_report(state)
+
+            # 汇总 Token 使用量
+            if self._token_callback:
+                token_totals = self._token_callback.get_totals()
+                state.add_token_usage(
+                    phase="all",
+                    model_id="all",
+                    tokens=token_totals,
+                )
+                logger.info(
+                    f"[调度器] Token 使用统计: "
+                    f"input={token_totals.get('prompt_tokens', 0)}, "
+                    f"output={token_totals.get('completion_tokens', 0)}, "
+                    f"thinking={token_totals.get('thinking_tokens', 0)}, "
+                    f"total={token_totals.get('total_tokens', 0)}, "
+                    f"calls={token_totals.get('call_count', 0)}"
+                )
 
             # 任务完成
             state.status = TaskStatus.COMPLETED

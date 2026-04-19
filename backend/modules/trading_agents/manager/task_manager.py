@@ -1377,6 +1377,9 @@ class TaskManager:
 
                 logger.info(f"任务 {task_id} 工作流执行完成，状态: {final_state.status}")
 
+                # 汇总所有阶段的 Token 使用量
+                aggregated_token_usage = self._aggregate_token_usage(final_state)
+
                 # 保存最终结果到数据库
                 await self.complete_task(
                     task_id=task_id,
@@ -1385,11 +1388,7 @@ class TaskManager:
                     ),
                     buy_price=final_state.buy_price,
                     sell_price=final_state.sell_price,
-                    token_usage=(
-                        final_state.token_usage.model_dump()
-                        if hasattr(final_state.token_usage, "model_dump")
-                        else {}
-                    ),
+                    token_usage=aggregated_token_usage,
                 )
 
                 # 保存最终报告
@@ -1542,6 +1541,60 @@ class TaskManager:
             f"用户默认: {user_model_id if user_settings else 'None'}, "
             f"系统默认: 不可用"
         )
+
+    def _aggregate_token_usage(self, state: Any) -> Dict[str, int]:
+        """
+        从 WorkflowState 的 phase_executions 中汇总所有阶段的 Token 使用量。
+
+        遍历每个阶段的每个智能体执行记录，累加 prompt_tokens/completion_tokens/total_tokens。
+        同时也会累加 state.token_usage 列表中的记录。
+
+        Args:
+            state: WorkflowState 实例
+
+        Returns:
+            汇总后的 token_usage 字典
+        """
+        total_prompt = 0
+        total_completion = 0
+        total_tokens = 0
+
+        # 从 phase_executions 中汇总
+        phase_executions = getattr(state, "phase_executions", [])
+        for phase_exec in phase_executions:
+            agents = getattr(phase_exec, "agents", [])
+            for agent_exec in agents:
+                token_usage = getattr(agent_exec, "token_usage", None)
+                if token_usage is not None:
+                    total_prompt += getattr(token_usage, "prompt_tokens", 0) or 0
+                    total_completion += getattr(token_usage, "completion_tokens", 0) or 0
+                    total_tokens += getattr(token_usage, "total_tokens", 0) or 0
+
+        # 从 state.token_usage 列表中汇总（兼容各阶段直接调用 add_token_usage 的情况）
+        state_token_list = getattr(state, "token_usage", [])
+        if isinstance(state_token_list, list):
+            for usage in state_token_list:
+                tokens = usage.get("tokens", {})
+                total_prompt += tokens.get("prompt_tokens", 0) or tokens.get("input_tokens", 0)
+                total_completion += tokens.get("completion_tokens", 0) or tokens.get("output_tokens", 0)
+                total_tokens += tokens.get("total_tokens", 0)
+
+        # 如果 total_tokens 为 0 但有 prompt/completion，则自动计算
+        if total_tokens == 0 and (total_prompt > 0 or total_completion > 0):
+            total_tokens = total_prompt + total_completion
+
+        result = {
+            "prompt_tokens": total_prompt,
+            "completion_tokens": total_completion,
+            "total_tokens": total_tokens,
+        }
+
+        logger.info(
+            f"Token 使用汇总: prompt={total_prompt}, "
+            f"completion={total_completion}, total={total_tokens}"
+        )
+
+        return result
 
     def _convert_recommendation(
         self, recommendation: Optional[str]

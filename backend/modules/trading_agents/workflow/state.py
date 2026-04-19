@@ -61,6 +61,67 @@ class TokenUsage:
             total_tokens=self.total_tokens + other.total_tokens,
         )
 
+    def to_dict(self) -> Dict[str, int]:
+        """转换为字典"""
+        return {
+            "prompt_tokens": self.prompt_tokens,
+            "completion_tokens": self.completion_tokens,
+            "total_tokens": self.total_tokens,
+        }
+
+
+def extract_token_usage_from_result(result: Any) -> Optional[TokenUsage]:
+    """
+    从 LangChain agent 执行结果中提取 Token 使用量。
+
+    LangChain create_agent 的 ainvoke 返回格式为:
+    {"messages": [HumanMessage(...), AIMessage(..., usage_metadata={...}), ...]}
+
+    usage_metadata 通常在最后一条 AIMessage 上，包含:
+    - input_tokens: 输入 token 数
+    - output_tokens: 输出 token 数
+    - total_tokens: 总 token 数
+
+    Args:
+        result: agent.ainvoke() 的返回值
+
+    Returns:
+        TokenUsage 对象或 None
+    """
+    try:
+        if isinstance(result, dict):
+            messages = result.get("messages", [])
+            total_prompt = 0
+            total_completion = 0
+            found_usage = False
+
+            for msg in messages:
+                usage_metadata = None
+                if hasattr(msg, "usage_metadata"):
+                    usage_metadata = msg.usage_metadata
+                elif isinstance(msg, dict):
+                    usage_metadata = msg.get("usage_metadata")
+
+                if usage_metadata:
+                    found_usage = True
+                    if isinstance(usage_metadata, dict):
+                        total_prompt += usage_metadata.get("input_tokens", 0)
+                        total_completion += usage_metadata.get("output_tokens", 0)
+                    elif hasattr(usage_metadata, "input_tokens"):
+                        total_prompt += usage_metadata.input_tokens or 0
+                        total_completion += usage_metadata.output_tokens or 0
+
+            if found_usage:
+                return TokenUsage(
+                    prompt_tokens=total_prompt,
+                    completion_tokens=total_completion,
+                    total_tokens=total_prompt + total_completion,
+                )
+    except Exception:
+        pass
+
+    return None
+
 
 @dataclass
 class AgentExecution:

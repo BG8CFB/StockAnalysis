@@ -239,3 +239,109 @@ class WebSocketCallbackHandler(AsyncCallbackHandler):
             工具调用次数
         """
         return self._tool_call_count
+
+
+class TokenUsageCallback(AsyncCallbackHandler):
+    """
+    Token 使用量统计回调
+
+    自动拦截所有 LLM 调用，统计 input_tokens、output_tokens、thinking_tokens。
+    支持 GLM 系列模型的思考 token（reasoning_tokens）。
+
+    使用方式:
+    - 在调度器中创建实例，附加到模型上
+    - 工作流完成后，调用 get_totals() 获取汇总数据
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.total_input_tokens: int = 0
+        self.total_output_tokens: int = 0
+        self.total_thinking_tokens: int = 0
+        self.call_count: int = 0
+
+    async def on_llm_end(
+        self,
+        response: Any,
+        *,
+        run_id: UUID,
+        parent_run_id: UUID | None = None,
+        **kwargs: Any,
+    ) -> None:
+        """
+        LLM 调用完成时触发 — 自动统计 token 使用量
+
+        LangChain 的 LLMResult 包含 llm_output 字典，其中:
+        - token_usage: {prompt_tokens, completion_tokens, total_tokens}
+        - 或 response_metadata 中包含 usage 信息
+
+        对于 GLM 模型，思考 token 在:
+        - response_metadata.reasoning_tokens
+        - 或 response 的 generations 中 AIMessage.usage_metadata
+        """
+        try:
+            # 方式1: 从 llm_output 中提取（部分模型 provider 使用）
+            if hasattr(response, "llm_output") and response.llm_output:
+                token_usage = response.llm_output.get("token_usage", {})
+                if token_usage:
+                    self.total_input_tokens += token_usage.get("prompt_tokens", 0)
+                    self.total_output_tokens += token_usage.get("completion_tokens", 0)
+                    self.call_count += 1
+                    return
+
+            # 方式2: 从 generations 中的 AIMessage.usage_metadata 提取
+            if hasattr(response, "generations") and response.generations:
+                for gen_list in response.generations:
+                    for gen in gen_list:
+                        message = gen.message if hasattr(gen, "message") else gen
+
+                        # 提取 usage_metadata
+                        usage_metadata = None
+                        if hasattr(message, "usage_metadata"):
+                            usage_metadata = message.usage_metadata
+                        elif hasattr(message, "additional_kwargs"):
+                            usage_metadata = message.additional_kwargs.get("usage_metadata")
+
+                        if usage_metadata and isinstance(usage_metadata, dict):
+                            self.total_input_tokens += usage_metadata.get("input_tokens", 0)
+                            self.total_output_tokens += usage_metadata.get("output_tokens", 0)
+                            self.call_count += 1
+
+                        # 提取 thinking/reasoning tokens
+                        if hasattr(message, "response_metadata"):
+                            meta = message.response_metadata
+                            if isinstance(meta, dict):
+                                self.total_thinking_tokens += meta.get("reasoning_tokens", 0)
+                                # 有些模型放在 thinking_tokens 字段
+                                self.total_thinking_tokens += meta.get("thinking_tokens", 0)
+
+                        # 从 additional_kwargs 提取思考 token
+                        if hasattr(message, "additional_kwargs"):
+                            ak = message.additional_kwargs
+                            if isinstance(ak, dict):
+                                reasoning = ak.get("reasoning_content", "")
+                                # reasoning_content 是文本，无法直接计算 token 数
+                                # 但有些 provider 会返回 reasoning_tokens
+                                if "reasoning_tokens" in ak:
+                                    self.total_thinking_tokens += ak.get("reasoning_tokens", 0)
+
+        except Exception as e:
+            logger.debug(f"TokenUsageCallback 解析 token 失败: {e}")
+
+    def get_totals(self) -> Dict[str, int]:
+        """获取汇总的 token 使用量"""
+        total_output = self.total_output_tokens + self.total_thinking_tokens
+        return {
+            "prompt_tokens": self.total_input_tokens,
+            "completion_tokens": self.total_output_tokens,
+            "thinking_tokens": self.total_thinking_tokens,
+            "total_tokens": self.total_input_tokens + total_output,
+            "call_count": self.call_count,
+        }
+
+    def reset(self) -> None:
+        """重置统计数据"""
+        self.total_input_tokens = 0
+        self.total_output_tokens = 0
+        self.total_thinking_tokens = 0
+        self.call_count = 0

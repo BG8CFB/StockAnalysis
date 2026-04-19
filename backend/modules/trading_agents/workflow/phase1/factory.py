@@ -46,16 +46,23 @@ class Phase1AgentFactory:
     动态创建分析师智能体，支持并发执行。
     """
 
-    def __init__(self, ai_service: AIService, config: Optional[Dict[str, Any]] = None) -> None:
+    def __init__(
+        self,
+        ai_service: AIService,
+        config: Optional[Dict[str, Any]] = None,
+        token_callback: Any = None,
+    ) -> None:
         """
         初始化智能体工厂
 
         Args:
             ai_service: AI 服务
             config: 智能体配置
+            token_callback: Token 使用量追踪回调（可选）
         """
         self.ai_service = ai_service
         self.config = config or {}
+        self.token_callback = token_callback
 
     async def create_agent(
         self,
@@ -185,11 +192,16 @@ class Phase1AgentFactory:
             # LangChain 0.3+ 使用 messages 格式
             inputs = {"messages": [HumanMessage(content=user_prompt)]}
 
+            # 合并回调: WebSocket 回调 + Token 追踪回调
+            all_callbacks = list(callbacks) if callbacks else []
+            if self.token_callback:
+                all_callbacks.append(self.token_callback)
+
             # LangChain 0.3+ 正确传递 callbacks 的方式：直接放在 config 顶层，不是 configurable 下
-            if callbacks:
+            if all_callbacks:
                 from langchain_core.callbacks import CallbackManager
 
-                run_config = {"callbacks": CallbackManager(handlers=callbacks)}
+                run_config = {"callbacks": CallbackManager(handlers=all_callbacks)}
                 result = await agent.ainvoke(inputs, config=run_config)
             else:
                 result = await agent.ainvoke(inputs)
@@ -358,6 +370,7 @@ async def execute_phase1(
     selected_agents: Optional[List[str]] = None,
     model_id: str = "claude-sonnet-4-20250514",
     max_concurrency: Optional[int] = None,
+    token_callback: Any = None,
 ) -> WorkflowState:
     """
     执行 Phase 1: 信息收集与基础分析
@@ -425,7 +438,7 @@ async def execute_phase1(
     logger.info(f"[Phase 1] 已发送智能体列表事件, 智能体数量: {len(enabled_agents)}")
 
     # 创建智能体工厂
-    factory = Phase1AgentFactory(ai_service, config)
+    factory = Phase1AgentFactory(ai_service, config, token_callback=token_callback)
 
     # 创建并发控制信号量
     semaphore = asyncio.Semaphore(max_concurrency) if max_concurrency else None

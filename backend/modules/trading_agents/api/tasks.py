@@ -1245,3 +1245,253 @@ async def get_agent_thinking(
         )
 
     return agent_thinking
+
+
+# =============================================================================
+# 智能体列表管理 API（扁平化视图，供设置页面使用）
+# =============================================================================
+
+# 阶段 → 前端 stage 映射
+PHASE_STAGE_MAP = {"phase1": "analysis", "phase2": "research", "phase3": "risk", "phase4": "trading"}
+
+STAGE_PHASE_MAP = {v: k for k, v in PHASE_STAGE_MAP.items()}
+
+# 系统 phase（phase2/3/4 的智能体不可删除）
+SYSTEM_PHASES = {"phase2", "phase3", "phase4"}
+
+
+def _derive_agent_type(slug: str) -> str:
+    """根据 slug 推断智能体类型标签"""
+    s = slug.lower()
+    if "news" in s:
+        return "market"
+    if "social" in s:
+        return "social"
+    if "china" in s:
+        return "market"
+    if "market-analyst" in s or "technical" in s:
+        return "technical"
+    if "fundamental" in s:
+        return "fundamental"
+    if "capital" in s or "short-term" in s:
+        return "capital"
+    if "bull" in s:
+        return "bull"
+    if "bear" in s:
+        return "bear"
+    if "manager" in s and "research" in s:
+        return "management"
+    if "trader" in s:
+        return "trading"
+    if "risk" in s or "conservative" in s or "aggressive" in s or "neutral" in s:
+        return "strategy"
+    if "summar" in s:
+        return "summary"
+    if s.startswith("custom"):
+        return "custom"
+    return "other"
+
+
+def _flatten_agents(config: UserAgentConfigResponse) -> list[dict[str, Any]]:
+    """将阶段配置扁平化为智能体列表"""
+    agents: list[dict[str, Any]] = []
+    for phase_key, stage in PHASE_STAGE_MAP.items():
+        phase = getattr(config, phase_key, None)
+        if not phase or not phase.agents:
+            continue
+        is_system = phase_key in SYSTEM_PHASES
+        for agent in phase.agents:
+            agents.append(
+                {
+                    "id": agent.slug,
+                    "name": agent.name,
+                    "stage": stage,
+                    "type": _derive_agent_type(agent.slug),
+                    "description": getattr(agent, "when_to_use", "") or "",
+                    "prompt": getattr(agent, "role_definition", "") or "",
+                    "enabled": agent.enabled,
+                    "is_system": is_system,
+                }
+            )
+    return agents
+
+
+# 创建扁平化智能体列表路由器
+agents_router = APIRouter(
+    prefix="/trading-agents/agents", tags=["TradingAgents - 智能体列表管理"]
+)
+
+
+@agents_router.get("")
+async def list_agents(current_user: UserModel = Depends(get_current_active_user)) -> list[dict[str, Any]]:
+    """
+    列出所有智能体（扁平化视图）
+
+    将四阶段配置中的智能体合并为一个扁平列表，供智能体管理页面使用。
+    """
+    service = get_agent_config_service()
+    config = await service.get_effective_config(str(current_user.id), include_prompts=True)
+    if not config:
+        return []
+    return _flatten_agents(config)
+
+
+@agents_router.put("/{agent_id}")
+async def save_agent(
+    agent_id: str,
+    agent_data: dict[str, Any],
+    current_user: UserModel = Depends(get_current_active_user),
+) -> dict[str, Any]:
+    """
+    保存智能体（创建或更新）
+
+    - 更新时：修改指定智能体的 name/prompt/description/enabled
+    - 新增时：仅允许在 analysis（phase1）阶段添加自定义智能体
+    """
+    service = get_agent_config_service()
+    config = await service.get_effective_config(str(current_user.id), include_prompts=True)
+    if not config:
+        raise HTTPException(status_code=404, detail="智能体配置不存在")
+
+    stage = agent_data.get("stage", "analysis")
+    phase_key = STAGE_PHASE_MAP.get(stage)
+    if not phase_key:
+        raise HTTPException(status_code=400, detail=f"无效的阶段: {stage}")
+
+    phase = getattr(config, phase_key, None)
+    if not phase:
+        raise HTTPException(status_code=400, detail=f"阶段 {stage} 不存在")
+
+    # 查找现有智能体
+    existing_idx = None
+    if phase.agents:
+        for i, a in enumerate(phase.agents):
+            if a.slug == agent_id:
+                existing_idx = i
+                break
+
+    # 构建智能体列表
+    agents_list: list[dict[str, Any]] = []
+    if phase.agents:
+        for a in phase.agents:
+            agents_list.append(a.model_dump(mode="json"))
+
+    if existing_idx is not None:
+        # 更新现有智能体
+        update_fields = {}
+        if "name" in agent_data and agent_data["name"]:
+            update_fields["name"] = agent_data["name"]
+        if "description" in agent_data:
+            update_fields["when_to_use"] = agent_data["description"]
+        if "prompt" in agent_data:
+            update_fields["role_definition"] = agent_data["prompt"]
+        if "enabled" in agent_data:
+            update_fields["enabled"] = agent_data["enabled"]
+        agents_list[existing_idx].update(update_fields)
+    else:
+        # 新增：仅允许 phase1
+        if phase_key != "phase1":
+            raise HTTPException(status_code=400, detail="只能在分析阶段添加自定义智能体")
+        new_agent = {
+            "slug": agent_id,
+            "name": agent_data.get("name", "新智能体"),
+            "role_definition": agent_data.get("prompt", ""),
+            "when_to_use": agent_data.get("description", ""),
+            "enabled_mcp_servers": [],
+            "enabled_local_tools": [],
+            "enabled": agent_data.get("enabled", True),
+        }
+        agents_list.append(new_agent)
+
+    # 构建阶段更新数据
+    phase_dict: dict[str, Any] = {"enabled": phase.enabled, "agents": agents_list}
+    if phase_key == "phase1" and hasattr(phase, "max_concurrency"):
+        phase_dict["max_concurrency"] = phase.max_concurrency
+    if phase_key == "phase2" and hasattr(phase, "max_rounds"):
+        phase_dict["max_rounds"] = getattr(phase, "max_rounds", None)
+
+    from modules.trading_agents.schemas import Phase1Config, Phase2Config, Phase3Config, Phase4Config
+
+    phase_classes = {
+        "phase1": Phase1Config,
+        "phase2": Phase2Config,
+        "phase3": Phase3Config,
+        "phase4": Phase4Config,
+    }
+    phase_obj = phase_classes[phase_key](**phase_dict)
+    update = UserAgentConfigUpdate(**{phase_key: phase_obj})
+    updated_config = await service.update_user_config(str(current_user.id), update)
+
+    if not updated_config:
+        raise HTTPException(status_code=500, detail="保存智能体失败")
+
+    # 返回更新后的智能体
+    updated_phase = getattr(updated_config, phase_key, None)
+    if updated_phase and updated_phase.agents:
+        for a in updated_phase.agents:
+            if a.slug == agent_id:
+                return {
+                    "id": a.slug,
+                    "name": a.name,
+                    "stage": stage,
+                    "type": _derive_agent_type(a.slug),
+                    "description": getattr(a, "when_to_use", "") or "",
+                    "prompt": getattr(a, "role_definition", "") or "",
+                    "enabled": a.enabled,
+                    "is_system": phase_key in SYSTEM_PHASES,
+                }
+
+    raise HTTPException(status_code=500, detail="保存后未找到智能体")
+
+
+@agents_router.delete("/{agent_id}")
+async def delete_agent(
+    agent_id: str,
+    current_user: UserModel = Depends(get_current_active_user),
+) -> dict[str, Any]:
+    """
+    删除自定义智能体
+
+    仅允许删除 phase1（分析阶段）的非系统智能体。
+    """
+    service = get_agent_config_service()
+    config = await service.get_effective_config(str(current_user.id), include_prompts=True)
+    if not config:
+        raise HTTPException(status_code=404, detail="智能体配置不存在")
+
+    # 在所有阶段中查找智能体
+    target_phase_key = None
+    for phase_key, stage in PHASE_STAGE_MAP.items():
+        phase = getattr(config, phase_key, None)
+        if not phase or not phase.agents:
+            continue
+        for a in phase.agents:
+            if a.slug == agent_id:
+                if phase_key in SYSTEM_PHASES:
+                    raise HTTPException(status_code=400, detail="系统智能体不可删除，只能重置为默认配置")
+                target_phase_key = phase_key
+                break
+        if target_phase_key:
+            break
+
+    if not target_phase_key:
+        raise HTTPException(status_code=404, detail=f"智能体 {agent_id} 不存在")
+
+    # 从 phase1 移除
+    phase = getattr(config, target_phase_key)
+    agents_list = [a.model_dump(mode="json") for a in phase.agents if a.slug != agent_id]
+
+    phase_dict: dict[str, Any] = {
+        "enabled": phase.enabled,
+        "agents": agents_list,
+    }
+    if hasattr(phase, "max_concurrency"):
+        phase_dict["max_concurrency"] = phase.max_concurrency
+
+    from modules.trading_agents.schemas import Phase1Config
+
+    phase_obj = Phase1Config(**phase_dict)
+    update = UserAgentConfigUpdate(phase1=phase_obj)
+    await service.update_user_config(str(current_user.id), update)
+
+    return {"success": True, "message": f"智能体 {agent_id} 已删除"}
