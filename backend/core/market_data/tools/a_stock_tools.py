@@ -7,9 +7,9 @@ A股市场数据工具
 import logging
 from typing import Any, Dict, List, Optional
 
+from core.market_data.managers.source_router import DataSourceRouter
 from core.market_data.models import MarketType
 from core.market_data.tools.base_tool import DataSource, MarketDataToolBase
-from core.market_data.managers.source_router import DataSourceRouter
 
 logger = logging.getLogger(__name__)
 
@@ -61,9 +61,9 @@ class AStockTool(MarketDataToolBase):
 
             for source in sources:
                 if hasattr(source, "get_realtime_quote"):
-                    quote = await source.get_realtime_quote(symbol)
+                    quote = await source.get_realtime_quote(symbol)  # type: ignore[union-attr]
                     if quote:
-                        return quote
+                        return dict(quote)  # type: ignore[no-any-return]
 
             # 如果实时数据获取失败，回退到数据库
             logger.warning(f"Realtime quote not available for {symbol}, using database")
@@ -163,8 +163,8 @@ class AStockTool(MarketDataToolBase):
 
             for source in sources:
                 if hasattr(source, "get_index_components"):
-                    components = await source.get_index_components(index_code)
-                    return components
+                    components = await source.get_index_components(index_code)  # type: ignore[union-attr]
+                    return list(components) if components else []  # type: ignore[no-any-return]
 
             return []
 
@@ -184,10 +184,10 @@ class AStockTool(MarketDataToolBase):
         """
         try:
             # 从数据库按行业查询
-            stocks = await self.stock_info_repo.get_by_sector(
-                market=MarketType.A_STOCK, sector=sector
+            stocks = await self.stock_info_repo.find_many(  # type: ignore[attr-defined]
+                {"market": MarketType.A_STOCK.value, "industry": sector}
             )
-            return stocks if stocks else []
+            return list(stocks) if stocks else []
 
         except Exception as e:
             logger.error(f"Failed to get sector stocks for {sector}: {e}")
@@ -216,7 +216,7 @@ class AStockTool(MarketDataToolBase):
                 if hasattr(source, method_name):
                     method = getattr(source, method_name)
                     result = await method()
-                    return result
+                    return dict(result) if result else None  # type: ignore[no-any-return]
 
             logger.warning(f"Macro economic indicator {indicator} not available")
             return None
@@ -245,8 +245,8 @@ class AStockTool(MarketDataToolBase):
 
             for source in sources:
                 if hasattr(source, "get_top_list"):
-                    result = await source.get_top_list(trade_date=trade_date)
-                    return result
+                    result = await source.get_top_list(trade_date=trade_date)  # type: ignore[union-attr]
+                    return list(result) if result else []  # type: ignore[no-any-return]
 
             return []
 
@@ -274,8 +274,8 @@ class AStockTool(MarketDataToolBase):
 
             for source in sources:
                 if hasattr(source, "get_margin_trading"):
-                    result = await source.get_margin_trading(symbol)
-                    return result
+                    result = await source.get_margin_trading(symbol)  # type: ignore[union-attr]
+                    return dict(result) if result else None  # type: ignore[no-any-return]
 
             return None
 
@@ -303,8 +303,8 @@ class AStockTool(MarketDataToolBase):
 
             for source in sources:
                 if hasattr(source, "get_dividend"):
-                    result = await source.get_dividend(symbol)
-                    return result
+                    result = await source.get_dividend(symbol)  # type: ignore[union-attr]
+                    return list(result) if result else []  # type: ignore[no-any-return]
 
             return []
 

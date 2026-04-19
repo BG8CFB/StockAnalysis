@@ -2,6 +2,7 @@
 核心安全模块
 提供限流、验证码、IP信任管理、图形验证码等安全功能
 """
+
 from .captcha_service import (
     CaptchaService,
     get_captcha_service,

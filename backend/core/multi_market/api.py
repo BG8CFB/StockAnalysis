@@ -12,7 +12,7 @@
 import logging
 import re
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -65,25 +65,28 @@ def _serialize(doc: Optional[dict]) -> Optional[dict]:
     return doc
 
 
-def _stock_info_repo():
+def _stock_info_repo() -> Any:
     from core.market_data.repositories.stock_info import StockInfoRepository
+
     return StockInfoRepository()
 
 
-def _stock_quote_repo():
+def _stock_quote_repo() -> Any:
     from core.market_data.repositories.stock_quotes import StockQuoteRepository
+
     return StockQuoteRepository()
 
 
-def _source_router():
+def _source_router() -> Any:
     from core.market_data.managers.source_router import get_source_router
+
     return get_source_router()
 
 
 def _infer_currency(market: str) -> str:
     for m in MARKET_INFO:
         if m["code"] == market:
-            return m.get("currency", "")
+            return str(m.get("currency", ""))
     return ""
 
 
@@ -93,7 +96,7 @@ def _infer_currency(market: str) -> str:
 @router.get("")
 async def get_supported_markets(
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取支持的市场列表"""
     return {"success": True, "data": {"markets": MARKET_INFO}}
 
@@ -104,7 +107,7 @@ async def search_stocks(
     q: str = Query(..., min_length=1),
     limit: int = Query(20, ge=1, le=100),
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """搜索指定市场的股票"""
     market = market.upper()
     if market not in MARKET_CODES:
@@ -127,13 +130,15 @@ async def search_stocks(
 
     stocks = []
     for r in results:
-        stocks.append({
-            "code": r.get("symbol", ""),
-            "name": r.get("name", ""),
-            "name_en": r.get("name_en"),
-            "market": market,
-            "source": "database",
-        })
+        stocks.append(
+            {
+                "code": r.get("symbol", ""),
+                "name": r.get("name", ""),
+                "name_en": r.get("name_en"),
+                "market": market,
+                "source": "database",
+            }
+        )
 
     return {"success": True, "data": {"stocks": stocks, "total": len(stocks)}}
 
@@ -143,7 +148,7 @@ async def get_stock_info(
     market: str,
     code: str,
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取指定市场的股票详情"""
     market = market.upper()
     if market not in MARKET_CODES:
@@ -153,15 +158,15 @@ async def get_stock_info(
     info = await repo.get_by_symbol(code)
     if info is None:
         # 尝试按 code + market 查询
-        results = await repo.find_many(
-            {"code": code, "market": market, "status": "L"}, limit=1
-        )
+        results = await repo.find_many({"code": code, "market": market, "status": "L"}, limit=1)
         info = results[0] if results else None
 
     if info is None:
         raise HTTPException(status_code=404, detail=f"未找到股票: {code}")
 
     data = _serialize(info)
+    if data is None:
+        raise HTTPException(status_code=404, detail=f"未找到股票: {code}")
     data["currency"] = _infer_currency(market)
 
     return {
@@ -185,7 +190,7 @@ async def get_stock_quote(
     market: str,
     code: str,
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取指定市场的实时行情"""
     market = market.upper()
     if market not in MARKET_CODES:
@@ -198,6 +203,8 @@ async def get_stock_quote(
         raise HTTPException(status_code=404, detail=f"未找到行情: {code}")
 
     data = _serialize(quote)
+    if data is None:
+        raise HTTPException(status_code=404, detail=f"未找到行情: {code}")
     return {
         "success": True,
         "data": {
@@ -223,7 +230,7 @@ async def get_daily_quotes(
     end_date: Optional[str] = Query(None),
     limit: int = Query(120, ge=1, le=1000),
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取指定市场的日K线数据"""
     market = market.upper()
     if market not in MARKET_CODES:
@@ -239,15 +246,17 @@ async def get_daily_quotes(
 
     items = []
     for q in reversed(quotes):
-        items.append({
-            "time": q.get("trade_date", ""),
-            "open": q.get("open"),
-            "high": q.get("high"),
-            "low": q.get("low"),
-            "close": q.get("close"),
-            "volume": q.get("volume"),
-            "amount": q.get("amount"),
-        })
+        items.append(
+            {
+                "time": q.get("trade_date", ""),
+                "open": q.get("open"),
+                "high": q.get("high"),
+                "low": q.get("low"),
+                "close": q.get("close"),
+                "volume": q.get("volume"),
+                "amount": q.get("amount"),
+            }
+        )
 
     return {
         "success": True,

@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 # 官方推荐的 Tool Interceptors
 # =============================================================================
 
+
 async def logging_interceptor(
     request: Any,
     handler: Callable,
@@ -32,14 +33,13 @@ async def logging_interceptor(
     Returns:
         工具调用结果
     """
-    tool_name = getattr(request, 'name', 'unknown')
-    server_name = getattr(request, 'server_name', 'unknown')
-    args = getattr(request, 'args', {})
+    tool_name = getattr(request, "name", "unknown")
+    server_name = getattr(request, "server_name", "unknown")
+    args = getattr(request, "args", {})
 
     start_time = datetime.now()
     logger.info(
-        f"[MCP Interceptor] 调用工具: server={server_name}, tool={tool_name}, "
-        f"args={args}"
+        f"[MCP Interceptor] 调用工具: server={server_name}, tool={tool_name}, " f"args={args}"
     )
 
     try:
@@ -59,7 +59,7 @@ async def logging_interceptor(
         logger.error(
             f"[MCP Interceptor] 工具失败: server={server_name}, tool={tool_name}, "
             f"error={e}, duration={duration:.2f}s",
-            exc_info=True
+            exc_info=True,
         )
         raise
 
@@ -84,7 +84,7 @@ async def retry_interceptor(
     Returns:
         工具调用结果
     """
-    tool_name = getattr(request, 'name', 'unknown')
+    tool_name = getattr(request, "name", "unknown")
     last_error = None
 
     for attempt in range(max_retries):
@@ -94,7 +94,7 @@ async def retry_interceptor(
         except Exception as e:
             last_error = e
             if attempt < max_retries - 1:
-                wait_time = delay * (backoff_factor ** attempt)
+                wait_time = delay * (backoff_factor**attempt)
                 logger.warning(
                     f"[MCP Interceptor] 工具调用失败，{wait_time}s 后重试: "
                     f"tool={tool_name}, attempt={attempt + 1}/{max_retries}, "
@@ -107,7 +107,7 @@ async def retry_interceptor(
                     f"tool={tool_name}, max_retries={max_retries}"
                 )
 
-    raise last_error
+    raise last_error  # type: ignore[misc]
 
 
 async def inject_user_context_interceptor(
@@ -129,19 +129,19 @@ async def inject_user_context_interceptor(
         工具调用结果
     """
     # 注入 user_id 到工具参数
-    if user_id and hasattr(request, 'args'):
-        args = getattr(request, 'args', {})
+    if user_id and hasattr(request, "args"):
+        args = getattr(request, "args", {})
         if args is None:
-            setattr(request, 'args', {})
-            args = getattr(request, 'args')
-        args['user_id'] = user_id
+            setattr(request, "args", {})
+            args = getattr(request, "args")
+        args["user_id"] = user_id
 
     # 注入额外上下文
-    if user_context and hasattr(request, 'args'):
-        args = getattr(request, 'args', {})
+    if user_context and hasattr(request, "args"):
+        args = getattr(request, "args", {})
         if args is None:
-            setattr(request, 'args', {})
-            args = getattr(request, 'args')
+            setattr(request, "args", {})
+            args = getattr(request, "args")
         args.update(user_context)
 
     logger.debug(
@@ -171,18 +171,14 @@ async def timeout_interceptor(
     Raises:
         asyncio.TimeoutError: 工具调用超时
     """
-    tool_name = getattr(request, 'name', 'unknown')
+    tool_name = getattr(request, "name", "unknown")
 
     try:
         return await asyncio.wait_for(handler(request), timeout=timeout)
 
     except asyncio.TimeoutError:
-        logger.error(
-            f"[MCP Interceptor] 工具调用超时: tool={tool_name}, timeout={timeout}s"
-        )
-        raise asyncio.TimeoutError(
-            f"工具 {tool_name} 调用超时（{timeout}s）"
-        )
+        logger.error(f"[MCP Interceptor] 工具调用超时: tool={tool_name}, timeout={timeout}s")
+        raise asyncio.TimeoutError(f"工具 {tool_name} 调用超时（{timeout}s）")
 
 
 async def require_authentication_interceptor(
@@ -206,17 +202,13 @@ async def require_authentication_interceptor(
     Raises:
         PermissionError: 未认证用户尝试调用敏感工具
     """
-    tool_name = getattr(request, 'name', 'unknown')
+    tool_name = getattr(request, "name", "unknown")
     sensitive_tools = sensitive_tools or []
 
     # 检查是否为敏感工具
     if tool_name in sensitive_tools and not user_id:
-        logger.warning(
-            f"[MCP Interceptor] 未认证用户尝试调用敏感工具: tool={tool_name}"
-        )
-        raise PermissionError(
-            f"工具 {tool_name} 需要用户认证才能调用"
-        )
+        logger.warning(f"[MCP Interceptor] 未认证用户尝试调用敏感工具: tool={tool_name}")
+        raise PermissionError(f"工具 {tool_name} 需要用户认证才能调用")
 
     return await handler(request)
 
@@ -242,11 +234,10 @@ async def fallback_interceptor(
     try:
         return await handler(request)
 
-    except tuple(fallback_on_errors or [Exception]) as e:
-        tool_name = getattr(request, 'name', 'unknown')
+    except tuple(fallback_on_errors or [Exception]) as e:  # type: ignore[misc]
+        tool_name = getattr(request, "name", "unknown")
         logger.warning(
-            f"[MCP Interceptor] 工具调用失败，返回降级结果: "
-            f"tool={tool_name}, error={e}"
+            f"[MCP Interceptor] 工具调用失败，返回降级结果: " f"tool={tool_name}, error={e}"
         )
         return fallback_result
 
@@ -254,6 +245,7 @@ async def fallback_interceptor(
 # =============================================================================
 # Interceptor 构建器（官方标准）
 # =============================================================================
+
 
 class InterceptorBuilder:
     """
@@ -269,9 +261,9 @@ class InterceptorBuilder:
         ```
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化构建器"""
-        self._interceptors: List[Callable] = []
+        self._interceptors: List[Callable[..., Any]] = []
 
     def add_logging(self) -> "InterceptorBuilder":
         """添加日志拦截器"""
@@ -292,7 +284,8 @@ class InterceptorBuilder:
             delay: 初始重试延迟（秒）
             backoff_factor: 退避因子
         """
-        async def retry_with_config(request, handler):
+
+        async def retry_with_config(request: Any, handler: Callable[..., Any]) -> Any:
             return await retry_interceptor(
                 request,
                 handler,
@@ -316,7 +309,8 @@ class InterceptorBuilder:
             user_id: 用户 ID
             user_context: 额外上下文
         """
-        async def inject_with_config(request, handler):
+
+        async def inject_with_config(request: Any, handler: Callable[..., Any]) -> Any:
             return await inject_user_context_interceptor(
                 request,
                 handler,
@@ -334,7 +328,8 @@ class InterceptorBuilder:
         Args:
             timeout: 超时时间（秒）
         """
-        async def timeout_with_config(request, handler):
+
+        async def timeout_with_config(request: Any, handler: Callable[..., Any]) -> Any:
             return await timeout_interceptor(request, handler, timeout=timeout)
 
         self._interceptors.append(timeout_with_config)
@@ -352,7 +347,8 @@ class InterceptorBuilder:
             sensitive_tools: 需要认证的工具列表
             user_id: 当前用户 ID
         """
-        async def auth_check_with_config(request, handler):
+
+        async def auth_check_with_config(request: Any, handler: Callable[..., Any]) -> Any:
             return await require_authentication_interceptor(
                 request,
                 handler,
@@ -375,7 +371,8 @@ class InterceptorBuilder:
             fallback_result: 降级结果
             fallback_on_errors: 触发降级的异常类型
         """
-        async def fallback_with_config(request, handler):
+
+        async def fallback_with_config(request: Any, handler: Callable[..., Any]) -> Any:
             return await fallback_interceptor(
                 request,
                 handler,
@@ -412,6 +409,7 @@ class InterceptorBuilder:
 # =============================================================================
 # 预定义的 Interceptor 组合（官方推荐配置）
 # =============================================================================
+
 
 def get_default_interceptors() -> List[Callable]:
     """

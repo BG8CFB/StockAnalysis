@@ -8,12 +8,9 @@ LangChain 回调处理器 - 用于推送工具调用事件到前端
 """
 import logging
 from typing import Any, Dict
-from datetime import datetime, timezone
+from uuid import UUID
 
-try:
-    from langchain_core.callbacks.base import AsyncCallbackHandler
-except ImportError:
-    from langchain.callbacks.base import BaseCallbackHandler as AsyncCallbackHandler
+from langchain_core.callbacks.base import AsyncCallbackHandler
 
 logger = logging.getLogger(__name__)
 
@@ -54,10 +51,7 @@ class WebSocketCallbackHandler(AsyncCallbackHandler):
         self._loop_detector = get_loop_detector()
 
     async def on_tool_start(
-        self,
-        serialized: Dict[str, Any],
-        input_str: str,
-        **kwargs: Any
+        self, serialized: Dict[str, Any], input_str: str, **kwargs: Any
     ) -> None:
         """
         工具开始调用时触发
@@ -78,13 +72,13 @@ class WebSocketCallbackHandler(AsyncCallbackHandler):
                 tool_input=input_str,
             )
             if result.is_loop:
-                logger.warning(
-                    f"[WebSocketCallback] 工具循环 detected: {result.message}"
-                )
+                logger.warning(f"[WebSocketCallback] 工具循环 detected: {result.message}")
                 # 推送 tool_disabled 事件
                 if self.websocket_manager:
                     try:
-                        from modules.trading_agents.workflow.events import create_tool_disabled_event
+                        from modules.trading_agents.workflow.events import (
+                            create_tool_disabled_event,
+                        )
 
                         event = create_tool_disabled_event(
                             task_id=self.task_id,
@@ -134,22 +128,18 @@ class WebSocketCallbackHandler(AsyncCallbackHandler):
                 # 延迟导入避免循环依赖
                 from modules.trading_agents.workflow.events import create_tool_called_event
 
-                event = create_tool_called_event(
+                called_event = create_tool_called_event(
                     task_id=self.task_id,
                     agent_slug=self.agent_slug,
                     tool_name=tool_name,
                     tool_input=input_str,
                     agent_name=self.agent_name,
                 )
-                await self.websocket_manager.broadcast_event(self.task_id, event)
+                await self.websocket_manager.broadcast_event(self.task_id, called_event)
             except Exception as e:
                 logger.error(f"推送 tool_called 事件失败: {e}")
 
-    async def on_tool_end(
-        self,
-        output: str,
-        **kwargs: Any
-    ) -> None:
+    async def on_tool_end(self, output: str, **kwargs: Any) -> None:
         """
         工具执行完成时触发
 
@@ -186,7 +176,7 @@ class WebSocketCallbackHandler(AsyncCallbackHandler):
                     agent_slug=self.agent_slug,
                     tool_name=tool_name,
                     success=success,
-                    output=output or ""
+                    output=output or "",
                 )
                 await self.websocket_manager.broadcast_event(self.task_id, event)
             except Exception as e:
@@ -194,14 +184,19 @@ class WebSocketCallbackHandler(AsyncCallbackHandler):
 
     async def on_tool_error(
         self,
-        error: Exception,
-        **kwargs: Any
+        error: BaseException,
+        *,
+        run_id: UUID,
+        parent_run_id: UUID | None = None,
+        **kwargs: Any,
     ) -> None:
         """
         工具执行出错时触发
 
         Args:
             error: 错误信息
+            run_id: 运行 ID
+            parent_run_id: 父运行 ID
         """
         # 尝试从 kwargs 获取工具名称
         tool_name = "unknown"
@@ -230,7 +225,7 @@ class WebSocketCallbackHandler(AsyncCallbackHandler):
                     agent_slug=self.agent_slug,
                     tool_name=tool_name,
                     success=False,
-                    output=error_str
+                    output=error_str,
                 )
                 await self.websocket_manager.broadcast_event(self.task_id, event)
             except Exception as e:

@@ -6,8 +6,9 @@ Yahoo Finance 港股数据源适配器
 """
 
 import logging
-from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
+
 import pandas as pd
 
 try:
@@ -16,16 +17,16 @@ except ImportError:
     yf = None
     logging.warning("yfinance not installed. Install with: pip install yfinance")
 
-from core.market_data.sources.base import DataSourceAdapter
 from core.market_data.models import (
-    StockInfo,
-    StockQuote,
-    StockKLine,
+    MarketType,
+    StockCompany,
     StockFinancial,
     StockFinancialIndicator,
-    StockCompany,
-    MarketType,
+    StockInfo,
+    StockKLine,
+    StockQuote,
 )
+from core.market_data.sources.base import DataSourceAdapter
 from core.market_data.tools.field_mapper import FieldMapper
 
 logger = logging.getLogger(__name__)
@@ -85,7 +86,7 @@ class YahooHKFieldMapper(FieldMapper):
         }
 
     @staticmethod
-    def map_financial_income(ticker: Any, symbol: str) -> Dict[str, Any]:
+    def map_financial_income(ticker: Any, symbol: str) -> List[Dict[str, Any]]:
         """
         映射 Yahoo Finance 港股利润表数据
 
@@ -108,24 +109,28 @@ class YahooHKFieldMapper(FieldMapper):
                     report_date = FieldMapper.normalize_date(date_str)
 
                     income_statement = {
-                        "total_revenue": FieldMapper.safe_float(
-                            financials.loc["Total Revenue", date]
-                        )
-                        if "Total Revenue" in financials.index
-                        else None,
-                        "revenue": FieldMapper.safe_float(financials.loc["Total Revenue", date])
-                        if "Total Revenue" in financials.index
-                        else None,
+                        "total_revenue": (
+                            FieldMapper.safe_float(financials.loc["Total Revenue", date])
+                            if "Total Revenue" in financials.index
+                            else None
+                        ),
+                        "revenue": (
+                            FieldMapper.safe_float(financials.loc["Total Revenue", date])
+                            if "Total Revenue" in financials.index
+                            else None
+                        ),
                         "operating_cost": None,
-                        "net_income": FieldMapper.safe_float(financials.loc["Net Income", date])
-                        if "Net Income" in financials.index
-                        else None,
+                        "net_income": (
+                            FieldMapper.safe_float(financials.loc["Net Income", date])
+                            if "Net Income" in financials.index
+                            else None
+                        ),
                         "basic_eps": None,
-                        "operating_profit": FieldMapper.safe_float(
-                            financials.loc["Operating Income", date]
-                        )
-                        if "Operating Income" in financials.index
-                        else None,
+                        "operating_profit": (
+                            FieldMapper.safe_float(financials.loc["Operating Income", date])
+                            if "Operating Income" in financials.index
+                            else None
+                        ),
                     }
 
                     results.append(

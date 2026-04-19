@@ -10,8 +10,7 @@ TradingAgents 用户设置服务
 
 import logging
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any
-from bson import ObjectId
+from typing import Any, Optional
 
 from core.db.mongodb import mongodb
 from modules.trading_agents.schemas import (
@@ -27,11 +26,11 @@ class TradingAgentsSettingsService:
 
     COLLECTION_NAME = "trading_agents_settings"
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化服务"""
         self._db = None
 
-    def _get_collection(self):
+    def _get_collection(self) -> Any:
         """获取数据库集合"""
         return mongodb.get_collection(self.COLLECTION_NAME)
 
@@ -84,7 +83,40 @@ class TradingAgentsSettingsService:
         await collection.update_one(
             {"user_id": user_id},
             {"$set": update_data, "$setOnInsert": {"created_at": datetime.now(timezone.utc)}},
-            upsert=True
+            upsert=True,
+        )
+
+        logger.info(f"更新用户设置: user_id={user_id}")
+
+        # 返回更新后的设置
+        result = await self.get_user_settings(user_id)
+        if result is None:
+            raise RuntimeError(f"Failed to retrieve settings after update for user {user_id}")
+        return result
+        """
+        更新用户设置
+
+        Args:
+            user_id: 用户 ID
+            settings: 设置数据
+
+        Returns:
+            更新后的设置
+        """
+        collection = self._get_collection()
+
+        # 构建更新数据
+        update_data = {
+            "user_id": user_id,
+            "settings": settings.model_dump(),
+            "updated_at": datetime.now(timezone.utc),
+        }
+
+        # 使用 upsert：如果不存在则创建，存在则更新
+        await collection.update_one(
+            {"user_id": user_id},
+            {"$set": update_data, "$setOnInsert": {"created_at": datetime.now(timezone.utc)}},
+            upsert=True,
         )
 
         logger.info(f"更新用户设置: user_id={user_id}")
@@ -112,7 +144,7 @@ class TradingAgentsSettingsService:
 
         return False
 
-    async def ensure_index(self):
+    async def ensure_index(self) -> None:
         """确保索引存在"""
         collection = self._get_collection()
 

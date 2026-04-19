@@ -8,14 +8,8 @@
 
 import logging
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Set
-
-from modules.trading_agents.workflow.events import (
-    EventType,
-    TaskEvent,
-    create_tool_disabled_event,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -70,9 +64,7 @@ class ToolLoopDetector:
         # {task_id: [ToolCallRecord, ...]}
         self._call_history: Dict[str, List[ToolCallRecord]] = defaultdict(list)
         # {task_id: {tool_name: set(agent_slug)}}
-        self._disabled_tools: Dict[str, Dict[str, Set[str]]] = defaultdict(
-            lambda: defaultdict(set)
-        )
+        self._disabled_tools: Dict[str, Dict[str, Set[str]]] = defaultdict(lambda: defaultdict(set))
 
     def record_call(
         self,
@@ -105,9 +97,7 @@ class ToolLoopDetector:
         history.append(record)
 
         # 检测该任务中同一工具的连续重复调用
-        consecutive_count = self._count_consecutive_calls(
-            history, tool_name, tool_input
-        )
+        consecutive_count = self._count_consecutive_calls(history, tool_name, tool_input)
 
         # 如果已连续调用达到阈值，判定为循环
         if consecutive_count >= self.threshold:

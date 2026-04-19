@@ -372,15 +372,15 @@ export default function DataSourceStatusPage() {
         </div>
 
         {/* 统计卡片 */}
-        <Row gutter={16} style={{ marginTop: 16 }}>
-          <Col span={4}>
+        <Row gutter={[16, 12]} style={{ marginTop: 16 }}>
+          <Col xs={12} sm={8} md={4}>
             <Statistic
               title="总计"
               value={stats.total}
               prefix={<DatabaseOutlined />}
             />
           </Col>
-          <Col span={5}>
+          <Col xs={12} sm={8} md={5}>
             <Statistic
               title="健康"
               value={stats.healthy}
@@ -388,7 +388,7 @@ export default function DataSourceStatusPage() {
               prefix={<CheckCircleOutlined />}
             />
           </Col>
-          <Col span={5}>
+          <Col xs={12} sm={8} md={5}>
             <Statistic
               title="降级"
               value={stats.degraded}
@@ -396,7 +396,7 @@ export default function DataSourceStatusPage() {
               prefix={<WarningOutlined />}
             />
           </Col>
-          <Col span={5}>
+          <Col xs={12} sm={8} md={5}>
             <Statistic
               title="异常"
               value={stats.unhealthy}
@@ -404,7 +404,7 @@ export default function DataSourceStatusPage() {
               prefix={<CloseCircleOutlined />}
             />
           </Col>
-          <Col span={5}>
+          <Col xs={12} sm={8} md={5}>
             <Statistic
               title="未知"
               value={stats.unknown}

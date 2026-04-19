@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 import secrets
-from typing import Optional
+from typing import Any, Optional
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -58,7 +58,7 @@ router = APIRouter(prefix="/trading-agents/tasks", tags=["TradingAgents - 任务
 async def create_tasks(
     request: UnifiedTaskCreate,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> UnifiedTaskResponse:
     """
     统一任务创建接口（支持单股和批量分析）
 
@@ -79,9 +79,7 @@ async def create_tasks(
     stock_count = len(stock_codes)
 
     user_id_str = str(current_user.id) if current_user.id is not None else "None"
-    logger.info(
-        f"创建任务请求: user_id={user_id_str}, stock_count={stock_count}"
-    )
+    logger.info(f"创建任务请求: user_id={user_id_str}, stock_count={stock_count}")
 
     # 配额检查：一次性检查 stock_count 个任务的配额，防止循环检查时的竞争绕过
     allowed, error_msg = await settings_service.check_task_quota_batch(user_id_str, stock_count)
@@ -89,7 +87,7 @@ async def create_tasks(
         raise HTTPException(status_code=429, detail=f"配额不足: {error_msg}")
 
     # 获取用户配置
-    config = {}
+    config: dict[str, Any] = {}
 
     # 根据股票数量判断是单股还是批量
     is_single = stock_count == 1
@@ -169,7 +167,7 @@ async def create_tasks(
 @router.get("/status-counts")
 async def get_task_status_counts(
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> dict[str, Any]:
     """
     获取用户任务状态统计
 
@@ -187,14 +185,10 @@ async def get_task_status_counts(
     # 并行查询各状态数量
     from asyncio import gather
 
-    async def count_status(status_value):
-        return (
-            await task_manager.count_tasks(
-                user_id=user_id,
-                status=status_value,
-            )
-            if status_value
-            else 0
+    async def count_status(status_value: TaskStatusEnum) -> int:
+        return await task_manager.count_tasks(
+            user_id=user_id,
+            status=status_value,
         )
 
     # 并行获取各状态数量
@@ -241,7 +235,7 @@ async def list_tasks(
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> dict[str, Any]:
     """
     列出用户的分析任务（增强版）
 
@@ -290,7 +284,7 @@ async def list_tasks(
 async def get_task(
     task_id: str,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> AnalysisTaskResponse:
     """
     获取任务详情
 
@@ -338,7 +332,7 @@ STREAM_TICKET_TTL = 90
 async def create_stream_ticket(
     task_id: str,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> dict[str, Any]:
     """
     获取 SSE/WebSocket 短期认证 ticket。
 
@@ -367,7 +361,7 @@ async def stream_task(
     token: Optional[str] = Query(None, description="访问令牌（用于 SSE 连接认证）"),
     ticket: Optional[str] = Query(None, description="短期 ticket，优先于 token 使用"),
     current_user: UserModel = Depends(get_current_user_from_query),
-):
+) -> StreamingResponse:
     """
     SSE 流式输出任务报告
 
@@ -387,7 +381,7 @@ async def stream_task(
         if task_info["user_id"] != str(current_user.id):
             raise HTTPException(status_code=403, detail="无权访问此任务")
 
-        async def event_stream():
+        async def event_stream() -> Any:
             """
             SSE 事件流生成器
 
@@ -406,12 +400,20 @@ async def stream_task(
                             chunk_size = 100
                             for i in range(0, len(final_report), chunk_size):
                                 chunk = final_report[i : i + chunk_size]
-                                yield f"data: {json.dumps({'type': 'report_chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
-                            yield f"data: {json.dumps({'type': 'report_complete'}, ensure_ascii=False)}\n\n"
+                                chunk_json = json.dumps(
+                                    {"type": "report_chunk", "content": chunk},
+                                    ensure_ascii=False,
+                                )
+                                yield f"data: {chunk_json}\n\n"
+                            complete_json = json.dumps(
+                                {"type": "report_complete"}, ensure_ascii=False
+                            )
+                            yield f"data: {complete_json}\n\n"
                             break
                         else:
                             # 没有报告，结束流
-                            yield f"data: {json.dumps({'type': 'no_report'}, ensure_ascii=False)}\n\n"
+                            no_report_json = json.dumps({"type": "no_report"}, ensure_ascii=False)
+                            yield f"data: {no_report_json}\n\n"
                             break
 
                     # 如果任务失败或取消
@@ -421,12 +423,20 @@ async def stream_task(
                         "stopped",
                         "expired",
                     ]:
-                        yield f"data: {json.dumps({'type': 'task_ended', 'status': current_state.get('status')}, ensure_ascii=False)}\n\n"
+                        task_ended_json = json.dumps(
+                            {"type": "task_ended", "status": current_state.get("status")},
+                            ensure_ascii=False,
+                        )
+                        yield f"data: {task_ended_json}\n\n"
                         break
 
                     # 如果任务仍在进行，发送心跳
                     else:
-                        yield f"data: {json.dumps({'type': 'heartbeat', 'status': current_state.get('status')}, ensure_ascii=False)}\n\n"
+                        heartbeat_json = json.dumps(
+                            {"type": "heartbeat", "status": current_state.get("status")},
+                            ensure_ascii=False,
+                        )
+                        yield f"data: {heartbeat_json}\n\n"
                         # 根据任务状态动态调整轮询间隔
                         if current_state.get("status") == "running":
                             await asyncio.sleep(0.5)  # 进行中时轮询更快
@@ -435,7 +445,10 @@ async def stream_task(
 
                 except Exception as e:
                     logger.error(f"SSE 流式输出错误: task_id={task_id}, error={e}")
-                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+                    error_json = json.dumps(
+                        {"type": "error", "message": str(e)}, ensure_ascii=False
+                    )
+                    yield f"data: {error_json}\n\n"
                     break
 
         return StreamingResponse(
@@ -458,7 +471,7 @@ async def stream_task(
 async def get_task_queue_position(
     task_id: str,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> dict[str, Any]:
     """
     获取任务在队列中的位置
 
@@ -513,7 +526,7 @@ async def get_task_queue_position(
 async def cancel_task(
     task_id: str,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> MessageResponse:
     """
     取消/停止任务（统一接口）
 
@@ -557,7 +570,7 @@ async def cancel_task(
 async def retry_task(
     task_id: str,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> AnalysisTaskResponse:
     """
     重试失败的任务
 
@@ -645,7 +658,7 @@ async def clear_tasks_by_status(
     ),
     delete_reports: bool = Query(False, description="是否同时删除关联报告"),
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> MessageResponse:
     """
     批量清空指定状态的所有任务
 
@@ -674,7 +687,10 @@ async def clear_tasks_by_status(
     if invalid_statuses:
         raise HTTPException(
             status_code=400,
-            detail=f"不允许清空以下状态: {', '.join(invalid_statuses)}. 仅允许清空失败、已取消、已终止状态的任务",
+            detail=(
+                f"不允许清空以下状态: {', '.join(invalid_statuses)}."
+                " 仅允许清空失败、已取消、已终止状态的任务"
+            ),
         )
 
     user_id = str(current_user.id)
@@ -732,7 +748,7 @@ class BatchDeleteRequest(BaseModel):
 async def batch_delete_tasks(
     request: BatchDeleteRequest,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> dict[str, Any]:
     """
     批量删除指定的任务
 
@@ -763,7 +779,11 @@ async def batch_delete_tasks(
 
     logger.info(
         f"用户 {user_id} 批量删除任务",
-        {"task_ids_count": len(request.task_ids), "batch_id": request.batch_id, "delete_reports": request.delete_reports},
+        {
+            "task_ids_count": len(request.task_ids),
+            "batch_id": request.batch_id,
+            "delete_reports": request.delete_reports,
+        },
     )
 
     # ================================================================
@@ -782,7 +802,11 @@ async def batch_delete_tasks(
             invalid_ids = input_task_ids - valid_task_ids
             raise HTTPException(
                 status_code=400,
-                detail=f"以下任务不属于批量 {request.batch_id}: {list(invalid_ids)[:10]}{'...' if len(invalid_ids) > 10 else ''}"
+                detail=(
+                    f"以下任务不属于批量 {request.batch_id}:"
+                    f" {list(invalid_ids)[:10]}"
+                    f"{'...' if len(invalid_ids) > 10 else ''}"
+                ),
             )
 
     # 逐个验证和删除任务
@@ -868,7 +892,7 @@ async def delete_task(
     task_id: str,
     delete_reports: bool = Query(False, description="是否同时删除关联报告"),
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> MessageResponse:
     """
     删除单个任务
 
@@ -944,7 +968,7 @@ def filter_sensitive_prompts(config: UserAgentConfigResponse) -> UserAgentConfig
         Phase4ConfigSlim,
     )
 
-    def filter_agent(agent):
+    def filter_agent(agent: Any) -> Any:
         """过滤单个智能体的提示词"""
         return AgentConfigSlim(
             slug=agent.slug,
@@ -955,7 +979,7 @@ def filter_sensitive_prompts(config: UserAgentConfigResponse) -> UserAgentConfig
             enabled=agent.enabled,
         )
 
-    def filter_phase(phase, slim_class):
+    def filter_phase(phase: Any, slim_class: type) -> Any:
         """过滤阶段配置的提示词"""
         return slim_class(
             enabled=phase.enabled,
@@ -989,7 +1013,7 @@ async def get_agent_config(
         description="是否包含提示词（仅管理员可用）。普通用户将自动排除提示词以保护业务逻辑。",
     ),
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> UserAgentConfigResponse:
     """
     获取用户智能体配置
 
@@ -1022,7 +1046,7 @@ async def get_agent_config(
 async def update_agent_config(
     request: UserAgentConfigUpdate,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> UserAgentConfigResponse:
     """
     更新用户智能体配置
 
@@ -1045,7 +1069,7 @@ async def update_agent_config(
 @config_router.post("/reset", response_model=UserAgentConfigResponse)
 async def reset_agent_config(
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> UserAgentConfigResponse:
     """
     重置为默认智能体配置
 
@@ -1058,13 +1082,16 @@ async def reset_agent_config(
         重置后的配置
     """
     service = get_agent_config_service()
-    return await service.reset_to_public_config(str(current_user.id))
+    result = await service.reset_to_public_config(str(current_user.id))
+    if not result:
+        raise HTTPException(status_code=404, detail="重置配置失败")
+    return result
 
 
 @config_router.post("/export")
 async def export_agent_config(
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> dict[str, Any]:
     """
     导出智能体配置
 
@@ -1085,9 +1112,9 @@ async def export_agent_config(
 
 @config_router.post("/import", response_model=UserAgentConfigResponse)
 async def import_agent_config(
-    config_data: dict,
+    config_data: dict[str, Any],
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> UserAgentConfigResponse:
     """
     导入智能体配置
 
@@ -1116,7 +1143,7 @@ async def import_agent_config(
 async def get_public_config(
     include_prompts: bool = Query(False, description="是否包含提示词。仅管理员可获取完整配置。"),
     current_admin: UserModel = Depends(get_current_admin_user),
-):
+) -> UserAgentConfigResponse:
     """
     获取公共智能体配置（模板）
 
@@ -1146,7 +1173,7 @@ async def get_public_config(
 async def update_public_config(
     request: UserAgentConfigUpdate,
     current_admin: UserModel = Depends(get_current_admin_user),
-):
+) -> UserAgentConfigResponse:
     """
     更新公共智能体配置（模板）
 
@@ -1178,7 +1205,7 @@ async def get_agent_thinking(
     task_id: str,
     agent_slug: str,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> str:
     """
     获取智能体思考过程
 
@@ -1212,6 +1239,9 @@ async def get_agent_thinking(
 
     # 如果没有找到思考过程，返回默认内容
     if not agent_thinking:
-        agent_thinking = f"# 智能体思考过程\n\n## {agent_slug}\n\n思考过程未记录。\n\n请确保智能体配置中启用了思考过程记录功能。"
+        agent_thinking = (
+            f"# 智能体思考过程\n\n## {agent_slug}\n\n"
+            "思考过程未记录。\n\n请确保智能体配置中启用了思考过程记录功能。"
+        )
 
     return agent_thinking

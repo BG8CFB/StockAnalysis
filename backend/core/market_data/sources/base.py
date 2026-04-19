@@ -5,15 +5,15 @@
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Optional, Dict, Any, Callable
 from datetime import datetime
+from typing import Any, Callable, Dict, List, Optional
 
 from core.market_data.models import (
-    StockInfo,
-    StockQuote,
+    MarketType,
     StockFinancial,
     StockFinancialIndicator,
-    MarketType,
+    StockInfo,
+    StockQuote,
 )
 
 
@@ -34,7 +34,7 @@ class DataSourceAdapter(ABC):
         self.config = config or {}
         self.source_name = self.__class__.__name__
         self.is_available = True  # 数据源是否可用
-        self.last_check_time = None  # 最后检查时间
+        self.last_check_time: Optional[datetime] = None  # 最后检查时间
         self.failure_count = 0  # 连续失败次数
         self._priority = 100  # 默认优先级（数字越小优先级越高）
 
@@ -49,11 +49,7 @@ class DataSourceAdapter(ABC):
         pass
 
     @abstractmethod
-    async def get_stock_list(
-        self,
-        market: MarketType,
-        status: str = "L"
-    ) -> List[StockInfo]:
+    async def get_stock_list(self, market: MarketType, status: str = "L") -> List[StockInfo]:
         """
         获取股票列表
 
@@ -72,7 +68,7 @@ class DataSourceAdapter(ABC):
         symbol: str,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-        adjust_type: Optional[str] = None
+        adjust_type: Optional[str] = None,
     ) -> List[StockQuote]:
         """
         获取日线行情
@@ -90,10 +86,7 @@ class DataSourceAdapter(ABC):
 
     @abstractmethod
     async def get_stock_financials(
-        self,
-        symbol: str,
-        report_date: Optional[str] = None,
-        report_type: Optional[str] = None
+        self, symbol: str, report_date: Optional[str] = None, report_type: Optional[str] = None
     ) -> List[StockFinancial]:
         """
         获取财务报表
@@ -110,9 +103,7 @@ class DataSourceAdapter(ABC):
 
     @abstractmethod
     async def get_financial_indicators(
-        self,
-        symbol: str,
-        report_date: Optional[str] = None
+        self, symbol: str, report_date: Optional[str] = None
     ) -> List[StockFinancialIndicator]:
         """
         获取财务指标
@@ -215,12 +206,7 @@ class DataSourceAdapter(ABC):
     # ==================== 监控相关方法 ====================
 
     async def _call_with_monitoring(
-        self,
-        func: Callable,
-        market: str,
-        data_type: str,
-        *args,
-        **kwargs
+        self, func: Callable[..., Any], market: str, data_type: str, *args: Any, **kwargs: Any
     ) -> Any:
         """
         执行带监控的API调用
@@ -267,16 +253,16 @@ class DataSourceAdapter(ABC):
         """
         class_name = self.__class__.__name__.lower()
 
-        if 'tushare' in class_name:
-            return 'tushare'
-        elif 'akshare' in class_name:
-            return 'akshare'
-        elif 'yahoo' in class_name:
+        if "tushare" in class_name:
+            return "tushare"
+        elif "akshare" in class_name:
+            return "akshare"
+        elif "yahoo" in class_name:
             # 区分Yahoo US和Yahoo HK
-            if 'hk' in class_name:
-                return 'yahoo'
-            return 'yahoo'
-        elif 'alpha' in class_name or 'vantage' in class_name:
-            return 'alpha_vantage'
+            if "hk" in class_name:
+                return "yahoo"
+            return "yahoo"
+        elif "alpha" in class_name or "vantage" in class_name:
+            return "alpha_vantage"
         else:
-            return 'unknown'
+            return "unknown"

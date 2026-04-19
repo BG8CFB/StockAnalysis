@@ -6,22 +6,20 @@
 
 import json
 from datetime import datetime
-from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from typing import Any, Dict
+
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 
-from core.auth.dependencies import get_current_user, get_current_active_user
-from core.auth.rbac import Role, require_role
-from core.user.models import UserModel
+from core.auth.dependencies import get_current_active_user
 from core.settings.models.user import (
     CoreSettingsUpdate,
     NotificationSettingsUpdate,
-    TradingAgentsSettingsUpdate,
-    UserSettingsResponse,
-    SettingsExport,
     SettingsImport,
+    UserSettingsResponse,
 )
 from core.settings.services.user_service import get_user_settings_service
+from core.user.models import UserModel
 
 router = APIRouter(prefix="/settings", tags=["User Settings"])
 
@@ -29,10 +27,11 @@ router = APIRouter(prefix="/settings", tags=["User Settings"])
 # 核心设置
 # =============================================================================
 
+
 @router.get("/core", response_model=UserSettingsResponse)
 async def get_core_settings(
-    current_user: UserModel = Depends(get_current_active_user)
-):
+    current_user: UserModel = Depends(get_current_active_user),
+) -> UserSettingsResponse:
     """获取用户核心设置"""
     service = get_user_settings_service()
     settings = await service.get_user_settings(str(current_user.id))
@@ -43,9 +42,8 @@ async def get_core_settings(
 
 @router.put("/core", response_model=UserSettingsResponse)
 async def update_core_settings(
-    request: CoreSettingsUpdate,
-    current_user: UserModel = Depends(get_current_active_user)
-):
+    request: CoreSettingsUpdate, current_user: UserModel = Depends(get_current_active_user)
+) -> UserSettingsResponse:
     """更新用户核心设置"""
     service = get_user_settings_service()
     settings = await service.update_core_settings(str(current_user.id), request)
@@ -58,10 +56,11 @@ async def update_core_settings(
 # 通知设置
 # =============================================================================
 
+
 @router.get("/notifications", response_model=UserSettingsResponse)
 async def get_notification_settings(
-    current_user: UserModel = Depends(get_current_active_user)
-):
+    current_user: UserModel = Depends(get_current_active_user),
+) -> UserSettingsResponse:
     """获取用户通知设置"""
     service = get_user_settings_service()
     settings = await service.get_user_settings(str(current_user.id))
@@ -72,9 +71,8 @@ async def get_notification_settings(
 
 @router.put("/notifications", response_model=UserSettingsResponse)
 async def update_notification_settings(
-    request: NotificationSettingsUpdate,
-    current_user: UserModel = Depends(get_current_active_user)
-):
+    request: NotificationSettingsUpdate, current_user: UserModel = Depends(get_current_active_user)
+) -> UserSettingsResponse:
     """更新用户通知设置"""
     service = get_user_settings_service()
     settings = await service.update_notification_settings(str(current_user.id), request)
@@ -87,10 +85,11 @@ async def update_notification_settings(
 # TradingAgents 设置（全局配置，所有用户共享）
 # =============================================================================
 
+
 @router.get("/trading-agents")
 async def get_trading_agents_settings(
-    current_user: UserModel = Depends(get_current_active_user)
-):
+    current_user: UserModel = Depends(get_current_active_user),
+) -> Dict[str, Any]:
     """
     获取 TradingAgents 全局配置
 
@@ -102,14 +101,16 @@ async def get_trading_agents_settings(
     settings = await get_global_settings()
     return settings
 
+
 # =============================================================================
 # 配额信息
 # =============================================================================
 
+
 @router.get("/quota")
 async def get_quota_info(
-    current_user: UserModel = Depends(get_current_active_user)
-):
+    current_user: UserModel = Depends(get_current_active_user),
+) -> Dict[str, Any]:
     """获取用户配额信息"""
     service = get_user_settings_service()
     quota = await service.get_quota_info(str(current_user.id))
@@ -122,10 +123,11 @@ async def get_quota_info(
 # 配置导入导出
 # =============================================================================
 
+
 @router.get("/export")
 async def export_settings(
-    current_user: UserModel = Depends(get_current_active_user)
-):
+    current_user: UserModel = Depends(get_current_active_user),
+) -> JSONResponse:
     """
     导出用户配置
 
@@ -137,14 +139,16 @@ async def export_settings(
 
         # 返回 JSON 文件下载
         json_data = export_data.model_dump_json(indent=2)
-        filename = f"settings_{current_user.username}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        filename = (
+            f"settings_{current_user.username}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        )
 
         return JSONResponse(
             content=json.loads(json_data),
             headers={
                 "Content-Disposition": f'attachment; filename="{filename}"',
                 "Content-Type": "application/json",
-            }
+            },
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -152,9 +156,8 @@ async def export_settings(
 
 @router.post("/import")
 async def import_settings(
-    import_data: SettingsImport,
-    current_user: UserModel = Depends(get_current_active_user)
-):
+    import_data: SettingsImport, current_user: UserModel = Depends(get_current_active_user)
+) -> Dict[str, Any]:
     """
     导入用户配置
 
@@ -165,11 +168,7 @@ async def import_settings(
     service = get_user_settings_service()
     try:
         settings = await service.import_settings(str(current_user.id), import_data)
-        return {
-            "success": True,
-            "message": "配置导入成功",
-            "settings": settings.model_dump()
-        }
+        return {"success": True, "message": "配置导入成功", "settings": settings.model_dump()}
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"配置导入失败: {str(e)}")
 
@@ -178,10 +177,11 @@ async def import_settings(
 # 配额管理
 # =============================================================================
 
+
 @router.post("/quota/fix-concurrent")
 async def fix_concurrent_tasks(
-    current_user: UserModel = Depends(get_current_active_user)
-):
+    current_user: UserModel = Depends(get_current_active_user),
+) -> Dict[str, Any]:
     """
     诊断并修复并发任务计数
 

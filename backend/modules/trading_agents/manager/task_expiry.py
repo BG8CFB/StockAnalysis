@@ -7,17 +7,18 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from core.db.mongodb import mongodb
 from core.mcp.pool.pool import get_mcp_connection_pool
 from modules.trading_agents.schemas import TaskStatusEnum
 
 
-def _get_batch_manager():
+def _get_batch_manager() -> Any:
     """延迟导入 BatchTaskManager，避免循环依赖"""
-    from modules.trading_agents.manager.batch_manager import get_batch_task_manager
-    return get_batch_task_manager()
+    from modules.trading_agents.manager.batch_manager import get_batch_manager
+
+    return get_batch_manager()
 
 
 logger = logging.getLogger(__name__)
@@ -129,7 +130,7 @@ class TaskExpiryHandler:
                             "expired_at": datetime.now(timezone.utc),
                             "error_message": f"任务执行超时（超过 {self.timeout_hours} 小时）",
                         }
-                    }
+                    },
                 )
 
                 if update_result.modified_count == 0:
@@ -170,10 +171,7 @@ class TaskExpiryHandler:
                 )
 
             except Exception as e:
-                logger.error(
-                    f"处理过期任务失败: task_id={task_id}, error={e}",
-                    exc_info=True
-                )
+                logger.error(f"处理过期任务失败: task_id={task_id}, error={e}", exc_info=True)
 
     async def expire_task_now(self, task_id: str) -> bool:
         """
@@ -199,14 +197,12 @@ class TaskExpiryHandler:
                         "expired_at": datetime.now(timezone.utc),
                         "error_message": f"任务执行超时（超过 {self.timeout_hours} 小时）",
                     }
-                }
+                },
             )
 
             if result.modified_count == 0:
                 # 任务不存在或不在 RUNNING 状态
-                task_doc = await collection.find_one(
-                    {"_id": ObjectId(task_id)}, {"status": 1}
-                )
+                task_doc = await collection.find_one({"_id": ObjectId(task_id)}, {"status": 1})
                 if not task_doc:
                     logger.warning(f"任务不存在: task_id={task_id}")
                 else:

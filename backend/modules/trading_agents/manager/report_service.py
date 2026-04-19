@@ -6,16 +6,15 @@
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
+
 from bson import ObjectId
 
 from core.db.mongodb import mongodb
 from modules.trading_agents.schemas import (
     RecommendationEnum,
-    TaskStatusEnum,
     RiskLevelEnum,
 )
-
 
 logger = logging.getLogger(__name__)
 
@@ -32,19 +31,19 @@ class ReportService:
     REPORTS_COLLECTION = "analysis_reports"
     ARCHIVED_COLLECTION = "archived_reports"
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化服务"""
         self._db = None
 
-    async def _get_tasks_collection(self):
+    async def _get_tasks_collection(self) -> Any:
         """获取任务集合"""
         return mongodb.get_collection(self.TASKS_COLLECTION)
 
-    async def _get_reports_collection(self):
+    async def _get_reports_collection(self) -> Any:
         """获取报告集合"""
         return mongodb.get_collection(self.REPORTS_COLLECTION)
 
-    async def _get_archived_collection(self):
+    async def _get_archived_collection(self) -> Any:
         """获取归档报告集合"""
         return mongodb.get_collection(self.ARCHIVED_COLLECTION)
 
@@ -181,7 +180,7 @@ class ReportService:
         reports_col = await self._get_reports_collection()
 
         # 构建查询条件
-        query = {"user_id": user_id}
+        query: Dict[str, Any] = {"user_id": user_id}
 
         if stock_code:
             query["stock_code"] = stock_code
@@ -193,7 +192,7 @@ class ReportService:
             query["risk_level"] = risk_level.value
 
         if start_date or end_date:
-            date_query = {}
+            date_query: Dict[str, datetime] = {}
             if start_date:
                 date_query["$gte"] = start_date
             if end_date:
@@ -231,14 +230,11 @@ class ReportService:
 
         # 聚合查询
         # 注意：数据库中 recommendation 字段存储的是枚举的中文值（"买入", "卖出", "持有"）
-        # 对应 RecommendationEnum.BUY.value = "买入", RecommendationEnum.SELL.value = "卖出", RecommendationEnum.HOLD.value = "持有"
+        # 对应 RecommendationEnum.BUY.value = "买入",
+        #     RecommendationEnum.SELL.value = "卖出",
+        #     RecommendationEnum.HOLD.value = "持有"
         pipeline = [
-            {
-                "$match": {
-                    "user_id": user_id,
-                    "created_at": {"$gte": start_date}
-                }
-            },
+            {"$match": {"user_id": user_id, "created_at": {"$gte": start_date}}},
             {
                 "$group": {
                     "_id": None,
@@ -255,14 +251,10 @@ class ReportService:
                     "total_tokens": {"$sum": "$token_usage.total_tokens"},
                     "total_buy_price": {"$sum": "$buy_price"},
                     "total_sell_price": {"$sum": "$sell_price"},
-                    "buy_price_count": {
-                        "$sum": {"$cond": [{"$ne": ["$buy_price", None]}, 1, 0]}
-                    },
-                    "sell_price_count": {
-                        "$sum": {"$cond": [{"$ne": ["$sell_price", None]}, 1, 0]}
-                    },
+                    "buy_price_count": {"$sum": {"$cond": [{"$ne": ["$buy_price", None]}, 1, 0]}},
+                    "sell_price_count": {"$sum": {"$cond": [{"$ne": ["$sell_price", None]}, 1, 0]}},
                 }
-            }
+            },
         ]
 
         result = await reports_col.aggregate(pipeline).to_list(length=1)
@@ -333,10 +325,7 @@ class ReportService:
         except Exception:
             return False
 
-        result = await reports_col.delete_one({
-            "_id": object_id,
-            "user_id": user_id
-        })
+        result = await reports_col.delete_one({"_id": object_id, "user_id": user_id})
 
         if result.deleted_count > 0:
             logger.info(f"删除报告: report_id={report_id}, user_id={user_id}")

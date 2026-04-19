@@ -9,19 +9,11 @@
         ...
 """
 
-import logging
 import functools
-from typing import Callable, Optional, Any, Dict
-from datetime import datetime
+import logging
 from contextlib import asynccontextmanager
-
-from core.market_data.models.datasource import (
-    DataSourceStatus,
-    DataSourceType,
-)
-from core.market_data.repositories.datasource import (
-    DataSourceStatusRepository,
-)
+from datetime import datetime
+from typing import Any, AsyncGenerator, Callable, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -30,21 +22,19 @@ logger = logging.getLogger(__name__)
 _monitor_service = None
 
 
-def _get_monitor_service():
+def _get_monitor_service() -> Any:
     """获取监控服务实例"""
     global _monitor_service
     if _monitor_service is None:
         from core.market_data.services.source_monitor_service import SourceMonitorService
+
         _monitor_service = SourceMonitorService()
     return _monitor_service
 
 
 def monitor_api_call(
-    market: str,
-    data_type: str,
-    source_id: Optional[str] = None,
-    check_type: str = "api_call"
-):
+    market: str, data_type: str, source_id: Optional[str] = None, check_type: str = "api_call"
+) -> Callable:
     """
     API调用监控装饰器
 
@@ -59,26 +49,27 @@ def monitor_api_call(
     Returns:
         装饰器函数
     """
+
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
-        async def wrapper(self, *args, **kwargs):
+        async def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
             # 获取source_id（如果未提供）
             actual_source_id = source_id
             if actual_source_id is None:
-                actual_source_id = getattr(self, 'source_id', None)
+                actual_source_id = getattr(self, "source_id", None)
                 if actual_source_id is None:
                     # 从类名推断source_id
                     class_name = self.__class__.__name__.lower()
-                    if 'tushare' in class_name:
-                        actual_source_id = 'tushare'
-                    elif 'akshare' in class_name:
-                        actual_source_id = 'akshare'
-                    elif 'yahoo' in class_name:
-                        actual_source_id = 'yahoo'
-                    elif 'alpha' in class_name or 'vantage' in class_name:
-                        actual_source_id = 'alpha_vantage'
+                    if "tushare" in class_name:
+                        actual_source_id = "tushare"
+                    elif "akshare" in class_name:
+                        actual_source_id = "akshare"
+                    elif "yahoo" in class_name:
+                        actual_source_id = "yahoo"
+                    elif "alpha" in class_name or "vantage" in class_name:
+                        actual_source_id = "alpha_vantage"
                     else:
-                        actual_source_id = 'unknown'
+                        actual_source_id = "unknown"
 
             start_time = datetime.now()
             error_info = None
@@ -94,7 +85,7 @@ def monitor_api_call(
                     data_type=data_type,
                     source_id=actual_source_id,
                     response_time_ms=response_time_ms,
-                    check_type=check_type
+                    check_type=check_type,
                 )
 
                 return result
@@ -102,10 +93,7 @@ def monitor_api_call(
             except Exception as e:
                 # 记录失败
                 response_time_ms = int((datetime.now() - start_time).total_seconds() * 1000)
-                error_info = {
-                    "code": type(e).__name__,
-                    "message": str(e)
-                }
+                error_info = {"code": type(e).__name__, "message": str(e)}
 
                 await _record_api_failure(
                     market=market,
@@ -113,23 +101,20 @@ def monitor_api_call(
                     source_id=actual_source_id,
                     response_time_ms=response_time_ms,
                     error=error_info,
-                    check_type=check_type
+                    check_type=check_type,
                 )
 
                 # 重新抛出异常
                 raise
 
         return wrapper
+
     return decorator
 
 
 async def _record_api_success(
-    market: str,
-    data_type: str,
-    source_id: str,
-    response_time_ms: int,
-    check_type: str = "api_call"
-):
+    market: str, data_type: str, source_id: str, response_time_ms: int, check_type: str = "api_call"
+) -> None:
     """记录API调用成功"""
     try:
         monitor_service = _get_monitor_service()
@@ -137,7 +122,7 @@ async def _record_api_success(
             market=market,
             data_type=data_type,
             source_id=source_id,
-            response_time_ms=response_time_ms
+            response_time_ms=response_time_ms,
         )
         logger.debug(f"API success recorded: {source_id}/{data_type}")
     except Exception as e:
@@ -150,9 +135,9 @@ async def _record_api_failure(
     data_type: str,
     source_id: str,
     response_time_ms: int,
-    error: Dict[str, Any],
-    check_type: str = "api_call"
-):
+    error: Dict[str, Any] | None,
+    check_type: str = "api_call",
+) -> None:
     """记录API调用失败"""
     try:
         monitor_service = _get_monitor_service()
@@ -161,7 +146,7 @@ async def _record_api_failure(
             data_type=data_type,
             source_id=source_id,
             error=error,
-            check_type=check_type
+            check_type=check_type,
         )
         logger.info(f"API failure recorded: {source_id}/{data_type} - {result}")
     except Exception as e:
@@ -171,11 +156,8 @@ async def _record_api_failure(
 
 @asynccontextmanager
 async def monitor_api_context(
-    market: str,
-    data_type: str,
-    source_id: str,
-    check_type: str = "api_call"
-):
+    market: str, data_type: str, source_id: str, check_type: str = "api_call"
+) -> AsyncGenerator[None, None]:
     """
     API调用监控上下文管理器
 
@@ -193,10 +175,7 @@ async def monitor_api_context(
         yield
         success = True
     except Exception as e:
-        error_info = {
-            "code": type(e).__name__,
-            "message": str(e)
-        }
+        error_info = {"code": type(e).__name__, "message": str(e)}
         raise
     finally:
         response_time_ms = int((datetime.now() - start_time).total_seconds() * 1000)
@@ -207,7 +186,7 @@ async def monitor_api_context(
                 data_type=data_type,
                 source_id=source_id,
                 response_time_ms=response_time_ms,
-                check_type=check_type
+                check_type=check_type,
             )
         else:
             await _record_api_failure(
@@ -216,5 +195,5 @@ async def monitor_api_context(
                 source_id=source_id,
                 response_time_ms=response_time_ms,
                 error=error_info,
-                check_type=check_type
+                check_type=check_type,
             )

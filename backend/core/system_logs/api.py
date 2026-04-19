@@ -5,8 +5,6 @@
 """
 
 import logging
-import os
-import re
 import zipfile
 from datetime import datetime, timezone
 from io import BytesIO
@@ -30,6 +28,7 @@ LOGS_DIR = Path(__file__).resolve().parent.parent.parent / "logs"
 
 class LogReadRequest(BaseModel):
     """日志读取请求"""
+
     filename: str
     lines: Optional[int] = None
     level: Optional[str] = None
@@ -40,6 +39,7 @@ class LogReadRequest(BaseModel):
 
 class LogExportRequest(BaseModel):
     """日志导出请求"""
+
     filenames: Optional[List[str]] = None
     level: Optional[str] = None
     start_time: Optional[str] = None
@@ -86,14 +86,18 @@ async def list_log_files(
     for entry in sorted(LOGS_DIR.iterdir(), key=lambda e: e.stat().st_mtime, reverse=True):
         if entry.is_file() and not entry.name.startswith("."):
             stat = entry.stat()
-            files.append({
-                "name": entry.name,
-                "path": str(entry),
-                "size": stat.st_size,
-                "size_mb": round(stat.st_size / (1024 * 1024), 2),
-                "modified_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
-                "type": _get_log_type(entry.name),
-            })
+            files.append(
+                {
+                    "name": entry.name,
+                    "path": str(entry),
+                    "size": stat.st_size,
+                    "size_mb": round(stat.st_size / (1024 * 1024), 2),
+                    "modified_at": datetime.fromtimestamp(
+                        stat.st_mtime, tz=timezone.utc
+                    ).isoformat(),
+                    "type": _get_log_type(entry.name),
+                }
+            )
 
     return {"code": 0, "message": "success", "data": files}
 
@@ -122,17 +126,17 @@ async def read_log_file(
     filtered: List[str] = all_lines
     if request.level:
         level_upper = request.level.upper()
-        filtered = [l for l in filtered if level_upper in l.upper()]
+        filtered = [line for line in filtered if level_upper in line.upper()]
     if request.keyword:
-        filtered = [l for l in filtered if request.keyword in l]
+        filtered = [line for line in filtered if request.keyword in line]
     if request.start_time:
-        filtered = [l for l in filtered if l >= request.start_time]
+        filtered = [line for line in filtered if line >= request.start_time]
     if request.end_time:
-        filtered = [l for l in filtered if l <= request.end_time]
+        filtered = [line for line in filtered if line <= request.end_time]
 
     # 限制行数
     if request.lines and request.lines > 0:
-        filtered = filtered[-request.lines:]
+        filtered = filtered[-request.lines :]
 
     # 统计各级别数量
     stats: Dict[str, int] = {}
@@ -155,7 +159,7 @@ async def read_log_file(
 async def export_logs(
     request: LogExportRequest,
     current_admin: UserModel = Depends(get_current_admin_user),
-):
+) -> StreamingResponse:
     """导出日志文件"""
     if not LOGS_DIR.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="日志目录不存在")
@@ -164,8 +168,7 @@ async def export_logs(
     if not filenames:
         # 导出所有日志文件
         filenames = [
-            f.name for f in LOGS_DIR.iterdir()
-            if f.is_file() and not f.name.startswith(".")
+            f.name for f in LOGS_DIR.iterdir() if f.is_file() and not f.name.startswith(".")
         ]
 
     if request.format == "zip":
@@ -260,7 +263,7 @@ async def delete_log_file(
     file_path = _safe_path(filename)
     if not file_path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="日志文件不存在")
-    if not LOGS_DIR in file_path.parents and file_path.parent != LOGS_DIR:
+    if LOGS_DIR not in file_path.parents and file_path.parent != LOGS_DIR:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="非法路径")
 
     try:

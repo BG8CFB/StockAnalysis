@@ -8,16 +8,16 @@ Redis 滑动窗口限流器
 - 本地限流使用简单的字典存储，仅作为应急措施
 - 记录错误日志并告警，提醒运维人员处理
 """
+
 import asyncio
 import logging
 import time
 from collections import defaultdict
 from functools import wraps
-from typing import Optional
+from typing import Any, Callable, Optional
 
 from fastapi import HTTPException, Request, status
 
-from core.config import settings
 from core.db.redis import get_redis
 
 logger = logging.getLogger(__name__)
@@ -58,12 +58,12 @@ class RateLimiter:
     - 本地限流仅作为应急措施，不保证多实例一致性
     """
 
-    def __init__(self):
-        self._redis = None
-        self._redis_available = True
-        self._last_redis_error_time = 0.0
+    def __init__(self) -> None:
+        self._redis: Optional[Any] = None
+        self._redis_available: bool = True
+        self._last_redis_error_time: float = 0.0
 
-    async def _get_redis(self):
+    async def _get_redis(self) -> Any:
         """获取 Redis 客户端"""
         if self._redis is None:
             self._redis = await get_redis()
@@ -150,7 +150,8 @@ class RateLimiter:
             if now - self._last_redis_error_time > 60:
                 logger.error(
                     f"Rate limiter Redis error, falling back to local rate limiting: {e}. "
-                    f"This is a degraded mode and may not work correctly in multi-instance deployments."
+                    "This is a degraded mode and may not work correctly "
+                    "in multi-instance deployments."
                 )
                 self._last_redis_error_time = now
 
@@ -165,7 +166,7 @@ class RateLimiter:
     async def get_count(self, key: str) -> int:
         """获取当前计数"""
         redis = await self._get_redis()
-        return await redis.zcard(key)
+        return int(await redis.zcard(key))
 
 
 # 预定义的限流配置
@@ -194,10 +195,10 @@ class RateLimitConfig:
 
 
 def rate_limit(
-    key_func: callable,
+    key_func: Callable[[Any], str],
     max_requests: int,
     window_seconds: int,
-):
+) -> Callable[..., Any]:
     """限流装饰器工厂
 
     Args:
@@ -210,11 +211,11 @@ def rate_limit(
         async def login(): ...
     """
 
-    def decorator(func):
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
-        async def wrapper(*args, **kwargs):
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
             # 从 kwargs 中获取 Request
-            request: Optional[Request] = kwargs.get("request")
+            request: Optional[Any] = kwargs.get("request")
             if not request:
                 # 尝试从位置参数获取
                 for arg in args:
@@ -228,9 +229,7 @@ def rate_limit(
 
             key = key_func(request)
             limiter = get_rate_limiter()
-            allowed, retry_after = await limiter.is_allowed(
-                key, max_requests, window_seconds
-            )
+            allowed, retry_after = await limiter.is_allowed(key, max_requests, window_seconds)
 
             if not allowed:
                 raise RateLimitExceeded(

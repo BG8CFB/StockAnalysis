@@ -9,21 +9,22 @@ TradingAgents 工作流状态模型
 """
 
 # 重新导出 workflow/state 中的所有内容，确保兼容性
+from enum import Enum
+from typing import Any
+
 from modules.trading_agents.workflow.state import (
+    RecommendationType,
     TaskStatus,
-    RecommendationType as Recommendation,
     WorkflowState,
-    TokenUsage,
-    AgentExecution,
-    PhaseExecution,
 )
 
-# 为了向后兼容，保留 RiskLevel 枚举
-from enum import Enum
+# 向后兼容别名
+Recommendation = RecommendationType
 
 
 class RiskLevel(str, Enum):
     """风险等级枚举"""
+
     LOW = "LOW"
     MEDIUM = "MEDIUM"
     HIGH = "HIGH"
@@ -36,7 +37,7 @@ def create_initial_state(
     stock_code: str,
     trade_date: str,
     market: str = "A_STOCK",
-    **kwargs
+    **kwargs: Any,
 ) -> WorkflowState:
     """
     创建初始工作流状态（向后兼容）

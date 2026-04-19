@@ -4,11 +4,13 @@
 """
 
 from datetime import datetime
-from typing import Optional
+
 from pydantic import BaseModel, Field
+
 
 class ApiMonitor(BaseModel):
     """接口监控数据模型"""
+
     data_type: str = Field(..., description="数据类型 (主键)，如: minute_data, daily_data")
     primary_source: str = Field(..., description="主数据源，如: TU")
     backup_source: str = Field(..., description="备用数据源，如: AK")
@@ -26,6 +28,6 @@ class ApiMonitor(BaseModel):
                 "backup_source": "AK",
                 "current_status": "healthy",
                 "fail_count": 0,
-                "is_using_backup": False
+                "is_using_backup": False,
             }
         }

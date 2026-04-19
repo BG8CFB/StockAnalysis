@@ -4,11 +4,10 @@
 
 import logging
 from typing import List, Optional
-from datetime import datetime
 
-from core.market_data.repositories.base import BaseRepository
-from core.market_data.models import StockInfo, MarketType
 from core.config import MONGODB_BULK_WRITE_BATCH_SIZE
+from core.market_data.models import MarketType, StockInfo
+from core.market_data.repositories.base import BaseRepository
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +18,7 @@ BULK_WRITE_BATCH_SIZE = MONGODB_BULK_WRITE_BATCH_SIZE
 class StockInfoRepository(BaseRepository):
     """股票信息Repository"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("stock_info")
 
     async def init_indexes(self) -> None:
@@ -58,10 +57,7 @@ class StockInfoRepository(BaseRepository):
         return await self.find_one({"symbol": symbol})
 
     async def get_by_market(
-        self,
-        market: MarketType,
-        status: str = "L",
-        limit: Optional[int] = None
+        self, market: MarketType, status: str = "L", limit: Optional[int] = None
     ) -> List[dict]:
         """
         根据市场类型查询
@@ -124,7 +120,7 @@ class StockInfoRepository(BaseRepository):
         # 批量执行操作（每次最多 BULK_WRITE_BATCH_SIZE 条）
         total_count = 0
         for i in range(0, len(operations), BULK_WRITE_BATCH_SIZE):
-            batch = operations[i:i + BULK_WRITE_BATCH_SIZE]
+            batch = operations[i : i + BULK_WRITE_BATCH_SIZE]
             result = await self.collection.bulk_write(batch, ordered=False)
             total_count += result.upserted_count + result.modified_count
 

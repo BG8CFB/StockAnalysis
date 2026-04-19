@@ -18,9 +18,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/scheduler", tags=["scheduler"])
 
 
-def _get_scheduler():
+def _get_scheduler() -> Any:
     """获取 APScheduler 实例（延迟导入，避免循环依赖）"""
     from core.admin.tasks import get_scheduler
+
     sched = get_scheduler()
     if sched is None:
         raise HTTPException(
@@ -30,15 +31,15 @@ def _get_scheduler():
     return sched
 
 
-def _get_data_scheduler():
+def _get_data_scheduler() -> Any:
     """获取数据调度器实例"""
     from core.market_data.services.data_scheduler import get_data_scheduler
+
     return get_data_scheduler()
 
 
 def _serialize_job(job: Any) -> Dict[str, Any]:
     """序列化 APScheduler Job 对象"""
-    trigger = str(job.trigger)
     trigger_type = "cron"
     cron_expr = None
     if hasattr(job.trigger, "fields"):
@@ -64,8 +65,11 @@ _execution_counter = 0
 
 
 def _add_execution_record(
-    job_id: str, exec_status: str, is_manual: bool = False,
-    result: Optional[str] = None, error: Optional[str] = None,
+    job_id: str,
+    exec_status: str,
+    is_manual: bool = False,
+    result: Optional[str] = None,
+    error: Optional[str] = None,
 ) -> Dict[str, Any]:
     """添加执行记录"""
     global _execution_counter
@@ -173,7 +177,7 @@ async def get_job_history(
     """获取任务执行历史"""
     records = [r for r in _execution_records if r["job_id"] == job_id]
     total = len(records)
-    items = records[offset: offset + limit]
+    items = records[offset : offset + limit]
     return {
         "code": 0,
         "message": "success",
@@ -201,7 +205,7 @@ async def get_all_history(
     if status_filter:
         records = [r for r in records if r["status"] == status_filter]
     total = len(records)
-    items = records[offset: offset + limit]
+    items = records[offset : offset + limit]
     return {
         "code": 0,
         "message": "success",
@@ -288,7 +292,7 @@ async def get_job_executions(
     if is_manual is not None:
         records = [r for r in records if r["is_manual"] == is_manual]
     total = len(records)
-    items = records[offset: offset + limit]
+    items = records[offset : offset + limit]
     return {
         "code": 0,
         "message": "success",

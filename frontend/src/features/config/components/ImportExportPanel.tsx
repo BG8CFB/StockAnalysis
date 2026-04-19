@@ -101,7 +101,7 @@ export default function ImportExportPanel({ onImported }: ImportExportPanelProps
       title="配置导入 / 导出"
       style={{ marginBottom: 16 }}
     >
-      <Space orientation="vertical" style={{ width: '100%' }} size="middle">
+      <Space direction="vertical" style={{ width: '100%' }} size="middle">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <Text type="secondary">将当前全部配置导出为 JSON 文件，或从备份文件恢复配置。</Text>

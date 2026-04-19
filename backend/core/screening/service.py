@@ -8,14 +8,12 @@ import logging
 import time
 from typing import Any
 
-from core.screening.fields import FIELDS_MAP, SCREENING_FIELDS, FIELD_CATEGORIES
+from core.screening.fields import FIELD_CATEGORIES, FIELDS_MAP, SCREENING_FIELDS
 
 logger = logging.getLogger(__name__)
 
 
-def _build_comparison(
-    db_field: str, op: str, value: Any
-) -> dict[str, Any] | None:
+def _build_comparison(db_field: str, op: str, value: Any) -> dict[str, Any] | None:
     """将前端运算符映射为 MongoDB 查询条件"""
     if op == "gt":
         return {db_field: {"$gt": value}}
@@ -230,9 +228,7 @@ class ScreeningService:
             "source": "database",
         }
 
-    async def validate_conditions(
-        self, conditions: list[dict[str, Any]]
-    ) -> dict[str, Any]:
+    async def validate_conditions(self, conditions: list[dict[str, Any]]) -> dict[str, Any]:
         """验证筛选条件"""
         errors: list[dict[str, str]] = []
         valid_count = 0
@@ -266,15 +262,19 @@ class ScreeningService:
             # 数字类型检查范围
             if field_def.type == "number" and isinstance(value, (int, float)):
                 if field_def.min is not None and value < field_def.min:
-                    errors.append({
-                        "index": str(i),
-                        "message": f"值 {value} 低于最小值 {field_def.min}",
-                    })
+                    errors.append(
+                        {
+                            "index": str(i),
+                            "message": f"值 {value} 低于最小值 {field_def.min}",
+                        }
+                    )
                 if field_def.max is not None and value > field_def.max:
-                    errors.append({
-                        "index": str(i),
-                        "message": f"值 {value} 超过最大值 {field_def.max}",
-                    })
+                    errors.append(
+                        {
+                            "index": str(i),
+                            "message": f"值 {value} 超过最大值 {field_def.max}",
+                        }
+                    )
 
             valid_count += 1
 
@@ -291,16 +291,14 @@ class ScreeningService:
 
         repo = StockInfoRepository()
         pipeline = [
-            {"$match": {"status": "L", "industry": {"$ne": None, "$ne": ""}}},
+            {"$match": {"status": "L", "industry": {"$ne": None, "$nin": ["", None]}}},
             {"$group": {"_id": "$industry", "count": {"$sum": 1}}},
             {"$sort": {"count": -1}},
         ]
-        results = await repo.aggregate(pipeline)
+        results = await repo.aggregate(pipeline)  # type: ignore[arg-type]
 
         industries = [
-            {"value": r["_id"], "label": r["_id"], "count": r["count"]}
-            for r in results
-            if r["_id"]
+            {"value": r["_id"], "label": r["_id"], "count": r["count"]} for r in results if r["_id"]
         ]
         return {
             "industries": industries,
@@ -308,9 +306,7 @@ class ScreeningService:
             "source": "database",
         }
 
-    def _build_sort_stage(
-        self, order_by: list[dict[str, Any]] | None
-    ) -> dict[str, Any] | None:
+    def _build_sort_stage(self, order_by: list[dict[str, Any]] | None) -> dict[str, Any] | None:
         """构建排序阶段"""
         if not order_by:
             return None

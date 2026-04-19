@@ -4,8 +4,8 @@
 支持 Yahoo Finance、AkShare 等数据源。
 """
 
-from core.market_data.sources.hk_stock.yahoo_adapter import YahooHKAdapter
 from core.market_data.sources.hk_stock.akshare_adapter import AkShareHKAdapter
+from core.market_data.sources.hk_stock.yahoo_adapter import YahooHKAdapter
 
 # 为了保持命名一致性，创建别名
 YahooFinanceAdapter = YahooHKAdapter

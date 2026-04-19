@@ -8,8 +8,8 @@ Phase 3: 策略风格与风险评估
 """
 
 from .aggressive_debator import AggressiveDebator
-from .neutral_debator import NeutralDebator
 from .conservative_debator import ConservativeDebator
+from .neutral_debator import NeutralDebator
 from .risk_manager import RiskManager
 
 __all__ = [
@@ -21,36 +21,30 @@ __all__ = [
 ]
 
 import logging
-from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
+from typing import Any, Dict
 
 from langchain_core.language_models import BaseChatModel
 
-from modules.trading_agents.models.state import (
-    WorkflowState,
-    AgentExecution,
-    PhaseExecution,
-    TaskStatus,
-)
 from modules.trading_agents.config import get_enabled_agents
-from modules.trading_agents.workflow.events import (
-    create_phase_agents_event,
-    create_agent_started_event,
-    create_agent_completed_event,
-    create_report_generated_event,
+from modules.trading_agents.models.state import (
+    TaskStatus,
+    WorkflowState,
 )
 from modules.trading_agents.workflow.agent_helpers import (
-    handle_agent_started,
     handle_agent_completed,
+    handle_agent_started,
 )
+from modules.trading_agents.workflow.events import (
+    create_phase_agents_event,
+)
+from modules.trading_agents.workflow.state import AgentExecution, PhaseExecution
 
 logger = logging.getLogger(__name__)
 
 
 async def execute_phase3(
-    state: WorkflowState,
-    model: BaseChatModel,
-    config: Dict[str, Any]
+    state: WorkflowState, model: BaseChatModel, config: Dict[str, Any]
 ) -> WorkflowState:
     """
     执行 Phase 3: 策略风格与风险评估
@@ -97,25 +91,43 @@ async def execute_phase3(
         max_concurrency=3,  # 3个策略师并发
         agents=agents_config,
         total_executions=state.phase_agent_counts.get(3, 4),
-        phase_progress_weight=(state.phase_agent_counts.get(3, 4) / state.total_agent_executions * 100) if state.total_agent_executions > 0 else 0
+        phase_progress_weight=(
+            (state.phase_agent_counts.get(3, 4) / state.total_agent_executions * 100)
+            if state.total_agent_executions > 0
+            else 0
+        ),
     )
     await websocket_manager.broadcast_event(state.task_id, phase_agents_event)
     logger.info(f"[Phase 3] 已发送智能体列表事件, 智能体数量: {len(agents_config)}")
 
     # 创建智能体实例（传入 task_id 和 websocket_manager 用于工具调用事件推送）
-    debators = []
-    risk_manager = None
+    debators: list[Any] = []
+    risk_manager: Any = None
 
     for agent_config in agents_config:
         slug = agent_config["slug"]
         if slug == "aggressive-debator":
-            debators.append(AggressiveDebator(model, agent_config, task_id=state.task_id, websocket_manager=websocket_manager))
+            debators.append(
+                AggressiveDebator(
+                    model, agent_config, task_id=state.task_id, websocket_manager=websocket_manager
+                )
+            )
         elif slug == "neutral-debator":
-            debators.append(NeutralDebator(model, agent_config, task_id=state.task_id, websocket_manager=websocket_manager))
+            debators.append(
+                NeutralDebator(
+                    model, agent_config, task_id=state.task_id, websocket_manager=websocket_manager
+                )
+            )
         elif slug == "conservative-debator":
-            debators.append(ConservativeDebator(model, agent_config, task_id=state.task_id, websocket_manager=websocket_manager))
+            debators.append(
+                ConservativeDebator(
+                    model, agent_config, task_id=state.task_id, websocket_manager=websocket_manager
+                )
+            )
         elif slug == "risk-manager":
-            risk_manager = RiskManager(model, agent_config, task_id=state.task_id, websocket_manager=websocket_manager)
+            risk_manager = RiskManager(
+                model, agent_config, task_id=state.task_id, websocket_manager=websocket_manager
+            )
 
     if not debators:
         logger.warning("[Phase 3] 没有策略分析师")
@@ -132,17 +144,17 @@ async def execute_phase3(
         phase_name="策略风格与风险评估",
         started_at=datetime.now(timezone.utc),
         execution_mode="mixed",
-        max_concurrency=len(debators)  # 策略分析师可以并行
+        max_concurrency=len(debators),  # 策略分析师可以并行
     )
 
     # 并发执行所有策略分析师
-    async def execute_debator(debator):
+    async def execute_debator(debator: Any) -> Any:
         # 发送策略分析师开始事件
         await handle_agent_started(
             state=state,
             agent_slug=debator.slug,
             agent_name=debator.name,
-            websocket_manager=websocket_manager
+            websocket_manager=websocket_manager,
         )
 
         try:
@@ -156,7 +168,7 @@ async def execute_phase3(
                     agent_name=result["name"],
                     output=result["output"],
                     websocket_manager=websocket_manager,
-                    save_report=True
+                    save_report=True,
                 )
             return result
         except Exception as e:
@@ -167,7 +179,7 @@ async def execute_phase3(
     strategy_results = await asyncio.gather(*strategy_tasks, return_exceptions=True)
 
     # 处理策略分析师结果
-    strategy_reports = []
+    strategy_reports: list[dict[str, Any]] = []
     failed_count = 0
     for i, result in enumerate(strategy_results):
         if isinstance(result, Exception):
@@ -175,14 +187,16 @@ async def execute_phase3(
             failed_count += 1
             continue
 
-        if result and result.get("output"):
+        if result and isinstance(result, dict) and result.get("output"):
             strategy_reports.append(result)
-            state.strategy_reports.append({
-                "slug": result["slug"],
-                "name": result["name"],
-                "content": result["output"],
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            })
+            state.strategy_reports.append(
+                {
+                    "slug": result["slug"],
+                    "name": result["name"],
+                    "content": result["output"],
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            )
         else:
             failed_count += 1
 
@@ -202,10 +216,12 @@ async def execute_phase3(
         state=state,
         agent_slug="risk-manager",
         agent_name="风险管理委员会主席",
-        websocket_manager=websocket_manager
+        websocket_manager=websocket_manager,
     )
     try:
-        manager_result = await risk_manager.assess(state, strategy_reports, state.investment_decision)
+        manager_result = await risk_manager.assess(
+            state, strategy_reports, state.investment_decision
+        )
     except Exception as e:
         logger.error(f"[Phase 3] 风险管理委员会主席执行异常: {e}", exc_info=True)
         manager_result = None
@@ -218,7 +234,7 @@ async def execute_phase3(
             agent_name="风险管理委员会主席",
             output=manager_result["output"],
             websocket_manager=websocket_manager,
-            save_report=True
+            save_report=True,
         )
 
     # 更新状态（需先检查 manager_result 非 None）
@@ -247,7 +263,7 @@ async def execute_phase3(
                 name=debator.name,
                 started_at=phase3_execution.started_at,
                 completed_at=phase3_execution.completed_at,
-                status=TaskStatus.COMPLETED
+                status=TaskStatus.COMPLETED,
             )
         )
 
@@ -257,13 +273,15 @@ async def execute_phase3(
             name="风险管理委员会主席",
             started_at=phase3_execution.started_at,
             completed_at=phase3_execution.completed_at,
-            status=TaskStatus.COMPLETED
+            status=TaskStatus.COMPLETED,
         )
     )
 
     state.phase_executions.append(phase3_execution)
     state.progress = 75.0
 
-    logger.info(f"[Phase 3] 完成, 最终推荐: {state.final_recommendation}, 进度: {state.progress:.1f}%")
+    logger.info(
+        f"[Phase 3] 完成, 最终推荐: {state.final_recommendation}, 进度: {state.progress:.1f}%"
+    )
 
     return state

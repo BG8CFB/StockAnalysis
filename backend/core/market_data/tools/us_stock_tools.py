@@ -5,11 +5,11 @@
 """
 
 import logging
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
 
-from core.market_data.models import MarketType
-from core.market_data.tools.base_tool import MarketDataToolBase, DataSource
 from core.market_data.managers.source_router import DataSourceRouter
+from core.market_data.models import MarketType
+from core.market_data.tools.base_tool import DataSource, MarketDataToolBase
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ class USStockTool(MarketDataToolBase):
         self,
         user_id: Optional[str] = None,
         source_router: Optional[DataSourceRouter] = None,
-        data_source: DataSource = DataSource.AUTO
+        data_source: DataSource = DataSource.AUTO,
     ):
         super().__init__(user_id, source_router, data_source)
 
@@ -33,10 +33,7 @@ class USStockTool(MarketDataToolBase):
         """获取市场类型"""
         return MarketType.US_STOCK
 
-    async def get_realtime_quote(
-        self,
-        symbol: str
-    ) -> Optional[Dict[str, Any]]:
+    async def get_realtime_quote(self, symbol: str) -> Optional[Dict[str, Any]]:
         """
         获取实时行情
 
@@ -56,16 +53,15 @@ class USStockTool(MarketDataToolBase):
                 symbol = f"{symbol}.US"
 
             # 尝试从 Yahoo Finance 获取实时行情
-            from ..sources.us_stock import YahooFinanceAdapter
 
             # 获取 Yahoo Finance 适配器
             sources = await self.source_router.get_available_sources(MarketType.US_STOCK)
 
             for source in sources:
                 if source.source_name == "yahoo":
-                    quote = await source.get_realtime_quote(symbol)
+                    quote = await source.get_realtime_quote(symbol)  # type: ignore[attr-defined]
                     if quote:
-                        return quote
+                        return dict(quote)  # type: ignore[no-any-return]
 
             # 如果实时数据获取失败，回退到数据库
             logger.warning(f"Realtime quote not available for {symbol}, using database")
@@ -75,10 +71,7 @@ class USStockTool(MarketDataToolBase):
             logger.error(f"Failed to get realtime quote for {symbol}: {e}")
             return await self.get_latest_quote(symbol)
 
-    async def get_stock_list(
-        self,
-        limit: int = 50
-    ) -> List[Dict[str, Any]]:
+    async def get_stock_list(self, limit: int = 50) -> List[Dict[str, Any]]:
         """
         获取热门美股列表
 
@@ -96,9 +89,7 @@ class USStockTool(MarketDataToolBase):
                 # 如果数据库为空，从数据源获取
                 logger.info("No US stocks in database, fetching from data source")
                 stock_list = await self.source_router.route_to_best_source(
-                    market=MarketType.US_STOCK,
-                    method_name="get_stock_list",
-                    status="L"
+                    market=MarketType.US_STOCK, method_name="get_stock_list", status="L"
                 )
 
                 return [
@@ -132,14 +123,14 @@ class USStockTool(MarketDataToolBase):
         popular_symbols = [
             "AAPL.US",  # Apple
             "MSFT.US",  # Microsoft
-            "GOOGL.US", # Google
+            "GOOGL.US",  # Google
             "AMZN.US",  # Amazon
             "TSLA.US",  # Tesla
             "META.US",  # Meta
             "NVDA.US",  # NVIDIA
-            "JPM.US",   # JPMorgan
-            "V.US",     # Visa
-            "JNJ.US",   # Johnson & Johnson
+            "JPM.US",  # JPMorgan
+            "V.US",  # Visa
+            "JNJ.US",  # Johnson & Johnson
         ]
 
         results = []
@@ -151,10 +142,7 @@ class USStockTool(MarketDataToolBase):
         return results
 
     async def get_technical_indicators(
-        self,
-        symbol: str,
-        indicator: str = "SMA",
-        time_period: int = 20
+        self, symbol: str, indicator: str = "SMA", time_period: int = 20
     ) -> Optional[Dict[str, Any]]:
         """
         获取技术指标
@@ -184,7 +172,7 @@ class USStockTool(MarketDataToolBase):
                     if hasattr(source, f"get_{indicator.lower()}"):
                         method = getattr(source, f"get_{indicator.lower()}")
                         result = await method(symbol, time_period=time_period)
-                        return result
+                        return dict(result) if result else None  # type: ignore[no-any-return]
 
             logger.warning(f"Technical indicator {indicator} not available for {symbol}")
             return None

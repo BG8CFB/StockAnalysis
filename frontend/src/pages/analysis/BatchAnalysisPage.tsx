@@ -140,7 +140,7 @@ export default function BatchAnalysisPage() {
               />
 
               {submitError && (
-                <Alert title={submitError} type="error" showIcon />
+                <Alert message={submitError} type="error" showIcon />
               )}
 
               <Space style={{ width: '100%', justifyContent: 'flex-end', marginTop: 8 }}>

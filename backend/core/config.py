@@ -3,12 +3,14 @@
 
 从环境变量加载配置
 """
+
 import os
 from pathlib import Path
 from typing import Optional
 
 # 加载 .env 文件
 from dotenv import load_dotenv
+
 load_dotenv()
 
 # 项目根目录
@@ -20,7 +22,9 @@ DATABASE_NAME: str = os.getenv("DATABASE_NAME", "stock_analysis")
 MONGODB_DATABASE: str = DATABASE_NAME  # 别名
 MONGODB_MAX_POOL_SIZE: int = int(os.getenv("MONGODB_MAX_POOL_SIZE", "100"))
 MONGODB_MIN_POOL_SIZE: int = int(os.getenv("MONGODB_MIN_POOL_SIZE", "10"))
-MONGODB_SERVER_SELECTION_TIMEOUT_MS: int = int(os.getenv("MONGODB_SERVER_SELECTION_TIMEOUT_MS", "30000"))
+MONGODB_SERVER_SELECTION_TIMEOUT_MS: int = int(
+    os.getenv("MONGODB_SERVER_SELECTION_TIMEOUT_MS", "30000")
+)
 MONGODB_SOCKET_TIMEOUT_MS: int = int(os.getenv("MONGODB_SOCKET_TIMEOUT_MS", "60000"))
 
 # Redis配置
@@ -91,7 +95,9 @@ TUSHARE_TOKEN: Optional[str] = os.getenv("TUSHARE_TOKEN")
 
 # 数据源限流配置
 DATA_SOURCE_RATE_LIMIT_WINDOW: int = int(os.getenv("DATA_SOURCE_RATE_LIMIT_WINDOW", "60"))
-DATA_SOURCE_RATE_LIMIT_MAX_REQUESTS: int = int(os.getenv("DATA_SOURCE_RATE_LIMIT_MAX_REQUESTS", "1"))
+DATA_SOURCE_RATE_LIMIT_MAX_REQUESTS: int = int(
+    os.getenv("DATA_SOURCE_RATE_LIMIT_MAX_REQUESTS", "1")
+)
 
 # 数据源路由器配置
 DATA_SOURCE_MAX_FAILURES: int = int(os.getenv("DATA_SOURCE_MAX_FAILURES", "3"))
@@ -122,9 +128,10 @@ PORT: int = int(os.getenv("PORT", "8000"))
 # CORS 详细配置
 CORS_ALLOW_CREDENTIALS: bool = os.getenv("CORS_ALLOW_CREDENTIALS", "true").lower() == "true"
 
+
 # 解析 CORS_ALLOW_METHODS 和 CORS_ALLOW_HEADERS
 # 支持格式: "*", "GET,POST", 或 JSON 数组 '["GET","POST"]'
-def _parse_cors_list(env_value: str, default: list) -> list:
+def _parse_cors_list(env_value: str | None, default: list[str]) -> list[str]:
     """解析 CORS 配置列表"""
     if not env_value:
         return default
@@ -135,15 +142,17 @@ def _parse_cors_list(env_value: str, default: list) -> list:
     # JSON 数组格式
     if env_value.startswith("[") and env_value.endswith("]"):
         import json
+
         try:
-            return json.loads(env_value)
+            return list(json.loads(env_value))
         except json.JSONDecodeError:
             pass
     # 逗号分隔格式
     return [item.strip() for item in env_value.split(",")]
 
-CORS_ALLOW_METHODS: list = _parse_cors_list(os.getenv("CORS_ALLOW_METHODS"), ["*"])
-CORS_ALLOW_HEADERS: list = _parse_cors_list(os.getenv("CORS_ALLOW_HEADERS"), ["*"])
+
+CORS_ALLOW_METHODS: list[str] = _parse_cors_list(os.getenv("CORS_ALLOW_METHODS") or "", ["*"])
+CORS_ALLOW_HEADERS: list[str] = _parse_cors_list(os.getenv("CORS_ALLOW_HEADERS") or "", ["*"])
 
 
 class Settings:

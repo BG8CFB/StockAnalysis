@@ -13,7 +13,7 @@ from core.db.mongodb import mongodb
 logger = logging.getLogger(__name__)
 
 
-def _get_collection():
+def _get_collection() -> Any:
     """获取分析任务集合"""
     return mongodb.get_collection("analysis_tasks")
 
@@ -27,58 +27,74 @@ async def get_statistics(days: int) -> Dict[str, Any]:
 
     by_provider_pipeline = [
         match_stage,
-        {"$group": {
-            "_id": "$token_usage.provider",
-            "requests": {"$sum": 1},
-            "tokens": {"$sum": "$token_usage.total_tokens"},
-            "cost": {"$sum": "$token_usage.total_cost"},
-        }},
+        {
+            "$group": {
+                "_id": "$token_usage.provider",
+                "requests": {"$sum": 1},
+                "tokens": {"$sum": "$token_usage.total_tokens"},
+                "cost": {"$sum": "$token_usage.total_cost"},
+            }
+        },
     ]
 
     by_model_pipeline = [
         match_stage,
-        {"$group": {
-            "_id": "$token_usage.model_name",
-            "requests": {"$sum": 1},
-            "tokens": {"$sum": "$token_usage.total_tokens"},
-            "cost": {"$sum": "$token_usage.total_cost"},
-        }},
+        {
+            "$group": {
+                "_id": "$token_usage.model_name",
+                "requests": {"$sum": 1},
+                "tokens": {"$sum": "$token_usage.total_tokens"},
+                "cost": {"$sum": "$token_usage.total_cost"},
+            }
+        },
     ]
 
     by_date_pipeline = [
         match_stage,
-        {"$group": {
-            "_id": {"$dateToString": {"format": "%Y-%m-%d", "date": "$created_at"}},
-            "requests": {"$sum": 1},
-            "tokens": {"$sum": "$token_usage.total_tokens"},
-            "cost": {"$sum": "$token_usage.total_cost"},
-        }},
+        {
+            "$group": {
+                "_id": {"$dateToString": {"format": "%Y-%m-%d", "date": "$created_at"}},
+                "requests": {"$sum": 1},
+                "tokens": {"$sum": "$token_usage.total_tokens"},
+                "cost": {"$sum": "$token_usage.total_cost"},
+            }
+        },
         {"$sort": {"_id": 1}},
     ]
 
     total_pipeline = [
         match_stage,
-        {"$group": {
-            "_id": None,
-            "total_requests": {"$sum": 1},
-            "total_input_tokens": {"$sum": "$token_usage.input_tokens"},
-            "total_output_tokens": {"$sum": "$token_usage.output_tokens"},
-            "total_cost": {"$sum": "$token_usage.total_cost"},
-        }},
+        {
+            "$group": {
+                "_id": None,
+                "total_requests": {"$sum": 1},
+                "total_input_tokens": {"$sum": "$token_usage.input_tokens"},
+                "total_output_tokens": {"$sum": "$token_usage.output_tokens"},
+                "total_cost": {"$sum": "$token_usage.total_cost"},
+            }
+        },
     ]
 
     total_result = await collection.aggregate(total_pipeline).to_list(1)
-    total_doc = total_result[0] if total_result else {
-        "total_requests": 0,
-        "total_input_tokens": 0,
-        "total_output_tokens": 0,
-        "total_cost": 0,
-    }
+    total_doc = (
+        total_result[0]
+        if total_result
+        else {
+            "total_requests": 0,
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "total_cost": 0,
+        }
+    )
 
     by_provider: Dict[str, Any] = {}
     async for doc in collection.aggregate(by_provider_pipeline):
         key = doc["_id"] or "unknown"
-        by_provider[key] = {"requests": doc["requests"], "tokens": doc["tokens"], "cost": doc["cost"]}
+        by_provider[key] = {
+            "requests": doc["requests"],
+            "tokens": doc["tokens"],
+            "cost": doc["cost"],
+        }
 
     by_model: Dict[str, Any] = {}
     async for doc in collection.aggregate(by_model_pipeline):
@@ -112,11 +128,13 @@ async def get_cost_by_provider(days: int) -> Dict[str, Any]:
 
     pipeline = [
         {"$match": {"created_at": {"$gte": cutoff}}},
-        {"$group": {
-            "_id": "$token_usage.provider",
-            "cost": {"$sum": "$token_usage.total_cost"},
-            "count": {"$sum": 1},
-        }},
+        {
+            "$group": {
+                "_id": "$token_usage.provider",
+                "cost": {"$sum": "$token_usage.total_cost"},
+                "count": {"$sum": 1},
+            }
+        },
     ]
 
     result: Dict[str, Any] = {}
@@ -133,11 +151,13 @@ async def get_cost_by_model(days: int) -> Dict[str, Any]:
 
     pipeline = [
         {"$match": {"created_at": {"$gte": cutoff}}},
-        {"$group": {
-            "_id": "$token_usage.model_name",
-            "cost": {"$sum": "$token_usage.total_cost"},
-            "count": {"$sum": 1},
-        }},
+        {
+            "$group": {
+                "_id": "$token_usage.model_name",
+                "cost": {"$sum": "$token_usage.total_cost"},
+                "count": {"$sum": 1},
+            }
+        },
     ]
 
     result: Dict[str, Any] = {}
@@ -154,21 +174,25 @@ async def get_daily_cost(days: int) -> List[Dict[str, Any]]:
 
     pipeline = [
         {"$match": {"created_at": {"$gte": cutoff}}},
-        {"$group": {
-            "_id": {"$dateToString": {"format": "%Y-%m-%d", "date": "$created_at"}},
-            "cost": {"$sum": "$token_usage.total_cost"},
-            "tokens": {"$sum": "$token_usage.total_tokens"},
-        }},
+        {
+            "$group": {
+                "_id": {"$dateToString": {"format": "%Y-%m-%d", "date": "$created_at"}},
+                "cost": {"$sum": "$token_usage.total_cost"},
+                "tokens": {"$sum": "$token_usage.total_tokens"},
+            }
+        },
         {"$sort": {"_id": 1}},
     ]
 
     result = []
     async for doc in collection.aggregate(pipeline):
-        result.append({
-            "date": doc["_id"],
-            "cost": doc["cost"] or 0,
-            "tokens": doc["tokens"] or 0,
-        })
+        result.append(
+            {
+                "date": doc["_id"],
+                "cost": doc["cost"] or 0,
+                "tokens": doc["tokens"] or 0,
+            }
+        )
     return result
 
 
@@ -200,19 +224,24 @@ async def get_usage_records(
     records = []
     async for doc in cursor:
         token_usage = doc.get("token_usage", {})
-        records.append({
-            "id": str(doc.get("_id", "")),
-            "timestamp": doc.get("created_at", datetime.now(timezone.utc)).isoformat()
-            if isinstance(doc.get("created_at"), datetime) else str(doc.get("created_at", "")),
-            "provider": token_usage.get("provider", ""),
-            "model_name": token_usage.get("model_name", ""),
-            "input_tokens": token_usage.get("input_tokens", 0),
-            "output_tokens": token_usage.get("output_tokens", 0),
-            "cost": token_usage.get("total_cost", 0),
-            "currency": "CNY",
-            "session_id": str(doc.get("user_id", "")),
-            "analysis_type": "trading_agents",
-            "stock_code": doc.get("stock_code", ""),
-        })
+        records.append(
+            {
+                "id": str(doc.get("_id", "")),
+                "timestamp": (
+                    doc.get("created_at", datetime.now(timezone.utc)).isoformat()
+                    if isinstance(doc.get("created_at"), datetime)
+                    else str(doc.get("created_at", ""))
+                ),
+                "provider": token_usage.get("provider", ""),
+                "model_name": token_usage.get("model_name", ""),
+                "input_tokens": token_usage.get("input_tokens", 0),
+                "output_tokens": token_usage.get("output_tokens", 0),
+                "cost": token_usage.get("total_cost", 0),
+                "currency": "CNY",
+                "session_id": str(doc.get("user_id", "")),
+                "analysis_type": "trading_agents",
+                "stock_code": doc.get("stock_code", ""),
+            }
+        )
 
     return {"records": records, "total": total}

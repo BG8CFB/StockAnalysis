@@ -356,7 +356,7 @@ export default function SyncManagementPage() {
             size="small"
             style={{ marginBottom: 16 }}
           >
-            <Space orientation="vertical" style={{ width: '100%' }} size="middle">
+            <Space direction="vertical" style={{ width: '100%' }} size="middle">
               <div>
                 <Text strong>股票基础数据同步</Text>
                 <br />
@@ -458,7 +458,7 @@ export default function SyncManagementPage() {
               {testResults.map(r => (
                 <Col key={r.name} span={8}>
                   <Card size="small">
-                    <Space orientation="vertical" size={0}>
+                    <Space direction="vertical" size={0}>
                       <Tag color={r.available ? 'success' : 'error'} style={{ fontSize: 14, padding: '2px 8px' }}>
                         {r.name.toUpperCase()}
                       </Tag>

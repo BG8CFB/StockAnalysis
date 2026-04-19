@@ -9,7 +9,7 @@ import asyncio
 import logging
 import time
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from bson import ObjectId
 
@@ -40,12 +40,12 @@ class AIModelService:
 
     COLLECTION_NAME = "ai_model_configs"
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化服务"""
-        self._db = None
-        self._model_cache: Dict[str, any] = {}  # 改为 any 类型，不再缓存 LLMProvider
+        self._db: Optional[Any] = None
+        self._model_cache: Dict[str, Any] = {}  # 改为 Any 类型，不再缓存 LLMProvider
 
-    async def _get_collection(self):
+    async def _get_collection(self) -> Any:
         """获取数据库集合"""
         return mongodb.get_collection(self.COLLECTION_NAME)
 
@@ -54,10 +54,7 @@ class AIModelService:
     # ========================================================================
 
     async def create_model(
-        self,
-        user_id: str,
-        request: AIModelConfigCreate,
-        is_admin: bool = False
+        self, user_id: str, request: AIModelConfigCreate, is_admin: bool = False
     ) -> AIModelConfigResponse:
         """
         创建 AI 模型配置
@@ -118,10 +115,7 @@ class AIModelService:
         return AIModelConfigResponse.from_db(doc)
 
     async def get_model(
-        self,
-        model_id: str,
-        user_id: str,
-        is_admin: bool = False
+        self, model_id: str, user_id: str, is_admin: bool = False
     ) -> Optional[AIModelConfigResponse]:
         """
         获取单个模型配置
@@ -145,9 +139,7 @@ class AIModelService:
                 object_id = ObjectId(model_id)
                 doc = await collection.find_one({"_id": object_id, "enabled": True})
             except Exception:
-                logger.debug(
-                    f"模型 ID 格式无效，无法按 _id 查找: model_id={model_id}"
-                )
+                logger.debug(f"模型 ID 格式无效，无法按 _id 查找: model_id={model_id}")
                 return None
 
         if not doc:
@@ -174,11 +166,8 @@ class AIModelService:
         return AIModelConfigResponse.from_db(doc)
 
     async def get_model_with_credentials(
-        self,
-        model_id: str,
-        user_id: str,
-        is_admin: bool = False
-    ) -> Optional[Dict[str, any]]:
+        self, model_id: str, user_id: str, is_admin: bool = False
+    ) -> Optional[Dict[str, Any]]:
         """
         获取包含完整凭证的模型配置（内部方法）
 
@@ -207,9 +196,7 @@ class AIModelService:
                 return None
 
         if not doc:
-            logger.debug(
-                f"模型未找到或已禁用: model_id={model_id}, user_id={user_id}"
-            )
+            logger.debug(f"模型未找到或已禁用: model_id={model_id}, user_id={user_id}")
             return None
 
         # 权限检查
@@ -226,6 +213,7 @@ class AIModelService:
         if encrypted_api_key:
             try:
                 from core.security.encryption import decrypt_sensitive_data, is_encrypted
+
                 if is_encrypted(encrypted_api_key):
                     api_key = decrypt_sensitive_data(encrypted_api_key)
                 else:
@@ -236,9 +224,7 @@ class AIModelService:
 
         # 检查 API Key 是否存在
         if not api_key:
-            logger.error(
-                f"模型配置缺少 API Key: model_id={model_id}, name={doc.get('name')}"
-            )
+            logger.error(f"模型配置缺少 API Key: model_id={model_id}, name={doc.get('name')}")
             return None
 
         # 返回包含完整 API Key 和所有必要配置的数据
@@ -255,10 +241,7 @@ class AIModelService:
         }
 
     async def list_models(
-        self,
-        user_id: str,
-        is_admin: bool = False,
-        include_system: bool = True
+        self, user_id: str, is_admin: bool = False, include_system: bool = True
     ) -> Dict[str, List[AIModelConfigResponse]]:
         """
         列出模型配置
@@ -296,17 +279,21 @@ class AIModelService:
             user_models = []
 
             if include_system:
-                system_cursor = collection.find({
-                    **query,
-                    "is_system": True,
-                }).sort("created_at", -1)
+                system_cursor = collection.find(
+                    {
+                        **query,
+                        "is_system": True,
+                    }
+                ).sort("created_at", -1)
                 system_models = [AIModelConfigResponse.from_db(doc) async for doc in system_cursor]
 
-            user_cursor = collection.find({
-                **query,
-                "is_system": False,
-                "owner_id": user_id,
-            }).sort("created_at", -1)
+            user_cursor = collection.find(
+                {
+                    **query,
+                    "is_system": False,
+                    "owner_id": user_id,
+                }
+            ).sort("created_at", -1)
             user_models = [AIModelConfigResponse.from_db(doc) async for doc in user_cursor]
 
             result = {
@@ -321,8 +308,7 @@ class AIModelService:
             return result
 
     async def get_default_model(
-        self,
-        user_id: Optional[str] = None
+        self, user_id: Optional[str] = None
     ) -> Optional[AIModelConfigResponse]:
         """
         获取默认的 AI 模型配置
@@ -338,20 +324,24 @@ class AIModelService:
         collection = await self._get_collection()
 
         # 先尝试获取系统级模型
-        system_model = await collection.find_one({
-            "enabled": True,
-            "is_system": True,
-        })
+        system_model = await collection.find_one(
+            {
+                "enabled": True,
+                "is_system": True,
+            }
+        )
         if system_model:
             return AIModelConfigResponse.from_db(system_model)
 
         # 如果没有系统级模型，尝试获取用户的模型
         if user_id:
-            user_model = await collection.find_one({
-                "enabled": True,
-                "is_system": False,
-                "owner_id": user_id,
-            })
+            user_model = await collection.find_one(
+                {
+                    "enabled": True,
+                    "is_system": False,
+                    "owner_id": user_id,
+                }
+            )
             if user_model:
                 return AIModelConfigResponse.from_db(user_model)
 
@@ -360,11 +350,7 @@ class AIModelService:
         return None
 
     async def update_model(
-        self,
-        model_id: str,
-        user_id: str,
-        request: AIModelConfigUpdate,
-        is_admin: bool = False
+        self, model_id: str, user_id: str, request: AIModelConfigUpdate, is_admin: bool = False
     ) -> Optional[AIModelConfigResponse]:
         """
         更新模型配置
@@ -395,7 +381,7 @@ class AIModelService:
             return None
 
         # 构建更新数据
-        update_data = {}
+        update_data: Dict[str, Any] = {}
         if request.name is not None:
             update_data["name"] = request.name
         if request.platform_type is not None:
@@ -437,10 +423,7 @@ class AIModelService:
         update_data["updated_at"] = datetime.now(timezone.utc)
 
         # 执行更新
-        await collection.update_one(
-            {"_id": object_id},
-            {"$set": update_data}
-        )
+        await collection.update_one({"_id": object_id}, {"$set": update_data})
 
         # 清除缓存
         if model_id in self._model_cache:
@@ -453,12 +436,7 @@ class AIModelService:
 
         return AIModelConfigResponse.from_db(updated_doc)
 
-    async def delete_model(
-        self,
-        model_id: str,
-        user_id: str,
-        is_admin: bool = False
-    ) -> bool:
+    async def delete_model(self, model_id: str, user_id: str, is_admin: bool = False) -> bool:
         """
         删除模型配置
 
@@ -497,16 +475,13 @@ class AIModelService:
 
         logger.info(f"删除 AI 模型配置: model_id={model_id}, user={user_id}")
 
-        return result.deleted_count > 0
+        return bool(result.deleted_count > 0)
 
     # ========================================================================
     # 连接测试
     # ========================================================================
 
-    async def test_model_connection(
-        self,
-        request: AIModelTestRequest
-    ) -> ConnectionTestResponse:
+    async def test_model_connection(self, request: AIModelTestRequest) -> ConnectionTestResponse:
         """
         测试 AI 模型连接（使用新的 AIService）
 
@@ -523,9 +498,7 @@ class AIModelService:
             from core.ai import AIMessage
 
             # 创建测试消息
-            test_messages = [
-                AIMessage(role="user", content="Hi")
-            ]
+            test_messages = [AIMessage(role="user", content="Hi")]
 
             # 创建临时配置（不使用配置服务，直接传递配置）
             # 注意：这里需要临时设置模型配置到 AIService
@@ -578,10 +551,7 @@ class AIModelService:
                 latency_ms=latency_ms,
             )
 
-    async def list_available_models(
-        self,
-        request: ListModelsRequest
-    ) -> ListModelsResponse:
+    async def list_available_models(self, request: ListModelsRequest) -> ListModelsResponse:
         """
         获取可用的模型列表
 
@@ -600,30 +570,39 @@ class AIModelService:
             # 预设平台的模型列表配置
             preset_platforms_models = {
                 PresetPlatformEnum.OPENAI: [
-                    "gpt-4o", "gpt-4o-mini", "o1-preview", "o1-mini",
-                    "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo"
+                    "gpt-4o",
+                    "gpt-4o-mini",
+                    "o1-preview",
+                    "o1-mini",
+                    "gpt-4-turbo",
+                    "gpt-4",
+                    "gpt-3.5-turbo",
                 ],
                 PresetPlatformEnum.ANTHROPIC: [
-                    "claude-sonnet-4-5-20250514", "claude-opus-4-20250514",
-                    "claude-3-5-haiku-20241022", "claude-3-haiku-20240307"
+                    "claude-sonnet-4-5-20250514",
+                    "claude-opus-4-20250514",
+                    "claude-3-5-haiku-20241022",
+                    "claude-3-haiku-20240307",
                 ],
                 PresetPlatformEnum.AZURE_OPENAI: [
-                    "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-35-turbo"
+                    "gpt-4o",
+                    "gpt-4o-mini",
+                    "gpt-4-turbo",
+                    "gpt-35-turbo",
                 ],
                 PresetPlatformEnum.BAIDU: [
-                    "ernie-4.0-8k", "ernie-3.5-8k", "ernie-speed-8k", "ernie-lite-8k"
+                    "ernie-4.0-8k",
+                    "ernie-3.5-8k",
+                    "ernie-speed-8k",
+                    "ernie-lite-8k",
                 ],
-                PresetPlatformEnum.ALIBABA: [
-                    "qwen-max", "qwen-plus", "qwen-turbo", "qwen-long"
-                ],
-                PresetPlatformEnum.TENCENT: [
-                    "hunyuan-pro", "hunyuan-standard", "hunyuan-lite"
-                ],
-                PresetPlatformEnum.DEEPSEEK: [
-                    "deepseek-chat", "deepseek-coder"
-                ],
+                PresetPlatformEnum.ALIBABA: ["qwen-max", "qwen-plus", "qwen-turbo", "qwen-long"],
+                PresetPlatformEnum.TENCENT: ["hunyuan-pro", "hunyuan-standard", "hunyuan-lite"],
+                PresetPlatformEnum.DEEPSEEK: ["deepseek-chat", "deepseek-coder"],
                 PresetPlatformEnum.MOONSHOT: [
-                    "moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"
+                    "moonshot-v1-8k",
+                    "moonshot-v1-32k",
+                    "moonshot-v1-128k",
                 ],
                 PresetPlatformEnum.ZHIPU: [
                     "glm-4-plus",
@@ -631,11 +610,9 @@ class AIModelService:
                     "glm-4-0520",
                     "glm-4-0520-coder",
                     "glm-4-air",
-                    "glm-4-flash"
+                    "glm-4-flash",
                 ],
-                PresetPlatformEnum.ZHIPU_CODING: [
-                    "glm-4.7"  # 编程套餐专用模型
-                ],
+                PresetPlatformEnum.ZHIPU_CODING: ["glm-4.7"],  # 编程套餐专用模型
             }
 
             fallback_models = preset_platforms_models.get(request.platform_name, [])
@@ -654,7 +631,7 @@ class AIModelService:
                     # 构建请求头
                     headers = {
                         "Authorization": f"Bearer {request.api_key}",
-                        **request.custom_headers
+                        **request.custom_headers,
                     }
 
                     # 构建模型列表端点 URL
@@ -670,12 +647,14 @@ class AIModelService:
                         models = []
                         if "data" in data:
                             for item in data["data"]:
-                                models.append(ModelInfo(
-                                    id=item.get("id", ""),
-                                    name=item.get("id", ""),
-                                    created_at=item.get("created"),
-                                    owned_by=item.get("owned_by")
-                                ))
+                                models.append(
+                                    ModelInfo(
+                                        id=item.get("id", ""),
+                                        name=item.get("id", ""),
+                                        created_at=item.get("created"),
+                                        owned_by=item.get("owned_by"),
+                                    )
+                                )
 
                         logger.info(
                             f"成功从 API 获取模型列表: platform={request.platform_name}, "
@@ -687,7 +666,7 @@ class AIModelService:
                             message=f"成功获取 {len(models)} 个模型",
                             models=models,
                             is_from_api=True,
-                            fallback_used=False
+                            fallback_used=False,
                         )
 
                 except httpx.TimeoutException:
@@ -703,19 +682,15 @@ class AIModelService:
             # API 调用失败，使用预设列表作为兜底
             logger.info(f"使用预设模型列表作为兜底: platform={request.platform_name}")
             models = [
-                ModelInfo(
-                    id=model_id,
-                    name=model_id,
-                    created_at=None,
-                    owned_by=None
-                ) for model_id in fallback_models
+                ModelInfo(id=model_id, name=model_id, created_at=None, owned_by=None)
+                for model_id in fallback_models
             ]
             return ListModelsResponse(
                 success=True,
                 message=f"API 获取失败，使用预设列表（{len(models)} 个模型）",
                 models=models,
                 is_from_api=False,
-                fallback_used=True
+                fallback_used=True,
             )
 
         # 自定义平台，直接返回空列表（用户手动输入）
@@ -724,7 +699,7 @@ class AIModelService:
             message="自定义平台请手动输入模型 ID",
             models=[],
             is_from_api=False,
-            fallback_used=False
+            fallback_used=False,
         )
 
 

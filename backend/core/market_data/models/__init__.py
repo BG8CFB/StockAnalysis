@@ -1,15 +1,18 @@
 """
 市场数据模型
+
+注意：MarketType 和 Exchange 必须在子模块导入之前定义，
+因为 stock_info.py 等子模块会从本模块导入这些枚举。
 """
 
-from datetime import datetime
-from typing import Optional, List
-from pydantic import BaseModel, Field, field_validator
+# ruff: noqa: I001, E402
+
 from enum import Enum
 
 
 class MarketType(str, Enum):
     """市场类型枚举"""
+
     A_STOCK = "A_STOCK"
     US_STOCK = "US_STOCK"
     HK_STOCK = "HK_STOCK"
@@ -17,6 +20,7 @@ class MarketType(str, Enum):
 
 class Exchange(str, Enum):
     """交易所枚举"""
+
     SSE = "SSE"  # 上交所
     SZSE = "SZSE"  # 深交所
     HKEX = "HKEX"  # 港交所
@@ -24,50 +28,43 @@ class Exchange(str, Enum):
     NYSE = "NYSE"
 
 
-# 从子模块导入股票数据模型
-from core.market_data.models.stock_info import StockInfo, TradeCalendar
-from core.market_data.models.stock_quote import (
-    StockQuote,
-    StockMinuteQuote,
-    StockKLine,
-    StockDailyIndicator,
-    MarketBoardDaily
-)
-from core.market_data.models.stock_financials import (
-    StockFinancial,
-    FinancialIncome,
-    FinancialBalance,
-    FinancialCashFlow,
-    StockFinancialIndicator
-)
-from core.market_data.models.stock_company import StockCompany
-from core.market_data.models.stock_macro import MacroEconomy, MacroEconomic
-from core.market_data.models.stock_other import (
-    StockMoneyFlow,
-    StockHSGTMoneyFlow,
-    StockTopList,
-    StockDividend,
-    StockMargin,
-    MarketNews,
-)
-from core.market_data.models.api_monitor import ApiMonitor
-
 # 从子模块导入其他模型
+from core.market_data.models.api_monitor import ApiMonitor
 from core.market_data.models.datasource import (
+    DataSourceHealthStatus,
     DataSourceStatus,
+    DataSourceStatusHistory,
     DataSourceType,
     SystemDataSourceConfig,
     UserDataSourceConfig,
-    DataSourceHealthStatus,
-    DataSourceStatusHistory,
 )
-from core.market_data.models.watchlist import (
-    WatchlistStock,
-    UserWatchlist,
+from core.market_data.models.stock_company import StockCompany
+from core.market_data.models.stock_financials import (
+    FinancialBalance,
+    FinancialCashFlow,
+    FinancialIncome,
+    StockFinancial,
+    StockFinancialIndicator,
 )
-from core.market_data.models.sync_task import (
-    DataSyncTask,
+from core.market_data.models.stock_info import StockInfo, TradeCalendar
+from core.market_data.models.stock_macro import MacroEconomic, MacroEconomy
+from core.market_data.models.stock_other import (
+    MarketNews,
+    StockDividend,
+    StockHSGTMoneyFlow,
+    StockMargin,
+    StockMoneyFlow,
+    StockTopList,
 )
+from core.market_data.models.stock_quote import (
+    MarketBoardDaily,
+    StockDailyIndicator,
+    StockKLine,
+    StockMinuteQuote,
+    StockQuote,
+)
+from core.market_data.models.sync_task import DataSyncTask
+from core.market_data.models.watchlist import UserWatchlist, WatchlistStock
 
 __all__ = [
     # Market

@@ -5,6 +5,7 @@ MCP API 路由
 """
 
 import logging
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -38,11 +39,12 @@ router = APIRouter(prefix="/mcp", tags=["MCP"])
 # MCP 服务器管理端点
 # =============================================================================
 
+
 @router.post("/servers", response_model=MCPServerConfigResponse)
 async def create_mcp_server(
     request: MCPServerConfigCreate,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> MCPServerConfigResponse:
     """
     创建 MCP 服务器配置
 
@@ -65,7 +67,7 @@ async def create_mcp_server(
 @router.get("/servers")
 async def list_mcp_servers(
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> dict:
     """
     列出 MCP 服务器配置
 
@@ -84,7 +86,7 @@ async def list_mcp_servers(
 async def get_mcp_server(
     server_id: str,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> MCPServerConfigResponse:
     """
     获取单个 MCP 服务器配置
 
@@ -110,7 +112,7 @@ async def update_mcp_server(
     server_id: str,
     request: MCPServerConfigUpdate,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> MCPServerConfigResponse:
     """
     更新 MCP 服务器配置
 
@@ -136,7 +138,7 @@ async def update_mcp_server(
 async def delete_mcp_server(
     server_id: str,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> dict:
     """
     删除 MCP 服务器配置
 
@@ -161,7 +163,7 @@ async def delete_mcp_server(
 async def test_mcp_server(
     server_id: str,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> ConnectionTestResponse:
     """
     测试 MCP 服务器连接
 
@@ -183,7 +185,7 @@ async def test_mcp_server(
 async def get_mcp_server_tools(
     server_id: str,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> dict:
     """
     获取 MCP 服务器的工具列表
 
@@ -203,10 +205,11 @@ async def get_mcp_server_tools(
 # 连接池管理端点（管理员）
 # =============================================================================
 
+
 @router.get("/pool/stats")
 async def get_pool_stats(
     current_admin: UserModel = Depends(get_current_admin_user),
-):
+) -> dict:
     """
     获取连接池统计信息
 
@@ -219,7 +222,7 @@ async def get_pool_stats(
         连接池统计信息
     """
     pool = get_mcp_connection_pool()
-    stats = await pool.get_stats()
+    stats = await pool.get_connection_stats()
 
     # 添加服务器配置信息
     service = get_mcp_service()
@@ -245,7 +248,7 @@ async def get_pool_stats(
 async def disable_mcp_server(
     server_id: str,
     current_admin: UserModel = Depends(get_current_admin_user),
-):
+) -> dict:
     """
     禁用 MCP 服务器（停止接受新任务）
 
@@ -271,8 +274,8 @@ async def disable_mcp_server(
         await service.update_server(
             server_id,
             str(current_admin.id),
-            MCPServerConfigUpdate(enabled=False),
-            is_admin=True
+            MCPServerConfigUpdate(name=server.name, enabled=False),  # type: ignore[call-arg]
+            is_admin=True,
         )
 
     return {"message": "MCP 服务器已禁用", "success": True}
@@ -282,10 +285,11 @@ async def disable_mcp_server(
 # 系统配置管理端点
 # =============================================================================
 
+
 @router.get("/settings", response_model=MCPSystemSettingsResponse)
 async def get_mcp_settings(
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> MCPSystemSettingsResponse:
     """
     获取 MCP 系统配置
 
@@ -312,7 +316,7 @@ async def get_mcp_settings(
 async def update_mcp_settings(
     settings: MCPSystemSettingsCreate,
     current_admin: UserModel = Depends(get_current_admin_user),
-):
+) -> MCPSystemSettingsResponse:
     """
     更新 MCP 系统配置
 
@@ -343,7 +347,7 @@ async def update_mcp_settings(
 @router.post("/settings/reset")
 async def reset_mcp_settings(
     current_admin: UserModel = Depends(get_current_admin_user),
-):
+) -> dict:
     """
     恢复 MCP 系统配置为默认值
 
@@ -370,14 +374,13 @@ async def reset_mcp_settings(
     }
 
 
-
-
 # =============================================================================
 # 健康检查端点
 # =============================================================================
 
+
 @router.get("/health")
-async def health_check():
+async def health_check() -> dict:
     """
     健康检查端点
 
@@ -387,4 +390,108 @@ async def health_check():
     return {
         "status": "healthy",
         "module": "MCP",
+    }
+
+
+@router.post("/health-check")
+async def trigger_health_check(
+    current_admin: UserModel = Depends(get_current_admin_user),
+) -> dict:
+    """
+    手动触发 MCP 健康检查
+
+    对所有已启用的 MCP 服务器执行连接测试，更新状态缓存。
+
+    Args:
+        current_admin: 当前管理员
+
+    Returns:
+        健康检查结果
+    """
+    service = get_mcp_service()
+    is_admin = True
+    servers = await service.list_servers(str(current_admin.id), is_admin)
+    results = {}
+    for server in servers.get("system", []) + servers.get("user", []):
+        if server.enabled:
+            try:
+                test_result = await service.test_server_connection(
+                    server.id, str(current_admin.id), is_admin
+                )
+                results[server.id] = {
+                    "name": server.name,
+                    "success": test_result.success,
+                    "message": test_result.message,
+                }
+            except Exception as e:
+                results[server.id] = {
+                    "name": server.name,
+                    "success": False,
+                    "message": str(e),
+                }
+    return {"success": True, "results": results, "total": len(results)}
+
+
+@router.post("/reload")
+async def reload_mcp(
+    current_admin: UserModel = Depends(get_current_admin_user),
+) -> dict:
+    """
+    重新加载 MCP 配置
+
+    从数据库重新加载所有 MCP 配置，刷新连接池。
+
+    Args:
+        current_admin: 当前管理员
+
+    Returns:
+        操作结果
+    """
+    reload_mcp_config()
+    logger.info(f"MCP 配置已手动重载: operator={current_admin.username}")
+    return {"message": "MCP 配置已重新加载", "success": True}
+
+
+@router.post("/connectors/update")
+async def update_mcp_connectors(
+    data: dict[str, Any],
+    current_admin: UserModel = Depends(get_current_admin_user),
+) -> dict:
+    """
+    批量更新 MCP 连接器配置
+
+    批量更新多个 MCP 服务器的启用状态等配置。
+
+    Args:
+        data: 更新数据（servers 列表）
+        current_admin: 当前管理员
+
+    Returns:
+        操作结果
+    """
+    service = get_mcp_service()
+    servers_data = data.get("servers", [])
+    updated_count = 0
+    failed_count = 0
+
+    for server_data in servers_data:
+        server_id = server_data.get("id") or server_data.get("server_id")
+        if not server_id:
+            failed_count += 1
+            continue
+        try:
+            update = MCPServerConfigUpdate(
+                enabled=server_data.get("enabled"),
+            )
+            await service.update_server(server_id, str(current_admin.id), update, is_admin=True)
+            updated_count += 1
+        except Exception as e:
+            logger.warning(f"批量更新 MCP 连接器失败: server_id={server_id}, error={e}")
+            failed_count += 1
+
+    return {
+        "message": f"已更新 {updated_count} 个连接器",
+        "success": True,
+        "updated": updated_count,
+        "failed": failed_count,
     }

@@ -8,10 +8,11 @@ Phase 4: 风险管理委员会主席
 """
 
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, List, Optional
 
-from langchain_core.language_models import BaseChatModel
 from langchain.agents import create_agent
+from langchain_core.language_models import BaseChatModel
+
 from modules.trading_agents.models.state import WorkflowState
 from modules.trading_agents.workflow.callbacks import WebSocketCallbackHandler
 
@@ -29,7 +30,7 @@ class RiskManager:
         self,
         model: BaseChatModel,
         config: Optional[Dict[str, Any]] = None,
-        task_id: str = None,
+        task_id: Optional[str] = None,
         websocket_manager: Any = None,
     ):
         """
@@ -50,15 +51,17 @@ class RiskManager:
         # 创建回调处理器
         self.callbacks = []
         if self.task_id and self.websocket_manager:
-            self.callbacks.append(WebSocketCallbackHandler(
-                task_id=self.task_id,
-                agent_slug=self.slug,
-                agent_name=self.name,
-                websocket_manager=self.websocket_manager,
-            ))
+            self.callbacks.append(
+                WebSocketCallbackHandler(
+                    task_id=self.task_id,
+                    agent_slug=self.slug,
+                    agent_name=self.name,
+                    websocket_manager=self.websocket_manager,
+                )
+            )
         self.agent = self._create_agent()
 
-    def _create_agent(self):
+    def _create_agent(self) -> Any:
         """创建智能体实例 (LangChain 1.1.0 create_agent API)"""
         system_prompt_str = self._build_system_prompt()
         # 使用 LangChain 1.1.0 的 create_agent
@@ -130,7 +133,7 @@ class RiskManager:
         self,
         state: WorkflowState,
         strategy_reports: List[Dict[str, Any]],
-        investment_decision: Optional[Dict[str, Any]]
+        investment_decision: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
         """
         执行风险评估
@@ -151,11 +154,14 @@ class RiskManager:
             # 调用智能体 (使用 LangGraph create_agent 的正确输入格式)
             prompt_text = messages[0]["content"] if messages else "Please analyze."
             # 通过 config 传递 callbacks
-            config = {"recursion_limit": 10}
+            config: dict[str, Any] = {"recursion_limit": 10}
             if self.callbacks:
                 from langchain_core.callbacks import CallbackManager
-                config["configurable"] = {"callbacks": CallbackManager(self.callbacks)}
-            result = await self.agent.ainvoke({"messages": [{"role": "user", "content": prompt_text}]}, config=config)
+
+                config["configurable"] = {"callbacks": CallbackManager(self.callbacks)}  # type: ignore[arg-type]
+            result = await self.agent.ainvoke(
+                {"messages": [{"role": "user", "content": prompt_text}]}, config=config
+            )
 
             # 提取输出
             output = self._extract_output(result)
@@ -168,34 +174,28 @@ class RiskManager:
                 f"批准: {decision.get('approved') if decision else 'N/A'}"
             )
 
-            return {
-                "output": output,
-                "decision": decision,
-                "error": None
-            }
+            return {"output": output, "decision": decision, "error": None}
 
         except Exception as e:
             logger.error(f"[Phase 4] 风险管理委员会主席评估失败: {state.stock_code}, error={e}")
 
-            return {
-                "output": None,
-                "decision": None,
-                "error": str(e)
-            }
+            return {"output": None, "decision": None, "error": str(e)}
 
     def _build_input_messages(
         self,
         state: WorkflowState,
         strategy_reports: List[Dict[str, Any]],
-        investment_decision: Optional[Dict[str, Any]]
+        investment_decision: Optional[Dict[str, Any]],
     ) -> list:
         """构建输入消息"""
         # 构建策略报告摘要
-        reports_summary = "\n\n".join([
-            f"## {report['name']}\n{report['output']}"
-            for report in strategy_reports
-            if report.get("output")
-        ])
+        reports_summary = "\n\n".join(
+            [
+                f"## {report['name']}\n{report['output']}"
+                for report in strategy_reports
+                if report.get("output")
+            ]
+        )
 
         decision_text = ""
         if investment_decision:
@@ -238,9 +238,9 @@ class RiskManager:
             if messages:
                 last_message = messages[-1]
                 if hasattr(last_message, "content"):
-                    return last_message.content
+                    return str(last_message.content)
                 elif isinstance(last_message, dict):
-                    return last_message.get("content")
+                    return str(last_message.get("content", ""))
 
         if isinstance(result, str):
             return result
@@ -251,9 +251,6 @@ class RiskManager:
         """解析决策结果"""
         if not output:
             return None
-
-        import re
-        import json
 
         # 检查是否批准
         approved = None
@@ -280,7 +277,7 @@ class RiskManager:
             return {
                 "approved": approved if approved is not None else True,
                 "recommendation": recommendation,
-                "risk_level": risk_level
+                "risk_level": risk_level,
             }
 
         return None

@@ -5,11 +5,11 @@
 """
 
 import logging
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
 
-from core.market_data.models import MarketType
-from core.market_data.tools.base_tool import MarketDataToolBase, DataSource
 from core.market_data.managers.source_router import DataSourceRouter
+from core.market_data.models import MarketType
+from core.market_data.tools.base_tool import DataSource, MarketDataToolBase
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ class HKStockTool(MarketDataToolBase):
         self,
         user_id: Optional[str] = None,
         source_router: Optional[DataSourceRouter] = None,
-        data_source: DataSource = DataSource.AUTO
+        data_source: DataSource = DataSource.AUTO,
     ):
         super().__init__(user_id, source_router, data_source)
 
@@ -33,10 +33,7 @@ class HKStockTool(MarketDataToolBase):
         """获取市场类型"""
         return MarketType.HK_STOCK
 
-    async def get_realtime_quote(
-        self,
-        symbol: str
-    ) -> Optional[Dict[str, Any]]:
+    async def get_realtime_quote(self, symbol: str) -> Optional[Dict[str, Any]]:
         """
         获取实时行情
 
@@ -62,9 +59,9 @@ class HKStockTool(MarketDataToolBase):
 
             for source in sources:
                 if hasattr(source, "get_realtime_quote"):
-                    quote = await source.get_realtime_quote(symbol)
+                    quote = await source.get_realtime_quote(symbol)  # type: ignore[union-attr]
                     if quote:
-                        return quote
+                        return dict(quote)  # type: ignore[no-any-return]
 
             # 如果实时数据获取失败，回退到数据库
             logger.warning(f"Realtime quote not available for {symbol}, using database")
@@ -74,10 +71,7 @@ class HKStockTool(MarketDataToolBase):
             logger.error(f"Failed to get realtime quote for {symbol}: {e}")
             return await self.get_latest_quote(symbol)
 
-    async def get_stock_list(
-        self,
-        limit: int = 50
-    ) -> List[Dict[str, Any]]:
+    async def get_stock_list(self, limit: int = 50) -> List[Dict[str, Any]]:
         """
         获取热门港股列表
 
@@ -95,9 +89,7 @@ class HKStockTool(MarketDataToolBase):
                 # 如果数据库为空，从数据源获取
                 logger.info("No HK stocks in database, fetching from data source")
                 stock_list = await self.source_router.route_to_best_source(
-                    market=MarketType.HK_STOCK,
-                    method_name="get_stock_list",
-                    status="L"
+                    market=MarketType.HK_STOCK, method_name="get_stock_list", status="L"
                 )
 
                 return [
@@ -165,9 +157,11 @@ class HKStockTool(MarketDataToolBase):
             sources = await self.source_router.get_available_sources(MarketType.HK_STOCK)
 
             for source in sources:
-                if source.source_name == "akshare" and hasattr(source, "get_hk_stock_ggt_components"):
-                    components = await source.get_hk_stock_ggt_components()
-                    return components
+                if source.source_name == "akshare" and hasattr(
+                    source, "get_hk_stock_ggt_components"
+                ):
+                    components = await source.get_hk_stock_ggt_components()  # type: ignore[union-attr]
+                    return list(components) if components else []  # type: ignore[no-any-return]
 
             return []
 
@@ -192,8 +186,8 @@ class HKStockTool(MarketDataToolBase):
 
             for source in sources:
                 if source.source_name == "akshare" and hasattr(source, "get_hk_stock_money_flow"):
-                    flow_data = await source.get_hk_stock_money_flow()
-                    return flow_data
+                    flow_data = await source.get_hk_stock_money_flow()  # type: ignore[union-attr]
+                    return dict(flow_data) if flow_data else None  # type: ignore[no-any-return]
 
             return None
 
@@ -219,7 +213,7 @@ class HKStockTool(MarketDataToolBase):
             for source in sources:
                 if source.source_name == "akshare" and hasattr(source, "get_hk_index_spot"):
                     index_data = await source.get_hk_index_spot()
-                    return index_data
+                    return list(index_data) if index_data else []  # type: ignore[no-any-return]
 
             return []
 
@@ -228,9 +222,7 @@ class HKStockTool(MarketDataToolBase):
             return []
 
     async def get_hk_index_daily(
-        self,
-        symbol: str = "恒生指数",
-        days: int = 30
+        self, symbol: str = "恒生指数", days: int = 30
     ) -> List[Dict[str, Any]]:
         """
         获取港股指数历史行情

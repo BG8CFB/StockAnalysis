@@ -1,9 +1,9 @@
 """数据源层初始化"""
 
+from core.market_data.sources.a_stock import AkShareAdapter, TuShareAdapter
 from core.market_data.sources.base import DataSourceAdapter
-from core.market_data.sources.a_stock import TuShareAdapter, AkShareAdapter
-from core.market_data.sources.us_stock import YahooFinanceAdapter, AlphaVantageAdapter
-from core.market_data.sources.hk_stock import YahooHKAdapter, AkShareHKAdapter
+from core.market_data.sources.hk_stock import AkShareHKAdapter, YahooHKAdapter
+from core.market_data.sources.us_stock import AlphaVantageAdapter, YahooFinanceAdapter
 
 __all__ = [
     "DataSourceAdapter",

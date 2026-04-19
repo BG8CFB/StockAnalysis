@@ -471,7 +471,7 @@ export default function DatabaseManagementPage() {
               <br />
               <Paragraph type="secondary" style={{ fontSize: 13, marginBottom: 12 }}>导出数据库数据到文件</Paragraph>
 
-              <Space orientation="vertical" style={{ width: '100%' }} size="small">
+              <Space direction="vertical" style={{ width: '100%' }} size="small">
                 <div>
                   <Text type="secondary">导出格式</Text>
                   <Select
@@ -542,7 +542,7 @@ export default function DatabaseManagementPage() {
                 <span style={{ fontSize: 13 }}>覆盖现有数据</span>
               </div>
               {importOverwrite && (
-                <Alert type="warning" showIcon style={{ marginTop: 4, padding: '2px 8px' }} title="勾选后将删除现有数据再导入" />
+                <Alert type="warning" showIcon style={{ marginTop: 4, padding: '2px 8px' }} message="勾选后将删除现有数据再导入" />
               )}
 
               <Button

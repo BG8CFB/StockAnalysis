@@ -52,7 +52,7 @@ class MCPRequestQueue:
         """
         request = await self._queue.get()
         logger.debug(f"[MCPRequestQueue] 请求出队: {request.request_id}")
-        return request
+        return request  # type: ignore[no-any-return]
 
     def qsize(self) -> int:
         """获取队列大小"""

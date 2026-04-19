@@ -50,11 +50,10 @@ export interface ReportDetail {
 export interface ReportListParams {
   page?: number
   page_size?: number
-  search_keyword?: string
-  market_filter?: string
+  keyword?: string
+  market?: string
   start_date?: string
   end_date?: string
-  stock_code?: string
 }
 
 export interface ReportListResponse {

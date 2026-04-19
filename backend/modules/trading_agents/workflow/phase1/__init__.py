@@ -7,11 +7,11 @@ Phase 1: 信息收集与基础分析
 并行分析师团队，动态创建智能体。
 """
 
-from .template import Phase1AgentTemplate
 from .factory import (
     Phase1AgentFactory,
     execute_phase1,
 )
+from .template import Phase1AgentTemplate
 
 __all__ = [
     "Phase1AgentTemplate",

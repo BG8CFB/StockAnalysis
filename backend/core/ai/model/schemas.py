@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, model_validator
 # 通用辅助函数
 # =============================================================================
 
+
 def _parse_datetime(value: Any) -> Optional[datetime]:
     """
     解析 datetime，兼容多种格式
@@ -36,14 +37,16 @@ def _parse_datetime(value: Any) -> Optional[datetime]:
     if isinstance(value, dict) and "$date" in value:
         try:
 
-            from dateutil import parser
-            return parser.isoparse(value["$date"])
+            from dateutil import parser as dateutil_parser  # type: ignore[import-untyped]
+
+            return dateutil_parser.isoparse(value["$date"])  # type: ignore[no-any-return]
         except Exception:
             return None
     if isinstance(value, str):
         try:
-            from dateutil import parser
-            return parser.isoparse(value)
+            from dateutil import parser as dateutil_parser  # type: ignore[import-untyped]
+
+            return dateutil_parser.isoparse(value)  # type: ignore[no-any-return]
         except Exception:
             return None
     return None
@@ -197,6 +200,7 @@ class AIModelConfigUpdate(BaseModel):
                 self.task_concurrency is not None,
             ]
         ):
+            assert self.task_concurrency is not None and self.max_concurrency is not None
             if self.task_concurrency > self.max_concurrency:
                 raise ValueError(
                     f"单任务并发数({self.task_concurrency})不能大于模型最大并发数({self.max_concurrency})"
@@ -209,6 +213,11 @@ class AIModelConfigUpdate(BaseModel):
                 self.batch_concurrency is not None,
             ]
         ):
+            assert (
+                self.batch_concurrency is not None
+                and self.task_concurrency is not None
+                and self.max_concurrency is not None
+            )
             if self.batch_concurrency * self.task_concurrency > self.max_concurrency:
                 raise ValueError(
                     f"批量任务并发数({self.batch_concurrency}) × "
@@ -230,7 +239,7 @@ class AIModelConfigResponse(AIModelConfigBase):
     masked_api_key: str = Field(..., description="脱敏后的 API Key")
 
     # 覆盖基类的 api_key 字段：响应对象中不返回完整 API Key
-    api_key: Optional[str] = Field(None, description="API Key（响应中不返回）")
+    api_key: Optional[str] = Field(None, description="API Key（响应中不返回）")  # type: ignore[assignment]
 
     @classmethod
     def from_db(cls, data: Dict[str, Any]) -> "AIModelConfigResponse":
@@ -242,6 +251,7 @@ class AIModelConfigResponse(AIModelConfigBase):
         if api_key_encrypted:
             try:
                 from core.security.encryption import decrypt_sensitive_data, is_encrypted
+
                 # 先检查是否为 Base64 格式
                 if is_encrypted(api_key_encrypted):
                     api_key = decrypt_sensitive_data(api_key_encrypted)

@@ -8,7 +8,6 @@ Analysis API 适配器路由
 import asyncio
 import json
 import logging
-import secrets
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -23,7 +22,6 @@ from core.auth.dependencies import (
 )
 from core.background_tasks import create_analysis_task_background
 from core.db.mongodb import mongodb
-from core.db.redis import UserRedisKey, get_redis
 from core.settings.services.user_service import get_user_settings_service
 from core.user.dependencies import get_current_admin_user
 from core.user.models import UserModel
@@ -32,10 +30,8 @@ from modules.trading_agents.manager.task_manager import get_task_manager
 from modules.trading_agents.schemas import (
     AnalysisStagesConfig,
     AnalysisTaskCreate,
-    AnalysisTaskResponse,
     BatchTaskCreate,
     TaskStatusEnum,
-    UnifiedTaskCreate,
 )
 
 logger = logging.getLogger(__name__)
@@ -62,6 +58,7 @@ def fail(message: str, code: int = -1) -> Dict[str, Any]:
 
 class SingleAnalysisRequest(BaseModel):
     """前端单股分析请求"""
+
     symbol: Optional[str] = None
     stock_code: Optional[str] = None
     parameters: Optional[Dict[str, Any]] = None
@@ -69,6 +66,7 @@ class SingleAnalysisRequest(BaseModel):
 
 class BatchAnalysisRequest(BaseModel):
     """前端批量分析请求"""
+
     title: str
     description: Optional[str] = None
     symbols: Optional[List[str]] = None
@@ -87,11 +85,11 @@ def _parse_stages_from_params(params: Optional[Dict[str, Any]]) -> AnalysisStage
         return AnalysisStagesConfig()
 
     from modules.trading_agents.schemas import (
+        DebateConfig,
         Stage1Config,
         Stage2Config,
         Stage3Config,
         Stage4Config,
-        DebateConfig,
     )
 
     stage1 = Stage1Config(
@@ -150,7 +148,7 @@ _STREAM_TICKET_TTL = 90
 async def create_single_analysis(
     request: SingleAnalysisRequest,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """提交单股分析"""
     stock_code = _resolve_stock_code(request)
     params = request.parameters or {}
@@ -185,12 +183,14 @@ async def create_single_analysis(
         )
         task_id = await asyncio.wait_for(task_create_task, timeout=10.0)
         await settings_service.increment_task_usage(user_id)
-        return ok({
-            "task_id": task_id,
-            "analysis_id": task_id,
-            "status": "pending",
-            "message": "分析任务已创建",
-        })
+        return ok(
+            {
+                "task_id": task_id,
+                "analysis_id": task_id,
+                "status": "pending",
+                "message": "分析任务已创建",
+            }
+        )
     except asyncio.TimeoutError:
         return fail("任务创建超时")
     except Exception as e:
@@ -203,7 +203,7 @@ async def create_single_analysis(
 async def create_batch_analysis(
     request: BatchAnalysisRequest,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """提交批量分析"""
     raw_codes = request.stock_codes or request.symbols or []
     if not raw_codes:
@@ -220,9 +220,7 @@ async def create_batch_analysis(
     settings_service = get_user_settings_service()
     user_id = str(current_user.id)
 
-    allowed, error_msg = await settings_service.check_task_quota_batch(
-        user_id, len(raw_codes)
-    )
+    allowed, error_msg = await settings_service.check_task_quota_batch(user_id, len(raw_codes))
     if not allowed:
         return fail(f"配额不足: {error_msg}", 429)
 
@@ -244,16 +242,15 @@ async def create_batch_analysis(
         for _ in range(len(raw_codes)):
             await settings_service.increment_task_usage(user_id)
 
-        return ok({
-            "batch_id": batch_id,
-            "total_tasks": len(raw_codes),
-            "task_ids": [],
-            "mapping": [
-                {"symbol": c, "stock_code": c, "task_id": ""}
-                for c in raw_codes
-            ],
-            "status": "pending",
-        })
+        return ok(
+            {
+                "batch_id": batch_id,
+                "total_tasks": len(raw_codes),
+                "task_ids": [],
+                "mapping": [{"symbol": c, "stock_code": c, "task_id": ""} for c in raw_codes],
+                "status": "pending",
+            }
+        )
     except Exception as e:
         logger.error(f"批量分析创建失败: {e}", exc_info=True)
         return fail(f"批量任务创建失败: {e}")
@@ -266,7 +263,7 @@ async def list_user_tasks(
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取当前用户的任务列表"""
     task_manager = get_task_manager()
     user_id = str(current_user.id)
@@ -289,23 +286,27 @@ async def list_user_tasks(
     # 转换为前端 AnalysisTask 格式
     mapped = []
     for t in tasks:
-        mapped.append({
-            "task_id": t["id"],
-            "symbol": t.get("stock_code", ""),
-            "stock_code": t.get("stock_code", ""),
-            "status": _map_status(t["status"]),
-            "progress": t.get("progress", 0.0),
-            "created_at": _fmt_dt(t.get("created_at")),
-            "started_at": _fmt_dt(t.get("started_at")),
-            "completed_at": _fmt_dt(t.get("completed_at")),
-        })
+        mapped.append(
+            {
+                "task_id": t["id"],
+                "symbol": t.get("stock_code", ""),
+                "stock_code": t.get("stock_code", ""),
+                "status": _map_status(t["status"]),
+                "progress": t.get("progress", 0.0),
+                "created_at": _fmt_dt(t.get("created_at")),
+                "started_at": _fmt_dt(t.get("started_at")),
+                "completed_at": _fmt_dt(t.get("completed_at")),
+            }
+        )
 
-    return ok({
-        "tasks": mapped,
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-    })
+    return ok(
+        {
+            "tasks": mapped,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
+    )
 
 
 # ----- 所有任务（管理员） -----
@@ -315,7 +316,7 @@ async def list_all_tasks(
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
     admin_user: UserModel = Depends(get_current_admin_user),
-):
+) -> Dict[str, Any]:
     """获取所有任务列表（管理员）"""
     query: Dict[str, Any] = {}
     if status:
@@ -327,17 +328,19 @@ async def list_all_tasks(
 
     tasks = []
     async for doc in cursor:
-        tasks.append({
-            "task_id": str(doc["_id"]),
-            "symbol": doc.get("stock_code", ""),
-            "stock_code": doc.get("stock_code", ""),
-            "status": _map_status(doc["status"]),
-            "progress": doc.get("progress", 0.0),
-            "created_at": _fmt_dt(doc.get("created_at")),
-            "started_at": _fmt_dt(doc.get("started_at")),
-            "completed_at": _fmt_dt(doc.get("completed_at")),
-            "user_id": doc.get("user_id"),
-        })
+        tasks.append(
+            {
+                "task_id": str(doc["_id"]),
+                "symbol": doc.get("stock_code", ""),
+                "stock_code": doc.get("stock_code", ""),
+                "status": _map_status(doc["status"]),
+                "progress": doc.get("progress", 0.0),
+                "created_at": _fmt_dt(doc.get("created_at")),
+                "started_at": _fmt_dt(doc.get("started_at")),
+                "completed_at": _fmt_dt(doc.get("completed_at")),
+                "user_id": doc.get("user_id"),
+            }
+        )
 
     return ok({"tasks": tasks, "total": total, "limit": limit, "offset": offset})
 
@@ -347,7 +350,7 @@ async def list_all_tasks(
 async def get_task_status(
     task_id: str,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取任务状态"""
     task_manager = get_task_manager()
     try:
@@ -360,16 +363,18 @@ async def get_task_status(
     if info["user_id"] != str(current_user.id):
         raise HTTPException(status_code=403, detail="无权访问此任务")
 
-    return ok({
-        "task_id": info["id"],
-        "status": _map_status(info["status"]),
-        "progress": info.get("progress", 0.0),
-        "message": _phase_label(info.get("current_phase", 0)),
-        "current_step": _phase_label(info.get("current_phase", 0)),
-        "stock_code": info.get("stock_code", ""),
-        "stock_symbol": info.get("stock_code", ""),
-        "error_message": info.get("error_message"),
-    })
+    return ok(
+        {
+            "task_id": info["id"],
+            "status": _map_status(info["status"]),
+            "progress": info.get("progress", 0.0),
+            "message": _phase_label(info.get("current_phase", 0)),
+            "current_step": _phase_label(info.get("current_phase", 0)),
+            "stock_code": info.get("stock_code", ""),
+            "stock_symbol": info.get("stock_code", ""),
+            "error_message": info.get("error_message"),
+        }
+    )
 
 
 # ----- 任务结果 -----
@@ -377,7 +382,7 @@ async def get_task_status(
 async def get_task_result(
     task_id: str,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取任务结果"""
     task_manager = get_task_manager()
     try:
@@ -392,26 +397,36 @@ async def get_task_result(
 
     reports = info.get("reports", {}) or {}
     final_report = reports.get("final_report") or reports.get("summarizer", "")
+    token_usage = info.get("token_usage", {}) or {}
 
-    return ok({
-        "analysis_id": info["id"],
-        "stock_symbol": info.get("stock_code", ""),
-        "stock_code": info.get("stock_code", ""),
-        "analysis_date": info.get("trade_date", ""),
-        "summary": final_report,
-        "recommendation": info.get("final_recommendation", ""),
-        "confidence_score": 0,
-        "risk_level": "",
-        "key_points": [],
-        "charts": [],
-        "tokens_used": info.get("token_usage", {}).get("total_tokens", 0),
-        "execution_time": 0,
-        "error_message": info.get("error_message"),
-        "reports": reports,
-        "status": _map_status(info["status"]),
-        "created_at": _fmt_dt(info.get("created_at")),
-        "updated_at": _fmt_dt(info.get("completed_at")),
-    })
+    # 从最终报告和任务数据中提取实际值
+    confidence_score = _extract_confidence_score(final_report, info)
+    risk_level = info.get("risk_level") or _extract_risk_level(final_report)
+    key_points = _extract_key_points(final_report)
+    execution_time = _calc_execution_time(info.get("started_at"), info.get("completed_at"))
+    total_tokens = token_usage.get("total_tokens", 0)
+
+    return ok(
+        {
+            "analysis_id": info["id"],
+            "stock_symbol": info.get("stock_code", ""),
+            "stock_code": info.get("stock_code", ""),
+            "analysis_date": info.get("trade_date", ""),
+            "summary": final_report,
+            "recommendation": info.get("final_recommendation", ""),
+            "confidence_score": confidence_score,
+            "risk_level": risk_level,
+            "key_points": key_points,
+            "charts": [],
+            "tokens_used": total_tokens,
+            "execution_time": execution_time,
+            "error_message": info.get("error_message"),
+            "reports": reports,
+            "status": _map_status(info["status"]),
+            "created_at": _fmt_dt(info.get("created_at")),
+            "updated_at": _fmt_dt(info.get("completed_at")),
+        }
+    )
 
 
 # ----- 任务详情 -----
@@ -419,7 +434,7 @@ async def get_task_result(
 async def get_task_details(
     task_id: str,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取任务完整详情"""
     task_manager = get_task_manager()
     try:
@@ -440,7 +455,7 @@ async def get_task_details(
 async def cancel_task(
     task_id: str,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """取消任务"""
     task_manager = get_task_manager()
     try:
@@ -467,7 +482,7 @@ async def cancel_task(
 async def mark_task_failed(
     task_id: str,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """将任务标记为失败"""
     task_manager = get_task_manager()
     try:
@@ -489,7 +504,7 @@ async def mark_task_failed(
 async def delete_task(
     task_id: str,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """删除任务"""
     task_manager = get_task_manager()
     try:
@@ -520,7 +535,7 @@ async def get_user_history(
     stock_code: Optional[str] = None,
     market_type: Optional[str] = None,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取用户分析历史"""
     user_id = str(current_user.id)
     query: Dict[str, Any] = {"user_id": user_id}
@@ -544,33 +559,37 @@ async def get_user_history(
 
     items = []
     async for doc in cursor:
-        items.append({
-            "task_id": str(doc["_id"]),
-            "symbol": doc.get("stock_code", ""),
-            "stock_code": doc.get("stock_code", ""),
-            "status": _map_status(doc["status"]),
-            "progress": doc.get("progress", 0.0),
-            "created_at": _fmt_dt(doc.get("created_at")),
-            "started_at": _fmt_dt(doc.get("started_at")),
-            "completed_at": _fmt_dt(doc.get("completed_at")),
-            "batch_id": doc.get("batch_id"),
-        })
+        items.append(
+            {
+                "task_id": str(doc["_id"]),
+                "symbol": doc.get("stock_code", ""),
+                "stock_code": doc.get("stock_code", ""),
+                "status": _map_status(doc["status"]),
+                "progress": doc.get("progress", 0.0),
+                "created_at": _fmt_dt(doc.get("created_at")),
+                "started_at": _fmt_dt(doc.get("started_at")),
+                "completed_at": _fmt_dt(doc.get("completed_at")),
+                "batch_id": doc.get("batch_id"),
+            }
+        )
 
     total_pages = max(1, (total + page_size - 1) // page_size)
-    return ok({
-        "items": items,
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": total_pages,
-    })
+    return ok(
+        {
+            "items": items,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+        }
+    )
 
 
 # ----- 用户队列状态 -----
 @router.get("/user/queue-status")
 async def get_user_queue_status(
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取用户队列状态"""
     task_manager = get_task_manager()
     user_id = str(current_user.id)
@@ -580,15 +599,17 @@ async def get_user_queue_status(
     completed = await task_manager.count_tasks(user_id, TaskStatusEnum.COMPLETED)
     failed = await task_manager.count_tasks(user_id, TaskStatusEnum.FAILED)
 
-    return ok({
-        "pending": pending,
-        "processing": running,
-        "completed": completed,
-        "failed": failed,
-        "total": pending + running + completed + failed,
-        "max_concurrent": 2,
-        "current_processing": running,
-    })
+    return ok(
+        {
+            "pending": pending,
+            "processing": running,
+            "completed": completed,
+            "failed": failed,
+            "total": pending + running + completed + failed,
+            "max_concurrent": 2,
+            "current_processing": running,
+        }
+    )
 
 
 # ----- 分析统计 -----
@@ -598,7 +619,7 @@ async def get_analysis_stats(
     end_date: Optional[str] = None,
     market_type: Optional[str] = None,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取分析统计"""
     user_id = str(current_user.id)
     query: Dict[str, Any] = {"user_id": user_id}
@@ -616,12 +637,10 @@ async def get_analysis_stats(
     successful = await collection.count_documents(
         {**query, "status": TaskStatusEnum.COMPLETED.value}
     )
-    failed = await collection.count_documents(
-        {**query, "status": TaskStatusEnum.FAILED.value}
-    )
+    failed = await collection.count_documents({**query, "status": TaskStatusEnum.FAILED.value})
 
     # 按日期聚合
-    pipeline_date = [
+    pipeline_date: list[dict[str, Any]] = [
         {"$match": query},
         {"$group": {"_id": "$trade_date", "count": {"$sum": 1}}},
         {"$sort": {"_id": 1}},
@@ -631,7 +650,7 @@ async def get_analysis_stats(
         analysis_by_date.append({"date": doc["_id"] or "", "count": doc["count"]})
 
     # 热门股票
-    pipeline_stock = [
+    pipeline_stock: list[dict[str, Any]] = [
         {"$match": query},
         {"$group": {"_id": "$stock_code", "count": {"$sum": 1}}},
         {"$sort": {"count": -1}},
@@ -639,23 +658,72 @@ async def get_analysis_stats(
     ]
     popular_stocks = []
     async for doc in collection.aggregate(pipeline_stock):
-        popular_stocks.append({
-            "symbol": doc["_id"] or "",
-            "name": doc["_id"] or "",
-            "count": doc["count"],
-        })
+        popular_stocks.append(
+            {
+                "symbol": doc["_id"] or "",
+                "name": doc["_id"] or "",
+                "count": doc["count"],
+            }
+        )
 
-    return ok({
-        "total_analyses": total,
-        "successful_analyses": successful,
-        "failed_analyses": failed,
-        "avg_duration": 0,
-        "total_tokens": 0,
-        "total_cost": 0,
-        "popular_stocks": popular_stocks,
-        "analysis_by_date": analysis_by_date,
-        "analysis_by_market": [],
-    })
+    # 平均执行时长（从已完成任务中计算）
+    pipeline_duration = [
+        {
+            "$match": {
+                **query,
+                "status": TaskStatusEnum.COMPLETED.value,
+                "started_at": {"$ne": None},
+                "completed_at": {"$ne": None},
+            }
+        },
+        {
+            "$project": {
+                "duration": {"$divide": [{"$subtract": ["$completed_at", "$started_at"]}, 1000]}
+            }
+        },
+        {"$group": {"_id": None, "avg_duration": {"$avg": "$duration"}}},
+    ]
+    avg_duration = 0
+    async for doc in collection.aggregate(pipeline_duration):
+        avg_duration = round(doc.get("avg_duration", 0) or 0, 1)
+
+    # 总 Token 用量
+    pipeline_tokens = [
+        {"$match": query},
+        {"$group": {"_id": None, "total_tokens": {"$sum": "$token_usage.total_tokens"}}},
+    ]
+    total_tokens = 0
+    async for doc in collection.aggregate(pipeline_tokens):
+        total_tokens = doc.get("total_tokens", 0) or 0
+
+    # 按市场聚合
+    pipeline_market = [
+        {"$match": query},
+        {"$group": {"_id": "$market", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+    ]
+    analysis_by_market = []
+    async for doc in collection.aggregate(pipeline_market):
+        analysis_by_market.append(
+            {
+                "market": doc["_id"] or "unknown",
+                "count": doc["count"],
+            }
+        )
+
+    return ok(
+        {
+            "total_analyses": total,
+            "successful_analyses": successful,
+            "failed_analyses": failed,
+            "avg_duration": avg_duration,
+            "total_tokens": total_tokens,
+            "total_cost": 0,
+            "popular_stocks": popular_stocks,
+            "analysis_by_date": analysis_by_date,
+            "analysis_by_market": analysis_by_market,
+        }
+    )
 
 
 # ----- 股票信息 -----
@@ -664,29 +732,31 @@ async def get_stock_info(
     symbol: str = Query(...),
     market: str = Query("A_STOCK"),
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取股票基础信息"""
-    stock = await mongodb.database.stock_info.find_one(
-        {"code": symbol, "market": market}
-    )
+    stock = await mongodb.database.stock_info.find_one({"code": symbol, "market": market})
     if not stock:
         stock = await mongodb.database.stock_info.find_one({"code": symbol})
 
     if not stock:
-        return ok({
-            "symbol": symbol,
-            "name": symbol,
-            "market": market,
-        })
+        return ok(
+            {
+                "symbol": symbol,
+                "name": symbol,
+                "market": market,
+            }
+        )
 
-    return ok({
-        "symbol": symbol,
-        "code": stock.get("code", symbol),
-        "name": stock.get("name", symbol),
-        "market": stock.get("market", market),
-        "industry": stock.get("industry"),
-        "sector": stock.get("sector"),
-    })
+    return ok(
+        {
+            "symbol": symbol,
+            "code": stock.get("code", symbol),
+            "name": stock.get("name", symbol),
+            "market": stock.get("market", market),
+            "industry": stock.get("industry"),
+            "sector": stock.get("sector"),
+        }
+    )
 
 
 # ----- 搜索股票 -----
@@ -695,7 +765,7 @@ async def search_stocks(
     query: str = Query(..., min_length=1),
     market: Optional[str] = None,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """搜索股票"""
     search_filter: Dict[str, Any] = {
         "$or": [
@@ -711,12 +781,14 @@ async def search_stocks(
     cursor = mongodb.database.stock_info.find(search_filter).limit(20)
     results = []
     async for doc in cursor:
-        results.append({
-            "symbol": doc.get("code", ""),
-            "name": doc.get("name", ""),
-            "market": doc.get("market", ""),
-            "type": "stock",
-        })
+        results.append(
+            {
+                "symbol": doc.get("code", ""),
+                "name": doc.get("name", ""),
+                "market": doc.get("market", ""),
+                "type": "stock",
+            }
+        )
 
     return ok(results)
 
@@ -727,9 +799,9 @@ async def get_popular_stocks(
     market: Optional[str] = None,
     limit: int = Query(10, ge=1, le=50),
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取热门股票"""
-    pipeline = [
+    pipeline: list[dict[str, Any]] = [
         {"$group": {"_id": "$stock_code", "count": {"$sum": 1}}},
         {"$sort": {"count": -1}},
         {"$limit": limit},
@@ -745,15 +817,17 @@ async def get_popular_stocks(
         # 尝试从 stock_info 获取名称
         info = await mongodb.database.stock_info.find_one({"code": code})
         name = info.get("name", code) if info else code
-        results.append({
-            "symbol": code,
-            "name": name,
-            "market": market or "",
-            "current_price": 0,
-            "change_percent": 0,
-            "volume": 0,
-            "analysis_count": doc["count"],
-        })
+        results.append(
+            {
+                "symbol": code,
+                "name": name,
+                "market": market or "",
+                "current_price": 0,
+                "change_percent": 0,
+                "volume": 0,
+                "analysis_count": doc["count"],
+            }
+        )
 
     return ok(results)
 
@@ -763,7 +837,7 @@ async def get_popular_stocks(
 async def get_batch(
     batch_id: str,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取批次详情"""
     batch_manager = get_batch_manager()
     batch_status = await batch_manager.get_batch_status(batch_id)
@@ -779,16 +853,8 @@ async def get_batch(
 
         completed = sum(1 for t in tasks if t["status"] == "completed")
         failed = sum(1 for t in tasks if t["status"] == "failed")
-        cancelled = sum(
-            1
-            for t in tasks
-            if t["status"] in ("cancelled", "stopped")
-        )
-        processing = sum(
-            1
-            for t in tasks
-            if t["status"] in ("pending", "running")
-        )
+        cancelled = sum(1 for t in tasks if t["status"] in ("cancelled", "stopped"))
+        processing = sum(1 for t in tasks if t["status"] in ("pending", "running"))
 
         progress = (completed / len(tasks) * 100) if tasks else 0
         overall_status = "completed"
@@ -799,23 +865,25 @@ async def get_batch(
         elif failed == len(tasks):
             overall_status = "failed"
 
-        return ok({
-            "batch_id": batch_id,
-            "title": tasks[0].get("batch_name", ""),
-            "status": overall_status,
-            "total_tasks": len(tasks),
-            "completed_tasks": completed,
-            "failed_tasks": failed,
-            "cancelled_tasks": cancelled,
-            "progress": progress,
-            "created_at": _fmt_dt(tasks[0].get("created_at")),
-            "completed_at": _fmt_dt(
-                max(
-                    (t.get("completed_at") for t in tasks if t.get("completed_at")),
-                    default=None,
-                )
-            ),
-        })
+        return ok(
+            {
+                "batch_id": batch_id,
+                "title": tasks[0].get("batch_name", ""),
+                "status": overall_status,
+                "total_tasks": len(tasks),
+                "completed_tasks": completed,
+                "failed_tasks": failed,
+                "cancelled_tasks": cancelled,
+                "progress": progress,
+                "created_at": _fmt_dt(tasks[0].get("created_at")),
+                "completed_at": _fmt_dt(
+                    max(
+                        (t.get("completed_at") for t in tasks if t.get("completed_at")),
+                        default=None,
+                    )
+                ),
+            }
+        )
 
     # 使用 batch_manager 数据
     total = batch_status["total_count"]
@@ -823,18 +891,20 @@ async def get_batch(
     created = batch_status["created_count"]
     completed_approx = created - running
 
-    return ok({
-        "batch_id": batch_id,
-        "title": "",
-        "status": "processing" if running > 0 else "completed",
-        "total_tasks": total,
-        "completed_tasks": max(0, completed_approx),
-        "failed_tasks": 0,
-        "cancelled_tasks": 0,
-        "progress": (completed_approx / total * 100) if total else 100,
-        "created_at": None,
-        "completed_at": None,
-    })
+    return ok(
+        {
+            "batch_id": batch_id,
+            "title": "",
+            "status": "processing" if running > 0 else "completed",
+            "total_tasks": total,
+            "completed_tasks": max(0, completed_approx),
+            "failed_tasks": 0,
+            "cancelled_tasks": 0,
+            "progress": (completed_approx / total * 100) if total else 100,
+            "created_at": None,
+            "completed_at": None,
+        }
+    )
 
 
 # ----- 僵尸任务 -----
@@ -842,7 +912,7 @@ async def get_batch(
 async def get_zombie_tasks(
     max_running_hours: float = Query(2, ge=0.5),
     admin_user: UserModel = Depends(get_current_admin_user),
-):
+) -> Dict[str, Any]:
     """获取僵尸任务列表"""
     from datetime import timedelta
 
@@ -860,21 +930,25 @@ async def get_zombie_tasks(
             if started
             else max_running_hours
         )
-        tasks.append({
-            "task_id": str(doc["_id"]),
-            "symbol": doc.get("stock_code", ""),
-            "status": doc["status"],
-            "progress": doc.get("progress", 0.0),
-            "created_at": _fmt_dt(doc.get("created_at")),
-            "started_at": _fmt_dt(doc.get("started_at")),
-            "elapsed_hours": round(elapsed, 2),
-        })
+        tasks.append(
+            {
+                "task_id": str(doc["_id"]),
+                "symbol": doc.get("stock_code", ""),
+                "status": doc["status"],
+                "progress": doc.get("progress", 0.0),
+                "created_at": _fmt_dt(doc.get("created_at")),
+                "started_at": _fmt_dt(doc.get("started_at")),
+                "elapsed_hours": round(elapsed, 2),
+            }
+        )
 
-    return ok({
-        "tasks": tasks,
-        "total": len(tasks),
-        "max_running_hours": max_running_hours,
-    })
+    return ok(
+        {
+            "tasks": tasks,
+            "total": len(tasks),
+            "max_running_hours": max_running_hours,
+        }
+    )
 
 
 # ----- 清理僵尸任务 -----
@@ -882,7 +956,7 @@ async def get_zombie_tasks(
 async def cleanup_zombie_tasks(
     max_running_hours: float = Query(2, ge=0.5),
     admin_user: UserModel = Depends(get_current_admin_user),
-):
+) -> Dict[str, Any]:
     """清理僵尸任务"""
     from datetime import timedelta
 
@@ -917,7 +991,7 @@ async def stream_task_progress(
     token: Optional[str] = Query(None),
     ticket: Optional[str] = Query(None),
     current_user: UserModel = Depends(get_current_user_from_query),
-):
+) -> StreamingResponse:
     """SSE 流：单任务进度"""
     task_manager = get_task_manager()
 
@@ -930,7 +1004,7 @@ async def stream_task_progress(
             raise HTTPException(status_code=404, detail="任务不存在")
         raise
 
-    async def event_stream():
+    async def event_stream() -> Any:  # type: ignore[misc]
         while True:
             try:
                 state = await task_manager.get_task_status(task_id)
@@ -943,20 +1017,26 @@ async def stream_task_progress(
                     "stopped",
                     "expired",
                 ):
-                    yield _sse("finished", {
+                    yield _sse(
+                        "finished",
+                        {
+                            "task_id": task_id,
+                            "status": _map_status(status_val),
+                            "progress": state.get("progress", 0.0),
+                            "final_status": _map_status(status_val),
+                        },
+                    )
+                    break
+
+                yield _sse(
+                    "progress",
+                    {
                         "task_id": task_id,
                         "status": _map_status(status_val),
                         "progress": state.get("progress", 0.0),
-                        "final_status": _map_status(status_val),
-                    })
-                    break
-
-                yield _sse("progress", {
-                    "task_id": task_id,
-                    "status": _map_status(status_val),
-                    "progress": state.get("progress", 0.0),
-                    "current_step": _phase_label(state.get("current_phase", 0)),
-                })
+                        "current_step": _phase_label(state.get("current_phase", 0)),
+                    },
+                )
                 await asyncio.sleep(1.0 if status_val == "running" else 3.0)
 
             except Exception as e:
@@ -981,11 +1061,11 @@ async def stream_batch_progress(
     token: Optional[str] = Query(None),
     ticket: Optional[str] = Query(None),
     current_user: UserModel = Depends(get_current_user_from_query),
-):
+) -> StreamingResponse:
     """SSE 流：批次进度"""
     user_id = str(current_user.id)
 
-    async def event_stream():
+    async def event_stream() -> Any:  # type: ignore[misc]
         while True:
             try:
                 # 查询该批次的任务状态
@@ -1000,36 +1080,34 @@ async def stream_batch_progress(
                 total = len(tasks)
                 completed = sum(1 for t in tasks if t["status"] == "completed")
                 failed = sum(1 for t in tasks if t["status"] == "failed")
-                processing = sum(
-                    1
-                    for t in tasks
-                    if t["status"] in ("pending", "running")
-                )
+                processing = sum(1 for t in tasks if t["status"] in ("pending", "running"))
                 progress = (completed / total * 100) if total else 100
 
-                yield _sse("progress", {
-                    "batch_id": batch_id,
-                    "progress": progress,
-                    "total_tasks": total,
-                    "completed": completed,
-                    "failed": failed,
-                    "processing": processing,
-                })
-
-                if processing == 0:
-                    yield _sse("finished", {
+                yield _sse(
+                    "progress",
+                    {
                         "batch_id": batch_id,
-                        "progress": 100,
+                        "progress": progress,
                         "total_tasks": total,
                         "completed": completed,
                         "failed": failed,
-                        "processing": 0,
-                        "final_status": (
-                            "completed"
-                            if failed == 0
-                            else "partial_success"
-                        ),
-                    })
+                        "processing": processing,
+                    },
+                )
+
+                if processing == 0:
+                    yield _sse(
+                        "finished",
+                        {
+                            "batch_id": batch_id,
+                            "progress": 100,
+                            "total_tasks": total,
+                            "completed": completed,
+                            "failed": failed,
+                            "processing": 0,
+                            "final_status": ("completed" if failed == 0 else "partial_success"),
+                        },
+                    )
                     break
 
                 await asyncio.sleep(2.0)
@@ -1093,3 +1171,93 @@ def _fmt_dt(dt: Any) -> Optional[str]:
     if isinstance(dt, datetime):
         return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
     return str(dt)
+
+
+def _extract_confidence_score(final_report: str, info: Dict[str, Any]) -> int:
+    """从最终报告或任务数据中提取置信度分数（0-100）"""
+    explicit = info.get("confidence_score")
+    if explicit is not None:
+        try:
+            return int(explicit)
+        except (TypeError, ValueError):
+            pass
+
+    if not final_report:
+        return 0
+
+    import re
+
+    patterns = [
+        r"置信度[：:]\s*(\d+)",
+        r"confidence[：:]\s*(\d+)",
+        r"信心指数[：:]\s*(\d+)",
+        r"(\d+)%\s*(?:置信|信心|把握)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, final_report, re.IGNORECASE)
+        if match:
+            score = int(match.group(1))
+            return min(score, 100) if score <= 100 else score // 10
+    return 0
+
+
+def _extract_risk_level(final_report: str) -> str:
+    """从最终报告中提取风险等级"""
+    import re
+
+    if not final_report:
+        return ""
+    risk_patterns = [
+        (r"风险等级[：:]\s*(高|中|低)", 1),
+        (r"risk\s*level[：:]\s*(high|medium|low)", 1),
+    ]
+    for pattern, group in risk_patterns:
+        match = re.search(pattern, final_report, re.IGNORECASE)
+        if match:
+            return match.group(group)
+    if re.search(r"高风险", final_report):
+        return "高"
+    if re.search(r"低风险", final_report):
+        return "低"
+    if re.search(r"中风险|中等风险", final_report):
+        return "中"
+    return ""
+
+
+def _extract_key_points(final_report: str) -> List[str]:
+    """从最终报告中提取关键要点"""
+    if not final_report:
+        return []
+    import re
+
+    points: List[str] = []
+    in_section = False
+    for line in final_report.split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if re.match(r"^#+\s*(?:关键|要点|核心|总结|key\s*points)", stripped, re.IGNORECASE):
+            in_section = True
+            continue
+        if in_section:
+            if stripped.startswith("#"):
+                break
+            if re.match(r"^[-*•]\s+", stripped):
+                points.append(re.sub(r"^[-*•]\s+", "", stripped))
+            elif re.match(r"^\d+[.、)\s]+", stripped):
+                points.append(re.sub(r"^\d+[.、)\s]+", "", stripped))
+            if len(points) >= 5:
+                break
+    return points
+
+
+def _calc_execution_time(started_at: Any, completed_at: Any) -> int:
+    """计算任务执行时间（秒）"""
+    if not started_at or not completed_at:
+        return 0
+    try:
+        if isinstance(started_at, datetime) and isinstance(completed_at, datetime):
+            return int((completed_at - started_at).total_seconds())
+    except (TypeError, AttributeError):
+        pass
+    return 0

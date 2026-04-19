@@ -9,7 +9,7 @@
 
 import logging
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 from core.market_data.managers.source_router import (
     DataSourceRouter,
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 class MarketDataService:
     """市场数据业务服务"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.system_source_repo = SystemDataSourceRepository()
         self.user_source_repo = UserDataSourceRepository()
         self.status_repo = DataSourceStatusRepository()
@@ -43,7 +43,7 @@ class MarketDataService:
         self.watchlist_repo = UserWatchlistRepository()
         self.stock_info_repo = StockInfoRepository()
         self.stock_quotes_repo = StockQuoteRepository()
-        self.router = None  # 延迟初始化
+        self.router: Optional[DataSourceRouter] = None  # 延迟初始化
         self.dual_channel_service = get_dual_channel_service(
             storage_callback=self._storage_callback
         )
@@ -94,6 +94,7 @@ class MarketDataService:
         """
         if self.router is None:
             self.router = get_source_router()
+        assert self.router is not None
         return self.router
 
     async def get_stock_list_with_fallback(
@@ -176,10 +177,8 @@ class MarketDataService:
             logger.warning(f"No available data sources for {market_str}")
             return [], "none"
 
-        source_ids = [s['source_id'] for s in all_sources]
-        logger.info(
-            f"Trying {len(all_sources)} data sources for {market_str}: {source_ids}"
-        )
+        source_ids = [s["source_id"] for s in all_sources]
+        logger.info(f"Trying {len(all_sources)} data sources for {market_str}: {source_ids}")
 
         # 遍历数据源，尝试获取数据
         last_error = None
@@ -279,7 +278,7 @@ class MarketDataService:
                 config = user_configs[0]
                 user_source_id = config.get("source_id", "unknown")
 
-                async def _fetch_user_data():
+                async def _fetch_user_data() -> list[dict[str, Any]]:
                     return await self._fetch_from_user_source(
                         symbol=symbol,
                         source_id=user_source_id,
@@ -292,7 +291,7 @@ class MarketDataService:
                 user_source_func = _fetch_user_data
 
         # 准备降级获取函数 (仅查 DB)
-        async def _fallback_func():
+        async def _fallback_func() -> list[dict[str, Any]]:
             # 1. 查 DB
             quotes = await self.stock_quotes_repo.get_quotes(
                 symbol=symbol, start_date=start_date, end_date=end_date
@@ -309,12 +308,14 @@ class MarketDataService:
         # 执行双通道获取 (如果配置了用户源) 或 直接降级
         if has_user_config and user_source_func:
             logger.info(f"Fetching quotes for {symbol} using user source {user_source_id}")
-            result, source = await self.dual_channel_service.fetch_data(
+            dc_result = await self.dual_channel_service.fetch_with_dual_channel(
                 symbol=symbol,
                 data_type="daily_quote",
                 fetch_func=user_source_func,
                 fallback_func=_fallback_func,
             )
+            result = dc_result.data if dc_result.success else []
+            source = str(dc_result.channel_used) if dc_result.channel_used else "unknown"
             return result, source
         else:
             # 没有用户配置，直接查 DB
@@ -383,8 +384,8 @@ class MarketDataService:
                 user_id=user_id,
                 source_id=source_id,
                 market=(
-                    self._infer_market_from_symbol(symbol).value
-                    if self._infer_market_from_symbol(symbol)
+                    inferred_market.value
+                    if (inferred_market := self._infer_market_from_symbol(symbol))
                     else "A_STOCK"
                 ),
             )
@@ -393,6 +394,7 @@ class MarketDataService:
             user_config = {}
 
         # 延迟导入避免循环依赖
+        adapter: Any = None
         if source_id == "tushare_pro":
             from core.market_data.sources.a_stock.tushare_adapter import TuShareAdapter
 

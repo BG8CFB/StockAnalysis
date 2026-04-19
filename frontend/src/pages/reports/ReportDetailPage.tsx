@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useSearchParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import {
   Card,
   Typography,
@@ -56,9 +56,8 @@ const MODULE_LABEL_MAP: Record<string, string> = {
 }
 
 export default function ReportDetailPage() {
-  const [searchParams] = useSearchParams()
+  const { id: reportId } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const reportId = searchParams.get('id') || ''
 
   const [report, setReport] = useState<ReportDetail | null>(null)
   const [loading, setLoading] = useState(true)

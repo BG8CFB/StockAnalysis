@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 class SupportedFeature(str, Enum):
     """支持的功能标签"""
+
     CHAT = "chat"
     COMPLETION = "completion"
     EMBEDDING = "embedding"
@@ -25,6 +26,7 @@ class SupportedFeature(str, Enum):
 
 class AggregatorType(str, Enum):
     """聚合渠道类型"""
+
     OPENROUTER = "openrouter"
     AI302 = "302ai"
     SILICONFLOW = "siliconflow"
@@ -33,6 +35,7 @@ class AggregatorType(str, Enum):
 
 class LLMProviderCreateRequest(BaseModel):
     """LLM 厂家创建请求"""
+
     name: str = Field(..., min_length=1, max_length=100, description="厂家标识名")
     display_name: str = Field(..., min_length=1, max_length=200, description="显示名称")
     description: Optional[str] = Field(None, description="描述")
@@ -53,6 +56,7 @@ class LLMProviderCreateRequest(BaseModel):
 
 class LLMProviderUpdateRequest(BaseModel):
     """LLM 厂家更新请求"""
+
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     display_name: Optional[str] = Field(None, min_length=1, max_length=200)
     description: Optional[str] = None
@@ -71,6 +75,7 @@ class LLMProviderUpdateRequest(BaseModel):
 
 class LLMProviderResponse(BaseModel):
     """LLM 厂家响应（API Key 脱敏）"""
+
     id: str
     name: str
     display_name: str
@@ -93,11 +98,13 @@ class LLMProviderResponse(BaseModel):
 
 class LLMProviderToggleRequest(BaseModel):
     """启用/禁用厂家请求"""
+
     is_active: bool
 
 
 class MigrateEnvResult(BaseModel):
     """环境变量迁移结果"""
+
     success: bool
     message: str
     migrated_count: int = 0
@@ -106,6 +113,7 @@ class MigrateEnvResult(BaseModel):
 
 class InitAggregatorsResult(BaseModel):
     """初始化聚合器结果"""
+
     success: bool
     message: str
     added_count: int = 0

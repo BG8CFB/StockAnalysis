@@ -15,6 +15,8 @@ export default function AnalysisProgressBar({
 }: AnalysisProgressBarProps) {
   const percent = Math.min(Math.max(progress, 0), 100)
 
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark'
+
   return (
     <Progress
       percent={percent}
@@ -25,7 +27,7 @@ export default function AnalysisProgressBar({
         '0%': 'var(--accent-primary)',
         '100%': 'var(--accent-secondary)',
       }}
-      trailColor="rgba(255,255,255,0.08)"
+      trailColor={isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'}
       style={{ marginBottom: 0 }}
     />
   )

@@ -25,6 +25,7 @@ from core.market_data.models import (
 )
 from core.market_data.sources.base import DataSourceAdapter
 from core.market_data.tools.data_cleaner import DataCleaner
+from core.market_data.tools.field_mapper import TuShareFieldMapper
 
 logger = logging.getLogger(__name__)
 

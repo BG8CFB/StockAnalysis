@@ -2,16 +2,16 @@
 行情数据 Repository
 """
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
-from core.market_data.repositories.base import BaseRepository
 from core.market_data.models import StockQuote
+from core.market_data.repositories.base import BaseRepository
 
 
 class StockQuoteRepository(BaseRepository):
     """日线行情数据Repository"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("stock_quotes")
 
     async def init_indexes(self) -> None:
@@ -35,7 +35,7 @@ class StockQuoteRepository(BaseRepository):
         filter_query = {
             "symbol": quote.symbol,
             "trade_date": quote.trade_date,
-            "data_source": quote.data_source
+            "data_source": quote.data_source,
         }
         data = quote.model_dump()
         return await self.upsert_one(filter_query, data)
@@ -45,8 +45,8 @@ class StockQuoteRepository(BaseRepository):
         symbol: str,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-        limit: int = 0
-    ) -> List[dict]:
+        limit: int = 0,
+    ) -> List[Dict[str, Any]]:
         """
         查询历史行情
 
@@ -59,13 +59,10 @@ class StockQuoteRepository(BaseRepository):
         Returns:
             行情数据列表
         """
-        filter_query = {"symbol": symbol}
+        filter_query: Dict[str, Any] = {"symbol": symbol}
 
         if start_date and end_date:
-            filter_query["trade_date"] = {
-                "$gte": start_date,
-                "$lte": end_date
-            }
+            filter_query["trade_date"] = {"$gte": start_date, "$lte": end_date}
         elif start_date:
             filter_query["trade_date"] = {"$gte": start_date}
         elif end_date:
@@ -86,11 +83,7 @@ class StockQuoteRepository(BaseRepository):
             最新行情数据，未找到返回None
         """
         sort = [("trade_date", -1)]
-        results = await self.find_many(
-            {"symbol": symbol},
-            sort=sort,
-            limit=1
-        )
+        results = await self.find_many({"symbol": symbol}, sort=sort, limit=1)
         return results[0] if results else None
 
     async def delete_old_quotes(self, symbol: str, before_date: str) -> int:
@@ -104,10 +97,7 @@ class StockQuoteRepository(BaseRepository):
         Returns:
             删除的文档数量
         """
-        filter_query = {
-            "symbol": symbol,
-            "trade_date": {"$lt": before_date}
-        }
+        filter_query = {"symbol": symbol, "trade_date": {"$lt": before_date}}
         return await self.delete_many(filter_query)
 
     async def batch_upsert(self, quotes: List[StockQuote]) -> int:
@@ -138,7 +128,7 @@ class StockQuoteRepository(BaseRepository):
         """
         filter_query = {
             "trade_date": {"$lt": cutoff_date},
-            "is_complete": False  # 仅删除盘中数据（不完整的数据）
+            "is_complete": False,  # 仅删除盘中数据（不完整的数据）
         }
         return await self.delete_many(filter_query)
 
@@ -154,23 +144,17 @@ class StockQuoteRepository(BaseRepository):
         """
         # 分钟K线存储在单独的集合中
         from motor.motor_asyncio import AsyncIOMotorCollection
+
         from core.database import get_database
 
         db = await get_database()
         kline_collection: AsyncIOMotorCollection = db["stock_minute_klines"]
 
-        filter_query = {
-            "trade_date": {"$lt": cutoff_date}
-        }
+        filter_query = {"trade_date": {"$lt": cutoff_date}}
         result = await kline_collection.delete_many(filter_query)
         return result.deleted_count
 
-    async def delete_quotes_in_range(
-        self,
-        symbol: str,
-        start_date: str,
-        end_date: str
-    ) -> int:
+    async def delete_quotes_in_range(self, symbol: str, start_date: str, end_date: str) -> int:
         """
         删除指定日期范围内的行情数据（用于回滚）
 
@@ -182,11 +166,5 @@ class StockQuoteRepository(BaseRepository):
         Returns:
             删除的文档数量
         """
-        filter_query = {
-            "symbol": symbol,
-            "trade_date": {
-                "$gte": start_date,
-                "$lte": end_date
-            }
-        }
+        filter_query = {"symbol": symbol, "trade_date": {"$gte": start_date, "$lte": end_date}}
         return await self.delete_many(filter_query)

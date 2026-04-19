@@ -11,6 +11,7 @@ from typing import Any
 @dataclass
 class ScreeningFieldDef:
     """筛选字段定义"""
+
     name: str
     display_name: str
     type: str  # number, string, enum

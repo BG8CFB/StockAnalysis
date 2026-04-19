@@ -2,19 +2,19 @@
 系统管理 API 路由
 处理系统初始化、状态检查等
 """
+
 import asyncio
 from datetime import datetime, timezone
 from typing import Optional
 
-from bson import ObjectId
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 
 from core.auth.rbac import Role
 from core.auth.security import password_manager
 from core.config import settings
 from core.db.mongodb import mongodb
-from core.user.models import RegisterRequest, UserModel, UserStatus
+from core.user.models import UserModel, UserStatus
 
 router = APIRouter(tags=["系统管理"])
 
@@ -26,6 +26,7 @@ _CACHE_TTL = 30  # 缓存有效期（秒）
 
 class SystemStatus(BaseModel):
     """系统状态"""
+
     initialized: bool
     has_admin: bool
     version: str
@@ -34,6 +35,7 @@ class SystemStatus(BaseModel):
 
 class SystemInitRequest(BaseModel):
     """系统初始化请求"""
+
     email: str
     username: str
     password: str
@@ -46,9 +48,7 @@ async def _get_system_status_from_db() -> dict:
     db = mongodb.database
 
     # 检查是否有管理员账号
-    admin_count = await db.users.count_documents({
-        "role": {"$in": [Role.ADMIN, Role.SUPER_ADMIN]}
-    })
+    admin_count = await db.users.count_documents({"role": {"$in": [Role.ADMIN, Role.SUPER_ADMIN]}})
     has_admin = admin_count > 0
 
     # 检查系统配置中的初始化标记
@@ -66,10 +66,10 @@ async def _get_system_status_from_db() -> dict:
                 "$set": {
                     "initialized": True,
                     "auto_fixed_at": datetime.now(timezone.utc),
-                    "fix_reason": "admin_exists_but_config_not_initialized"
+                    "fix_reason": "admin_exists_but_config_not_initialized",
                 }
             },
-            upsert=True
+            upsert=True,
         )
 
     return {
@@ -78,12 +78,12 @@ async def _get_system_status_from_db() -> dict:
         "version": settings.APP_VERSION,
         "status": "running",
         "debug": settings.DEBUG,
-        "captcha_enabled": settings.CAPTCHA_ENABLED
+        "captcha_enabled": settings.CAPTCHA_ENABLED,
     }
 
 
 @router.get("/system/status", response_model=SystemStatus)
-async def get_system_status():
+async def get_system_status() -> dict:
     """
     获取系统状态
 
@@ -112,7 +112,7 @@ async def get_system_status():
 
 
 @router.post("/system/initialize")
-async def initialize_system(data: SystemInitRequest):
+async def initialize_system(data: SystemInitRequest) -> dict:
     """
     初始化系统并创建第一个超级管理员
 
@@ -122,17 +122,15 @@ async def initialize_system(data: SystemInitRequest):
         db = mongodb.database
 
         # 检查是否已有管理员账号（统一判断标准）
-        admin_count = await db.users.count_documents({
-            "role": {"$in": [Role.ADMIN, Role.SUPER_ADMIN]}
-        })
+        admin_count = await db.users.count_documents(
+            {"role": {"$in": [Role.ADMIN, Role.SUPER_ADMIN]}}
+        )
         if admin_count > 0:
             # 自动修复状态：如果有管理员但配置未标记，同步状态
             config = await db.system_config.find_one({"_id": "system_init"})
             if not config or not config.get("initialized", False):
                 await db.system_config.update_one(
-                    {"_id": "system_init"},
-                    {"$set": {"initialized": True}},
-                    upsert=True
+                    {"_id": "system_init"}, {"$set": {"initialized": True}}, upsert=True
                 )
             # 提供更详细的错误提示
             hint = ""
@@ -140,17 +138,16 @@ async def initialize_system(data: SystemInitRequest):
                 hint = " 开发环境可使用 /api/system/reinit 接口重置。"
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"系统已完成初始化，已有 {admin_count} 个管理员账号。请直接登录。{hint}"
+                detail=f"系统已完成初始化，已有 {admin_count} 个管理员账号。请直接登录。{hint}",
             )
 
         # 检查用户名/邮箱是否已存在
-        existing = await db.users.find_one({
-            "$or": [{"email": data.email}, {"username": data.username}]
-        })
+        existing = await db.users.find_one(
+            {"$or": [{"email": data.email}, {"username": data.username}]}
+        )
         if existing:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="用户名或邮箱已存在"
+                status_code=status.HTTP_400_BAD_REQUEST, detail="用户名或邮箱已存在"
             )
 
         # 创建超级管理员
@@ -181,7 +178,7 @@ async def initialize_system(data: SystemInitRequest):
                     "initialized_by": str(result.inserted_id),
                 }
             },
-            upsert=True
+            upsert=True,
         )
 
         # 返回创建的用户信息
@@ -190,12 +187,11 @@ async def initialize_system(data: SystemInitRequest):
 
         # 自动登录：生成 access_token 和 refresh_token
         from core.auth.security import jwt_manager
+
         access_token = jwt_manager.create_access_token(
             data={"sub": str(user_model.id), "role": user_model.role}
         )
-        refresh_token = jwt_manager.create_refresh_token(
-            data={"sub": str(user_model.id)}
-        )
+        refresh_token = jwt_manager.create_refresh_token(data={"sub": str(user_model.id)})
 
         # 清除状态缓存，确保下次查询返回最新状态
         async with _cache_lock:
@@ -214,20 +210,19 @@ async def initialize_system(data: SystemInitRequest):
             # 返回 token，让前端自动登录
             "access_token": access_token,
             "refresh_token": refresh_token,
-            "token_type": "bearer"
+            "token_type": "bearer",
         }
 
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"系统初始化失败: {str(e)}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"系统初始化失败: {str(e)}"
         )
 
 
 @router.post("/system/reinit")
-async def reinitialize_system():
+async def reinitialize_system() -> dict:
     """
     重置系统初始化状态（危险操作，仅用于开发/测试）
 
@@ -235,23 +230,18 @@ async def reinitialize_system():
     """
     if not settings.DEBUG:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="此操作仅在 DEBUG 模式下可用"
+            status_code=status.HTTP_403_FORBIDDEN, detail="此操作仅在 DEBUG 模式下可用"
         )
 
     try:
         db = mongodb.database
 
         # 删除所有管理员账号
-        await db.users.delete_many({
-            "role": {"$in": [Role.ADMIN, Role.SUPER_ADMIN]}
-        })
+        await db.users.delete_many({"role": {"$in": [Role.ADMIN, Role.SUPER_ADMIN]}})
 
         # 重置系统初始化状态
         await db.system_config.update_one(
-            {"_id": "system_init"},
-            {"$set": {"initialized": False}},
-            upsert=True
+            {"_id": "system_init"}, {"$set": {"initialized": False}}, upsert=True
         )
 
         # 清除状态缓存，确保下次查询返回最新状态
@@ -259,13 +249,9 @@ async def reinitialize_system():
             global _status_cache
             _status_cache = None
 
-        return {
-            "success": True,
-            "message": "系统已重置到未初始化状态"
-        }
+        return {"success": True, "message": "系统已重置到未初始化状态"}
 
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"重置失败: {str(e)}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"重置失败: {str(e)}"
         )

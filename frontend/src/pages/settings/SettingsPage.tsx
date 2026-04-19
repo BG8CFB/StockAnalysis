@@ -145,7 +145,7 @@ export default function SettingsPage() {
         </Title>
 
         {/* ===== Section 1: Profile ===== */}
-        <Card title="基本信息" size="small" style={{ marginBottom: 16 }}>
+        <Card title="基本信息" size="small" style={{ marginBottom: 16, background: 'var(--bg-card)', border: 'none' }}>
           <Form
             form={profileForm}
             layout="vertical"
@@ -208,7 +208,7 @@ export default function SettingsPage() {
         <Card
           title={<Space><GlobalOutlined /><span>核心设置</span></Space>}
           size="small"
-          style={{ marginBottom: 16 }}
+          style={{ marginBottom: 16, background: 'var(--bg-card)', border: 'none' }}
         >
           <Form form={coreForm} layout="vertical">
             <Form.Item
@@ -288,7 +288,7 @@ export default function SettingsPage() {
         <Card
           title={<Space><BellOutlined /><span>通知偏好</span></Space>}
           size="small"
-          style={{ marginBottom: 16 }}
+          style={{ marginBottom: 16, background: 'var(--bg-card)', border: 'none' }}
         >
           <Form form={notificationForm} layout="vertical">
             <Row gutter={24}>
@@ -376,7 +376,7 @@ export default function SettingsPage() {
         <Card
           title={<Space><DashboardOutlined /><span>配额与用量</span></Space>}
           size="small"
-          style={{ marginBottom: 16 }}
+          style={{ marginBottom: 16, background: 'var(--bg-card)', border: 'none' }}
           extra={
             <Button icon={<ReloadOutlined />} size="small" onClick={loadSettings}>刷新</Button>
           }

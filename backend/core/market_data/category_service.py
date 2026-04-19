@@ -6,7 +6,7 @@ MongoDB 集合 market_categories / datasource_groupings 的 CRUD 操作。
 
 import logging
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from core.db.mongodb import mongodb
 from core.market_data.category_models import (
@@ -30,7 +30,7 @@ class MarketCategoryService:
     # 市场分类
     # ========================================================================
 
-    async def _get_category_collection(self):
+    async def _get_category_collection(self) -> Any:
         return mongodb.get_collection(CATEGORY_COLLECTION)
 
     async def list_categories(self) -> List[MarketCategoryResponse]:
@@ -74,17 +74,17 @@ class MarketCategoryService:
         await collection.insert_one(doc)
         return data.id
 
-    async def update_category(self, category_id: str, updates: Dict) -> bool:
+    async def update_category(self, category_id: str, updates: Dict[str, Any]) -> bool:
         """更新分类"""
         collection = await self._get_category_collection()
-        update_fields = {"updated_at": datetime.now(timezone.utc)}
+        update_fields: Dict[str, Any] = {"updated_at": datetime.now(timezone.utc)}
         update_fields.update(updates)
 
         result = await collection.update_one(
             {"category_id": category_id},
             {"$set": update_fields},
         )
-        return result.matched_count > 0
+        return bool(result.matched_count > 0)
 
     async def delete_category(self, category_id: str) -> bool:
         """删除分类"""
@@ -93,7 +93,7 @@ class MarketCategoryService:
         # 同时删除关联的分组
         grouping_col = await self._get_grouping_collection()
         await grouping_col.delete_many({"market_category_id": category_id})
-        return result.deleted_count > 0
+        return bool(result.deleted_count > 0)
 
     async def reorder_datasources(self, category_id: str, items: List[DataSourceOrderItem]) -> bool:
         """更新分类内数据源排序"""
@@ -109,7 +109,7 @@ class MarketCategoryService:
     # 数据源分组
     # ========================================================================
 
-    async def _get_grouping_collection(self):
+    async def _get_grouping_collection(self) -> Any:
         return mongodb.get_collection(GROUPING_COLLECTION)
 
     async def list_groupings(self) -> List[DataSourceGroupingResponse]:
@@ -131,10 +131,12 @@ class MarketCategoryService:
         """添加数据源到分类"""
         collection = await self._get_grouping_collection()
 
-        existing = await collection.find_one({
-            "data_source_name": data.data_source_name,
-            "market_category_id": data.market_category_id,
-        })
+        existing = await collection.find_one(
+            {
+                "data_source_name": data.data_source_name,
+                "market_category_id": data.market_category_id,
+            }
+        )
         if existing:
             raise ValueError(
                 f"数据源 '{data.data_source_name}' 已在分类 '{data.market_category_id}' 中"
@@ -153,14 +155,16 @@ class MarketCategoryService:
     async def remove_grouping(self, data_source_name: str, category_id: str) -> bool:
         """从分类中移除数据源"""
         collection = await self._get_grouping_collection()
-        result = await collection.delete_one({
-            "data_source_name": data_source_name,
-            "market_category_id": category_id,
-        })
-        return result.deleted_count > 0
+        result = await collection.delete_one(
+            {
+                "data_source_name": data_source_name,
+                "market_category_id": category_id,
+            }
+        )
+        return bool(result.deleted_count > 0)
 
     async def update_grouping(
-        self, data_source_name: str, category_id: str, updates: Dict
+        self, data_source_name: str, category_id: str, updates: Dict[str, Any]
     ) -> bool:
         """更新分组关系"""
         collection = await self._get_grouping_collection()
@@ -168,7 +172,7 @@ class MarketCategoryService:
             {"data_source_name": data_source_name, "market_category_id": category_id},
             {"$set": updates},
         )
-        return result.matched_count > 0
+        return bool(result.matched_count > 0)
 
 
 # 全局单例

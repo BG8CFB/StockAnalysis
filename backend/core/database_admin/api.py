@@ -7,9 +7,9 @@
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from core.db.mongodb import mongodb
@@ -24,12 +24,14 @@ router = APIRouter(prefix="/system/database", tags=["database-admin"])
 
 class BackupRequest(BaseModel):
     """备份请求"""
+
     name: str
     collections: List[str] = []
 
 
 class CleanupRequest(BaseModel):
     """清理请求"""
+
     days: int = 30
 
 
@@ -63,8 +65,8 @@ async def get_database_status(
     try:
         is_connected = await redis_manager.ping()
         if is_connected:
-            client = redis_manager.get_client()
-            info = await client.info("server")
+            redis_client = redis_manager.get_client()
+            info = await redis_client.info("server")
             redis_status = {
                 "status": "connected",
                 "version": info.get("redis_version", "unknown"),
@@ -99,17 +101,21 @@ async def get_database_stats(
                 size = stats.get("size", 0)
                 total_docs += count
                 total_size += size
-                collection_stats.append({
-                    "name": coll_name,
-                    "documents": count,
-                    "size": size,
-                })
+                collection_stats.append(
+                    {
+                        "name": coll_name,
+                        "documents": count,
+                        "size": size,
+                    }
+                )
             except Exception:
-                collection_stats.append({
-                    "name": coll_name,
-                    "documents": 0,
-                    "size": 0,
-                })
+                collection_stats.append(
+                    {
+                        "name": coll_name,
+                        "documents": 0,
+                        "size": 0,
+                    }
+                )
 
         return {
             "code": 0,
@@ -147,7 +153,10 @@ async def test_database_connections(
     # 测试 Redis
     try:
         is_connected = await redis_manager.ping()
-        results["redis"] = {"connected": is_connected, "message": "连接正常" if is_connected else "连接失败"}
+        results["redis"] = {
+            "connected": is_connected,
+            "message": "连接正常" if is_connected else "连接失败",
+        }
     except Exception as e:
         results["redis"] = {"connected": False, "message": str(e)}
 
@@ -179,10 +188,12 @@ async def create_backup(
         _backups[backup_id] = backup_info
 
         # 保存到数据库
-        await db.database_backups.insert_one({
-            **backup_info,
-            "_id": backup_id,
-        })
+        await db.database_backups.insert_one(
+            {
+                **backup_info,
+                "_id": backup_id,
+            }
+        )
 
         logger.info(f"管理员 {current_admin.username} 创建了数据库备份: {request.name}")
         return {"code": 0, "message": "success", "data": backup_info}
@@ -206,7 +217,7 @@ async def list_backups(
             doc["id"] = str(doc.pop("_id", doc.get("id", "")))
             backups.append(doc)
         return {"code": 0, "message": "success", "data": backups}
-    except Exception as e:
+    except Exception:
         # 如果集合不存在，返回空列表
         return {"code": 0, "message": "success", "data": []}
 
@@ -240,15 +251,14 @@ async def cleanup_old_data(
         db = mongodb.database
         cutoff = datetime.now(timezone.utc)
         from datetime import timedelta
+
         cutoff_date = cutoff - timedelta(days=request.days)
         deleted_count = 0
 
         # 清理过期的临时数据
         for coll_name in ["temp_data", "expired_tasks"]:
             try:
-                result = await db[coll_name].delete_many({
-                    "created_at": {"$lt": cutoff_date}
-                })
+                result = await db[coll_name].delete_many({"created_at": {"$lt": cutoff_date}})
                 deleted_count += result.deleted_count
             except Exception:
                 pass
@@ -275,14 +285,17 @@ async def cleanup_analysis_results(
     try:
         db = mongodb.database
         from datetime import timedelta
+
         cutoff_date = datetime.now(timezone.utc) - timedelta(days=request.days)
         deleted_count = 0
 
         # 清理已过期且超过保留期的分析任务
-        result = await db.analysis_tasks.delete_many({
-            "status": {"$in": ["completed", "failed", "cancelled", "expired"]},
-            "completed_at": {"$lt": cutoff_date},
-        })
+        result = await db.analysis_tasks.delete_many(
+            {
+                "status": {"$in": ["completed", "failed", "cancelled", "expired"]},
+                "completed_at": {"$lt": cutoff_date},
+            }
+        )
         deleted_count += result.deleted_count
 
         logger.info(f"管理员 {current_admin.username} 清理了 {deleted_count} 条过期分析结果")
@@ -307,13 +320,12 @@ async def cleanup_operation_logs(
     try:
         db = mongodb.database
         from datetime import timedelta
+
         cutoff_date = datetime.now(timezone.utc) - timedelta(days=request.days)
         deleted_count = 0
 
         # 清理审计日志
-        result = await db.audit_logs.delete_many({
-            "timestamp": {"$lt": cutoff_date}
-        })
+        result = await db.audit_logs.delete_many({"timestamp": {"$lt": cutoff_date}})
         deleted_count += result.deleted_count
 
         logger.info(f"管理员 {current_admin.username} 清理了 {deleted_count} 条操作日志")

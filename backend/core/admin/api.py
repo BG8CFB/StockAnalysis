@@ -2,7 +2,8 @@
 管理员核心 API 路由
 处理用户审核、管理、列表查询等
 """
-from typing import Optional
+
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -34,7 +35,7 @@ async def get_users(
     is_active: Optional[bool] = None,
     search: Optional[str] = None,
     current_admin: UserModel = Depends(get_current_admin_user),
-):
+) -> dict[str, Any]:
     """获取用户列表（支持筛选和搜索）"""
     users, total = await admin_service.get_users(
         skip=skip,
@@ -52,7 +53,7 @@ async def get_pending_users(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     current_admin: UserModel = Depends(get_current_admin_user),
-):
+) -> dict[str, Any]:
     """获取待审核用户列表"""
     users, total = await admin_service.get_pending_users(skip=skip, limit=limit)
     return {"users": users, "total": total}
@@ -62,7 +63,7 @@ async def get_pending_users(
 async def get_user(
     user_id: str,
     current_admin: UserModel = Depends(get_current_admin_user),
-):
+) -> dict[str, Any]:
     """获取单个用户详情"""
     try:
         user = await admin_service.get_user_by_id(user_id)
@@ -76,15 +77,15 @@ async def get_user(
 
 @router.post("/users")
 async def create_user(
-    data: dict,
+    data: dict[str, Any],
     current_admin: UserModel = Depends(get_current_admin_user),
-):
+) -> dict[str, Any]:
     """管理员创建用户"""
     try:
         user = await admin_service.create_user(
-            email=data.get("email"),
-            username=data.get("username"),
-            password=data.get("password"),
+            email=str(data.get("email", "")),
+            username=str(data.get("username", "")),
+            password=str(data.get("password", "")),
             role=data.get("role", Role.USER),
             created_by=str(current_admin.id),
         )
@@ -101,7 +102,7 @@ async def approve_user(
     user_id: str,
     data: ApproveUserRequest,
     current_admin: UserModel = Depends(get_current_admin_user),
-):
+) -> dict[str, Any]:
     """通过用户审核"""
     try:
         user = await admin_service.approve_user(user_id, str(current_admin.id))
@@ -122,7 +123,7 @@ async def reject_user(
     user_id: str,
     data: RejectUserRequest,
     current_admin: UserModel = Depends(get_current_admin_user),
-):
+) -> dict[str, Any]:
     """拒绝用户审核"""
     try:
         user = await admin_service.reject_user(user_id, str(current_admin.id), data.reason)
@@ -143,7 +144,7 @@ async def disable_user(
     user_id: str,
     data: DisableUserRequest,
     current_admin: UserModel = Depends(get_current_admin_user),
-):
+) -> dict[str, Any]:
     """禁用用户"""
     try:
         user = await admin_service.disable_user(user_id, str(current_admin.id), data.reason)
@@ -163,7 +164,7 @@ async def disable_user(
 async def enable_user(
     user_id: str,
     current_admin: UserModel = Depends(get_current_admin_user),
-):
+) -> dict[str, Any]:
     """启用用户"""
     try:
         user = await admin_service.enable_user(user_id, str(current_admin.id))
@@ -183,7 +184,7 @@ async def enable_user(
 async def reapprove_user(
     user_id: str,
     current_admin: UserModel = Depends(get_current_admin_user),
-):
+) -> dict[str, Any]:
     """重新审核通过用户（从 REJECTED 状态恢复）"""
     try:
         user = await admin_service.reapprove_user(user_id, str(current_admin.id))
@@ -204,7 +205,7 @@ async def update_user(
     user_id: str,
     data: UpdateUserByAdminRequest,
     current_admin: UserModel = Depends(get_current_admin_user),
-):
+) -> dict[str, Any]:
     """更新用户信息"""
     try:
         user = await admin_service.update_user(user_id, data.model_dump(exclude_unset=True))
@@ -225,7 +226,7 @@ async def change_user_role(
     user_id: str,
     new_role: Role = Query(...),
     current_admin: UserModel = Depends(get_current_super_admin),
-):
+) -> dict[str, Any]:
     """修改用户角色（仅超级管理员）"""
     try:
         user = await admin_service.change_user_role(user_id, new_role, str(current_admin.id))
@@ -245,7 +246,7 @@ async def change_user_role(
 async def delete_user(
     user_id: str,
     current_admin: UserModel = Depends(get_current_admin_user),
-):
+) -> dict[str, Any]:
     """删除用户"""
     try:
         success = await admin_service.delete_user(user_id, str(current_admin.id))
@@ -266,7 +267,7 @@ async def delete_user(
 async def admin_request_password_reset(
     user_id: str,
     current_admin: UserModel = Depends(get_current_admin_user),
-):
+) -> dict[str, Any]:
     """管理员触发用户密码重置"""
     try:
         reset_token = await admin_service.admin_request_password_reset(
@@ -296,7 +297,7 @@ async def get_audit_logs(
     action: Optional[str] = None,
     user_id: Optional[str] = None,
     current_admin: UserModel = Depends(get_current_admin_user),
-):
+) -> dict[str, Any]:
     """获取审计日志"""
     from core.user.service import user_service
 

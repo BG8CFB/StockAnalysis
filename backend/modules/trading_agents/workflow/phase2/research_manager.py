@@ -8,13 +8,12 @@ Phase 2: 研究经理（投资组合经理）
 """
 
 import logging
-from typing import Dict, Any, Optional, List
-from datetime import datetime
-
-from langchain_core.language_models import BaseChatModel
+from typing import Any, Dict, List, Optional
 
 from langchain.agents import create_agent
-from modules.trading_agents.models.state import WorkflowState, TaskStatus
+from langchain_core.language_models import BaseChatModel
+
+from modules.trading_agents.models.state import WorkflowState
 from modules.trading_agents.workflow.callbacks import WebSocketCallbackHandler
 
 logger = logging.getLogger(__name__)
@@ -31,7 +30,7 @@ class ResearchManager:
         self,
         model: BaseChatModel,
         config: Optional[Dict[str, Any]] = None,
-        task_id: str = None,
+        task_id: Optional[str] = None,
         websocket_manager: Any = None,
     ):
         """
@@ -50,15 +49,17 @@ class ResearchManager:
         # 创建回调处理器
         self.callbacks = []
         if self.task_id and self.websocket_manager:
-            self.callbacks.append(WebSocketCallbackHandler(
-                task_id=self.task_id,
-                agent_slug="research_manager",
-                agent_name="研究经理",
-                websocket_manager=self.websocket_manager,
-            ))
+            self.callbacks.append(
+                WebSocketCallbackHandler(
+                    task_id=self.task_id,
+                    agent_slug="research_manager",
+                    agent_name="研究经理",
+                    websocket_manager=self.websocket_manager,
+                )
+            )
         self.agent = self._create_agent()
 
-    def _create_agent(self):
+    def _create_agent(self) -> Any:
         """创建智能体实例 (LangChain 1.1.0 create_agent API)"""
         system_prompt_str = self._build_system_prompt()
         # 使用 LangChain 1.1.0 的 create_agent
@@ -154,12 +155,7 @@ class ResearchManager:
 """
         return prompt.strip()
 
-    async def decide(
-        self,
-        state: WorkflowState,
-        bull_view: str,
-        bear_view: str
-    ) -> Dict[str, Any]:
+    async def decide(self, state: WorkflowState, bull_view: str, bear_view: str) -> Dict[str, Any]:
         """
         做出投资决策
 
@@ -179,11 +175,14 @@ class ResearchManager:
             # 调用智能体 (使用 LangGraph create_agent 的正确输入格式)
             prompt_text = messages[0]["content"] if messages else "Please analyze."
             # 通过 config 传递 callbacks
-            config = {"recursion_limit": 10}
+            config: dict[str, Any] = {"recursion_limit": 10}
             if self.callbacks:
                 from langchain_core.callbacks import CallbackManager
-                config["configurable"] = {"callbacks": CallbackManager(self.callbacks)}
-            result = await self.agent.ainvoke({"messages": [{"role": "user", "content": prompt_text}]}, config=config)
+
+                config["configurable"] = {"callbacks": CallbackManager(self.callbacks)}  # type: ignore[arg-type]
+            result = await self.agent.ainvoke(
+                {"messages": [{"role": "user", "content": prompt_text}]}, config=config
+            )
 
             # 提取输出
             output = self._extract_output(result)
@@ -193,32 +192,19 @@ class ResearchManager:
 
             logger.info(
                 f"[Phase 2] 研究经理决策完成: {state.stock_code}, "
-                f"推荐: {decision.get('recommendation')}, "
-                f"风险: {decision.get('risk_level')}"
+                f"推荐: {decision.get('recommendation') if decision else 'N/A'}, "
+                f"风险: {decision.get('risk_level') if decision else 'N/A'}"
             )
 
-            return {
-                "role": "manager",
-                "output": output,
-                "decision": decision,
-                "error": None
-            }
+            return {"role": "manager", "output": output, "decision": decision, "error": None}
 
         except Exception as e:
             logger.error(f"[Phase 2] 研究经理决策失败: {state.stock_code}, error={e}")
 
-            return {
-                "role": "manager",
-                "output": None,
-                "decision": None,
-                "error": str(e)
-            }
+            return {"role": "manager", "output": None, "decision": None, "error": str(e)}
 
     def _build_input_messages(
-        self,
-        state: WorkflowState,
-        bull_view: str,
-        bear_view: str
+        self, state: WorkflowState, bull_view: str, bear_view: str
     ) -> List[Dict[str, Any]]:
         """构建输入消息"""
         prompt = f"""
@@ -253,9 +239,9 @@ class ResearchManager:
             if messages:
                 last_message = messages[-1]
                 if hasattr(last_message, "content"):
-                    return last_message.content
+                    return str(last_message.content)
                 elif isinstance(last_message, dict):
-                    return last_message.get("content")
+                    return str(last_message.get("content", ""))
 
         if isinstance(result, str):
             return result
@@ -267,8 +253,8 @@ class ResearchManager:
         if not output:
             return None
 
-        import re
         import json
+        import re
 
         # 尝试从输出中提取 JSON
         json_pattern = r'\{[^}]*"recommendation"[^}]*\}'
@@ -279,7 +265,7 @@ class ResearchManager:
                 decision = json.loads(match)
                 # 验证必需字段
                 if "recommendation" in decision:
-                    return decision
+                    return dict(decision)
             except json.JSONDecodeError:
                 continue
 
@@ -308,7 +294,7 @@ class ResearchManager:
                 "recommendation": recommendation,
                 "risk_level": risk_level or "MEDIUM",
                 "buy_price": buy_price,
-                "sell_price": sell_price
+                "sell_price": sell_price,
             }
 
         return None
@@ -319,8 +305,8 @@ class ResearchManager:
 
         # 查找 "买入 ¥10.50" 或 "买入价: 10.50" 等模式
         patterns = [
-            rf'{keyword}\s*[:：]?\s*[¥￥]?\s*(\d+\.?\d*)',
-            rf'{keyword}\s*价\s*[:：]?\s*[¥￥]?\s*(\d+\.?\d*)',
+            rf"{keyword}\s*[:：]?\s*[¥￥]?\s*(\d+\.?\d*)",
+            rf"{keyword}\s*价\s*[:：]?\s*[¥￥]?\s*(\d+\.?\d*)",
         ]
 
         for pattern in patterns:

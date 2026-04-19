@@ -8,8 +8,8 @@
 """
 
 import logging
-from typing import List, Optional, Dict, Any, Callable, Awaitable
 from enum import Enum
+from typing import Any, Awaitable, Callable, Dict, Optional
 
 from .rate_limiter import RateLimiter, get_rate_limiter
 
@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 class ChannelType(str, Enum):
     """通道类型"""
+
     DIRECT = "direct"  # 通道1：直接返回
     STORAGE = "storage"  # 通道2：存储
     FALLBACK = "fallback"  # 降级通道：项目信息源
@@ -25,6 +26,7 @@ class ChannelType(str, Enum):
 
 class FallbackReason(str, Enum):
     """降级原因"""
+
     NO_USER_CONFIG = "no_user_config"  # 用户未配置实时数据源
     SOURCE_UNAVAILABLE = "source_unavailable"  # 数据源不可用
     RATE_LIMITED = "rate_limited"  # 限流
@@ -44,7 +46,7 @@ class DualChannelResult:
         rate_limited: bool = False,
         error: Optional[str] = None,
         fallback_used: bool = False,
-        fallback_reason: Optional[FallbackReason] = None
+        fallback_reason: Optional[FallbackReason] = None,
     ):
         self.success = success
         self.data = data
@@ -83,7 +85,7 @@ class DualChannelService:
         self,
         rate_limiter: Optional[RateLimiter] = None,
         storage_callback: Optional[Callable] = None,
-        fallback_callback: Optional[Callable[[], Awaitable[Any]]] = None
+        fallback_callback: Optional[Callable[[], Awaitable[Any]]] = None,
     ):
         """
         初始化双通道服务
@@ -105,7 +107,7 @@ class DualChannelService:
         use_channel1: bool = True,
         use_channel2: bool = True,
         fallback_func: Optional[Callable[[], Awaitable[Any]]] = None,
-        has_user_config: bool = True
+        has_user_config: bool = True,
     ) -> DualChannelResult:
         """
         使用双通道获取数据
@@ -136,7 +138,9 @@ class DualChannelService:
                 data = await fetch_func()
 
                 if data is not None:
-                    logger.info(f"Channel1 (direct): successfully fetched data for {symbol}/{data_type}")
+                    logger.info(
+                        f"Channel1 (direct): successfully fetched data for {symbol}/{data_type}"
+                    )
 
                     # 通道1成功后，仍然尝试通道2（存储）
                     if use_channel2:
@@ -174,7 +178,7 @@ class DualChannelService:
         symbol: str,
         data_type: str,
         data: Any = None,
-        fetch_func: Optional[Callable[[], Awaitable[Any]]] = None
+        fetch_func: Optional[Callable[[], Awaitable[Any]]] = None,
     ) -> DualChannelResult:
         """
         尝试通道2（存储）
@@ -189,9 +193,7 @@ class DualChannelService:
             双通道结果
         """
         # 检查限流
-        is_allowed, current_count = await self.rate_limiter.check_and_increment(
-            symbol, data_type
-        )
+        is_allowed, current_count = await self.rate_limiter.check_and_increment(symbol, data_type)
 
         if not is_allowed:
             remaining_time = await self.rate_limiter.get_remaining_time(symbol, data_type)
@@ -233,7 +235,9 @@ class DualChannelService:
                 logger.debug(f"Channel2 (storage): storing data for {symbol}/{data_type}")
                 await self.storage_callback(symbol, data_type, data)
                 stored = True
-                logger.info(f"Channel2 (storage): successfully stored data for {symbol}/{data_type}")
+                logger.info(
+                    f"Channel2 (storage): successfully stored data for {symbol}/{data_type}"
+                )
             except Exception as e:
                 logger.error(f"Channel2 (storage) store failed for {symbol}/{data_type}: {e}")
 
@@ -245,10 +249,7 @@ class DualChannelService:
         )
 
     async def fetch_from_database(
-        self,
-        symbol: str,
-        data_type: str,
-        db_query_func: Callable[[], Awaitable[Any]]
+        self, symbol: str, data_type: str, db_query_func: Callable[[], Awaitable[Any]]
     ) -> DualChannelResult:
         """
         从数据库获取数据（用于项目信息源）
@@ -305,7 +306,7 @@ class DualChannelService:
         symbol: str,
         data_type: str,
         fallback_func: Optional[Callable[[], Awaitable[Any]]],
-        reason: FallbackReason
+        reason: FallbackReason,
     ) -> DualChannelResult:
         """
         尝试降级到项目信息源
@@ -323,7 +324,9 @@ class DualChannelService:
         callback = fallback_func or self.fallback_callback
 
         if not callback:
-            logger.warning(f"No fallback available for {symbol}/{data_type}, reason: {reason.value}")
+            logger.warning(
+                f"No fallback available for {symbol}/{data_type}, reason: {reason.value}"
+            )
             return DualChannelResult(
                 success=False,
                 error=f"No fallback available, reason: {reason.value}",
@@ -332,7 +335,10 @@ class DualChannelService:
             )
 
         try:
-            logger.info(f"Fallback: fetching from project source for {symbol}/{data_type}, reason: {reason.value}")
+            logger.info(
+                f"Fallback: fetching from project source for "
+                f"{symbol}/{data_type}, reason: {reason.value}"
+            )
             data = await callback()
 
             if data is not None:
@@ -391,7 +397,7 @@ _global_dual_channel_service: Optional[DualChannelService] = None
 def get_dual_channel_service(
     rate_limiter: Optional[RateLimiter] = None,
     storage_callback: Optional[Callable] = None,
-    fallback_callback: Optional[Callable[[], Awaitable[Any]]] = None
+    fallback_callback: Optional[Callable[[], Awaitable[Any]]] = None,
 ) -> DualChannelService:
     """
     获取全局双通道服务实例
@@ -409,7 +415,7 @@ def get_dual_channel_service(
         _global_dual_channel_service = DualChannelService(
             rate_limiter=rate_limiter,
             storage_callback=storage_callback,
-            fallback_callback=fallback_callback
+            fallback_callback=fallback_callback,
         )
         logger.info("Created global dual channel service")
     return _global_dual_channel_service

@@ -7,37 +7,29 @@ Phase 1 智能体工厂
 **最后更新**: 2025-01-19
 """
 
-import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from langchain.agents import create_agent
-from langchain_core.tools import BaseTool
 from langchain_core.messages import HumanMessage
+from langchain_core.tools import BaseTool
 
 from core.ai.service import AIService
 from modules.trading_agents.config import get_enabled_agents
 from modules.trading_agents.models.state import (
-    AgentExecution,
     TaskStatus,
     WorkflowState,
 )
-from modules.trading_agents.workflow.state import TokenUsage
-from modules.trading_agents.workflow.events import (
-    EventType,
-    create_event,
-    create_phase_agents_event,
-    create_agent_started_event,
-    create_agent_completed_event,
-    create_progress_update_event,
-    create_report_generated_event,
+from modules.trading_agents.workflow.agent_helpers import (
+    handle_agent_completed,
+    handle_agent_started,
 )
 from modules.trading_agents.workflow.callbacks import WebSocketCallbackHandler
-from modules.trading_agents.workflow.agent_helpers import (
-    handle_agent_started,
-    handle_agent_completed,
+from modules.trading_agents.workflow.events import (
+    create_phase_agents_event,
 )
+from modules.trading_agents.workflow.state import AgentExecution, TokenUsage
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +38,7 @@ logger = logging.getLogger(__name__)
 # Phase 1 智能体工厂
 # =============================================================================
 
+
 class Phase1AgentFactory:
     """
     Phase 1 智能体工厂
@@ -53,11 +46,7 @@ class Phase1AgentFactory:
     动态创建分析师智能体，支持并发执行。
     """
 
-    def __init__(
-        self,
-        ai_service: AIService,
-        config: Optional[Dict[str, Any]] = None
-    ):
+    def __init__(self, ai_service: AIService, config: Optional[Dict[str, Any]] = None) -> None:
         """
         初始化智能体工厂
 
@@ -74,9 +63,9 @@ class Phase1AgentFactory:
         tools: List[BaseTool],
         model_id: str,
         user_id: str = "system",
-        task_id: str = None,
+        task_id: Optional[str] = None,
         websocket_manager: Any = None,
-    ):
+    ) -> Any:
         """
         创建单个智能体 (LangChain 0.3+ create_agent API)
 
@@ -159,11 +148,11 @@ class Phase1AgentFactory:
 
     async def execute_agent(
         self,
-        agent,
+        agent: Any,
         agent_config: Dict[str, Any],
         state: WorkflowState,
         user_prompt: str,
-        callbacks: List[Any] = None,
+        callbacks: Optional[List[Any]] = None,
     ) -> Dict[str, Any]:
         """
         执行智能体
@@ -186,7 +175,7 @@ class Phase1AgentFactory:
             slug=agent_slug,
             name=agent_name,
             status=TaskStatus.RUNNING,
-            started_at=datetime.now(timezone.utc)
+            started_at=datetime.now(timezone.utc),
         )
 
         try:
@@ -194,15 +183,12 @@ class Phase1AgentFactory:
             logger.info(f"[Phase 1] 执行智能体: {agent_slug} ({agent_name})")
 
             # LangChain 0.3+ 使用 messages 格式
-            inputs = {
-                "messages": [
-                    HumanMessage(content=user_prompt)
-                ]
-            }
+            inputs = {"messages": [HumanMessage(content=user_prompt)]}
 
             # LangChain 0.3+ 正确传递 callbacks 的方式：直接放在 config 顶层，不是 configurable 下
             if callbacks:
                 from langchain_core.callbacks import CallbackManager
+
                 run_config = {"callbacks": CallbackManager(handlers=callbacks)}
                 result = await agent.ainvoke(inputs, config=run_config)
             else:
@@ -231,7 +217,7 @@ class Phase1AgentFactory:
                 "name": agent_name,
                 "output": output,
                 "execution": execution,
-                "error": None
+                "error": None,
             }
 
         except Exception as e:
@@ -246,7 +232,7 @@ class Phase1AgentFactory:
                 "name": agent_name,
                 "output": None,
                 "execution": execution,
-                "error": str(e)
+                "error": str(e),
             }
 
     def _extract_output(self, result: Any) -> Optional[str]:
@@ -267,10 +253,10 @@ class Phase1AgentFactory:
                 last_message = messages[-1]
                 # 处理消息对象
                 if hasattr(last_message, "content"):
-                    return last_message.content
+                    return str(last_message.content)
                 # 处理字典格式
                 elif isinstance(last_message, dict):
-                    return last_message.get("content", "")
+                    return str(last_message.get("content", ""))
 
         # 直接返回字符串
         if isinstance(result, str):
@@ -319,7 +305,7 @@ class Phase1AgentFactory:
                         return TokenUsage(
                             prompt_tokens=total_prompt,
                             completion_tokens=total_completion,
-                            total_tokens=total_prompt + total_completion
+                            total_tokens=total_prompt + total_completion,
                         )
         except Exception as e:
             logger.debug(f"提取 Token 使用量失败: {e}")
@@ -330,6 +316,7 @@ class Phase1AgentFactory:
 # =============================================================================
 # 工具加载器
 # =============================================================================
+
 
 async def load_local_tools(
     agent_config: Dict[str, Any],
@@ -363,13 +350,14 @@ async def load_local_tools(
 # 辅助函数
 # =============================================================================
 
+
 async def execute_phase1(
     state: WorkflowState,
     ai_service: AIService,
     config: Dict[str, Any],
     selected_agents: Optional[List[str]] = None,
     model_id: str = "claude-sonnet-4-20250514",
-    max_concurrency: Optional[int] = None
+    max_concurrency: Optional[int] = None,
 ) -> WorkflowState:
     """
     执行 Phase 1: 信息收集与基础分析
@@ -397,17 +385,14 @@ async def execute_phase1(
     # 更新状态
     state.current_phase = 1
     state.status = TaskStatus.RUNNING
-    state.started_at = datetime.now(timezone.utc)
+    state.started_at = datetime.now(timezone.utc).isoformat()
 
     # 获取已启用的智能体
     enabled_agents = get_enabled_agents(config, "phase1")
 
     # 如果用户指定了智能体，进行过滤
     if selected_agents:
-        enabled_agents = [
-            agent for agent in enabled_agents
-            if agent["slug"] in selected_agents
-        ]
+        enabled_agents = [agent for agent in enabled_agents if agent["slug"] in selected_agents]
 
     if not enabled_agents:
         logger.warning("[Phase 1] 没有启用的智能体，跳过 Phase 1")
@@ -426,7 +411,15 @@ async def execute_phase1(
         max_concurrency=max_concurrency or 0,
         agents=enabled_agents,
         total_executions=state.phase_agent_counts.get(1, len(enabled_agents)),
-        phase_progress_weight=(state.phase_agent_counts.get(1, len(enabled_agents)) / state.total_agent_executions * 100) if state.total_agent_executions > 0 else 0
+        phase_progress_weight=(
+            (
+                state.phase_agent_counts.get(1, len(enabled_agents))
+                / state.total_agent_executions
+                * 100
+            )
+            if state.total_agent_executions > 0
+            else 0
+        ),
     )
     await websocket_manager.broadcast_event(state.task_id, phase_agents_event)
     logger.info(f"[Phase 1] 已发送智能体列表事件, 智能体数量: {len(enabled_agents)}")
@@ -444,15 +437,19 @@ async def execute_phase1(
             state=state,
             agent_slug=agent_config["slug"],
             agent_name=agent_config["name"],
-            websocket_manager=websocket_manager
+            websocket_manager=websocket_manager,
         )
 
         try:
             if semaphore:
                 async with semaphore:
-                    result = await _execute_agent_internal(factory, agent_config, state, model_id, websocket_manager)
+                    result = await _execute_agent_internal(
+                        factory, agent_config, state, model_id, websocket_manager
+                    )
             else:
-                result = await _execute_agent_internal(factory, agent_config, state, model_id, websocket_manager)
+                result = await _execute_agent_internal(
+                    factory, agent_config, state, model_id, websocket_manager
+                )
 
             # 处理智能体完成
             if result and result.get("output"):
@@ -462,7 +459,7 @@ async def execute_phase1(
                     agent_name=agent_config["name"],
                     output=result["output"],
                     websocket_manager=websocket_manager,
-                    save_report=True
+                    save_report=True,
                 )
 
             return result
@@ -480,35 +477,35 @@ async def execute_phase1(
             logger.error(f"[Phase 1] 智能体执行异常: {result}")
             continue
 
-        if not result:
+        if not result or not isinstance(result, dict):
             continue
 
         # 更新状态中的分析师报告
         if result.get("output"):
-            state.analyst_reports.append({
-                "slug": result["slug"],
-                "name": result["name"],
-                "content": result["output"],
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            })
+            state.analyst_reports.append(
+                {
+                    "slug": result["slug"],
+                    "name": result["name"],
+                    "content": result["output"],
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            )
 
         # 更新执行记录
         if result.get("execution"):
-            if not hasattr(state, 'phase_executions'):
+            if not hasattr(state, "phase_executions"):
                 state.phase_executions = []
 
             # 查找或创建 Phase 1 执行记录
-            phase1_execution = next(
-                (pe for pe in state.phase_executions if pe.phase == 1),
-                None
-            )
+            phase1_execution = next((pe for pe in state.phase_executions if pe.phase == 1), None)
             if phase1_execution is None:
-                from modules.trading_agents.models.state import PhaseExecution
+                from modules.trading_agents.workflow.state import PhaseExecution
+
                 phase1_execution = PhaseExecution(
                     phase=1,
                     phase_name="信息收集与基础分析",
                     execution_mode="concurrent",
-                    max_concurrency=max_concurrency or len(enabled_agents)
+                    max_concurrency=max_concurrency or len(enabled_agents),
                 )
                 state.phase_executions.append(phase1_execution)
 
@@ -559,14 +556,20 @@ async def _execute_agent_internal(
 
                 # 创建智能体并执行（MCP 连接在此期间保持打开）
                 agent, callbacks = await factory.create_agent(
-                    agent_config, tools, model_id,
-                    user_id=state.user_id, task_id=state.task_id,
+                    agent_config,
+                    tools,
+                    model_id,
+                    user_id=state.user_id,
+                    task_id=state.task_id,
                     websocket_manager=websocket_manager,
                 )
                 user_prompt = _build_user_prompt(state, agent_config)
                 return await factory.execute_agent(
-                    agent, agent_config, state,
-                    user_prompt=user_prompt, callbacks=callbacks,
+                    agent,
+                    agent_config,
+                    state,
+                    user_prompt=user_prompt,
+                    callbacks=callbacks,
                 )
         except Exception as e:
             logger.error(f"[Phase 1] MCP 工具加载/执行失败: {agent_config['slug']}, error={e}")

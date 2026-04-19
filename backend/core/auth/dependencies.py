@@ -1,12 +1,13 @@
 """
 认证依赖注入
 """
+
 from typing import Optional
 
 from fastapi import Depends, HTTPException, Query, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from core.auth.models import PyObjectId, UserModel
+from core.auth.models import PyObjectId, UserModel  # noqa: F401 - re-exports for backward compat
 from core.auth.security import jwt_manager
 from core.db.mongodb import mongodb
 from core.db.redis import UserRedisKey, get_redis
@@ -125,7 +126,9 @@ async def get_current_verified_user(
 async def get_current_user_from_query(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     token: Optional[str] = None,
-    ticket: Optional[str] = Query(None, description="短期认证 ticket，用于 SSE/WS，避免 token 出现在 URL"),
+    ticket: Optional[str] = Query(
+        None, description="短期认证 ticket，用于 SSE/WS，避免 token 出现在 URL"
+    ),
 ) -> UserModel:
     """
     获取当前用户（支持 Authorization Header、查询参数 token、或短期 ticket）

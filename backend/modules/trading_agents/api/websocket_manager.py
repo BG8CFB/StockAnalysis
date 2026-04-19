@@ -11,15 +11,14 @@ WebSocket 推送管理器
 """
 
 import asyncio
-import json
 import logging
 from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import Dict, Set, Any, Optional, List, Callable
+from typing import Any, Callable, Dict, List, Optional, Set
 
-from fastapi import WebSocket, WebSocketDisconnect
+from fastapi import WebSocket
 
-from modules.trading_agents.workflow.events import TaskEvent, EventType
+from modules.trading_agents.workflow.events import TaskEvent
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +30,7 @@ CONNECTION_TIMEOUT = 1800  # 连接超时（秒）：30 分钟
 # =============================================================================
 # WebSocket 连接管理器
 # =============================================================================
+
 
 class WebSocketManager:
     """
@@ -47,9 +47,11 @@ class WebSocketManager:
     # 单用户最大连接数
     MAX_CONNECTIONS_PER_USER = 5
 
-    def __init__(self):
+    def __init__(self) -> None:
         # {task_id: {user_id: Set[WebSocket]}}
-        self._connections: Dict[str, Dict[str, Set[WebSocket]]] = defaultdict(lambda: defaultdict(set))
+        self._connections: Dict[str, Dict[str, Set[WebSocket]]] = defaultdict(
+            lambda: defaultdict(set)
+        )
 
         # {websocket: (task_id, user_id, created_at, last_active_at)} 反向映射
         # 添加连接时间和最后活跃时间，用于超时清理
@@ -95,7 +97,9 @@ class WebSocketManager:
                 # 断开陈旧连接
                 for websocket in stale_connections:
                     try:
-                        task_id, user_id, _, _ = self._connection_info.get(websocket, (None, None, None, None))
+                        task_id, user_id, _, _ = self._connection_info.get(
+                            websocket, (None, None, None, None)
+                        )
                         await self.disconnect(websocket, code=4000, reason="Connection timeout")
                         logger.info(
                             f"[WebSocketManager] 清理超时连接: task={task_id}, user={user_id}"
@@ -104,9 +108,7 @@ class WebSocketManager:
                         logger.warning(f"[WebSocketManager] 清理连接时出错: {e}")
 
                 if stale_connections:
-                    logger.info(
-                        f"[WebSocketManager] 本次清理超时连接 {len(stale_connections)} 个"
-                    )
+                    logger.info(f"[WebSocketManager] 本次清理超时连接 {len(stale_connections)} 个")
 
         except asyncio.CancelledError:
             logger.info("[WebSocketManager] 陈旧连接清理任务已取消")
@@ -140,12 +142,11 @@ class WebSocketManager:
 
         # 默认验证：从数据库查询任务所属用户
         try:
-            from core.db.mongodb import mongodb
             from bson import ObjectId
 
-            task = await mongodb.database.analysis_tasks.find_one(
-                {"_id": ObjectId(task_id)}
-            )
+            from core.db.mongodb import mongodb
+
+            task = await mongodb.database.analysis_tasks.find_one({"_id": ObjectId(task_id)})
 
             if not task:
                 logger.warning(f"任务不存在: task_id={task_id}")
@@ -169,12 +170,7 @@ class WebSocketManager:
             logger.error(f"验证任务权限时发生错误: task_id={task_id}, error={e}")
             return False
 
-    async def connect(
-        self,
-        websocket: WebSocket,
-        task_id: str,
-        user_id: str
-    ) -> None:
+    async def connect(self, websocket: WebSocket, task_id: str, user_id: str) -> None:
         """
         建立连接
 
@@ -224,15 +220,10 @@ class WebSocketManager:
                 "event_type": "connection_established",
                 "task_id": task_id,
                 "timestamp": asyncio.get_running_loop().time(),
-            }
+            },
         )
 
-    async def disconnect(
-        self,
-        websocket: WebSocket,
-        code: int = 1000,
-        reason: str = ""
-    ) -> None:
+    async def disconnect(self, websocket: WebSocket, code: int = 1000, reason: str = "") -> None:
         """
         断开连接
 
@@ -270,11 +261,7 @@ class WebSocketManager:
 
         logger.debug(f"WebSocket 连接断开: task={task_id}, user={user_id}")
 
-    async def broadcast_event(
-        self,
-        task_id: str,
-        event: TaskEvent
-    ) -> None:
+    async def broadcast_event(self, task_id: str, event: TaskEvent) -> None:
         """
         广播事件到订阅该任务的连接
 
@@ -310,11 +297,7 @@ class WebSocketManager:
                     # 自动断开无效连接
                     await self.disconnect(ws)
 
-    async def send_to_user(
-        self,
-        user_id: str,
-        event: TaskEvent
-    ) -> None:
+    async def send_to_user(self, user_id: str, event: TaskEvent) -> None:
         """
         发送事件到指定用户的所有连接
 
@@ -332,17 +315,19 @@ class WebSocketManager:
                         # 更新最后活跃时间
                         if ws in self._connection_info:
                             task_id_, user_id_, created_at, _ = self._connection_info[ws]
-                            self._connection_info[ws] = (task_id_, user_id_, created_at, datetime.now())
+                            self._connection_info[ws] = (
+                                task_id_,
+                                user_id_,
+                                created_at,
+                                datetime.now(),
+                            )
 
                         await self._send_to_websocket(ws, event_data)
                     except Exception as e:
                         logger.warning(f"WebSocket 发送失败: {e}")
                         await self.disconnect(ws)
 
-    async def broadcast_to_all(
-        self,
-        event: TaskEvent
-    ) -> None:
+    async def broadcast_to_all(self, event: TaskEvent) -> None:
         """
         广播事件到所有连接
 
@@ -357,18 +342,19 @@ class WebSocketManager:
                 # 更新最后活跃时间
                 if websocket in self._connection_info:
                     task_id_, user_id_, created_at, _ = self._connection_info[websocket]
-                    self._connection_info[websocket] = (task_id_, user_id_, created_at, datetime.now())
+                    self._connection_info[websocket] = (
+                        task_id_,
+                        user_id_,
+                        created_at,
+                        datetime.now(),
+                    )
 
                 await self._send_to_websocket(websocket, event_data)
             except Exception as e:
                 logger.warning(f"WebSocket 发送失败: {e}")
                 await self.disconnect(websocket)
 
-    async def send_event(
-        self,
-        task_id: str,
-        event_data: Dict[str, Any]
-    ) -> None:
+    async def send_event(self, task_id: str, event_data: Dict[str, Any]) -> None:
         """
         发送事件到指定任务的所有连接
 
@@ -393,11 +379,7 @@ class WebSocketManager:
                     logger.warning(f"WebSocket 发送失败: {e}")
                     await self.disconnect(ws)
 
-    async def _send_to_websocket(
-        self,
-        websocket: WebSocket,
-        data: Dict[str, Any]
-    ) -> None:
+    async def _send_to_websocket(self, websocket: WebSocket, data: Dict[str, Any]) -> None:
         """
         发送数据到 WebSocket
 
@@ -508,6 +490,7 @@ def get_websocket_manager() -> WebSocketManager:
 # =============================================================================
 # FastAPI 依赖项
 # =============================================================================
+
 
 async def get_ws_manager() -> WebSocketManager:
     """

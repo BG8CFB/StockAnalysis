@@ -7,8 +7,9 @@ Yahoo Finance 美股数据源适配器
 
 import asyncio
 import logging
-from typing import List, Optional, Dict, Any, Callable
 from datetime import datetime, timedelta
+from typing import Any, Callable, Dict, List, Optional
+
 import pandas as pd
 
 try:
@@ -17,16 +18,16 @@ except ImportError:
     yf = None
     logging.warning("yfinance not installed. Install with: pip install yfinance")
 
-from core.market_data.sources.base import DataSourceAdapter
 from core.market_data.models import (
-    StockInfo,
-    StockQuote,
-    StockKLine,
+    MarketType,
+    StockCompany,
     StockFinancial,
     StockFinancialIndicator,
-    StockCompany,
-    MarketType,
+    StockInfo,
+    StockKLine,
+    StockQuote,
 )
+from core.market_data.sources.base import DataSourceAdapter
 from core.market_data.tools.field_mapper import FieldMapper
 
 logger = logging.getLogger(__name__)
@@ -58,7 +59,7 @@ class YahooFinanceFieldMapper(FieldMapper):
         return f"{code}.US"
 
     @staticmethod
-    def map_stock_info(row: pd.Series, code: str = None) -> Dict[str, Any]:
+    def map_stock_info(row: pd.Series, code: Optional[str] = None) -> Dict[str, Any]:
         """
         映射 Yahoo Finance 股票基本信息
 
@@ -70,7 +71,7 @@ class YahooFinanceFieldMapper(FieldMapper):
             统一格式股票信息字典
         """
         return {
-            "symbol": YahooFinanceFieldMapper.normalize_us_symbol(code),
+            "symbol": YahooFinanceFieldMapper.normalize_us_symbol(code or ""),
             "market": MarketType.US_STOCK,
             "name": row.get("longName", row.get("shortName", "")),
             "industry": row.get("industry", ""),
@@ -115,7 +116,7 @@ class YahooFinanceFieldMapper(FieldMapper):
         }
 
     @staticmethod
-    def map_financial_income(ticker: Any, symbol: str) -> Dict[str, Any]:
+    def map_financial_income(ticker: Any, symbol: str) -> List[Dict[str, Any]]:
         """
         映射 Yahoo Finance 利润表数据
 
@@ -138,24 +139,28 @@ class YahooFinanceFieldMapper(FieldMapper):
                     report_date = FieldMapper.normalize_date(date_str)
 
                     income_statement = {
-                        "total_revenue": FieldMapper.safe_float(
-                            financials.loc["Total Revenue", date]
-                        )
-                        if "Total Revenue" in financials.index
-                        else None,
-                        "revenue": FieldMapper.safe_float(financials.loc["Total Revenue", date])
-                        if "Total Revenue" in financials.index
-                        else None,
+                        "total_revenue": (
+                            FieldMapper.safe_float(financials.loc["Total Revenue", date])
+                            if "Total Revenue" in financials.index
+                            else None
+                        ),
+                        "revenue": (
+                            FieldMapper.safe_float(financials.loc["Total Revenue", date])
+                            if "Total Revenue" in financials.index
+                            else None
+                        ),
                         "operating_cost": None,
-                        "net_income": FieldMapper.safe_float(financials.loc["Net Income", date])
-                        if "Net Income" in financials.index
-                        else None,
+                        "net_income": (
+                            FieldMapper.safe_float(financials.loc["Net Income", date])
+                            if "Net Income" in financials.index
+                            else None
+                        ),
                         "basic_eps": None,
-                        "operating_profit": FieldMapper.safe_float(
-                            financials.loc["Operating Income", date]
-                        )
-                        if "Operating Income" in financials.index
-                        else None,
+                        "operating_profit": (
+                            FieldMapper.safe_float(financials.loc["Operating Income", date])
+                            if "Operating Income" in financials.index
+                            else None
+                        ),
                     }
 
                     results.append(
@@ -195,7 +200,7 @@ class YahooFinanceFieldMapper(FieldMapper):
         try:
             info = ticker.info
             if not info:
-                return []
+                return {}
 
             return {
                 "symbol": symbol,
@@ -233,7 +238,12 @@ class YahooFinanceAdapter(DataSourceAdapter):
         self._priority = 1
 
     async def _fetch_with_retry(
-        self, fetch_func: Callable, *args, max_retries: int = 3, base_wait: int = 1, **kwargs
+        self,
+        fetch_func: Callable[..., Any],
+        *args: Any,
+        max_retries: int = 3,
+        base_wait: int = 1,
+        **kwargs: Any,
     ) -> Optional[Any]:
         """
         带指数退避的重试机制

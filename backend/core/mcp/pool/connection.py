@@ -24,12 +24,13 @@ logger = logging.getLogger(__name__)
 
 class ConnectionState(str, Enum):
     """连接状态枚举"""
-    IDLE = "idle"                     # 空闲（未使用）
-    CONNECTING = "connecting"         # 连接中
-    ACTIVE = "active"                 # 活跃（长连接保持）
-    CLOSING = "closing"               # 关闭中（任务完成后 10 秒）
-    FAILED_CLEANUP = "failed_cleanup" # 失败清理中（30 秒）
-    CLOSED = "closed"                 # 已关闭
+
+    IDLE = "idle"  # 空闲（未使用）
+    CONNECTING = "connecting"  # 连接中
+    ACTIVE = "active"  # 活跃（长连接保持）
+    CLOSING = "closing"  # 关闭中（任务完成后 10 秒）
+    FAILED_CLEANUP = "failed_cleanup"  # 失败清理中（30 秒）
+    CLOSED = "closed"  # 已关闭
 
 
 class MCPConnection:
@@ -104,16 +105,12 @@ class MCPConnection:
 
         try:
             # 创建 MCP 客户端
-            self._client = MultiServerMCPClient(
-                {self.server_name: self._connection_config}
-            )
+            self._client = MultiServerMCPClient({self.server_name: self._connection_config})
 
             # 使用官方 get_tools() 方法加载工具
             # 官方实现会自动管理 session 生命周期
             # 工具对象可以在后续调用时自动创建 session
-            self._tools = await self._client.get_tools(
-                server_name=self.server_name
-            )
+            self._tools = await self._client.get_tools(server_name=self.server_name)
 
             self.state = ConnectionState.ACTIVE
             self.last_used_at = datetime.now(timezone.utc)
@@ -131,8 +128,7 @@ class MCPConnection:
         except Exception as e:
             self.state = ConnectionState.FAILED_CLEANUP
             logger.error(
-                f"[MCPConnection] 连接失败: {self.connection_id}, error={e}",
-                exc_info=True
+                f"[MCPConnection] 连接失败: {self.connection_id}, error={e}", exc_info=True
             )
             # 启动失败清理定时器（从配置加载超时时间）
             self._schedule_cleanup(get_connection_failed_timeout())
@@ -144,13 +140,13 @@ class MCPConnection:
         """
         async with self._cleanup_lock:
             if self.state != ConnectionState.ACTIVE:
-                logger.warning(
-                    f"[MCPConnection] 非活动状态下调用 mark_complete: {self.state}"
-                )
+                logger.warning(f"[MCPConnection] 非活动状态下调用 mark_complete: {self.state}")
                 return
 
             timeout = get_connection_complete_timeout()
-            logger.info(f"[MCPConnection] 任务完成，启动 {timeout} 秒清理倒计时: {self.connection_id}")
+            logger.info(
+                f"[MCPConnection] 任务完成，启动 {timeout} 秒清理倒计时: {self.connection_id}"
+            )
             self.state = ConnectionState.CLOSING
             self._schedule_cleanup(timeout)
 
@@ -163,7 +159,9 @@ class MCPConnection:
                 return
 
             timeout = get_connection_failed_timeout()
-            logger.info(f"[MCPConnection] 任务失败，启动 {timeout} 秒清理倒计时: {self.connection_id}")
+            logger.info(
+                f"[MCPConnection] 任务失败，启动 {timeout} 秒清理倒计时: {self.connection_id}"
+            )
             self.state = ConnectionState.FAILED_CLEANUP
             self._schedule_cleanup(timeout)
 
@@ -203,9 +201,9 @@ class MCPConnection:
             if self._client:
                 try:
                     # 注意：具体关闭方法取决于 langchain-mcp-adapters 实现
-                    if hasattr(self._client, 'close'):
+                    if hasattr(self._client, "close"):
                         await self._client.close()
-                    elif hasattr(self._client, 'aclose'):
+                    elif hasattr(self._client, "aclose"):
                         await self._client.aclose()
                 except Exception as e:
                     logger.error(
@@ -237,7 +235,11 @@ class MCPConnection:
     @property
     def is_usable(self) -> bool:
         """是否可用（可用于工具调用）"""
-        return self.state in (ConnectionState.ACTIVE, ConnectionState.CLOSING, ConnectionState.FAILED_CLEANUP)
+        return self.state in (
+            ConnectionState.ACTIVE,
+            ConnectionState.CLOSING,
+            ConnectionState.FAILED_CLEANUP,
+        )
 
     def __repr__(self) -> str:
         return (

@@ -2,8 +2,9 @@
 用户核心业务逻辑服务
 集成验证码、限流、IP信任管理、审核工作流、密码重置
 """
-import logging
+
 import json
+import logging
 import secrets
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -12,12 +13,11 @@ from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pymongo.errors import DuplicateKeyError
 
-from core.auth.security import jwt_manager, password_manager
 from core.auth.rbac import Role
+from core.auth.security import jwt_manager, password_manager
 from core.config import settings
 from core.db.mongodb import mongodb
 from core.db.redis import UserRedisKey, get_redis
-from core.security.captcha_service import get_captcha_service
 from core.security.ip_trust import get_ip_trust_manager
 from core.security.rate_limiter import (
     RateLimitConfig,
@@ -39,26 +39,31 @@ logger = logging.getLogger(__name__)
 
 class UserExistsError(Exception):
     """用户已存在错误"""
+
     pass
 
 
 class InvalidCredentialsError(Exception):
     """无效凭证错误 - 账号密码错误或Token无效"""
+
     pass
 
 
 class InvalidUserStatusError(Exception):
     """用户状态无效 - 账号待审核/已禁用/已拒绝"""
+
     pass
 
 
 class IPBlockedError(Exception):
     """IP 已被封禁"""
+
     pass
 
 
 class UserNotFoundError(Exception):
     """用户不存在"""
+
     pass
 
 
@@ -83,7 +88,8 @@ class UserService:
     def _is_email(value: str) -> bool:
         """判断字符串是否为邮箱格式"""
         import re
-        pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+
+        pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
         return bool(re.match(pattern, value))
 
     async def _find_user_by_account(self, account: str) -> Optional[dict]:
@@ -233,8 +239,7 @@ class UserService:
 
         # 9. 更新最后登录时间
         await self.db.users.update_one(
-            {"_id": user["_id"]},
-            {"$set": {"last_login_at": datetime.now(timezone.utc)}}
+            {"_id": user["_id"]}, {"$set": {"last_login_at": datetime.now(timezone.utc)}}
         )
         user["last_login_at"] = datetime.now(timezone.utc)
         # 使用 model_validate 处理 MongoDB 返回的字典（Pydantic v2 推荐方式）
@@ -247,6 +252,7 @@ class UserService:
 
         # 11. 缓存会话到 Redis（使用 token 的 SHA-256 前 16 字符作为标识，避免固定前缀碰撞）
         import hashlib
+
         token_hash = hashlib.sha256(access_token.encode()).hexdigest()[:16]
         session_key = UserRedisKey.session(str(user_model.id), token_hash)
         await redis.set(
@@ -281,7 +287,9 @@ class UserService:
         # 检查是否需要封禁
         if ip_failures >= settings.LOGIN_MAX_ATTEMPTS:
             blocked_key = UserRedisKey.login_blocked_ip(client_ip)
-            await redis.set(blocked_key, settings.LOGIN_BLOCK_DURATION, ex=settings.LOGIN_BLOCK_DURATION)
+            await redis.set(
+                blocked_key, settings.LOGIN_BLOCK_DURATION, ex=settings.LOGIN_BLOCK_DURATION
+            )
 
     async def _clear_login_failures(self, account: str, client_ip: str) -> None:
         """清除登录失败记录"""
@@ -301,24 +309,24 @@ class UserService:
 
     async def update_user(self, user_id: str, data: UpdateUserRequest) -> Optional[UserModel]:
         """更新用户信息 - 检查 email 和 username 唯一性"""
-        update_data = {k: v for k, v in data.model_dump(exclude_unset=True).items() if v is not None}
+        update_data = {
+            k: v for k, v in data.model_dump(exclude_unset=True).items() if v is not None
+        }
         if not update_data:
             return await self.get_user(user_id)
 
         # 检查唯一性（排除当前用户）
         if "email" in update_data:
-            existing = await self.db.users.find_one({
-                "email": update_data["email"],
-                "_id": {"$ne": ObjectId(user_id)}  # 排除自己
-            })
+            existing = await self.db.users.find_one(
+                {"email": update_data["email"], "_id": {"$ne": ObjectId(user_id)}}  # 排除自己
+            )
             if existing:
                 raise ValueError("该邮箱已被其他用户使用")
 
         if "username" in update_data:
-            existing = await self.db.users.find_one({
-                "username": update_data["username"],
-                "_id": {"$ne": ObjectId(user_id)}  # 排除自己
-            })
+            existing = await self.db.users.find_one(
+                {"username": update_data["username"], "_id": {"$ne": ObjectId(user_id)}}  # 排除自己
+            )
             if existing:
                 raise ValueError("该用户名已被其他用户使用")
 
@@ -339,7 +347,7 @@ class UserService:
         cache_key = UserRedisKey.preferences(user_id)
         cached = await redis.get(cache_key)
         if cached:
-            return json.loads(cached)
+            return dict(json.loads(cached))
 
         # 从数据库获取
         prefs = await self.db.user_preferences.find_one({"user_id": ObjectId(user_id)})
@@ -360,20 +368,16 @@ class UserService:
         # 缓存到 Redis
         await redis.set(cache_key, json.dumps(prefs, default=str), ex=3600)  # 1小时
 
-        return prefs
+        return dict(prefs)
 
-    async def update_preferences(
-        self, user_id: str, data: UpdatePreferencesRequest | dict
-    ) -> dict:
+    async def update_preferences(self, user_id: str, data: UpdatePreferencesRequest | dict) -> dict:
         """更新用户配置"""
         # 处理dict输入
         if isinstance(data, dict):
             update_data = {k: v for k, v in data.items() if v is not None}
         else:
             update_data = {
-                k: v
-                for k, v in data.model_dump(exclude_unset=True).items()
-                if v is not None
+                k: v for k, v in data.model_dump(exclude_unset=True).items() if v is not None
             }
 
         if not update_data:
@@ -512,14 +516,13 @@ class UserService:
                     "hashed_password": hashed_password,
                     "updated_at": datetime.now(timezone.utc),
                 }
-            }
+            },
         )
 
         # 4. 删除 token（一次性使用）
         await redis.delete(token_key)
 
         # 5. 清除所有会话
-        session_pattern = f"user:{user_id}:session:*"
         # Redis 不支持通配符删除，需要用 scan
         async for key in redis.scan_iter(match=f"user:{user_id}:session:*"):
             await redis.delete(key)
@@ -566,15 +569,9 @@ class UserService:
         if action:
             query["action"] = action
         if user_id:
-            query["user_id"] = ObjectId(user_id)
+            query["user_id"] = ObjectId(user_id)  # type: ignore[assignment]
 
-        cursor = (
-            self.db.audit_logs
-            .find(query)
-            .sort("created_at", -1)
-            .skip(skip)
-            .limit(limit)
-        )
+        cursor = self.db.audit_logs.find(query).sort("created_at", -1).skip(skip).limit(limit)
 
         logs = []
         async for log in cursor:

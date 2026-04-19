@@ -5,8 +5,10 @@
 """
 
 import logging
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
+
 from motor.motor_asyncio import AsyncIOMotorCollection
+
 from core.db.mongodb import mongodb
 
 logger = logging.getLogger(__name__)
@@ -89,7 +91,7 @@ class BaseRepository:
         self,
         filter_query: Dict[str, Any],
         data: Dict[str, Any],
-        set_on_insert: Optional[Dict[str, Any]] = None
+        set_on_insert: Optional[Dict[str, Any]] = None,
     ) -> int:
         """
         更新或插入单条数据
@@ -107,11 +109,7 @@ class BaseRepository:
             if set_on_insert:
                 update_doc["$setOnInsert"] = set_on_insert
 
-            result = await self.collection.update_one(
-                filter_query,
-                update_doc,
-                upsert=True
-            )
+            result = await self.collection.update_one(filter_query, update_doc, upsert=True)
             # 如果是新增操作，result.modified_count为0，但result.upserted_id有值
             return 1 if result.modified_count > 0 or result.upserted_id else 0
         except Exception as e:
@@ -122,7 +120,7 @@ class BaseRepository:
         self,
         filter_query: Dict[str, Any],
         projection: Optional[Dict[str, int]] = None,
-        sort: Optional[List[tuple]] = None
+        sort: Optional[List[tuple]] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         查询单条数据
@@ -157,7 +155,7 @@ class BaseRepository:
         projection: Optional[Dict[str, int]] = None,
         sort: Optional[List[tuple]] = None,
         limit: int = 0,
-        skip: int = 0
+        skip: int = 0,
     ) -> List[Dict[str, Any]]:
         """
         查询多条数据
@@ -222,10 +220,7 @@ class BaseRepository:
             logger.error(f"Failed to delete many from {self.collection_name}: {e}")
             raise
 
-    async def aggregate(
-        self,
-        pipeline: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+    async def aggregate(self, pipeline: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         聚合查询
 

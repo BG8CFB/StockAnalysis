@@ -6,12 +6,12 @@
 """
 
 import logging
-from typing import Optional
-from datetime import datetime, timedelta
+from datetime import datetime
+from typing import Any, Optional
 
 from core.config import (
-    DATA_SOURCE_RATE_LIMIT_WINDOW,
     DATA_SOURCE_RATE_LIMIT_MAX_REQUESTS,
+    DATA_SOURCE_RATE_LIMIT_WINDOW,
 )
 
 logger = logging.getLogger(__name__)
@@ -40,9 +40,9 @@ class RateLimiter:
 
     def __init__(
         self,
-        redis_client=None,
-        window_seconds: int = None,
-        max_requests: int = None
+        redis_client: Any = None,
+        window_seconds: int | None = None,
+        max_requests: int | None = None,
     ):
         """
         初始化限流服务
@@ -54,12 +54,16 @@ class RateLimiter:
         """
         self.redis = redis_client
         # 使用配置文件中的默认值
-        self.window_seconds = window_seconds if window_seconds is not None else DATA_SOURCE_RATE_LIMIT_WINDOW
-        self.max_requests = max_requests if max_requests is not None else DATA_SOURCE_RATE_LIMIT_MAX_REQUESTS
-        self._memory_store = {}  # 内存存储（用于无 Redis 的情况）
+        self.window_seconds = (
+            window_seconds if window_seconds is not None else DATA_SOURCE_RATE_LIMIT_WINDOW
+        )
+        self.max_requests = (
+            max_requests if max_requests is not None else DATA_SOURCE_RATE_LIMIT_MAX_REQUESTS
+        )
+        self._memory_store: dict[str, dict[str, Any]] = {}  # 内存存储（用于无 Redis 的情况）
         self._lua_script = None  # Lua 脚本缓存
 
-    async def _get_lua_script(self):
+    async def _get_lua_script(self) -> Any:
         """获取或注册 Lua 脚本"""
         if self._lua_script is None:
             self._lua_script = await self.redis.register_script(INCR_AND_EXPIRE_SCRIPT)
@@ -78,11 +82,7 @@ class RateLimiter:
         """
         return f"rate_limiter:{symbol}:{data_type}"
 
-    async def is_allowed(
-        self,
-        symbol: str,
-        data_type: str
-    ) -> bool:
+    async def is_allowed(self, symbol: str, data_type: str) -> bool:
         """
         检查是否允许访问
 
@@ -113,19 +113,19 @@ class RateLimiter:
         try:
             # 使用 Lua 脚本原子性地执行 incr 和 expire
             script = await self._get_lua_script()
-            current = await script(
-                keys=[key],
-                args=[self.window_seconds]
-            )
+            current = await script(keys=[key], args=[self.window_seconds])
 
             if current <= self.max_requests:
-                logger.debug(f"Rate limiter: allowed key={key}, count={current}/{self.max_requests}")
+                logger.debug(
+                    f"Rate limiter: allowed key={key}, count={current}/{self.max_requests}"
+                )
                 return True
             else:
                 # 获取剩余时间
                 ttl = await self.redis.ttl(key)
                 logger.debug(
-                    f"Rate limiter: blocked key={key}, count={current}/{self.max_requests}, ttl={ttl}s"
+                    f"Rate limiter: blocked key={key}, "
+                    f"count={current}/{self.max_requests}, ttl={ttl}s"
                 )
                 return False
 
@@ -173,17 +173,19 @@ class RateLimiter:
         if record["count"] < self.max_requests:
             record["count"] += 1
             logger.debug(
-                f"Rate limiter (memory): allowed key={key}, count={record['count']}/{self.max_requests}"
+                f"Rate limiter (memory): allowed key={key}, "
+                f"count={record['count']}/{self.max_requests}"
             )
             return True
         else:
             logger.debug(
-                f"Rate limiter (memory): blocked key={key}, count={record['count']}/{self.max_requests}, "
+                f"Rate limiter (memory): blocked key={key}, "
+                f"count={record['count']}/{self.max_requests}, "
                 f"remaining_time={self.window_seconds - time_diff:.1f}s"
             )
             return False
 
-    def _cleanup_memory(self):
+    def _cleanup_memory(self) -> None:
         """清理内存中过期的限流记录"""
         now = datetime.now()
         expired_keys = []
@@ -199,11 +201,7 @@ class RateLimiter:
         if expired_keys:
             logger.debug(f"Cleaned up {len(expired_keys)} expired rate limit records")
 
-    async def reset(
-        self,
-        symbol: str,
-        data_type: str
-    ) -> bool:
+    async def reset(self, symbol: str, data_type: str) -> bool:
         """
         重置限流计数
 
@@ -231,11 +229,7 @@ class RateLimiter:
                 return True
             return False
 
-    async def get_remaining_time(
-        self,
-        symbol: str,
-        data_type: str
-    ) -> int:
+    async def get_remaining_time(self, symbol: str, data_type: str) -> int:
         """
         获取限流剩余时间（秒）
 
@@ -251,7 +245,7 @@ class RateLimiter:
         if self.redis:
             try:
                 ttl = await self.redis.ttl(key)
-                return max(0, ttl)
+                return max(0, int(ttl))
             except Exception as e:
                 logger.error(f"Redis get remaining time error: {e}")
                 return 0
@@ -264,11 +258,7 @@ class RateLimiter:
                 return max(0, int(remaining))
             return 0
 
-    async def check_and_increment(
-        self,
-        symbol: str,
-        data_type: str
-    ) -> tuple[bool, int]:
+    async def check_and_increment(self, symbol: str, data_type: str) -> tuple[bool, int]:
         """
         检查并增加计数（使用 Lua 脚本确保原子操作）
 
@@ -285,16 +275,14 @@ class RateLimiter:
             try:
                 # 使用 Lua 脚本原子性地执行 incr 和 expire
                 script = await self._get_lua_script()
-                current = await script(
-                    keys=[key],
-                    args=[self.window_seconds]
-                )
+                current = await script(keys=[key], args=[self.window_seconds])
 
                 allowed = current <= self.max_requests
                 if not allowed:
                     ttl = await self.redis.ttl(key)
                     logger.debug(
-                        f"Rate limiter: blocked key={key}, count={current}/{self.max_requests}, ttl={ttl}s"
+                        f"Rate limiter: blocked key={key}, "
+                        f"count={current}/{self.max_requests}, ttl={ttl}s"
                     )
                 return allowed, current
             except Exception as e:
@@ -330,7 +318,7 @@ class RateLimiter:
 _global_rate_limiter: Optional[RateLimiter] = None
 
 
-def get_rate_limiter(redis_client=None) -> RateLimiter:
+def get_rate_limiter(redis_client: Any = None) -> RateLimiter:
     """
     获取全局限流器实例
 

@@ -2,9 +2,10 @@
 MongoDB 数据库连接管理
 使用 Motor 进行异步操作
 """
+
 import logging
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, Optional, Any, Callable
+from typing import Any, AsyncGenerator, Optional
 
 from motor.motor_asyncio import (
     AsyncIOMotorClient,
@@ -37,7 +38,7 @@ class MongoDB:
                 connectTimeoutMS=60000,  # 使用 60 秒连接超时
                 socketTimeoutMS=settings.MONGODB_SOCKET_TIMEOUT_MS,  # 使用配置的 Socket 超时
                 retryWrites=True,
-                w="majority"
+                w="majority",
             )
             self._database = self._client[settings.MONGODB_DATABASE]
 
@@ -67,7 +68,7 @@ class MongoDB:
         return self.database[name]
 
     @asynccontextmanager
-    async def transaction(self):
+    async def transaction(self) -> Any:
         """
         事务上下文管理器
 

@@ -5,9 +5,9 @@
 """
 
 import logging
-from typing import Optional, List, Dict, Any
-from datetime import datetime, time, timedelta
+from datetime import datetime, timedelta
 from enum import Enum
+from typing import Any, Dict, List, Optional
 
 try:
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 class ScheduleTime(str, Enum):
     """定时任务时间配置"""
+
     # A股市场（全量同步）
     A_STOCK_DAILY_QUOTE = "15:30"  # A股日线行情
     A_STOCK_COMPANY_INFO = "16:00"  # A股公司信息（每周一次）
@@ -48,26 +49,26 @@ class DataScheduler:
     负责调度市场数据的定时同步任务
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         if AsyncIOScheduler is None:
             raise ImportError("APScheduler is required. Install with: pip install apscheduler")
 
         self.scheduler = AsyncIOScheduler()
         self.data_sync_service: Optional[DataSyncService] = None
 
-    def start(self):
+    def start(self) -> None:
         """启动调度器"""
         if not self.scheduler.running:
             self.scheduler.start()
             logger.info("Data scheduler started")
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         """关闭调度器"""
         if self.scheduler.running:
             self.scheduler.shutdown(wait=True)
             logger.info("Data scheduler shut down")
 
-    def set_data_sync_service(self, service: DataSyncService):
+    def set_data_sync_service(self, service: DataSyncService) -> None:
         """
         设置数据同步服务
 
@@ -77,7 +78,7 @@ class DataScheduler:
         self.data_sync_service = service
         logger.info("Data sync service set for scheduler")
 
-    def schedule_a_stock_daily_quote(self):
+    def schedule_a_stock_daily_quote(self) -> None:
         """调度 A 股日线行情同步"""
         job_id = "a_stock_daily_quote"
 
@@ -90,11 +91,11 @@ class DataScheduler:
             CronTrigger.from_crontab("30 15 * * 1-5"),  # 周一到周五 15:30
             id=job_id,
             name="A股日线行情同步",
-            replace_existing=True
+            replace_existing=True,
         )
         logger.info(f"Scheduled job: {job_id} at 15:30 on weekdays")
 
-    def schedule_a_stock_company_info(self):
+    def schedule_a_stock_company_info(self) -> None:
         """调度 A 股公司信息同步（每周一次）"""
         job_id = "a_stock_company_info"
 
@@ -107,11 +108,11 @@ class DataScheduler:
             CronTrigger.from_crontab("0 16 * * 6"),  # 每周六 16:00
             id=job_id,
             name="A股公司信息同步",
-            replace_existing=True
+            replace_existing=True,
         )
         logger.info(f"Scheduled job: {job_id} at 16:00 on Saturday")
 
-    def schedule_a_stock_financial(self):
+    def schedule_a_stock_financial(self) -> None:
         """调度 A 股财务指标同步"""
         job_id = "a_stock_financial"
 
@@ -124,11 +125,11 @@ class DataScheduler:
             CronTrigger.from_crontab("30 16 * * 1-5"),  # 周一到周五 16:30
             id=job_id,
             name="A股财务指标同步",
-            replace_existing=True
+            replace_existing=True,
         )
         logger.info(f"Scheduled job: {job_id} at 16:30 on weekdays")
 
-    def schedule_market_news(self):
+    def schedule_market_news(self) -> None:
         """调度市场新闻同步"""
         job_id = "market_news"
 
@@ -141,11 +142,11 @@ class DataScheduler:
             CronTrigger.from_crontab("*/30 * * * *"),  # 每30分钟
             id=job_id,
             name="市场新闻同步",
-            replace_existing=True
+            replace_existing=True,
         )
         logger.info(f"Scheduled job: {job_id} every 30 minutes")
 
-    def schedule_stock_list(self):
+    def schedule_stock_list(self) -> None:
         """调度股票列表同步"""
         job_id = "stock_list"
 
@@ -158,11 +159,11 @@ class DataScheduler:
             CronTrigger.from_crontab("0 9 * * 1-5"),  # 周一到周五 09:00
             id=job_id,
             name="股票列表同步",
-            replace_existing=True
+            replace_existing=True,
         )
         logger.info(f"Scheduled job: {job_id} at 09:00 on weekdays")
 
-    def schedule_us_stock_daily_quote(self):
+    def schedule_us_stock_daily_quote(self) -> None:
         """调度美股日线行情同步（仅自选股和核心指数）"""
         job_id = "us_stock_daily_quote"
 
@@ -175,11 +176,11 @@ class DataScheduler:
             CronTrigger.from_crontab("0 6 * * 1-5"),  # 周一到周五 06:00
             id=job_id,
             name="美股日线行情同步",
-            replace_existing=True
+            replace_existing=True,
         )
         logger.info(f"Scheduled job: {job_id} at 06:00 on weekdays")
 
-    def schedule_us_stock_index(self):
+    def schedule_us_stock_index(self) -> None:
         """调度美股指数数据同步"""
         job_id = "us_stock_index"
 
@@ -192,11 +193,11 @@ class DataScheduler:
             CronTrigger.from_crontab("30 6 * * 1-5"),  # 周一到周五 06:30
             id=job_id,
             name="美股指数数据同步",
-            replace_existing=True
+            replace_existing=True,
         )
         logger.info(f"Scheduled job: {job_id} at 06:30 on weekdays")
 
-    def schedule_hk_stock_daily_quote(self):
+    def schedule_hk_stock_daily_quote(self) -> None:
         """调度港股日线行情同步（仅自选股和核心指数）"""
         job_id = "hk_stock_daily_quote"
 
@@ -209,11 +210,11 @@ class DataScheduler:
             CronTrigger.from_crontab("0 17 * * 1-5"),  # 周一到周五 17:00
             id=job_id,
             name="港股日线行情同步",
-            replace_existing=True
+            replace_existing=True,
         )
         logger.info(f"Scheduled job: {job_id} at 17:00 on weekdays")
 
-    def schedule_hk_stock_index(self):
+    def schedule_hk_stock_index(self) -> None:
         """调度港股指数数据同步"""
         job_id = "hk_stock_index"
 
@@ -226,11 +227,11 @@ class DataScheduler:
             CronTrigger.from_crontab("30 17 * * 1-5"),  # 周一到周五 17:30
             id=job_id,
             name="港股指数数据同步",
-            replace_existing=True
+            replace_existing=True,
         )
         logger.info(f"Scheduled job: {job_id} at 17:30 on weekdays")
 
-    def schedule_data_cleanup(self):
+    def schedule_data_cleanup(self) -> None:
         """调度数据清理任务"""
         job_id = "data_cleanup"
 
@@ -243,11 +244,11 @@ class DataScheduler:
             CronTrigger.from_crontab("0 3 * * *"),  # 每天凌晨 3:00
             id=job_id,
             name="过期数据清理",
-            replace_existing=True
+            replace_existing=True,
         )
         logger.info(f"Scheduled job: {job_id} at 03:00 daily")
 
-    def schedule_all_jobs(self):
+    def schedule_all_jobs(self) -> None:
         """调度所有定时任务"""
         logger.info("Scheduling all data sync jobs...")
 
@@ -271,7 +272,7 @@ class DataScheduler:
 
         logger.info("All data sync jobs scheduled successfully")
 
-    def remove_all_jobs(self):
+    def remove_all_jobs(self) -> None:
         """移除所有定时任务"""
         self.scheduler.remove_all_jobs()
         logger.info("All scheduled jobs removed")
@@ -280,16 +281,18 @@ class DataScheduler:
         """获取所有已调度的任务"""
         jobs = []
         for job in self.scheduler.get_jobs():
-            jobs.append({
-                "id": job.id,
-                "name": job.name,
-                "next_run_time": job.next_run_time.isoformat() if job.next_run_time else None,
-            })
+            jobs.append(
+                {
+                    "id": job.id,
+                    "name": job.name,
+                    "next_run_time": job.next_run_time.isoformat() if job.next_run_time else None,
+                }
+            )
         return jobs
 
     # ==================== 任务执行函数 ====================
 
-    async def _sync_a_stock_daily_quote(self):
+    async def _sync_a_stock_daily_quote(self) -> None:
         """执行 A 股日线行情同步"""
         try:
             if not self.data_sync_service:
@@ -300,6 +303,7 @@ class DataScheduler:
 
             # 获取所有 A 股股票列表
             from ..repositories.stock_info import StockInfoRepository
+
             stock_repo = StockInfoRepository()
             # 移除 limit=5000 限制，获取所有股票
             stocks = await stock_repo.get_by_market(MarketType.A_STOCK)
@@ -314,9 +318,7 @@ class DataScheduler:
             today = datetime.now().strftime("%Y%m%d")
             # 使用带自动降级的同步方法
             result = await self.data_sync_service.sync_daily_quotes_with_fallback(
-                symbols=symbols,
-                start_date=today,
-                end_date=today
+                symbols=symbols, start_date=today, end_date=today
             )
 
             logger.info(f"A stock daily quote sync completed: {result}")
@@ -324,7 +326,7 @@ class DataScheduler:
         except Exception as e:
             logger.error(f"Failed to sync A stock daily quotes: {e}")
 
-    async def _sync_market_news(self):
+    async def _sync_market_news(self) -> None:
         """执行市场新闻同步"""
         try:
             if not self.data_sync_service:
@@ -334,17 +336,13 @@ class DataScheduler:
             logger.info("Starting market news sync")
 
             # 优先使用 TuShare (sina源)
-            result = await self.data_sync_service.sync_market_news(
-                source_id="tushare",
-                limit=100
-            )
-            
+            result = await self.data_sync_service.sync_market_news(source_id="tushare", limit=100)
+
             # 如果 TuShare 失败或数据为空，尝试 AkShare (eastmoney/cls)
             if result.get("status") == "failed" or result.get("result", {}).get("upserted", 0) == 0:
                 logger.info("TuShare news sync empty or failed, trying AkShare")
                 result = await self.data_sync_service.sync_market_news(
-                    source_id="akshare",
-                    limit=50
+                    source_id="akshare", limit=50
                 )
 
             logger.info(f"Market news sync completed: {result}")
@@ -352,7 +350,7 @@ class DataScheduler:
         except Exception as e:
             logger.error(f"Failed to sync market news: {e}")
 
-    async def _sync_stock_list(self):
+    async def _sync_stock_list(self) -> None:
         """执行股票列表同步"""
         try:
             if not self.data_sync_service:
@@ -370,7 +368,7 @@ class DataScheduler:
         except Exception as e:
             logger.error(f"Failed to sync stock list: {e}")
 
-    async def _sync_a_stock_company_info(self):
+    async def _sync_a_stock_company_info(self) -> None:
         """执行 A 股公司信息同步"""
         try:
             if not self.data_sync_service:
@@ -381,6 +379,7 @@ class DataScheduler:
 
             # 获取所有 A 股股票列表
             from ..repositories.stock_info import StockInfoRepository
+
             stock_repo = StockInfoRepository()
             stocks = await stock_repo.get_by_market(MarketType.A_STOCK, limit=5000)
 
@@ -392,8 +391,7 @@ class DataScheduler:
 
             # 同步公司信息
             result = await self.data_sync_service.sync_company_info(
-                symbols=symbols,
-                source_id="tushare"
+                symbols=symbols, source_id="tushare"
             )
 
             logger.info(f"A stock company info sync completed: {result}")
@@ -401,7 +399,7 @@ class DataScheduler:
         except Exception as e:
             logger.error(f"Failed to sync A stock company info: {e}")
 
-    async def _sync_a_stock_financial(self):
+    async def _sync_a_stock_financial(self) -> None:
         """执行 A 股财务指标同步"""
         try:
             if not self.data_sync_service:
@@ -412,6 +410,7 @@ class DataScheduler:
 
             # 获取所有 A 股股票列表
             from ..repositories.stock_info import StockInfoRepository
+
             stock_repo = StockInfoRepository()
             stocks = await stock_repo.get_by_market(MarketType.A_STOCK, limit=1000)
 
@@ -423,16 +422,14 @@ class DataScheduler:
 
             # 同步财务指标
             # 使用带自动降级的同步方法
-            result = await self.data_sync_service.sync_financials_with_fallback(
-                symbols=symbols
-            )
+            result = await self.data_sync_service.sync_financials_with_fallback(symbols=symbols)
 
             logger.info(f"A stock financial indicators sync completed: {result}")
 
         except Exception as e:
             logger.error(f"Failed to sync A stock financial indicators: {e}")
 
-    async def _sync_us_stock_daily_quote(self):
+    async def _sync_us_stock_daily_quote(self) -> None:
         """执行美股日线行情同步（仅自选股）"""
         try:
             if not self.data_sync_service:
@@ -443,6 +440,7 @@ class DataScheduler:
 
             # 获取自选股列表
             from ..repositories.watchlist import UserWatchlistRepository
+
             watchlist_repo = UserWatchlistRepository()
 
             # 获取所有用户的自选股
@@ -467,10 +465,7 @@ class DataScheduler:
             # 同步当日行情
             today = datetime.now().strftime("%Y%m%d")
             result = await self.data_sync_service.sync_daily_quotes(
-                symbols=list(us_symbols),
-                start_date=today,
-                end_date=today,
-                source_id="yahoo"
+                symbols=list(us_symbols), start_date=today, end_date=today, source_id="yahoo"
             )
 
             logger.info(f"US stock daily quote sync completed: {result}")
@@ -478,7 +473,7 @@ class DataScheduler:
         except Exception as e:
             logger.error(f"Failed to sync US stock daily quotes: {e}")
 
-    async def _sync_us_stock_index(self):
+    async def _sync_us_stock_index(self) -> None:
         """执行美股指数数据同步"""
         try:
             if not self.data_sync_service:
@@ -490,17 +485,14 @@ class DataScheduler:
             # 美股核心指数代码
             index_symbols = [
                 "^GSPC.US",  # S&P 500
-                "^DJI.US",   # 道琼斯
+                "^DJI.US",  # 道琼斯
                 "^IXIC.US",  # 纳斯达克
             ]
 
             # 同步指数行情
             today = datetime.now().strftime("%Y%m%d")
             result = await self.data_sync_service.sync_daily_quotes(
-                symbols=index_symbols,
-                start_date=today,
-                end_date=today,
-                source_id="yahoo"
+                symbols=index_symbols, start_date=today, end_date=today, source_id="yahoo"
             )
 
             logger.info(f"US stock index sync completed: {result}")
@@ -508,7 +500,7 @@ class DataScheduler:
         except Exception as e:
             logger.error(f"Failed to sync US stock index: {e}")
 
-    async def _sync_hk_stock_daily_quote(self):
+    async def _sync_hk_stock_daily_quote(self) -> None:
         """执行港股日线行情同步（仅自选股）"""
         try:
             if not self.data_sync_service:
@@ -519,6 +511,7 @@ class DataScheduler:
 
             # 获取自选股列表
             from ..repositories.watchlist import UserWatchlistRepository
+
             watchlist_repo = UserWatchlistRepository()
 
             # 获取所有用户的自选股
@@ -547,7 +540,7 @@ class DataScheduler:
                 start_date=today,
                 end_date=today,
                 source_id="akshare",
-                market="HK_STOCK"
+                market="HK_STOCK",
             )
 
             logger.info(f"HK stock daily quote sync completed: {result}")
@@ -555,7 +548,7 @@ class DataScheduler:
         except Exception as e:
             logger.error(f"Failed to sync HK stock daily quotes: {e}")
 
-    async def _sync_hk_stock_index(self):
+    async def _sync_hk_stock_index(self) -> None:
         """执行港股指数数据同步"""
         try:
             if not self.data_sync_service:
@@ -572,10 +565,7 @@ class DataScheduler:
             # 同步指数行情
             today = datetime.now().strftime("%Y%m%d")
             result = await self.data_sync_service.sync_daily_quotes(
-                symbols=index_symbols,
-                start_date=today,
-                end_date=today,
-                source_id="akshare"
+                symbols=index_symbols, start_date=today, end_date=today, source_id="akshare"
             )
 
             logger.info(f"HK stock index sync completed: {result}")
@@ -583,7 +573,7 @@ class DataScheduler:
         except Exception as e:
             logger.error(f"Failed to sync HK stock index: {e}")
 
-    async def _cleanup_expired_data(self):
+    async def _cleanup_expired_data(self) -> None:
         """执行过期数据清理"""
         try:
             logger.info("Starting expired data cleanup")
@@ -602,7 +592,7 @@ class DataScheduler:
         except Exception as e:
             logger.error(f"Failed to cleanup expired data: {e}")
 
-    async def _cleanup_daily_quotes(self, days: int = 7):
+    async def _cleanup_daily_quotes(self, days: int = 7) -> None:
         """
         清理过期的当日行情数据
 
@@ -611,6 +601,7 @@ class DataScheduler:
         """
         try:
             from ..repositories.stock_quotes import StockQuoteRepository
+
             quote_repo = StockQuoteRepository()
 
             cutoff_date = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
@@ -623,7 +614,7 @@ class DataScheduler:
         except Exception as e:
             logger.error(f"Failed to cleanup daily quotes: {e}")
 
-    async def _cleanup_minute_klines(self, days: int = 7):
+    async def _cleanup_minute_klines(self, days: int = 7) -> None:
         """
         清理过期的分钟K线数据
 
@@ -632,6 +623,7 @@ class DataScheduler:
         """
         try:
             from ..repositories.stock_quotes import StockQuoteRepository
+
             quote_repo = StockQuoteRepository()
 
             cutoff_date = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
@@ -639,12 +631,14 @@ class DataScheduler:
             # 删除过期的分钟K线
             deleted_count = await quote_repo.delete_expired_minute_klines(cutoff_date)
 
-            logger.info(f"Cleaned up {deleted_count} expired minute klines older than {cutoff_date}")
+            logger.info(
+                f"Cleaned up {deleted_count} expired minute klines older than {cutoff_date}"
+            )
 
         except Exception as e:
             logger.error(f"Failed to cleanup minute klines: {e}")
 
-    async def _cleanup_status_history(self, days: int = 90):
+    async def _cleanup_status_history(self, days: int = 90) -> None:
         """
         清理过期的数据源状态历史
 
@@ -653,11 +647,14 @@ class DataScheduler:
         """
         try:
             from ..repositories.datasource import DataSourceStatusHistoryRepository
+
             history_repo = DataSourceStatusHistoryRepository()
 
             deleted_count = await history_repo.cleanup_old_history(days=days)
 
-            logger.info(f"Cleaned up {deleted_count} expired status history records older than {days} days")
+            logger.info(
+                f"Cleaned up {deleted_count} expired status history records older than {days} days"
+            )
 
         except Exception as e:
             logger.error(f"Failed to cleanup status history: {e}")

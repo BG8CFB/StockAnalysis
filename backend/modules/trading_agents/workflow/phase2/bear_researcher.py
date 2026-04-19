@@ -9,12 +9,11 @@ Phase 2: 看跌分析师
 
 import logging
 from typing import Any, Dict, List, Optional
-from datetime import datetime
-
-from langchain_core.language_models import BaseChatModel
 
 from langchain.agents import create_agent
-from modules.trading_agents.models.state import WorkflowState, TaskStatus
+from langchain_core.language_models import BaseChatModel
+
+from modules.trading_agents.models.state import WorkflowState
 from modules.trading_agents.workflow.callbacks import WebSocketCallbackHandler
 
 logger = logging.getLogger(__name__)
@@ -31,7 +30,7 @@ class BearResearcher:
         self,
         model: BaseChatModel,
         config: Optional[Dict[str, Any]] = None,
-        task_id: str = None,
+        task_id: Optional[str] = None,
         websocket_manager: Any = None,
     ):
         """
@@ -50,15 +49,17 @@ class BearResearcher:
         # 创建回调处理器
         self.callbacks = []
         if self.task_id and self.websocket_manager:
-            self.callbacks.append(WebSocketCallbackHandler(
-                task_id=self.task_id,
-                agent_slug="bear_researcher",
-                agent_name="看跌分析师",
-                websocket_manager=self.websocket_manager,
-            ))
+            self.callbacks.append(
+                WebSocketCallbackHandler(
+                    task_id=self.task_id,
+                    agent_slug="bear_researcher",
+                    agent_name="看跌分析师",
+                    websocket_manager=self.websocket_manager,
+                )
+            )
         self.agent = self._create_agent()
 
-    def _create_agent(self):
+    def _create_agent(self) -> Any:
         """创建智能体实例 (LangChain 1.1.0 create_agent API)"""
         system_prompt_str = self._build_system_prompt()
         # 使用 LangChain 1.1.0 的 create_agent
@@ -130,7 +131,7 @@ class BearResearcher:
         self,
         state: WorkflowState,
         analyst_reports: List[Dict[str, Any]],
-        bull_view: Optional[str] = None
+        bull_view: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         执行看跌分析
@@ -152,44 +153,35 @@ class BearResearcher:
             # 调用智能体 (使用 LangGraph create_agent 的正确输入格式)
             prompt_text = messages[0]["content"] if messages else "Please analyze."
             # 通过 config 传递 callbacks
-            config = {"recursion_limit": 10}
+            config: dict[str, Any] = {"recursion_limit": 10}
             if self.callbacks:
                 from langchain_core.callbacks import CallbackManager
-                config["configurable"] = {"callbacks": CallbackManager(self.callbacks)}
-            result = await self.agent.ainvoke({"messages": [{"role": "user", "content": prompt_text}]}, config=config)
+
+                config["configurable"] = {"callbacks": CallbackManager(self.callbacks)}  # type: ignore[arg-type]
+            result = await self.agent.ainvoke(
+                {"messages": [{"role": "user", "content": prompt_text}]}, config=config
+            )
 
             # 提取输出
             output = self._extract_output(result)
 
             logger.info(f"[Phase 2] 看跌分析师分析完成: {state.stock_code}")
 
-            return {
-                "role": "bear",
-                "output": output,
-                "error": None
-            }
+            return {"role": "bear", "output": output, "error": None}
 
         except Exception as e:
             logger.error(f"[Phase 2] 看跌分析师分析失败: {state.stock_code}, error={e}")
 
-            return {
-                "role": "bear",
-                "output": None,
-                "error": str(e)
-            }
+            return {"role": "bear", "output": None, "error": str(e)}
 
     def _build_input_messages(
-        self,
-        state: WorkflowState,
-        analyst_reports: List[Dict[str, Any]],
-        bull_view: Optional[str]
+        self, state: WorkflowState, analyst_reports: List[Dict[str, Any]], bull_view: Optional[str]
     ) -> List[Dict[str, Any]]:
         """构建输入消息"""
         # 构建分析师报告摘要
-        reports_summary = "\n\n".join([
-            f"## {report['name']}\n{report['content']}"
-            for report in analyst_reports
-        ])
+        reports_summary = "\n\n".join(
+            [f"## {report['name']}\n{report['content']}" for report in analyst_reports]
+        )
         bull_section = f"# 看涨观点\n{bull_view}" if bull_view else ""
 
         prompt = f"""
@@ -223,9 +215,9 @@ class BearResearcher:
             if messages:
                 last_message = messages[-1]
                 if hasattr(last_message, "content"):
-                    return last_message.content
+                    return str(last_message.content)
                 elif isinstance(last_message, dict):
-                    return last_message.get("content")
+                    return str(last_message.get("content", ""))
 
         if isinstance(result, str):
             return result

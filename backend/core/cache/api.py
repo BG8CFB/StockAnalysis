@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/cache", tags=["cache"])
 
 
-def _get_redis():
+def _get_redis() -> Any:
     """获取 Redis 客户端"""
     return redis_manager.get_client()
 
@@ -124,11 +124,13 @@ async def get_cache_details(
             if count > skip and collected < page_size:
                 ttl = await client.ttl(key)
                 key_type = await client.type(key)
-                items.append({
-                    "key": key,
-                    "ttl": ttl,
-                    "type": key_type,
-                })
+                items.append(
+                    {
+                        "key": key,
+                        "ttl": ttl,
+                        "type": key_type,
+                    }
+                )
                 collected += 1
         return {
             "code": 0,
@@ -165,7 +167,7 @@ async def get_cache_backend_info(
                 "fallback_enabled": False,
             },
         }
-    except Exception as e:
+    except Exception:
         return {
             "code": 0,
             "message": "success",

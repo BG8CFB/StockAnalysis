@@ -6,7 +6,7 @@
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from core.market_data.repositories.base import BaseRepository
 
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class FavoriteRepository(BaseRepository):
     """自选股 Repository"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("user_favorites")
 
     async def ensure_indexes(self) -> None:
@@ -32,21 +32,25 @@ class FavoriteRepository(BaseRepository):
             sort=[("added_at", -1)],
         )
 
-    async def add_favorite(self, data: Dict[str, Any]) -> str:
+    async def add_favorite(self, data: Dict[str, Any]) -> bool:
         """添加自选股（upsert）"""
         filter_q = {
             "user_id": data["user_id"],
             "stock_code": data["stock_code"],
         }
         data["updated_at"] = datetime.now()
-        return await self.upsert_one(
+        result = await self.upsert_one(
             filter_q,
             data,
             set_on_insert={"added_at": datetime.now()},
         )
+        return result > 0
 
     async def update_favorite(
-        self, user_id: str, stock_code: str, updates: Dict[str, Any],
+        self,
+        user_id: str,
+        stock_code: str,
+        updates: Dict[str, Any],
     ) -> bool:
         """更新自选股信息"""
         updates["updated_at"] = datetime.now()
@@ -76,7 +80,7 @@ class FavoriteRepository(BaseRepository):
             {"$group": {"_id": "$tags"}},
             {"$sort": {"_id": 1}},
         ]
-        results = await self.aggregate(pipeline)
+        results = await self.aggregate(pipeline)  # type: ignore[arg-type]
         return [r["_id"] for r in results]
 
     async def get_all_stocks_for_sync(self, user_id: str) -> List[Dict[str, Any]]:

@@ -43,7 +43,7 @@ class DataSyncService:
     # 类级别标志：是否已打印过 TuShare 不可用的警告（避免重复日志）
     _tushare_unavailable_logged: bool = False
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.system_source_repo = SystemDataSourceRepository()
         self.status_repo = DataSourceStatusRepository()
         self.status_history_repo = DataSourceStatusHistoryRepository()
@@ -60,7 +60,7 @@ class DataSyncService:
         self._router_market: Optional[str] = None
 
         # 监控服务实例（延迟加载）
-        self._monitor_service = None
+        self._monitor_service: Any = None
 
     def _should_log_tushare_unavailable(self) -> bool:
         """
@@ -74,7 +74,7 @@ class DataSyncService:
             return True
         return False
 
-    def _get_monitor_service(self):
+    def _get_monitor_service(self) -> Any:
         """获取监控服务实例（延迟加载）"""
         if self._monitor_service is None:
             from core.market_data.services.source_monitor_service import SourceMonitorService
@@ -82,7 +82,7 @@ class DataSyncService:
             self._monitor_service = SourceMonitorService()
         return self._monitor_service
 
-    def clear_adapter_cache(self, market: str = None, source_id: str = None) -> None:
+    def clear_adapter_cache(self, market: str | None = None, source_id: str | None = None) -> None:
         """
         清除适配器缓存（用于配置更新后重新创建适配器）
 
@@ -144,7 +144,7 @@ class DataSyncService:
             if source_id == "tushare":
                 try:
                     self._adapters[cache_key] = TuShareAdapter(adapter_config)
-                    has_token = bool(adapter_config.get('api_token'))
+                    has_token = bool(adapter_config.get("api_token"))
                     logger.debug(f"Created TuShare adapter (has_token: {has_token})")
                 except ValueError as e:
                     logger.warning(
@@ -238,7 +238,7 @@ class DataSyncService:
         return self._router
 
     async def _get_data_with_fallback(
-        self, market: str, method_name: str, use_fallback: bool = True, *args, **kwargs
+        self, market: str, method_name: str, use_fallback: bool = True, *args: Any, **kwargs: Any
     ) -> Any:
         """
         使用自动降级获取数据
@@ -280,7 +280,7 @@ class DataSyncService:
         response_time_ms: Optional[int] = None,
         error: Optional[Dict[str, Any]] = None,
         check_type: str = "sync_task",
-    ):
+    ) -> None:
         """
         更新数据源状态（使用失败计数机制）
 
@@ -341,7 +341,7 @@ class DataSyncService:
             同步结果
         """
         start_time = datetime.now()
-        result = {
+        result: dict[str, Any] = {
             "task_type": "sync_stock_list",
             "status": "running",
             "symbol": None,
@@ -427,7 +427,7 @@ class DataSyncService:
             同步结果
         """
         start_time = datetime.now()
-        result = {
+        result: dict[str, Any] = {
             "task_type": "sync_daily_quotes",
             "status": "running",
             "symbol": None,
@@ -467,7 +467,8 @@ class DataSyncService:
                     try:
                         # 进度日志改为 DEBUG 级别，只在文件中记录
                         logger.debug(
-                            f"Syncing daily quotes for {symbol} from {adapter.source_name} ({idx+1}/{len(symbols)})"
+                            f"Syncing daily quotes for {symbol} from "
+                            f"{adapter.source_name} ({idx+1}/{len(symbols)})"
                         )
                         quotes = await adapter.get_daily_quotes(
                             symbol=symbol,
@@ -496,7 +497,8 @@ class DataSyncService:
                             if self._should_log_tushare_unavailable():
                                 logger.warning(
                                     f"TuShare API token not configured - "
-                                    f"falling back to other data sources for {len(symbols) - idx} remaining symbols"
+                                    "falling back to other data sources "
+                                    f"for {len(symbols) - idx} remaining symbols"
                                 )
                         else:
                             logger.debug(f"Failed to sync {symbol} from {adapter.source_name}: {e}")
@@ -510,7 +512,9 @@ class DataSyncService:
                         logger.warning(f"Rolling back {count} symbols due to error")
                         await self._rollback_daily_quotes(rollback_candidates, start_date, end_date)
                         rollback_candidates.clear()
-                        raise last_error
+                        if last_error is not None:
+                            raise last_error
+                        raise RuntimeError(f"All sources failed for {symbol}")
 
             response_time_ms = int((datetime.now() - start_time).total_seconds() * 1000)
 
@@ -581,7 +585,7 @@ class DataSyncService:
             同步结果
         """
         start_time = datetime.now()
-        result = {
+        result: dict[str, Any] = {
             "task_type": "sync_minute_quotes",
             "status": "running",
             "symbol": None,
@@ -601,7 +605,8 @@ class DataSyncService:
             adapter = self._get_adapter(source_id, adapter_config, "A_STOCK")
 
             logger.debug(
-                f"Syncing minute quotes from {source_id} (config: {'found' if config else 'default'})"
+                f"Syncing minute quotes from {source_id} "
+                f"(config: {'found' if config else 'default'})"
             )
 
             for idx, symbol in enumerate(symbols):
@@ -697,7 +702,7 @@ class DataSyncService:
             同步结果
         """
         start_time = datetime.now()
-        result = {
+        result: dict[str, Any] = {
             "task_type": "sync_financials",
             "status": "running",
             "symbol": None,
@@ -857,7 +862,7 @@ class DataSyncService:
             同步结果
         """
         start_time = datetime.now()
-        result = {
+        result: dict[str, Any] = {
             "task_type": "sync_company_info",
             "status": "running",
             "symbol": None,
@@ -877,7 +882,8 @@ class DataSyncService:
             adapter = self._get_adapter(source_id, adapter_config, "A_STOCK")
 
             logger.debug(
-                f"Syncing company info from {source_id} (config: {'found' if config else 'default'})"
+                f"Syncing company info from {source_id} "
+                f"(config: {'found' if config else 'default'})"
             )
 
             for idx, symbol in enumerate(symbols):
@@ -963,7 +969,7 @@ class DataSyncService:
             同步结果
         """
         start_time = datetime.now()
-        result = {
+        result: dict[str, Any] = {
             "task_type": "sync_company_info_with_fallback",
             "status": "running",
             "symbol": None,
@@ -980,7 +986,7 @@ class DataSyncService:
             sources_to_try = [source_id, "akshare"]
 
         last_error = None
-        successful_source = None
+        _successful_source = None
 
         for src_id in sources_to_try:
             try:
@@ -1001,7 +1007,8 @@ class DataSyncService:
                     try:
                         # 进度日志改为 DEBUG
                         logger.debug(
-                            f"Syncing company info for {symbol} from {src_id} ({idx+1}/{len(symbols)})"
+                            f"Syncing company info for {symbol} from "
+                            f"{src_id} ({idx+1}/{len(symbols)})"
                         )
                         company = await adapter.get_stock_company(symbol)
 
@@ -1023,7 +1030,7 @@ class DataSyncService:
                         failed_symbols.append({"symbol": symbol, "error": str(e)})
 
                 # 成功获取数据
-                successful_source = src_id
+                _successful_source = src_id
                 response_time_ms = int((datetime.now() - start_time).total_seconds() * 1000)
 
                 await self._update_source_status(
@@ -1096,7 +1103,7 @@ class DataSyncService:
             同步结果
         """
         start_time = datetime.now()
-        result = {
+        result: dict[str, Any] = {
             "task_type": "sync_macro_economic",
             "status": "running",
             "symbol": None,
@@ -1116,7 +1123,8 @@ class DataSyncService:
             adapter = self._get_adapter(source_id, adapter_config, "A_STOCK")
 
             logger.info(
-                f"Syncing daily quotes from {source_id} (config: {'found' if config else 'default'})"
+                f"Syncing daily quotes from {source_id} "
+                f"(config: {'found' if config else 'default'})"
             )
 
             for indicator in indicators:
@@ -1142,11 +1150,12 @@ class DataSyncService:
                     for data in data_list:
                         macro = MacroEconomic(
                             indicator=indicator,
-                            period=data.get("period") or data.get("trade_date", ""),
+                            date=data.get("period") or data.get("trade_date", ""),
                             value=data.get("value", 0),
-                            unit=data.get("unit"),
                             yoy=data.get("yoy"),
                             mom=data.get("mom"),
+                            period=data.get("period"),
+                            unit=data.get("unit"),
                             data_source=source_id,
                         )
                         await self.macro_economic_repo.upsert_macro(macro)
@@ -1289,12 +1298,12 @@ class DataSyncService:
             configs = default_configs
 
         last_error = None
-        successful_source = None
+        _successful_source = None
 
         for config in configs:
-            source_id = config["source_id"]
+            source_id = str(config["source_id"])
             try:
-                has_db_config = 'priority' in config
+                has_db_config = "priority" in config
                 logger.debug(
                     f"Trying to sync stock list from {source_id} "
                     f"(config: {'db' if has_db_config else 'default'})"
@@ -1304,7 +1313,7 @@ class DataSyncService:
                 )
 
                 if result["status"] == "completed":
-                    successful_source = source_id
+                    _successful_source = source_id
                     logger.debug(f"Successfully synced stock list from {source_id}")
                     # 更新结果中的数据源信息
                     result["result"]["source"] = source_id
@@ -1367,10 +1376,10 @@ class DataSyncService:
             configs = default_configs
 
         last_error = None
-        successful_source = None
+        _successful_source = None
 
         for config in configs:
-            source_id = config["source_id"]
+            source_id = str(config["source_id"])
             try:
                 logger.info(f"Trying to sync daily quotes from {source_id}")
                 result = await self.sync_daily_quotes(
@@ -1382,7 +1391,7 @@ class DataSyncService:
                 )
 
                 if result["status"] in ["completed", "completed_with_errors"]:
-                    successful_source = source_id
+                    _successful_source = source_id
                     logger.info(f"Successfully synced daily quotes from {source_id}")
                     return result
                 elif result["status"] == "failed":
@@ -1441,10 +1450,10 @@ class DataSyncService:
             configs = default_configs
 
         last_error = None
-        successful_source = None
+        _successful_source = None
 
         for config in configs:
-            source_id = config["source_id"]
+            source_id = str(config["source_id"])
             try:
                 logger.info(f"Trying to sync financials from {source_id}")
                 result = await self.sync_financials(
@@ -1452,7 +1461,7 @@ class DataSyncService:
                 )
 
                 if result["status"] in ["completed", "completed_with_errors"]:
-                    successful_source = source_id
+                    _successful_source = source_id
                     logger.info(f"Successfully synced financials from {source_id}")
                     return result
                 elif result["status"] == "failed":
@@ -1497,7 +1506,7 @@ class DataSyncService:
             同步结果
         """
         start_time = datetime.now()
-        result = {
+        result: dict[str, Any] = {
             "task_type": "sync_market_news",
             "status": "running",
             "symbol": symbol,

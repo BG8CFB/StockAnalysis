@@ -1,31 +1,27 @@
 import asyncio
 import logging
+from typing import Any, Callable, Dict, List, Optional
+
 import pandas as pd
-from typing import Optional, List, Dict, Any, Callable
-from datetime import datetime
 
 from core.market_data.models import (
-    StockInfo,
-    StockQuote,
-    StockMinuteQuote,
-    FinancialIncome,
-    FinancialBalance,
     FinancialCashFlow,
-    StockCompany,
-    MarketNews,
-    StockDividend,
-    StockMargin,
     MacroEconomic,
-    StockTopList,
+    MarketNews,
     MarketType,
-    Exchange,
-    StockMoneyFlow,
-    StockHSGTMoneyFlow,
+    StockCompany,
+    StockDividend,
+    StockFinancial,
     StockFinancialIndicator,
+    StockInfo,
+    StockMargin,
+    StockMinuteQuote,
+    StockQuote,
+    StockTopList,
 )
-from core.market_data.tools.field_mapper import FieldMapper, AkShareFieldMapper
-from core.market_data.tools.data_cleaner import DataCleaner
 from core.market_data.sources.base import DataSourceAdapter
+from core.market_data.tools.data_cleaner import DataCleaner
+from core.market_data.tools.field_mapper import AkShareFieldMapper, FieldMapper
 
 logger = logging.getLogger(__name__)
 
@@ -44,11 +40,11 @@ class AkShareAdapter(DataSourceAdapter):
 
     async def _fetch_with_retry(
         self,
-        fetch_func: Callable,
-        *args,
+        fetch_func: Callable[..., Any],
+        *args: Any,
         max_retries: int = 3,
         base_wait: int = 2,
-        **kwargs
+        **kwargs: Any,
     ) -> Optional[Any]:
         """
         带指数退避的重试机制
@@ -66,7 +62,6 @@ class AkShareAdapter(DataSourceAdapter):
         Raises:
             Exception: 所有重试都失败后抛出原始异常
         """
-        import requests
         from requests.exceptions import ConnectionError, RequestException
 
         for attempt in range(max_retries):
@@ -96,9 +91,7 @@ class AkShareAdapter(DataSourceAdapter):
                         await asyncio.sleep(wait_time)
                         continue
                 # 如果不是网络错误，或者已达到最大重试次数，直接抛出
-                logger.error(
-                    f"AkShare fetch failed after {attempt + 1} attempts: {error_msg}"
-                )
+                logger.error(f"AkShare fetch failed after {attempt + 1} attempts: {error_msg}")
                 raise
             except Exception as e:
                 # 其他类型的错误直接抛出
@@ -191,13 +184,14 @@ class AkShareAdapter(DataSourceAdapter):
                 end_date=end,
                 adjust=adjust,
                 max_retries=3,
-                base_wait=2
+                base_wait=2,
             )
 
             if df is None or df.empty:
                 logger.warning(
                     f"No daily quotes returned for {code} (original: {symbol}). "
-                    f"Possible reasons: 1. Stock delisted; 2. No trading data in range; 3. Invalid symbol."
+                    "Possible reasons: 1. Stock delisted; "
+                    "2. No trading data in range; 3. Invalid symbol."
                 )
                 return []
 
@@ -264,7 +258,7 @@ class AkShareAdapter(DataSourceAdapter):
                             # 简单格式化，DataCleaner中可能未完全处理时间格式
                             # 假设返回的是 '2023-01-01 09:30:00' 格式
                             pass
-                        
+
                         kline = StockMinuteQuote(**mapped)
                         klines.append(kline)
                 except Exception as e:
@@ -273,7 +267,14 @@ class AkShareAdapter(DataSourceAdapter):
 
             # 过滤日期逻辑移到这里或DataCleaner中，这里简化处理
             if trade_date:
-                klines = [k for k in klines if k.trade_time.replace("-", "").replace(" ", "").replace(":", "").startswith(trade_date)]
+                klines = [
+                    k
+                    for k in klines
+                    if k.trade_time.replace("-", "")
+                    .replace(" ", "")
+                    .replace(":", "")
+                    .startswith(trade_date)
+                ]
 
             logger.info(f"Retrieved {len(klines)} minute klines for {symbol}")
             return klines
@@ -284,7 +285,7 @@ class AkShareAdapter(DataSourceAdapter):
 
     async def get_stock_financials(
         self, symbol: str, report_date: Optional[str] = None, report_type: Optional[str] = None
-    ) -> List[FinancialIncome]:
+    ) -> List[StockFinancial]:
         try:
             code = symbol.split(".")[0]
 
@@ -292,9 +293,12 @@ class AkShareAdapter(DataSourceAdapter):
 
             try:
                 await asyncio.sleep(1)  # 避免触发反爬虫机制
-                df = await asyncio.to_thread(self.ak.stock_financial_report_sina, stock=code, symbol="利润表")
+                df = await asyncio.to_thread(
+                    self.ak.stock_financial_report_sina, stock=code, symbol="利润表"
+                )
                 logger.debug(
-                    f"Profit sheet result type: {type(df)}, empty: {df.empty if isinstance(df, pd.DataFrame) else 'N/A'}"
+                    f"Profit sheet result type: {type(df)}, "
+                    f"empty: {df.empty if isinstance(df, pd.DataFrame) else 'N/A'}"
                 )
             except Exception as e:
                 logger.warning(f"Failed to get profit sheet: {e}")
@@ -316,8 +320,19 @@ class AkShareAdapter(DataSourceAdapter):
                 try:
                     mapped = DataCleaner.clean_financial_income(row.to_dict(), "akshare")
                     if mapped:
-                        mapped["ts_code"] = symbol
-                        financial = FinancialIncome(**mapped)
+                        mapped["symbol"] = symbol
+                        # 转换为 StockFinancial 格式
+                        report_period = str(row.get("REPORT_DATE", ""))
+                        financial = StockFinancial(
+                            symbol=symbol,
+                            market=MarketType.A_STOCK,
+                            report_date=(
+                                FieldMapper.normalize_date(report_period) if report_period else ""
+                            ),
+                            report_type="income",
+                            income_statement=mapped,
+                            data_source=self.source_name,
+                        )
                         financials.append(financial)
                 except Exception as e:
                     logger.warning(f"Failed to parse financial: {e}")
@@ -332,7 +347,7 @@ class AkShareAdapter(DataSourceAdapter):
 
     async def get_stock_balance_sheet(
         self, symbol: str, report_date: Optional[str] = None
-    ) -> List[FinancialBalance]:
+    ) -> List[StockFinancial]:
         """
         获取资产负债表
 
@@ -428,7 +443,9 @@ class AkShareAdapter(DataSourceAdapter):
 
             try:
                 await asyncio.sleep(1)  # 避免触发反爬虫机制
-                df = await asyncio.to_thread(self.ak.stock_financial_report_sina, stock=code, symbol="现金流量表")
+                df = await asyncio.to_thread(
+                    self.ak.stock_financial_report_sina, stock=code, symbol="现金流量表"
+                )
             except Exception as e:
                 logger.warning(f"Failed to get cashflow: {e}")
                 return []
@@ -464,8 +481,8 @@ class AkShareAdapter(DataSourceAdapter):
             return []
 
     async def get_financial_indicators(
-        self, symbol: str, start_date: Optional[str] = None, end_date: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
+        self, symbol: str, report_date: Optional[str] = None
+    ) -> List[StockFinancialIndicator]:
         """
         获取财务指标
 
@@ -498,28 +515,28 @@ class AkShareAdapter(DataSourceAdapter):
             if df is None or df.empty:
                 return []
 
-            indicators = []
+            indicators: List[StockFinancialIndicator] = []
             for _, row in df.iterrows():
                 try:
-                    report_date = str(row.get("REPORT_DATE", ""))
-                    if not report_date:
+                    row_date = str(row.get("REPORT_DATE", ""))
+                    if not row_date:
                         continue
 
-                    if start_date and report_date < start_date:
-                        continue
-                    if end_date and report_date > end_date:
+                    # 如果指定了 report_date，仅返回匹配的报告期
+                    if report_date and not row_date.startswith(report_date):
                         continue
 
-                    indicator = {
-                        "symbol": symbol,
-                        "report_date": report_date,
-                        "roe": FieldMapper.safe_float(row.get("ROEJQ")),
-                        "roa": FieldMapper.safe_float(row.get("ZZCJLL")),
-                        "gross_profit_margin": FieldMapper.safe_float(row.get("MLR")),
-                        "debt_to_asset_ratio": FieldMapper.safe_float(row.get("ZCFZL")),
-                        "current_ratio": FieldMapper.safe_float(row.get("LD")),
-                        "data_source": self.source_name,
-                    }
+                    indicator = StockFinancialIndicator(
+                        symbol=symbol,
+                        end_date=FieldMapper.normalize_date(row_date) if row_date else "",
+                        report_date=row_date,
+                        roe=FieldMapper.safe_float(row.get("ROEJQ")),
+                        roa=FieldMapper.safe_float(row.get("ZZCJLL")),
+                        gross_profit_margin=FieldMapper.safe_float(row.get("MLR")),
+                        debt_to_assets=FieldMapper.safe_float(row.get("ZCFZL")),
+                        current_ratio=FieldMapper.safe_float(row.get("LD")),
+                        data_source=self.source_name,
+                    )
                     indicators.append(indicator)
                 except Exception as e:
                     logger.warning(f"Failed to parse indicator: {e}")
@@ -531,56 +548,6 @@ class AkShareAdapter(DataSourceAdapter):
         except Exception as e:
             logger.error(f"Failed to get financial indicators: {e}")
             return []
-
-    async def get_stock_company(self, symbol: str) -> StockCompany:
-        """
-        获取公司信息
-
-        Args:
-            symbol: 股票代码
-
-        Returns:
-            公司信息
-        """
-        try:
-            code = symbol.split(".")[0]
-
-            await asyncio.sleep(1)  # 避免触发反爬虫机制
-            df = await asyncio.to_thread(self.ak.stock_individual_info_em, symbol=code)
-
-            if df is None or df.empty:
-                return StockCompany(
-                    symbol=symbol,
-                    market=MarketType.A_STOCK,
-                    company_name="",
-                    industry="",
-                    listing_date="",
-                    data_source=self.source_name,
-                )
-
-            row = df.iloc[0]
-            company = StockCompany(
-                symbol=symbol,
-                market=MarketType.A_STOCK,
-                company_name=row.get("股票简称", row.get("name", "")),
-                industry=row.get("所属行业", row.get("industry", "")),
-                listing_date=str(row.get("上市日期", "")),
-                data_source=self.source_name,
-            )
-
-            logger.debug(f"Retrieved company info for {symbol}")
-            return company
-
-        except Exception as e:
-            logger.error(f"Failed to get company info: {e}")
-            return StockCompany(
-                symbol=symbol,
-                market=MarketType.A_STOCK,
-                company_name="",
-                industry="",
-                listing_date="",
-                data_source=self.source_name,
-            )
 
     async def get_daily_basic(
         self, symbol: str, start_date: Optional[str] = None, end_date: Optional[str] = None
@@ -614,8 +581,8 @@ class AkShareAdapter(DataSourceAdapter):
                 try:
                     mapped = DataCleaner.clean_daily_indicator(row.to_dict(), "akshare")
                     if mapped:
-                         mapped["ts_code"] = symbol
-                         basics.append(mapped)
+                        mapped["ts_code"] = symbol
+                        basics.append(mapped)
                 except Exception as e:
                     logger.debug(f"Failed to parse basic: {e}")
                     continue
@@ -863,9 +830,11 @@ class AkShareAdapter(DataSourceAdapter):
                             "symbol": str(row.get("申购代码", "")),
                             "name": str(row.get("新股名称", "")),
                             "issue_date": str(row.get("上市日期", "")),
-                            "issue_price": float(row.get("发行价格", 0))
-                            if pd.notna(row.get("发行价格"))
-                            else None,
+                            "issue_price": (
+                                float(row.get("发行价格", 0))
+                                if pd.notna(row.get("发行价格"))
+                                else None
+                            ),
                             "data_source": self.source_name,
                         }
                     )
@@ -1076,10 +1045,11 @@ class AkShareAdapter(DataSourceAdapter):
             龙虎榜数据列表
         """
         try:
-            code = symbol.split('.')[0]
+            code = symbol.split(".")[0]
 
             from datetime import datetime
-            today = datetime.now().strftime('%Y%m%d')
+
+            today = datetime.now().strftime("%Y%m%d")
             if start_date is None:
                 start_date = today
             if end_date is None:
@@ -1101,14 +1071,14 @@ class AkShareAdapter(DataSourceAdapter):
                     mapped = DataCleaner.clean_stock_top_list(row.to_dict(), "akshare")
                     if not mapped:
                         continue
-                        
+
                     # 简单筛选：如果 mapped['ts_code'] matches symbol code
                     # clean_stock_top_list returns 'ts_code' as the raw code from akshare
                     if str(mapped.get("ts_code")) == code:
                         mapped["ts_code"] = symbol
                         item = StockTopList(**mapped)
                         top_list.append(item)
-                        
+
                 except Exception as e:
                     logger.warning(f"Failed to parse top list item: {e}")
                     continue
@@ -1164,6 +1134,7 @@ class AkShareAdapter(DataSourceAdapter):
                     dividends.append(
                         StockDividend(
                             symbol=symbol,
+                            end_date=ex_dividend_str[:4] if ex_dividend_str else "",
                             dividend_year=ex_dividend_str[:4] if ex_dividend_str else "",
                             ex_dividend_date=ex_dividend_str if ex_dividend_str else None,
                             record_date=record_date_str if record_date_str else None,
@@ -1243,7 +1214,8 @@ class AkShareAdapter(DataSourceAdapter):
                         continue
 
                     from datetime import datetime
-                    trade_date = datetime.now().strftime('%Y%m%d')
+
+                    trade_date = datetime.now().strftime("%Y%m%d")
 
                     margin_buy = FieldMapper.safe_float(row.get("融资买入额", 0))
                     short_sell = FieldMapper.safe_float(row.get("融券卖出量", 0))
@@ -1277,44 +1249,47 @@ class AkShareAdapter(DataSourceAdapter):
     async def get_stock_news(self, symbol: str, limit: int = 100) -> List[MarketNews]:
         """
         获取股票新闻
-        
+
         Args:
             symbol: 股票代码
             limit: 返回数量限制
-            
+
         Returns:
             新闻数据列表
         """
         try:
             import hashlib
+
             code = symbol.split(".")[0]
-            
+
             logger.info(f"Fetching stock news: symbol={code}")
-            
+
             try:
                 await asyncio.sleep(1)  # 避免触发反爬虫机制
                 df = self.ak.stock_news_em(symbol=code)
             except Exception as e:
                 logger.warning(f"Failed to get stock news: {e}")
                 return []
-                
+
             if df is None or (isinstance(df, pd.DataFrame) and df.empty):
                 return []
-                
+
             news_list = []
             for _, row in df.iterrows():
                 try:
                     title = str(row.get("新闻标题", row.get("title", "")))
-                    publish_time = str(row.get("发布时间", row.get("publish_time", row.get("time", ""))))
+                    publish_time = str(
+                        row.get("发布时间", row.get("publish_time", row.get("time", "")))
+                    )
                     url = str(row.get("新闻链接", row.get("url", "")))
                     content = str(row.get("新闻内容", row.get("content", "")))
-                    
+
                     if not title:
                         continue
-                        
+
                     # 生成ID
                     news_id = hashlib.md5(f"{symbol}_{publish_time}_{title}".encode()).hexdigest()
-                    
+
                     news = MarketNews(
                         news_id=news_id,
                         ts_code=symbol,
@@ -1322,20 +1297,20 @@ class AkShareAdapter(DataSourceAdapter):
                         title=title,
                         content=content + f" (Link: {url})" if url else content,
                         source="EastMoney",
-                        data_source=self.source_name
+                        data_source=self.source_name,
                     )
                     news_list.append(news)
-                    
+
                     if len(news_list) >= limit:
                         break
-                        
+
                 except Exception as e:
                     logger.warning(f"Failed to parse news: {e}")
                     continue
-                    
+
             logger.info(f"Retrieved {len(news_list)} news for {symbol}")
             return news_list
-            
+
         except Exception as e:
             logger.error(f"Failed to get stock news: {e}")
             return []
@@ -1393,41 +1368,42 @@ class AkShareAdapter(DataSourceAdapter):
             return []
 
     async def get_market_news(
-        self,
-        symbol: Optional[str] = None,
-        limit: int = 20
+        self, symbol: Optional[str] = None, limit: int = 20
     ) -> List[MarketNews]:
         """
         获取新闻
-        
+
         Args:
             symbol: 股票代码 (可选，如果提供则获取个股新闻)
             limit: 限制数量
-            
+
         Returns:
             新闻列表
         """
         try:
             import hashlib
+
             news_list = []
-            
+
             if symbol:
                 # 获取个股新闻
-                code = symbol.split('.')[0]
+                code = symbol.split(".")[0]
                 try:
                     await asyncio.sleep(1)  # 避免触发反爬虫机制
                     df = self.ak.stock_news_em(symbol=code)
                     if df is not None and not df.empty:
                         df = df.head(limit)
                         for _, row in df.iterrows():
-                            title = str(row.get('新闻标题', ''))
-                            date_str = str(row.get('发布时间', ''))
-                            content = str(row.get('新闻内容', ''))
-                            url = str(row.get('新闻链接', ''))
-                            
+                            title = str(row.get("新闻标题", ""))
+                            date_str = str(row.get("发布时间", ""))
+                            content = str(row.get("新闻内容", ""))
+                            url = str(row.get("新闻链接", ""))
+
                             # 生成ID
-                            news_id = hashlib.md5(f"{symbol}_{date_str}_{title}".encode()).hexdigest()
-                            
+                            news_id = hashlib.md5(
+                                f"{symbol}_{date_str}_{title}".encode()
+                            ).hexdigest()
+
                             news = MarketNews(
                                 news_id=news_id,
                                 ts_code=symbol,
@@ -1435,7 +1411,7 @@ class AkShareAdapter(DataSourceAdapter):
                                 title=title,
                                 content=content + f" (Link: {url})" if url else content,
                                 source="EastMoney",
-                                data_source=self.source_name
+                                data_source=self.source_name,
                             )
                             news_list.append(news)
                 except Exception as e:
@@ -1448,12 +1424,12 @@ class AkShareAdapter(DataSourceAdapter):
                     if df is not None and not df.empty:
                         df = df.head(limit)
                         for _, row in df.iterrows():
-                            title = str(row.get('title', ''))
-                            date_str = str(row.get('publish_time', ''))
-                            content = str(row.get('content', ''))
-                            
+                            title = str(row.get("title", ""))
+                            date_str = str(row.get("publish_time", ""))
+                            content = str(row.get("content", ""))
+
                             news_id = hashlib.md5(f"global_{date_str}_{title}".encode()).hexdigest()
-                            
+
                             news = MarketNews(
                                 news_id=news_id,
                                 ts_code=None,
@@ -1461,12 +1437,12 @@ class AkShareAdapter(DataSourceAdapter):
                                 title=title,
                                 content=content,
                                 source="CLS",
-                                data_source=self.source_name
+                                data_source=self.source_name,
                             )
                             news_list.append(news)
                 except Exception as e:
                     logger.warning(f"Failed to get global news: {e}")
-                    
+
             logger.info(f"Retrieved {len(news_list)} news items from AkShare")
             return news_list
 

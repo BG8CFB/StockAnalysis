@@ -18,7 +18,7 @@ class AIMessage:
     tool_call_id: Optional[str] = None
     reasoning_content: Optional[str] = None  # 思考内容（用于支持思考模式的模型）
 
-    def to_langchain(self):
+    def to_langchain(self) -> Any:
         """转换为 LangChain 消息格式"""
         from langchain_core.messages import (
             AIMessage,
@@ -34,7 +34,7 @@ class AIMessage:
         elif self.role == "assistant":
             msg = AIMessage(content=self.content)
             if self.tool_calls:
-                msg.tool_calls = self.tool_calls
+                msg.tool_calls = self.tool_calls  # type: ignore[assignment]
             if self.reasoning_content:
                 # 思考内容通过 additional_kwargs 传递，支持保留式思考
                 msg.additional_kwargs["reasoning_content"] = self.reasoning_content
@@ -132,7 +132,7 @@ class AIStreamChunk:
 # =============================================================================
 
 
-def create_message(role: str, content: str, **kwargs) -> AIMessage:
+def create_message(role: str, content: str, **kwargs: Any) -> AIMessage:
     """创建消息对象"""
     return AIMessage(role=role, content=content, **kwargs)
 

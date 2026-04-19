@@ -21,16 +21,16 @@ TradingAgents 工作流调度器
 
 import asyncio
 import logging
-from typing import Dict, Any, Optional, Callable
 from datetime import datetime, timezone
+from typing import Any, Callable, Dict, Optional
 
+from core.ai.service import AIService
 from modules.trading_agents.models.state import (
+    TaskStatus,
     WorkflowState,
     create_initial_state,
-    TaskStatus,
 )
 from modules.trading_agents.workflow import phase1, phase2, phase3, phase4
-from core.ai.service import AIService
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +102,7 @@ class WorkflowScheduler:
             user_id=user_id,
             stock_code=stock_code,
             trade_date=trade_date or datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-            market=market
+            market=market,
         )
         state.stock_name = stock_name
 
@@ -129,7 +129,9 @@ class WorkflowScheduler:
         try:
 
             # 获取模型
-            data_collection_model_instance = await self.ai_service.get_model_async(data_collection_model or "claude-sonnet-4-20250514", user_id)
+            data_collection_model_instance = await self.ai_service.get_model_async(
+                data_collection_model or "claude-sonnet-4-20250514", user_id
+            )
 
             # 确保 debate_model 有效
             if not debate_model:
@@ -141,11 +143,15 @@ class WorkflowScheduler:
             # 检查辩论模型是否可用（通过检查模型是否为空或无效）
             # 如果模型获取失败，回退到数据收集模型
             if debate_model_instance is None:
-                logger.warning(f"[调度器] Debate model {debate_model} 获取失败，使用 Data Collection model")
+                logger.warning(
+                    f"[调度器] Debate model {debate_model} 获取失败，使用 Data Collection model"
+                )
                 debate_model_instance = data_collection_model_instance
-            elif hasattr(debate_model_instance, 'model') and debate_model_instance.model is None:
+            elif hasattr(debate_model_instance, "model") and debate_model_instance.model is None:
                 # LangChain 模型实例可能返回空模型
-                logger.warning(f"[调度器] Debate model {debate_model} 配置无效，使用 Data Collection model")
+                logger.warning(
+                    f"[调度器] Debate model {debate_model} 配置无效，使用 Data Collection model"
+                )
                 debate_model_instance = data_collection_model_instance
 
             # Phase 1: 信息收集与基础分析（所有分析师并发，受 task_concurrency 控制）
@@ -158,7 +164,7 @@ class WorkflowScheduler:
                     self.agent_config,
                     selected_agents=selected_agents,
                     model_id=data_collection_model,
-                    max_concurrency=data_collection_task_concurrency
+                    max_concurrency=data_collection_task_concurrency,
                 )
 
                 logger.info(f"[调度器] Phase 1 完成: {len(state.analyst_reports)} 份报告")
@@ -171,10 +177,7 @@ class WorkflowScheduler:
                 debate_rounds = phase2_config.get("debate", {}).get("rounds", 2)
 
                 state = await phase2.execute_phase2(
-                    state,
-                    debate_model_instance,
-                    self.agent_config,
-                    debate_rounds=debate_rounds
+                    state, debate_model_instance, self.agent_config, debate_rounds=debate_rounds
                 )
 
                 logger.info(f"[调度器] Phase 2 完成: {len(state.debate_turns)} 轮辩论")
@@ -184,11 +187,7 @@ class WorkflowScheduler:
             if phase3_config.get("enabled", True) and should_continue(state):
                 self._notify_progress(state, "phase3_start", "开始 Phase 3: 策略风格与风险评估")
 
-                state = await phase3.execute_phase3(
-                    state,
-                    debate_model_instance,
-                    self.agent_config
-                )
+                state = await phase3.execute_phase3(state, debate_model_instance, self.agent_config)
 
                 logger.info(f"[调度器] Phase 3 完成, 推荐: {state.final_recommendation}")
                 self._notify_progress(state, "phase3_complete", "Phase 3 完成")
@@ -197,11 +196,7 @@ class WorkflowScheduler:
             if phase4_config.get("enabled", True) and should_continue(state):
                 self._notify_progress(state, "phase4_start", "开始 Phase 4: 总结智能体")
 
-                state = await phase4.execute_phase4(
-                    state,
-                    debate_model_instance,
-                    self.agent_config
-                )
+                state = await phase4.execute_phase4(state, debate_model_instance, self.agent_config)
 
                 logger.info(f"[调度器] Phase 4 完成, 推荐: {state.final_recommendation}")
                 self._notify_progress(state, "phase4_complete", "Phase 4 完成")
@@ -278,7 +273,7 @@ class WorkflowScheduler:
         self._running_tasks[task_id] = task
 
         # 任务完成后清理
-        def cleanup(task_id: str):
+        def cleanup(task_id: str) -> None:
             self._running_tasks.pop(task_id, None)
 
         task.add_done_callback(lambda t: cleanup(task_id))
@@ -336,7 +331,7 @@ class WorkflowScheduler:
         """
         if self.progress_callback:
             try:
-                progress_data = {
+                progress_data: Dict[str, Any] = {
                     "task_id": state.task_id,
                     "user_id": state.user_id,
                     "event": event,
@@ -350,54 +345,54 @@ class WorkflowScheduler:
                 }
 
                 # 在 Phase 完成时添加报告数据，用于数据库保存
-                if event == "phase1_complete" and hasattr(state, 'analyst_reports'):
+                if event == "phase1_complete" and hasattr(state, "analyst_reports"):
                     progress_data["analyst_reports"] = state.analyst_reports
                 elif event == "phase2_complete":
                     # Phase 2 完成时保存辩论相关数据
-                    if hasattr(state, 'debate_turns'):
+                    if hasattr(state, "debate_turns"):
                         progress_data["debate_turns"] = state.debate_turns
-                    if hasattr(state, 'investment_decision'):
+                    if hasattr(state, "investment_decision"):
                         progress_data["investment_decision"] = state.investment_decision
-                    if hasattr(state, 'trading_plan'):
+                    if hasattr(state, "trading_plan"):
                         progress_data["trading_plan"] = state.trading_plan
                 elif event == "phase3_complete":
                     # Phase 3 完成时保存策略报告
-                    if hasattr(state, 'strategy_reports'):
+                    if hasattr(state, "strategy_reports"):
                         progress_data["strategy_reports"] = state.strategy_reports
-                    if hasattr(state, 'risk_approval'):
+                    if hasattr(state, "risk_approval"):
                         progress_data["risk_approval"] = state.risk_approval
                 elif event == "phase4_complete":
                     # Phase 4 完成时保存最终数据
-                    if hasattr(state, 'summary_report'):
+                    if hasattr(state, "summary_report"):
                         progress_data["summary_report"] = state.summary_report
-                    if hasattr(state, 'final_recommendation'):
+                    if hasattr(state, "final_recommendation"):
                         progress_data["final_recommendation"] = state.final_recommendation
-                    if hasattr(state, 'risk_level'):
+                    if hasattr(state, "risk_level"):
                         progress_data["risk_level"] = state.risk_level
-                    if hasattr(state, 'buy_price'):
+                    if hasattr(state, "buy_price"):
                         progress_data["buy_price"] = state.buy_price
-                    if hasattr(state, 'sell_price'):
+                    if hasattr(state, "sell_price"):
                         progress_data["sell_price"] = state.sell_price
 
                 # 任务完成时保存最终报告（实时推送到前端）
                 if event == "task_completed":
-                    if hasattr(state, 'final_report'):
+                    if hasattr(state, "final_report"):
                         progress_data["final_report"] = state.final_report
-                    if hasattr(state, 'final_recommendation'):
+                    if hasattr(state, "final_recommendation"):
                         progress_data["final_recommendation"] = state.final_recommendation
-                    if hasattr(state, 'risk_level'):
+                    if hasattr(state, "risk_level"):
                         progress_data["risk_level"] = state.risk_level
-                    if hasattr(state, 'buy_price'):
+                    if hasattr(state, "buy_price"):
                         progress_data["buy_price"] = state.buy_price
-                    if hasattr(state, 'sell_price'):
+                    if hasattr(state, "sell_price"):
                         progress_data["sell_price"] = state.sell_price
 
                 # 在每个阶段完成时保存工具调用记录
                 if event.endswith("_complete"):
-                    if hasattr(state, 'tool_calls'):
+                    if hasattr(state, "tool_calls"):
                         progress_data["tool_calls"] = state.tool_calls
-                    
-                    if hasattr(state, 'phase_executions'):
+
+                    if hasattr(state, "phase_executions"):
                         # Convert dataclasses to dicts
                         progress_data["phase_executions"] = [
                             {
@@ -416,10 +411,12 @@ class WorkflowScheduler:
                                         "completed_at": a.completed_at,
                                         "status": a.status,
                                         "error_message": a.error_message,
-                                        "output": a.output
-                                    } for a in p.agents
-                                ]
-                            } for p in state.phase_executions
+                                        "output": a.output,
+                                    }
+                                    for a in p.agents
+                                ],
+                            }
+                            for p in state.phase_executions
                         ]
 
                 asyncio.create_task(self._safe_notify(progress_data))
@@ -432,7 +429,7 @@ class WorkflowScheduler:
             if asyncio.iscoroutinefunction(self.progress_callback):
                 await self.progress_callback(progress_data)
             else:
-                self.progress_callback(progress_data)
+                self.progress_callback(progress_data)  # type: ignore[misc]
         except Exception as e:
             logger.warning(f"[调度器] 进度回调异常: {e}")
 
@@ -476,8 +473,8 @@ class WorkflowScheduler:
             report += "\n---\n\n## Phase 2: 多空辩论记录\n\n"
             for turn in state.debate_turns:
                 report += f"\n### 第 {turn['round']} 轮辩论\n\n"
-                bull_view = turn.get('bull_view')
-                bear_view = turn.get('bear_view')
+                bull_view = turn.get("bull_view")
+                bear_view = turn.get("bear_view")
                 if bull_view:
                     report += f"**看涨观点**:\n\n{bull_view[:300]}...\n\n"
                 if bear_view:
@@ -522,7 +519,7 @@ def should_continue(state: WorkflowState) -> bool:
         TaskStatus.CANCELLED,
         TaskStatus.STOPPED,
         TaskStatus.FAILED,
-        TaskStatus.EXPIRED
+        TaskStatus.EXPIRED,
     ]
 
 
@@ -533,10 +530,7 @@ class WorkflowSchedulerBuilder:
     用于构建配置好的调度器实例。
     """
 
-    def __init__(
-        self,
-        ai_service: Optional[AIService] = None
-    ):
+    def __init__(self, ai_service: Optional[AIService] = None):
         """
         初始化构建器
 
@@ -544,8 +538,8 @@ class WorkflowSchedulerBuilder:
             ai_service: AI 服务
         """
         self.ai_service = ai_service
-        self.agent_config = {}
-        self.progress_callback = None
+        self.agent_config: Dict[str, Any] = {}
+        self.progress_callback: Optional[Callable[..., Any]] = None
 
     def with_ai_service(self, ai_service: AIService) -> "WorkflowSchedulerBuilder":
         """设置 AI 服务"""
@@ -564,6 +558,8 @@ class WorkflowSchedulerBuilder:
 
     def build(self) -> WorkflowScheduler:
         """构建调度器"""
+        if self.ai_service is None:
+            raise RuntimeError("ai_service is required to build WorkflowScheduler")
         return WorkflowScheduler(
             ai_service=self.ai_service,
             agent_config=self.agent_config,
@@ -571,9 +567,7 @@ class WorkflowSchedulerBuilder:
         )
 
 
-def create_workflow_scheduler(
-    ai_service: AIService
-) -> WorkflowSchedulerBuilder:
+def create_workflow_scheduler(ai_service: AIService) -> WorkflowSchedulerBuilder:
     """
     创建工作流调度器构建器
 

@@ -93,17 +93,17 @@ class ThinkingContentManager:
         if hasattr(response, "response_metadata"):
             metadata = response.response_metadata
             if isinstance(metadata, dict) and "reasoning_content" in metadata:
-                return metadata["reasoning_content"]
+                return str(metadata["reasoning_content"])
 
         # 尝试从 additional_kwargs 获取（某些 LangChain 版本）
         if hasattr(response, "additional_kwargs"):
             additional = response.additional_kwargs
             if isinstance(additional, dict) and "reasoning_content" in additional:
-                return additional["reasoning_content"]
+                return str(additional["reasoning_content"])
 
         # 尝试直接获取
         if hasattr(response, "reasoning_content"):
-            return response.reasoning_content
+            return str(response.reasoning_content)
 
         return None
 

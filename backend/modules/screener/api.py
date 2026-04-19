@@ -1,7 +1,8 @@
 """
-🔶 智能选股模块 API 路由
+智能选股模块 API 路由（占位模块）
 
 此模块为占位模块，功能待实现。
+返回 HTTP 501 Not Implemented，前端可据此展示"即将上线"提示。
 
 计划功能：
 - 基于技术指标的选股策略
@@ -11,31 +12,32 @@
 """
 
 from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 
 router = APIRouter(tags=["智能选股"])
 
 
 @router.get("/screener/strategies")
-async def get_strategies():
-    """
-    🔶 获取选股策略列表
-
-    TODO: 实现选股策略列表查询
-    - 返回系统预定义的选股策略
-    - 支持策略分类和筛选
-    - 返回策略历史表现数据
-    """
-    return {"strategies": []}
+async def get_strategies() -> JSONResponse:
+    """获取选股策略列表（未实现）"""
+    return JSONResponse(
+        status_code=501,
+        content={
+            "success": False,
+            "message": "智能选股功能尚未实现",
+            "data": {"strategies": []},
+        },
+    )
 
 
 @router.post("/screener/run")
-async def run_screener():
-    """
-    🔶 执行选股策略
-
-    TODO: 实现选股策略执行
-    - 根据策略条件筛选股票
-    - 返回符合条件的股票列表
-    - 支持异步执行和结果查询
-    """
-    return {"results": []}
+async def run_screener() -> JSONResponse:
+    """执行选股策略（未实现）"""
+    return JSONResponse(
+        status_code=501,
+        content={
+            "success": False,
+            "message": "智能选股功能尚未实现",
+            "data": {"results": []},
+        },
+    )

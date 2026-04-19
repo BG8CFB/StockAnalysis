@@ -30,15 +30,12 @@ describe('auth store', () => {
     it('sets authenticated state on successful login', async () => {
       const mockLogin = vi.mocked(authApi.login)
       mockLogin.mockResolvedValueOnce({
-        success: true,
-        message: 'ok',
-        data: {
-          access_token: 'token123',
-          refresh_token: 'refresh123',
-          token_type: 'bearer',
-          expires_in: 3600,
-          user: { id: '1', username: 'test', email: 't@t.com', is_active: true, is_verified: true, is_admin: false, created_at: '', updated_at: '' },
-        },
+        access_token: 'token123',
+        refresh_token: 'refresh123',
+        token_type: 'bearer',
+      })
+      vi.mocked(authApi.getUserInfo).mockResolvedValueOnce({
+        id: '1', username: 'test', email: 't@t.com', is_active: true, is_verified: true, is_admin: false, created_at: '', updated_at: '',
       })
 
       const result = await useAuthStore.getState().login({ username: 'test', password: 'pass' })
@@ -64,7 +61,7 @@ describe('auth store', () => {
   describe('logout', () => {
     it('clears auth state', async () => {
       useAuthStore.setState({ token: 'token', isAuthenticated: true })
-      vi.mocked(authApi.logout).mockResolvedValueOnce({ success: true, message: 'ok' })
+      vi.mocked(authApi.logout).mockResolvedValueOnce({ success: true })
 
       await useAuthStore.getState().logout()
 

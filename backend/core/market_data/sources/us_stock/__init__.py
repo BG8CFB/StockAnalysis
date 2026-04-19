@@ -4,9 +4,9 @@
 支持 Yahoo Finance、Alpha Vantage、AkShare 等数据源。
 """
 
-from core.market_data.sources.us_stock.yahoo_adapter import YahooFinanceAdapter
-from core.market_data.sources.us_stock.alphavantage_adapter import AlphaVantageAdapter
 from core.market_data.sources.us_stock.akshare_adapter import AkShareUSAdapter
+from core.market_data.sources.us_stock.alphavantage_adapter import AlphaVantageAdapter
+from core.market_data.sources.us_stock.yahoo_adapter import YahooFinanceAdapter
 
 __all__ = [
     "YahooFinanceAdapter",

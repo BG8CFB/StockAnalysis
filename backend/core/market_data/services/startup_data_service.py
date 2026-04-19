@@ -11,14 +11,15 @@
 """
 
 import logging
-from typing import Optional, List, Dict, Any
-from datetime import datetime, timedelta, date as date_type
+from datetime import date as date_type
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
 
 from core.market_data.models import MarketType
 from core.market_data.models.datasource import (
+    DataSourceHealthStatus,
     DataSourceStatus,
     DataSourceType,
-    DataSourceHealthStatus,
 )
 from core.market_data.services.data_sync_service import DataSyncService
 
@@ -36,11 +37,11 @@ class StartupDataService:
             data_sync_service: 数据同步服务实例
         """
         self.data_sync_service = data_sync_service
-        self.stock_info_repo = None
-        self.stock_quotes_repo = None
-        self.stock_financial_repo = None
-        self.stock_indicator_repo = None
-        self.stock_company_repo = None
+        self.stock_info_repo: Optional[Any] = None
+        self.stock_quotes_repo: Optional[Any] = None
+        self.stock_financial_repo: Optional[Any] = None
+        self.stock_indicator_repo: Optional[Any] = None
+        self.stock_company_repo: Optional[Any] = None
 
     async def check_and_catchup(self) -> Dict[str, Any]:
         """
@@ -53,11 +54,7 @@ class StartupDataService:
         logger.info("📊 开始启动时数据检查和补录")
         logger.info("=" * 60)
 
-        result = {
-            "is_first_startup": False,
-            "tasks_triggered": [],
-            "total_catchup_records": 0
-        }
+        result = {"is_first_startup": False, "tasks_triggered": [], "total_catchup_records": 0}
 
         try:
             # 延迟加载 repository（避免循环导入）
@@ -78,7 +75,9 @@ class StartupDataService:
                 await self._check_and_catchup_missing_data(result)
 
             logger.info("=" * 60)
-            logger.info(f"✅ 启动数据检查完成，触发 {len(result['tasks_triggered'])} 个补录任务")
+            tasks = result.get("tasks_triggered", [])
+            task_count = len(tasks) if isinstance(tasks, list) else 0
+            logger.info(f"启动数据检查完成，触发 {task_count} 个补录任务")
             logger.info("=" * 60)
 
         except Exception as e:
@@ -89,13 +88,13 @@ class StartupDataService:
 
     async def _load_repositories(self) -> None:
         """延迟加载 repository"""
+        from core.market_data.repositories.stock_company import StockCompanyRepository
+        from core.market_data.repositories.stock_financial import (
+            StockFinancialIndicatorRepository,
+            StockFinancialRepository,
+        )
         from core.market_data.repositories.stock_info import StockInfoRepository
         from core.market_data.repositories.stock_quotes import StockQuoteRepository
-        from core.market_data.repositories.stock_financial import (
-            StockFinancialRepository,
-            StockFinancialIndicatorRepository,
-        )
-        from core.market_data.repositories.stock_company import StockCompanyRepository
 
         self.stock_info_repo = StockInfoRepository()
         self.stock_quotes_repo = StockQuoteRepository()
@@ -111,7 +110,8 @@ class StartupDataService:
             是否首次启动
         """
         # 检查是否有任何股票信息
-        count = await self.stock_info_repo.count_documents({})
+        assert self.stock_info_repo is not None, "stock_info_repo not initialized"
+        count: int = await self.stock_info_repo.count_documents({})
         return count == 0
 
     async def _perform_first_sync(self, result: Dict[str, Any]) -> None:
@@ -128,23 +128,26 @@ class StartupDataService:
             logger.info("  📋 同步A股股票列表（自动降级）...")
             # 使用数据源路由器，自动尝试 tushare -> akshare
             sync_result = await self.data_sync_service.sync_stock_list_with_fallback(
-                market=MarketType.A_STOCK,
-                status="L"
+                market=MarketType.A_STOCK, status="L"
             )
-            result["tasks_triggered"].append({
-                "task": "sync_stock_list",
-                "status": sync_result["status"],
-                "records": sync_result.get("result", {}).get("total", 0),
-                "source": sync_result.get("result", {}).get("source", "unknown")
-            })
-            logger.info(f"  ✅ A股股票列表同步完成: {sync_result.get('result', {}).get('total', 0)} 条 (数据源: {sync_result.get('result', {}).get('source', 'unknown')})")
+            result["tasks_triggered"].append(
+                {
+                    "task": "sync_stock_list",
+                    "status": sync_result["status"],
+                    "records": sync_result.get("result", {}).get("total", 0),
+                    "source": sync_result.get("result", {}).get("source", "unknown"),
+                }
+            )
+            logger.info(
+                f"  ✅ A股股票列表同步完成: "
+                f"{sync_result.get('result', {}).get('total', 0)} 条 "
+                f"(数据源: {sync_result.get('result', {}).get('source', 'unknown')})"
+            )
         except Exception as e:
             logger.error(f"  ❌ A股股票列表同步失败: {e}")
-            result["tasks_triggered"].append({
-                "task": "sync_stock_list",
-                "status": "failed",
-                "error": str(e)
-            })
+            result["tasks_triggered"].append(
+                {"task": "sync_stock_list", "status": "failed", "error": str(e)}
+            )
 
         # 2. 同步最近的A股日线数据（最近1个月）
         try:
@@ -153,33 +156,37 @@ class StartupDataService:
             start_date = (datetime.now() - timedelta(days=30)).strftime("%Y%m%d")
 
             # 获取股票列表（限制前100只，避免首次同步时间过长）
+            assert self.stock_info_repo is not None, "stock_info_repo not initialized"
             stocks = await self.stock_info_repo.get_by_market(MarketType.A_STOCK, limit=100)
             symbols = [s["symbol"] for s in stocks]
 
             if symbols:
                 sync_result = await self.data_sync_service.sync_daily_quotes_with_fallback(
-                    symbols=symbols,
-                    start_date=start_date,
-                    end_date=end_date
+                    symbols=symbols, start_date=start_date, end_date=end_date
                 )
-                result["tasks_triggered"].append({
-                    "task": "sync_daily_quotes_initial",
-                    "status": sync_result["status"],
-                    "records": sync_result.get("result", {}).get("total_quotes", 0),
-                    "source": sync_result.get("result", {}).get("source", "unknown")
-                })
-                logger.info(f"  ✅ A股日线数据同步完成: {sync_result.get('result', {}).get('total_quotes', 0)} 条 (数据源: {sync_result.get('result', {}).get('source', 'unknown')})")
+                result["tasks_triggered"].append(
+                    {
+                        "task": "sync_daily_quotes_initial",
+                        "status": sync_result["status"],
+                        "records": sync_result.get("result", {}).get("total_quotes", 0),
+                        "source": sync_result.get("result", {}).get("source", "unknown"),
+                    }
+                )
+                logger.info(
+                    f"  ✅ A股日线数据同步完成: "
+                    f"{sync_result.get('result', {}).get('total_quotes', 0)} 条 "
+                    f"(数据源: {sync_result.get('result', {}).get('source', 'unknown')})"
+                )
         except Exception as e:
             logger.error(f"  ❌ A股日线数据同步失败: {e}")
-            result["tasks_triggered"].append({
-                "task": "sync_daily_quotes_initial",
-                "status": "failed",
-                "error": str(e)
-            })
+            result["tasks_triggered"].append(
+                {"task": "sync_daily_quotes_initial", "status": "failed", "error": str(e)}
+            )
 
         # 3. 同步A股公司信息
         try:
             logger.info("  🏢 同步A股公司信息...")
+            assert self.stock_info_repo is not None, "stock_info_repo not initialized"
             stocks = await self.stock_info_repo.get_by_market(MarketType.A_STOCK, limit=50)
             symbols = [s["symbol"] for s in stocks]
 
@@ -187,20 +194,24 @@ class StartupDataService:
                 sync_result = await self.data_sync_service.sync_company_info_with_fallback(
                     symbols=symbols
                 )
-                result["tasks_triggered"].append({
-                    "task": "sync_company_info_initial",
-                    "status": sync_result["status"],
-                    "records": sync_result.get("result", {}).get("total_records", 0),
-                    "source": sync_result.get("result", {}).get("source", "unknown")
-                })
-                logger.info(f"  ✅ A股公司信息同步完成: {sync_result.get('result', {}).get('total_records', 0)} 条 (数据源: {sync_result.get('result', {}).get('source', 'unknown')})")
+                result["tasks_triggered"].append(
+                    {
+                        "task": "sync_company_info_initial",
+                        "status": sync_result["status"],
+                        "records": sync_result.get("result", {}).get("total_records", 0),
+                        "source": sync_result.get("result", {}).get("source", "unknown"),
+                    }
+                )
+                logger.info(
+                    f"  ✅ A股公司信息同步完成: "
+                    f"{sync_result.get('result', {}).get('total_records', 0)} 条 "
+                    f"(数据源: {sync_result.get('result', {}).get('source', 'unknown')})"
+                )
         except Exception as e:
             logger.error(f"  ❌ A股公司信息同步失败: {e}")
-            result["tasks_triggered"].append({
-                "task": "sync_company_info_initial",
-                "status": "failed",
-                "error": str(e)
-            })
+            result["tasks_triggered"].append(
+                {"task": "sync_company_info_initial", "status": "failed", "error": str(e)}
+            )
 
     async def _check_and_catchup_missing_data(self, result: Dict[str, Any]) -> None:
         """
@@ -225,10 +236,9 @@ class StartupDataService:
         """检查并补录A股股票列表"""
         try:
             # 获取最新的股票信息更新时间
+            assert self.stock_info_repo is not None, "stock_info_repo not initialized"
             stocks = await self.stock_info_repo.find_many(
-                {"market": "A_STOCK"},
-                sort=[("updated_at", -1)],
-                limit=1
+                {"market": "A_STOCK"}, sort=[("updated_at", -1)], limit=1
             )
             latest_stock = stocks[0] if stocks else None
 
@@ -248,18 +258,21 @@ class StartupDataService:
                 logger.info(f"  📋 A股股票列表超过 {days_since_update} 天未更新，触发补录")
 
                 sync_result = await self.data_sync_service.sync_stock_list_with_fallback(
-                    market=MarketType.A_STOCK,
-                    status="L"
+                    market=MarketType.A_STOCK, status="L"
                 )
 
-                result["tasks_triggered"].append({
-                    "task": "catchup_stock_list",
-                    "status": sync_result["status"],
-                    "records": sync_result.get("result", {}).get("total", 0),
-                    "reason": f"超过{days_since_update}天未更新"
-                })
+                result["tasks_triggered"].append(
+                    {
+                        "task": "catchup_stock_list",
+                        "status": sync_result["status"],
+                        "records": sync_result.get("result", {}).get("total", 0),
+                        "reason": f"超过{days_since_update}天未更新",
+                    }
+                )
 
-                logger.info(f"  ✅ A股股票列表补录完成: {sync_result.get('result', {}).get('total', 0)} 条")
+                logger.info(
+                    f"  ✅ A股股票列表补录完成: {sync_result.get('result', {}).get('total', 0)} 条"
+                )
             else:
                 logger.info(f"  ✅ A股股票列表最新，距上次更新 {days_since_update} 天")
 
@@ -270,10 +283,9 @@ class StartupDataService:
         """检查并补录A股日线行情"""
         try:
             # 获取最新的日线数据日期
+            assert self.stock_quotes_repo is not None, "stock_quotes_repo not initialized"
             latest_quotes = await self.stock_quotes_repo.find_many(
-                {"market": "A_STOCK"},
-                sort=[("trade_date", -1)],
-                limit=1
+                {"market": "A_STOCK"}, sort=[("trade_date", -1)], limit=1
             )
             latest_quote = latest_quotes[0] if latest_quotes else None
 
@@ -303,6 +315,7 @@ class StartupDataService:
             # 如果差异超过1天（允许当天），需要补录
             if days_diff > 1:
                 # 获取股票列表（限制数量，避免补录时间过长）
+                assert self.stock_info_repo is not None, "stock_info_repo not initialized"
                 stocks = await self.stock_info_repo.get_by_market(MarketType.A_STOCK, limit=500)
                 symbols = [s["symbol"] for s in stocks]
 
@@ -311,24 +324,31 @@ class StartupDataService:
                     start_date = (last_trade_date + timedelta(days=1)).strftime("%Y%m%d")
                     end_date = today.strftime("%Y%m%d")
 
-                    logger.info(f"  📈 A股日线数据缺失 {days_diff} 天，触发补录 ({start_date} ~ {end_date})")
+                    logger.info(
+                        f"  📈 A股日线数据缺失 {days_diff} 天，触发补录 ({start_date} ~ {end_date})"
+                    )
 
                     sync_result = await self.data_sync_service.sync_daily_quotes(
                         symbols=symbols,
                         start_date=start_date,
                         end_date=end_date,
-                        source_id="tushare"
+                        source_id="tushare",
                     )
 
-                    result["tasks_triggered"].append({
-                        "task": "catchup_daily_quotes",
-                        "status": sync_result["status"],
-                        "records": sync_result.get("result", {}).get("total_quotes", 0),
-                        "reason": f"缺失{days_diff}天数据",
-                        "date_range": f"{start_date}~{end_date}"
-                    })
+                    result["tasks_triggered"].append(
+                        {
+                            "task": "catchup_daily_quotes",
+                            "status": sync_result["status"],
+                            "records": sync_result.get("result", {}).get("total_quotes", 0),
+                            "reason": f"缺失{days_diff}天数据",
+                            "date_range": f"{start_date}~{end_date}",
+                        }
+                    )
 
-                    logger.info(f"  ✅ A股日线数据补录完成: {sync_result.get('result', {}).get('total_quotes', 0)} 条")
+                    logger.info(
+                        f"  ✅ A股日线数据补录完成: "
+                        f"{sync_result.get('result', {}).get('total_quotes', 0)} 条"
+                    )
             else:
                 logger.info("  ✅ A股日线数据最新")
 
@@ -339,10 +359,9 @@ class StartupDataService:
         """检查并补录A股公司信息"""
         try:
             # 获取最新的公司信息更新时间
+            assert self.stock_company_repo is not None, "stock_company_repo not initialized"
             latest_companies = await self.stock_company_repo.find_many(
-                {},
-                sort=[("updated_at", -1)],
-                limit=1
+                {}, sort=[("updated_at", -1)], limit=1
             )
             latest_company = latest_companies[0] if latest_companies else None
 
@@ -362,23 +381,28 @@ class StartupDataService:
                 logger.info(f"  🏢 A股公司信息超过 {days_since_update} 天未更新，触发补录")
 
                 # 获取股票列表（限制数量）
+                assert self.stock_info_repo is not None, "stock_info_repo not initialized"
                 stocks = await self.stock_info_repo.get_by_market(MarketType.A_STOCK, limit=100)
                 symbols = [s["symbol"] for s in stocks]
 
                 if symbols:
                     sync_result = await self.data_sync_service.sync_company_info(
-                        symbols=symbols,
-                        source_id="tushare"
+                        symbols=symbols, source_id="tushare"
                     )
 
-                    result["tasks_triggered"].append({
-                        "task": "catchup_company_info",
-                        "status": sync_result["status"],
-                        "records": sync_result.get("result", {}).get("total_records", 0),
-                        "reason": f"超过{days_since_update}天未更新"
-                    })
+                    result["tasks_triggered"].append(
+                        {
+                            "task": "catchup_company_info",
+                            "status": sync_result["status"],
+                            "records": sync_result.get("result", {}).get("total_records", 0),
+                            "reason": f"超过{days_since_update}天未更新",
+                        }
+                    )
 
-                    logger.info(f"  ✅ A股公司信息补录完成: {sync_result.get('result', {}).get('total_records', 0)} 条")
+                    logger.info(
+                        f"  ✅ A股公司信息补录完成: "
+                        f"{sync_result.get('result', {}).get('total_records', 0)} 条"
+                    )
             else:
                 logger.info(f"  ✅ A股公司信息最新，距上次更新 {days_since_update} 天")
 
@@ -389,10 +413,9 @@ class StartupDataService:
         """检查并补录A股财务数据"""
         try:
             # 获取最新的财务数据报告期
+            assert self.stock_financial_repo is not None, "stock_financial_repo not initialized"
             financials = await self.stock_financial_repo.find_many(
-                {},
-                sort=[("report_date", -1)],
-                limit=1
+                {}, sort=[("report_date", -1)], limit=1
             )
             latest_financial = financials[0] if financials else None
 
@@ -412,6 +435,7 @@ class StartupDataService:
                 logger.info(f"  💰 A股财务数据超过 {days_since_report} 天未更新，触发补录")
 
                 # 获取股票列表（限制数量）
+                assert self.stock_info_repo is not None, "stock_info_repo not initialized"
                 stocks = await self.stock_info_repo.get_by_market(MarketType.A_STOCK, limit=50)
                 symbols = [s["symbol"] for s in stocks]
 
@@ -420,17 +444,18 @@ class StartupDataService:
                         symbols=symbols
                     )
 
-                    total_records = (
-                        sync_result.get("result", {}).get("financials", {}).get("upserted", 0) +
-                        sync_result.get("result", {}).get("indicators", {}).get("upserted", 0)
-                    )
+                    total_records = sync_result.get("result", {}).get("financials", {}).get(
+                        "upserted", 0
+                    ) + sync_result.get("result", {}).get("indicators", {}).get("upserted", 0)
 
-                    result["tasks_triggered"].append({
-                        "task": "catchup_financials",
-                        "status": sync_result["status"],
-                        "records": total_records,
-                        "reason": f"超过{days_since_report}天未更新"
-                    })
+                    result["tasks_triggered"].append(
+                        {
+                            "task": "catchup_financials",
+                            "status": sync_result["status"],
+                            "records": total_records,
+                            "reason": f"超过{days_since_report}天未更新",
+                        }
+                    )
 
                     logger.info(f"  ✅ A股财务数据补录完成: {total_records} 条")
             else:
@@ -461,12 +486,15 @@ class StartupDataService:
 
             # 定义数据源配置映射（与 data_source_status.py 中的配置保持一致）
             # 简化并合并数据类型
-            DATA_SOURCE_CONFIGS = {
+            data_source_configs = {
                 "A_STOCK": {
                     "stock_list": ["tushare", "akshare"],  # 股票列表
                     "daily_quotes": ["tushare", "akshare"],  # 日线行情
                     "minute_quotes": ["akshare"],  # 分钟K线
-                    "financials": ["tushare", "akshare"],  # 财务数据 (包含 financials, financial_indicator)
+                    "financials": [
+                        "tushare",
+                        "akshare",
+                    ],  # 财务数据 (包含 financials, financial_indicator)
                     "financial_indicator": ["akshare"],  # 财务指标数据
                     "company_info": ["tushare", "akshare"],  # 公司信息
                     "share_holders": ["tushare", "akshare"],  # 股东人数
@@ -497,7 +525,7 @@ class StartupDataService:
             health_check_tasks = []  # 收集需要执行健康检查的任务
 
             # 遍历所有市场和数据类型
-            for market, data_types in DATA_SOURCE_CONFIGS.items():
+            for market, data_types in data_source_configs.items():
                 for data_type, source_ids in data_types.items():
                     for source_id in source_ids:
                         try:
@@ -506,7 +534,7 @@ class StartupDataService:
                                 market=market,
                                 data_type=data_type,
                                 source_type=DataSourceType.SYSTEM,
-                                source_id=source_id
+                                source_id=source_id,
                             )
 
                             if existing_status:
@@ -535,36 +563,57 @@ class StartupDataService:
                                 data_type=data_type,
                                 source_type=DataSourceType.SYSTEM,
                                 source_id=source_id,
-                                status=DataSourceStatus.HEALTHY if is_available else DataSourceStatus.UNAVAILABLE,
+                                user_id=None,
+                                status=(
+                                    DataSourceStatus.HEALTHY
+                                    if is_available
+                                    else DataSourceStatus.UNAVAILABLE
+                                ),
                                 last_check_type="initialization",
+                                response_time_ms=None,
+                                avg_response_time_ms=None,
                                 failure_count=0,
+                                last_error=({"note": "未配置凭证"} if not is_available else None),
                                 is_fallback=False,
-                                note="未配置凭证" if not is_available else "初始状态，待健康检查"
+                                fallback_info=None,
+                                api_endpoints=None,
                             )
 
                             await status_repo.upsert_status(initial_status)
                             initialized_count += 1
-                            logger.debug(f"  初始化数据源状态: {market}/{data_type}/{source_id} -> {initial_status.status} (可用: {is_available})")
+                            logger.debug(
+                                f"  初始化数据源状态: "
+                                f"{market}/{data_type}/{source_id} -> "
+                                f"{initial_status.status} (可用: {is_available})"
+                            )
 
                             # 收集需要执行健康检查的数据源（跳过已知不可用的）
                             if is_available:
-                                health_check_tasks.append({
-                                    "market": market,
-                                    "data_type": data_type,
-                                    "source_id": source_id
-                                })
+                                health_check_tasks.append(
+                                    {
+                                        "market": market,
+                                        "data_type": data_type,
+                                        "source_id": source_id,
+                                    }
+                                )
 
                         except Exception as e:
-                            logger.warning(f"  ⚠️ 初始化数据源状态失败 {market}/{data_type}/{source_id}: {e}")
+                            logger.warning(
+                                f"  ⚠️ 初始化数据源状态失败 {market}/{data_type}/{source_id}: {e}"
+                            )
 
-            result["tasks_triggered"].append({
-                "task": "initialize_data_source_status",
-                "status": "success",
-                "records": initialized_count,
-                "skipped": skipped_count
-            })
+            result["tasks_triggered"].append(
+                {
+                    "task": "initialize_data_source_status",
+                    "status": "success",
+                    "records": initialized_count,
+                    "skipped": skipped_count,
+                }
+            )
 
-            logger.info(f"  ✅ 数据源状态初始化完成: 新增 {initialized_count} 条，跳过 {skipped_count} 条")
+            logger.info(
+                f"  ✅ 数据源状态初始化完成: 新增 {initialized_count} 条，跳过 {skipped_count} 条"
+            )
             logger.info(f"  ℹ️ 健康检查将在后台异步执行，共 {len(health_check_tasks)} 个检查项")
 
             # 将健康检查任务添加到结果中，供调用者启动后台任务
@@ -572,15 +621,12 @@ class StartupDataService:
 
         except Exception as e:
             logger.error(f"  ❌ 数据源状态初始化失败: {e}")
-            result["tasks_triggered"].append({
-                "task": "initialize_data_source_status",
-                "status": "failed",
-                "error": str(e)
-            })
+            result["tasks_triggered"].append(
+                {"task": "initialize_data_source_status", "status": "failed", "error": str(e)}
+            )
 
     async def run_health_checks_parallel(
-        self,
-        health_check_tasks: List[Dict[str, str]]
+        self, health_check_tasks: List[Dict[str, str]]
     ) -> Dict[str, Any]:
         """
         并行执行数据源健康检查
@@ -611,12 +657,14 @@ class StartupDataService:
             source_id = task["source_id"]
 
             try:
-                logger.info(f"  🔍 [{completed + 1}/{total}] 检查 {market}/{data_type}/{source_id}...")
+                logger.info(
+                    f"  🔍 [{completed + 1}/{total}] 检查 {market}/{data_type}/{source_id}..."
+                )
                 result = await monitor_service.check_single_source(
                     source_id=source_id,
                     market=market,
                     data_type=data_type,
-                    check_type="initialization"
+                    check_type="initialization",
                 )
 
                 completed += 1
@@ -632,23 +680,24 @@ class StartupDataService:
                     "data_type": data_type,
                     "source_id": source_id,
                     "status": result.get("status"),
-                    "response_time_ms": result.get("response_time_ms", 0)
+                    "response_time_ms": result.get("response_time_ms", 0),
                 }
             except Exception as e:
                 completed += 1
-                logger.warning(f"  ⚠️ [{completed}/{total}] {market}/{data_type}/{source_id} - 失败: {e}")
+                logger.warning(
+                    f"  ⚠️ [{completed}/{total}] {market}/{data_type}/{source_id} - 失败: {e}"
+                )
                 return {
                     "success": False,
                     "market": market,
                     "data_type": data_type,
                     "source_id": source_id,
-                    "error": str(e)
+                    "error": str(e),
                 }
 
         # 并行执行所有健康检查
         results = await asyncio.gather(
-            *[check_single(task) for task in health_check_tasks],
-            return_exceptions=True
+            *[check_single(task) for task in health_check_tasks], return_exceptions=True
         )
 
         # 统计结果
@@ -665,5 +714,5 @@ class StartupDataService:
             "passed": passed,
             "failed": failed,
             "errors": errors,
-            "results": results
+            "results": results,
         }

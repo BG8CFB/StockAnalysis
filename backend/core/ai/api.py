@@ -6,7 +6,7 @@
 
 import json
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -37,14 +37,17 @@ router = APIRouter(prefix="/ai", tags=["AI Core"])
 # 请求/响应模型
 # =============================================================================
 
+
 class ChatMessageRequest(BaseModel):
     """聊天消息请求"""
+
     role: str = Field(..., description="消息角色: system, user, assistant, tool")
     content: str = Field(..., description="消息内容")
 
 
 class ChatCompletionRequest(BaseModel):
     """聊天补全请求"""
+
     model_id: str = Field(..., description="模型 ID")
     messages: list[ChatMessageRequest] = Field(..., description="消息列表")
     temperature: Optional[float] = Field(None, ge=0, le=2, description="温度参数")
@@ -54,6 +57,7 @@ class ChatCompletionRequest(BaseModel):
 
 class ChatCompletionResponse(BaseModel):
     """聊天补全响应"""
+
     content: str = Field(..., description="回复内容")
     reasoning_content: Optional[str] = Field(None, description="思考内容")
     thinking_tokens: Optional[int] = Field(None, description="思考 token 数")
@@ -64,11 +68,12 @@ class ChatCompletionResponse(BaseModel):
 # AI 模型管理端点
 # =============================================================================
 
+
 @router.post("/models", response_model=AIModelConfigResponse)
 async def create_model(
     request: AIModelConfigCreate,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> AIModelConfigResponse:
     """创建 AI 模型配置"""
     is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
     service = get_model_service()
@@ -78,7 +83,7 @@ async def create_model(
 @router.get("/models")
 async def list_models(
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> dict:
     """列出 AI 模型配置"""
     is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
     service = get_model_service()
@@ -89,7 +94,7 @@ async def list_models(
 async def get_model(
     model_id: str,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> AIModelConfigResponse:
     """获取单个 AI 模型配置"""
     is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
     service = get_model_service()
@@ -106,7 +111,7 @@ async def update_model(
     model_id: str,
     request: AIModelConfigUpdate,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> AIModelConfigResponse:
     """更新 AI 模型配置"""
     is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
     service = get_model_service()
@@ -122,7 +127,7 @@ async def update_model(
 async def delete_model(
     model_id: str,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> dict:
     """删除 AI 模型配置"""
     is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
     service = get_model_service()
@@ -138,7 +143,7 @@ async def delete_model(
 async def test_model(
     model_id: str,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> ConnectionTestResponse:
     """测试 AI 模型连接"""
     is_admin = current_user.role in [Role.ADMIN, Role.SUPER_ADMIN]
     service = get_model_service()
@@ -164,7 +169,7 @@ async def test_model(
 async def test_model_connection(
     request: AIModelTestRequest,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> ConnectionTestResponse:
     """测试 AI 模型连接（通用接口）"""
     service = get_model_service()
     return await service.test_model_connection(request)
@@ -174,7 +179,7 @@ async def test_model_connection(
 async def list_available_models(
     request: ListModelsRequest,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> ListModelsResponse:
     """获取可用的模型列表"""
     service = get_model_service()
     return await service.list_available_models(request)
@@ -184,11 +189,12 @@ async def list_available_models(
 # 聊天补全端点
 # =============================================================================
 
+
 @router.post("/chat/completions")
 async def chat_completion(
     request: ChatCompletionRequest,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> Any:
     """
     聊天补全接口
 
@@ -198,6 +204,7 @@ async def chat_completion(
 
     # 设置配置服务
     from core.ai import AIService
+
     AIService.set_config_service(get_model_service())
 
     # 转换消息格式
@@ -211,7 +218,8 @@ async def chat_completion(
 
     # 流式输出
     if request.stream:
-        async def generate():
+
+        async def generate() -> Any:
             try:
                 async for chunk in ai_service.stream_completion(
                     user_id=str(current_user.id),
@@ -236,7 +244,7 @@ async def chat_completion(
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
                 "X-Accel-Buffering": "no",
-            }
+            },
         )
 
     # 非流式输出

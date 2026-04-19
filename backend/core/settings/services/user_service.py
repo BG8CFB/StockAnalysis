@@ -7,28 +7,27 @@
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any
-from bson import ObjectId, json_util
+from typing import Any, Dict, Optional
 
+from bson import ObjectId, json_util
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from core.config import settings
+from core.admin.audit_logger import get_audit_logger
 from core.db.mongodb import mongodb
 from core.db.redis import UserRedisKey, get_redis
 from core.settings.models.user import (
-    UserSettings,
     CoreSettings,
-    NotificationSettings,
-    TradingAgentsSettings,
-    UserQuotaInfo,
     CoreSettingsUpdate,
+    NotificationSettings,
     NotificationSettingsUpdate,
-    TradingAgentsSettingsUpdate,
-    UserSettingsResponse,
     SettingsExport,
     SettingsImport,
+    TradingAgentsSettings,
+    TradingAgentsSettingsUpdate,
+    UserQuotaInfo,
+    UserSettings,
+    UserSettingsResponse,
 )
-from core.admin.audit_logger import get_audit_logger
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +35,7 @@ logger = logging.getLogger(__name__)
 class UserSettingsService:
     """统一用户配置管理服务"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化服务"""
         self._cache_ttl = 3600  # 缓存1小时
 
@@ -50,9 +49,7 @@ class UserSettingsService:
     # ========================================================================
 
     async def get_user_settings(
-        self,
-        user_id: str,
-        create_if_missing: bool = True
+        self, user_id: str, create_if_missing: bool = True
     ) -> Optional[UserSettingsResponse]:
         """
         获取用户配置
@@ -99,18 +96,11 @@ class UserSettingsService:
         # 缓存到 Redis（直接序列化原始文档，保留 _id 字段）
         response = UserSettingsResponse.from_db(doc)
         # 使用 bson.json_util 序列化，确保 ObjectId 等类型正确转换
-        await redis.set(
-            cache_key,
-            json.dumps(doc, default=json_util.default),
-            ex=self._cache_ttl
-        )
+        await redis.set(cache_key, json.dumps(doc, default=json_util.default), ex=self._cache_ttl)
 
         return response
 
-    async def _create_default_settings(
-        self,
-        user_id: str
-    ) -> Optional[UserSettingsResponse]:
+    async def _create_default_settings(self, user_id: str) -> Optional[UserSettingsResponse]:
         """
         创建默认用户配置
 
@@ -156,13 +146,11 @@ class UserSettingsService:
         Returns:
             迁移的数据
         """
-        migrated = {"core": {}, "notification": {}}
+        migrated: Dict[str, Any] = {"core": {}, "notification": {}}
 
         try:
             # 从旧表读取
-            old_prefs = await self.db.user_preferences.find_one({
-                "user_id": ObjectId(user_id)
-            })
+            old_prefs = await self.db.user_preferences.find_one({"user_id": ObjectId(user_id)})
 
             if old_prefs:
                 # 迁移核心设置
@@ -193,39 +181,31 @@ class UserSettingsService:
     # ========================================================================
 
     async def update_core_settings(
-        self,
-        user_id: str,
-        request: CoreSettingsUpdate
+        self, user_id: str, request: CoreSettingsUpdate
     ) -> Optional[UserSettingsResponse]:
         """更新核心设置"""
-        return await self._update_settings(user_id, {
-            "core_settings": request.model_dump(exclude_unset=True)
-        })
+        return await self._update_settings(
+            user_id, {"core_settings": request.model_dump(exclude_unset=True)}
+        )
 
     async def update_notification_settings(
-        self,
-        user_id: str,
-        request: NotificationSettingsUpdate
+        self, user_id: str, request: NotificationSettingsUpdate
     ) -> Optional[UserSettingsResponse]:
         """更新通知设置"""
-        return await self._update_settings(user_id, {
-            "notification_settings": request.model_dump(exclude_unset=True)
-        })
+        return await self._update_settings(
+            user_id, {"notification_settings": request.model_dump(exclude_unset=True)}
+        )
 
     async def update_trading_agents_settings(
-        self,
-        user_id: str,
-        request: TradingAgentsSettingsUpdate
+        self, user_id: str, request: TradingAgentsSettingsUpdate
     ) -> Optional[UserSettingsResponse]:
         """更新 TradingAgents 设置"""
-        return await self._update_settings(user_id, {
-            "trading_agents_settings": request.model_dump(exclude_unset=True)
-        })
+        return await self._update_settings(
+            user_id, {"trading_agents_settings": request.model_dump(exclude_unset=True)}
+        )
 
     async def _update_settings(
-        self,
-        user_id: str,
-        update_data: Dict[str, Any]
+        self, user_id: str, update_data: Dict[str, Any]
     ) -> Optional[UserSettingsResponse]:
         """
         内部更新方法
@@ -249,10 +229,7 @@ class UserSettingsService:
                         set_fields[f"{key}.{field}"] = field_value
 
         # 更新数据库
-        await collection.update_one(
-            {"user_id": ObjectId(user_id)},
-            {"$set": set_fields}
-        )
+        await collection.update_one({"user_id": ObjectId(user_id)}, {"$set": set_fields})
 
         # 清除缓存
         redis = await get_redis()
@@ -298,21 +275,33 @@ class UserSettingsService:
             return False, f"已达到本月任务限制（{quota.tasks_limit}）"
 
         # 检查并发限制
-        logger.info(f"[配额检查] 并发检查: {quota.concurrent_tasks} >= {quota.concurrent_limit} = {quota.concurrent_tasks >= quota.concurrent_limit}")
+        logger.info(
+            f"[配额检查] 并发检查: {quota.concurrent_tasks} >= {quota.concurrent_limit} "
+            f"= {quota.concurrent_tasks >= quota.concurrent_limit}"
+        )
         if quota.concurrent_tasks >= quota.concurrent_limit:
             # 双重检查：尝试自动修复并发计数
             # 这种情况通常发生在服务异常重启后，计数器没有正确减少
-            logger.warning(f"[配额检查] 并发超限，尝试自动修复: user_id={user_id}, current={quota.concurrent_tasks}")
-            
+            logger.warning(
+                f"[配额检查] 并发超限，尝试自动修复: "
+                f"user_id={user_id}, current={quota.concurrent_tasks}"
+            )
+
             fix_result = await self.diagnose_and_fix_concurrent_tasks(user_id)
-            
+
             # 如果修复后计数减少，且小于限制，则允许创建
             if fix_result["fixed_count"] < quota.concurrent_limit:
-                logger.info(f"[配额检查] 自动修复成功，允许创建: {fix_result['previous_count']} -> {fix_result['fixed_count']}")
+                logger.info(
+                    f"[配额检查] 自动修复成功，允许创建: "
+                    f"{fix_result['previous_count']} -> {fix_result['fixed_count']}"
+                )
                 return True, ""
-            
+
             # 修复后仍然超限，才是真的超限
-            logger.warning(f"[配额检查] 自动修复后仍然超限: {fix_result['fixed_count']} >= {quota.concurrent_limit}")
+            logger.warning(
+                f"[配额检查] 自动修复后仍然超限: "
+                f"{fix_result['fixed_count']} >= {quota.concurrent_limit}"
+            )
 
             # 记录配额超限审计日志
             audit_logger = get_audit_logger()
@@ -379,13 +368,10 @@ class UserSettingsService:
         result = await collection.update_one(
             {"user_id": ObjectId(user_id)},
             {
-                "$inc": {
-                    "quota_info.tasks_used": 1,
-                    "quota_info.concurrent_tasks": 1
-                },
-                "$set": {"updated_at": datetime.now(timezone.utc)}
+                "$inc": {"quota_info.tasks_used": 1, "quota_info.concurrent_tasks": 1},
+                "$set": {"updated_at": datetime.now(timezone.utc)},
             },
-            upsert=False  # 配额记录应该在用户注册时创建
+            upsert=False,  # 配额记录应该在用户注册时创建
         )
 
         # 如果没有匹配到文档，说明用户配额记录不存在
@@ -404,10 +390,10 @@ class UserSettingsService:
                         "quota_info.storage_used_mb": 0.0,
                         "quota_info.storage_limit_mb": 500,
                         "quota_info.concurrent_limit": 5,
-                        "updated_at": datetime.now(timezone.utc)
+                        "updated_at": datetime.now(timezone.utc),
                     }
                 },
-                upsert=True
+                upsert=True,
             )
 
         # 清除缓存
@@ -433,12 +419,13 @@ class UserSettingsService:
         # 使用条件更新实现原子操作，消除 TOCTOU 竞态条件
         # 仅在 concurrent_tasks > 0 时才执行减法，防止并发调用导致负数
         from datetime import timezone
+
         result = await collection.update_one(
             {"user_id": ObjectId(user_id), "quota_info.concurrent_tasks": {"$gt": 0}},
             {
                 "$inc": {"quota_info.concurrent_tasks": -1},
-                "$set": {"updated_at": datetime.now(timezone.utc)}
-            }
+                "$set": {"updated_at": datetime.now(timezone.utc)},
+            },
         )
 
         if result.matched_count == 0:
@@ -476,8 +463,7 @@ class UserSettingsService:
 
         # 获取当前计数
         user_doc = await self.db.user_settings.find_one(
-            {"user_id": ObjectId(user_id)},
-            {"quota_info.concurrent_tasks": 1}
+            {"user_id": ObjectId(user_id)}, {"quota_info.concurrent_tasks": 1}
         )
 
         previous_count = 0
@@ -500,9 +486,9 @@ class UserSettingsService:
                 {
                     "$set": {
                         "quota_info.concurrent_tasks": actual_count,
-                        "updated_at": datetime.now(timezone.utc)
+                        "updated_at": datetime.now(timezone.utc),
                     }
-                }
+                },
             )
             was_fixed = True
             fixed_count = actual_count
@@ -512,9 +498,7 @@ class UserSettingsService:
                 f"修复前={previous_count}, 实际={actual_count}, 修复后={fixed_count}"
             )
         else:
-            logger.info(
-                f"[并发计数检查] user_id={user_id}, 计数正确: {actual_count}"
-            )
+            logger.info(f"[并发计数检查] user_id={user_id}, 计数正确: {actual_count}")
 
         # 清除缓存
         redis = await get_redis()
@@ -527,11 +511,7 @@ class UserSettingsService:
             "was_fixed": was_fixed,
         }
 
-    async def update_storage_usage(
-        self,
-        user_id: str,
-        size_mb: float
-    ) -> None:
+    async def update_storage_usage(self, user_id: str, size_mb: float) -> None:
         """
         更新存储使用量
 
@@ -545,8 +525,8 @@ class UserSettingsService:
             {"user_id": ObjectId(user_id)},
             {
                 "$inc": {"quota_info.storage_used_mb": size_mb},
-                "$set": {"updated_at": datetime.now(timezone.utc)}
-            }
+                "$set": {"updated_at": datetime.now(timezone.utc)},
+            },
         )
 
         # 清除缓存
@@ -580,9 +560,7 @@ class UserSettingsService:
         )
 
     async def import_settings(
-        self,
-        user_id: str,
-        import_data: SettingsImport
+        self, user_id: str, import_data: SettingsImport
     ) -> UserSettingsResponse:
         """
         导入用户配置
@@ -598,21 +576,19 @@ class UserSettingsService:
 
         if import_data.merge_strategy == "replace":
             # 完全覆盖模式：直接替换所有配置
-            update_doc = {
-                "updated_at": datetime.now(timezone.utc)
-            }
+            update_doc: Dict[str, Any] = {"updated_at": datetime.now(timezone.utc)}
 
             if import_data.core_settings:
                 update_doc["core_settings"] = import_data.core_settings.model_dump()
             if import_data.notification_settings:
                 update_doc["notification_settings"] = import_data.notification_settings.model_dump()
             if import_data.trading_agents_settings:
-                update_doc["trading_agents_settings"] = import_data.trading_agents_settings.model_dump()
+                update_doc["trading_agents_settings"] = (
+                    import_data.trading_agents_settings.model_dump()
+                )
 
             await collection.update_one(
-                {"user_id": ObjectId(user_id)},
-                {"$set": update_doc},
-                upsert=True
+                {"user_id": ObjectId(user_id)}, {"$set": update_doc}, upsert=True
             )
 
         else:
@@ -624,17 +600,18 @@ class UserSettingsService:
                     set_fields[f"core_settings.{key}"] = value
 
             if import_data.notification_settings:
-                for key, value in import_data.notification_settings.model_dump(exclude_unset=True).items():
+                for key, value in import_data.notification_settings.model_dump(
+                    exclude_unset=True
+                ).items():
                     set_fields[f"notification_settings.{key}"] = value
 
             if import_data.trading_agents_settings:
-                for key, value in import_data.trading_agents_settings.model_dump(exclude_unset=True).items():
+                for key, value in import_data.trading_agents_settings.model_dump(
+                    exclude_unset=True
+                ).items():
                     set_fields[f"trading_agents_settings.{key}"] = value
 
-            await collection.update_one(
-                {"user_id": ObjectId(user_id)},
-                {"$set": set_fields}
-            )
+            await collection.update_one({"user_id": ObjectId(user_id)}, {"$set": set_fields})
 
         # 清除缓存
         redis = await get_redis()
@@ -650,12 +627,16 @@ class UserSettingsService:
 
         logger.info(f"导入用户配置: user_id={user_id}, strategy={import_data.merge_strategy}")
 
-        return await self.get_user_settings(user_id)
+        result = await self.get_user_settings(user_id)
+        if result is None:
+            raise ValueError(f"导入后获取用户配置失败: {user_id}")
+        return result
 
 
 # =============================================================================
 # 数据库索引初始化（从 settings_database.py 合并）
 # =============================================================================
+
 
 async def init_user_settings_indexes() -> None:
     """初始化用户配置集合的数据库索引"""

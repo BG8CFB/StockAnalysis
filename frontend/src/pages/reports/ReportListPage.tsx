@@ -64,8 +64,8 @@ export default function ReportListPage() {
     try {
       const res = await getReportList({
         ...params,
-        search_keyword: searchKeyword || undefined,
-        market_filter: marketFilter,
+        keyword: searchKeyword || undefined,
+        market: marketFilter,
         start_date: dateRange?.[0]?.format('YYYY-MM-DD'),
         end_date: dateRange?.[1]?.format('YYYY-MM-DD'),
       })
@@ -108,7 +108,7 @@ export default function ReportListPage() {
       ellipsis: true,
       render: (text: string, record: ReportItem) => (
         <a
-          onClick={() => navigate(`/reports/view?id=${record.id}`)}
+          onClick={() => navigate(`/reports/view/${record.id}`)}
           style={{ color: 'var(--accent-blue)', fontWeight: 500 }}
         >
           {text}
@@ -168,7 +168,7 @@ export default function ReportListPage() {
             type="link"
             size="small"
             icon={<EyeOutlined />}
-            onClick={() => navigate(`/reports/view?id=${record.id}`)}
+            onClick={() => navigate(`/reports/view/${record.id}`)}
             style={{ color: 'var(--accent-blue)' }}
           >
             查看

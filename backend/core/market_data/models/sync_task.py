@@ -3,12 +3,14 @@
 """
 
 from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field
 
 
 class DataSyncTask(BaseModel):
     """数据同步任务"""
+
     task_type: str = Field(..., description="任务类型")
     symbol: Optional[str] = Field(None, description="股票代码")
     market: Optional[str] = Field(None, description="市场类型")

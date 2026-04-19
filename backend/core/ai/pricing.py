@@ -16,6 +16,7 @@ from typing import Dict, Optional
 
 class PriceUnit(str, Enum):
     """价格单位"""
+
     PER_1K_TOKENS = "per_1k"  # 每 1K tokens
     PER_1M_TOKENS = "per_1m"  # 每 1M tokens
 
@@ -43,10 +44,7 @@ class ModelPrice:
     updated_at: Optional[datetime] = None
 
     def calculate_cost(
-        self,
-        input_tokens: int,
-        output_tokens: int,
-        thinking_tokens: int = 0
+        self, input_tokens: int, output_tokens: int, thinking_tokens: int = 0
     ) -> Decimal:
         """
         计算成本
@@ -154,7 +152,6 @@ BUILTIN_MODEL_PRICES: Dict[str, ModelPrice] = {
         currency="CNY",
         updated_at=datetime(2025, 1, 1),
     ),
-
     # =========================================================================
     # DeepSeek - 价格来源: https://api-docs.deepseek.com/zh-cn/quick_start/pricing
     # 2025年9月V3.2-Exp降价后价格
@@ -183,7 +180,6 @@ BUILTIN_MODEL_PRICES: Dict[str, ModelPrice] = {
         currency="CNY",
         updated_at=datetime(2025, 9, 6),
     ),
-
     # =========================================================================
     # 通义千问 - 价格来源: https://help.aliyun.com/zh/model-studio/model-pricing
     # 2025年价格
@@ -212,7 +208,6 @@ BUILTIN_MODEL_PRICES: Dict[str, ModelPrice] = {
         currency="CNY",
         updated_at=datetime(2025, 1, 1),
     ),
-
     # =========================================================================
     # Moonshot AI (Kimi) - 价格来源: https://platform.moonshot.cn/docs/pricing/chat
     # 2025年11月价格
@@ -247,7 +242,7 @@ BUILTIN_MODEL_PRICES: Dict[str, ModelPrice] = {
 class ModelPricingService:
     """模型价格服务"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         # 内置价格
         self._builtin_prices = BUILTIN_MODEL_PRICES.copy()
         # 用户自定义价格（从数据库加载）
@@ -267,15 +262,15 @@ class ModelPricingService:
         """
         # 先检查用户自定义
         if model_id in self._custom_prices:
-            return self._custom_prices[model_id]
+            return self._custom_prices.get(model_id)
 
         # 检查内置价格
         if model_id in self._builtin_prices:
-            return self._builtin_prices[model_id]
+            return self._builtin_prices.get(model_id)
 
         return None
 
-    def set_custom_price(self, model_id: str, price: ModelPrice):
+    def set_custom_price(self, model_id: str, price: ModelPrice) -> None:
         """
         设置用户自定义价格
 
@@ -286,11 +281,7 @@ class ModelPricingService:
         self._custom_prices[model_id] = price
 
     def calculate_cost(
-        self,
-        model_id: str,
-        input_tokens: int,
-        output_tokens: int,
-        thinking_tokens: int = 0
+        self, model_id: str, input_tokens: int, output_tokens: int, thinking_tokens: int = 0
     ) -> Optional[Decimal]:
         """
         计算模型调用成本

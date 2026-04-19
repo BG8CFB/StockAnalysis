@@ -3,25 +3,22 @@
 """
 
 from typing import List, Optional
-from datetime import datetime
 
-from core.market_data.repositories.base import BaseRepository
 from core.market_data.models import StockFinancial, StockFinancialIndicator
+from core.market_data.repositories.base import BaseRepository
 
 
 class StockFinancialRepository(BaseRepository):
     """财务报表Repository"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("stock_financials")
 
     async def init_indexes(self) -> None:
         """初始化索引"""
-        await self.create_index([
-            ("symbol", 1),
-            ("report_date", 1),
-            ("report_type", 1)
-        ], unique=True)
+        await self.create_index(
+            [("symbol", 1), ("report_date", 1), ("report_type", 1)], unique=True
+        )
         await self.create_index([("symbol", 1), ("report_date", -1)])
         await self.create_index([("fetched_at", 1)])
 
@@ -38,16 +35,13 @@ class StockFinancialRepository(BaseRepository):
         filter_query = {
             "symbol": financial.symbol,
             "report_date": financial.report_date,
-            "report_type": financial.report_type
+            "report_type": financial.report_type,
         }
         data = financial.model_dump()
         return await self.upsert_one(filter_query, data)
 
     async def get_financials(
-        self,
-        symbol: str,
-        report_type: Optional[str] = None,
-        limit: int = 0
+        self, symbol: str, report_type: Optional[str] = None, limit: int = 0
     ) -> List[dict]:
         """
         查询财务数据
@@ -73,15 +67,12 @@ class StockFinancialRepository(BaseRepository):
 class StockFinancialIndicatorRepository(BaseRepository):
     """财务指标Repository"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("stock_financial_indicators")
 
     async def init_indexes(self) -> None:
         """初始化索引"""
-        await self.create_index([
-            ("symbol", 1),
-            ("end_date", 1)
-        ], unique=True)
+        await self.create_index([("symbol", 1), ("end_date", 1)], unique=True)
         await self.create_index([("symbol", 1), ("end_date", -1)])
 
     async def upsert_indicator(self, indicator: StockFinancialIndicator) -> int:
@@ -94,18 +85,11 @@ class StockFinancialIndicatorRepository(BaseRepository):
         Returns:
             修改的文档数量（0=新增, 1=更新）
         """
-        filter_query = {
-            "symbol": indicator.symbol,
-            "end_date": indicator.end_date
-        }
+        filter_query = {"symbol": indicator.symbol, "end_date": indicator.end_date}
         data = indicator.model_dump()
         return await self.upsert_one(filter_query, data)
 
-    async def get_indicators(
-        self,
-        symbol: str,
-        limit: int = 0
-    ) -> List[dict]:
+    async def get_indicators(self, symbol: str, limit: int = 0) -> List[dict]:
         """
         查询财务指标
 
@@ -132,9 +116,5 @@ class StockFinancialIndicatorRepository(BaseRepository):
             最新财务指标，未找到返回None
         """
         sort = [("report_date", -1)]
-        results = await self.find_many(
-            {"symbol": symbol},
-            sort=sort,
-            limit=1
-        )
+        results = await self.find_many({"symbol": symbol}, sort=sort, limit=1)
         return results[0] if results else None

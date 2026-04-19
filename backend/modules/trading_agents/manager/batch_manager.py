@@ -23,8 +23,7 @@ from typing import Any, Dict, List, Optional
 from bson import ObjectId
 
 from core.db.mongodb import mongodb
-from modules.trading_agents.schemas import AnalysisTaskCreate
-from modules.trading_agents.schemas import TaskStatusEnum
+from modules.trading_agents.schemas import AnalysisTaskCreate, TaskStatusEnum
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +102,7 @@ class BatchTaskManager:
     3. 多用户隔离，每个用户独立的批量任务队列
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化批量任务管理器"""
         # 批量任务上下文: {batch_id: BatchTaskContext}
         self._batch_contexts: Dict[str, BatchTaskContext] = {}
@@ -150,12 +149,14 @@ class BatchTaskManager:
         """启动时从 Mongo 加载所有未完成的批量上下文到内存"""
         coll = mongodb.database[BATCH_CONTEXTS_COLLECTION]
         # 未完成：有待处理股票（数组非空）或仍有运行中任务
-        cursor = coll.find({
-            "$or": [
-                {"pending_stocks.0": {"$exists": True}},
-                {"running_count": {"$gt": 0}},
-            ]
-        })
+        cursor = coll.find(
+            {
+                "$or": [
+                    {"pending_stocks.0": {"$exists": True}},
+                    {"running_count": {"$gt": 0}},
+                ]
+            }
+        )
         count = 0
         async for doc in cursor:
             ctx = _doc_to_context(doc)
@@ -453,17 +454,16 @@ class BatchTaskManager:
                     context.running_count -= 1
                     running_decremented = True
                     logger.info(
-                        f"[BatchTaskManager] 任务已运行，减少 running_count: "
-                        f"batch_id={batch_id}, task_id={task_id}, new_running={context.running_count}"
+                        "[BatchTaskManager] 任务已运行，减少 running_count: "
+                        f"batch_id={batch_id}, task_id={task_id}, "
+                        f"new_running={context.running_count}"
                     )
 
             # 如果批量任务已完成（没有待处理股票且没有已创建任务），清理 context 并持久化删除
             if not context.pending_stocks and not context.created_tasks:
                 del self._batch_contexts[batch_id]
                 await self._delete_context_from_db(batch_id)
-                logger.info(
-                    f"[BatchTaskManager] 批量任务上下文已清理: batch_id={batch_id}"
-                )
+                logger.info(f"[BatchTaskManager] 批量任务上下文已清理: batch_id={batch_id}")
             else:
                 await self._persist_context(context)
 

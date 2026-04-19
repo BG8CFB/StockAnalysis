@@ -5,19 +5,17 @@
 """
 
 import logging
-from typing import Optional, Dict, Any
 from datetime import datetime, timezone
+from typing import Any, Optional
+
 from bson import ObjectId
 
-from core.db.mongodb import mongodb
 from modules.trading_agents.schemas import TaskStatusEnum
 
 logger = logging.getLogger(__name__)
 
 
-async def restore_running_tasks_with_checkpoint(
-    mongodb_db
-) -> tuple[int, int]:
+async def restore_running_tasks_with_checkpoint(mongodb_db: Any) -> tuple[int, int]:
     """
     恢复运行中的任务（增强版）
 
@@ -33,9 +31,11 @@ async def restore_running_tasks_with_checkpoint(
         (恢复的任务数量, 失败的任务数量)
     """
     # 查找所有运行中的任务
-    running_tasks = await mongodb_db.get_collection("analysis_tasks").find({
-        "status": TaskStatusEnum.RUNNING.value
-    }).to_list(None)
+    running_tasks = (
+        await mongodb_db.get_collection("analysis_tasks")
+        .find({"status": TaskStatusEnum.RUNNING.value})
+        .to_list(None)
+    )
 
     if not running_tasks:
         logger.info("没有需要恢复的运行中任务")
@@ -64,9 +64,7 @@ async def restore_running_tasks_with_checkpoint(
 
             # 验证配置中的智能体是否存在
             agent_exists = await _validate_agent_exists(
-                config_snapshot,
-                current_phase,
-                current_agent
+                config_snapshot, current_phase, current_agent
             )
 
             if not agent_exists:
@@ -74,11 +72,7 @@ async def restore_running_tasks_with_checkpoint(
                     f"任务配置的智能体已被删除: task_id={task_id}, "
                     f"phase={current_phase}, agent={current_agent}"
                 )
-                await _mark_task_failed(
-                    mongodb_db,
-                    task_id,
-                    "任务恢复失败：配置的智能体已被删除"
-                )
+                await _mark_task_failed(mongodb_db, task_id, "任务恢复失败：配置的智能体已被删除")
                 failed_count += 1
                 continue
 
@@ -93,13 +87,12 @@ async def restore_running_tasks_with_checkpoint(
                         "current_phase": 0,  # 重新开始
                         "current_agent": None,
                     }
-                }
+                },
             )
 
             # 清除开始时间
             await mongodb_db.get_collection("analysis_tasks").update_one(
-                {"_id": task_doc["_id"]},
-                {"$unset": ["started_at"]}
+                {"_id": task_doc["_id"]}, {"$unset": ["started_at"]}
             )
 
             restored_count += 1
@@ -111,10 +104,7 @@ async def restore_running_tasks_with_checkpoint(
             )
 
         except Exception as e:
-            logger.error(
-                f"恢复任务失败: task_id={task_id}, error={e}",
-                exc_info=True
-            )
+            logger.error(f"恢复任务失败: task_id={task_id}, error={e}", exc_info=True)
             failed_count += 1
 
     logger.info(f"任务恢复完成，共恢复 {restored_count} 个，失败 {failed_count} 个")
@@ -122,9 +112,7 @@ async def restore_running_tasks_with_checkpoint(
 
 
 async def _validate_agent_exists(
-    config_snapshot: dict,
-    phase: int,
-    agent_slug: Optional[str]
+    config_snapshot: dict[str, Any], phase: int, agent_slug: Optional[str]
 ) -> bool:
     """
     验证智能体是否存在
@@ -154,11 +142,7 @@ async def _validate_agent_exists(
     return False
 
 
-async def _mark_task_failed(
-    mongodb_db,
-    task_id: str,
-    reason: str
-) -> None:
+async def _mark_task_failed(mongodb_db: Any, task_id: str, reason: str) -> None:
     """
     标记任务为失败
 
@@ -175,6 +159,5 @@ async def _mark_task_failed(
                 "error_message": reason,
                 "completed_at": datetime.now(timezone.utc),
             }
-        }
+        },
     )
-

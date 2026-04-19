@@ -5,7 +5,7 @@
 """
 
 import logging
-from typing import Dict, Type, List, Optional
+from typing import Any, Dict, List, Optional, Type
 
 from core.market_data.models import MarketType
 from core.market_data.sources.base import DataSourceAdapter
@@ -19,7 +19,7 @@ class DataSourceRegistry:
     管理所有数据源适配器的注册和获取。
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化注册表"""
         self._adapters: Dict[str, Type[DataSourceAdapter]] = {}
         self._instances: Dict[str, DataSourceAdapter] = {}
@@ -49,7 +49,7 @@ class DataSourceRegistry:
         self,
         source_id: str,
         market: MarketType = MarketType.A_STOCK,
-        config: dict = None,
+        config: Optional[Dict[str, Any]] = None,
     ) -> Optional[DataSourceAdapter]:
         """获取数据源适配器实例
 
@@ -90,11 +90,7 @@ class DataSourceRegistry:
             数据源标识列表
         """
         prefix = f"{market.value}:"
-        return [
-            key[len(prefix):]
-            for key in self._adapters.keys()
-            if key.startswith(prefix)
-        ]
+        return [key[len(prefix) :] for key in self._adapters.keys() if key.startswith(prefix)]
 
     def list_all(self) -> List[str]:
         """列出所有已注册的数据源
@@ -190,7 +186,7 @@ def register_adapter(
 def get_adapter(
     source_id: str,
     market: MarketType = MarketType.A_STOCK,
-    config: dict = None,
+    config: Optional[Dict[str, Any]] = None,
 ) -> Optional[DataSourceAdapter]:
     """获取数据源适配器实例的便捷函数
 

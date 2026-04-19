@@ -11,7 +11,7 @@
 """
 
 import logging
-from typing import Any
+from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -29,7 +29,7 @@ _service = ScreeningService()
 @router.get("/fields")
 async def get_screening_fields(
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取所有可用的筛选字段配置"""
     config = await _service.get_fields_config()
     return {"success": True, "data": config}
@@ -39,7 +39,7 @@ async def get_screening_fields(
 async def get_screening_field_info(
     field_name: str,
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取指定字段的详细信息"""
     detail = await _service.get_field_detail(field_name)
     if detail is None:
@@ -51,7 +51,7 @@ async def get_screening_field_info(
 async def run_screening(
     body: dict[str, Any],
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """
     运行传统筛选
 
@@ -89,7 +89,7 @@ async def run_screening(
 async def run_enhanced_screening(
     body: dict[str, Any],
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """
     运行增强筛选（多条件）
 
@@ -123,7 +123,7 @@ async def run_enhanced_screening(
 async def validate_screening_conditions(
     body: list[dict[str, Any]],
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """验证筛选条件是否合法"""
     result = await _service.validate_conditions(body)
     return {"success": True, "data": result}
@@ -132,7 +132,7 @@ async def validate_screening_conditions(
 @router.get("/industries")
 async def get_industries(
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取行业列表（含股票数量统计）"""
     result = await _service.get_industries()
     return {"success": True, "data": result}

@@ -12,7 +12,7 @@ from typing import Any, Callable
 logger = logging.getLogger(__name__)
 
 
-def log_with_context(error_category: str):
+def log_with_context(error_category: str) -> Callable[..., Any]:
     """
     为函数添加详细上下文日志的装饰器
 
@@ -20,9 +20,9 @@ def log_with_context(error_category: str):
         error_category: 错误分类，用于日志分类
     """
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
-        async def wrapper(*args, **kwargs):
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 return await func(*args, **kwargs)
             except Exception as e:
@@ -73,7 +73,7 @@ class SystemMetrics:
     ADAPTER_NONE_TYPE_ERRORS = 0
 
     @classmethod
-    def increment_rate_limit_hit(cls, source: str):
+    def increment_rate_limit_hit(cls, source: str) -> None:
         """增加速率限制命中次数"""
         if source in cls.DATA_SOURCE_FAILURES:
             cls.DATA_SOURCE_FAILURES[source] += 1
@@ -81,23 +81,23 @@ class SystemMetrics:
                 cls.YAHOO_RATE_LIMIT_HITS += 1
 
     @classmethod
-    def increment_config_validation_failure(cls, phase: str):
+    def increment_config_validation_failure(cls, phase: str) -> None:
         """增加配置验证失败次数"""
         if phase in cls.CONFIG_VALIDATION_FAILURES:
             cls.CONFIG_VALIDATION_FAILURES[phase] += 1
 
     @classmethod
-    def increment_cache_parse_error(cls):
+    def increment_cache_parse_error(cls) -> None:
         """增加缓存解析错误次数"""
         cls.CACHE_PARSE_ERRORS += 1
 
     @classmethod
-    def increment_adapter_none_type_error(cls):
+    def increment_adapter_none_type_error(cls) -> None:
         """增加适配器 NoneType 错误次数"""
         cls.ADAPTER_NONE_TYPE_ERRORS += 1
 
     @classmethod
-    def get_metrics_summary(cls) -> dict:
+    def get_metrics_summary(cls) -> dict[str, Any]:
         """获取指标摘要"""
         return {
             "yahoo_rate_limit_hits": cls.YAHOO_RATE_LIMIT_HITS,

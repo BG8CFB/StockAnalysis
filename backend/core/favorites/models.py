@@ -6,13 +6,14 @@ Indexes: user_id, user_id + stock_code (unique)
 """
 
 from datetime import datetime
-from typing import Optional, List
+from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
 
 class FavoriteStock(BaseModel):
     """自选股文档模型"""
+
     user_id: str = Field(..., description="用户ID")
     stock_code: str = Field(..., description="股票代码")
     stock_name: str = Field(..., description="股票名称")
@@ -30,6 +31,7 @@ class FavoriteStock(BaseModel):
 
 class AddFavoriteRequest(BaseModel):
     """添加自选股请求"""
+
     stock_code: str
     stock_name: str
     market: str = "A_STOCK"
@@ -41,6 +43,7 @@ class AddFavoriteRequest(BaseModel):
 
 class UpdateFavoriteRequest(BaseModel):
     """更新自选股请求"""
+
     tags: Optional[List[str]] = None
     notes: Optional[str] = None
     alert_price_high: Optional[float] = None

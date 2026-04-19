@@ -465,7 +465,7 @@ export default function ConfigManagementPage() {
         <Alert
           type="info"
           showIcon
-          title="修改系统设置后将立即生效，部分设置可能需要重载配置才能完全生效。"
+          message="修改系统设置后将立即生效，部分设置可能需要重载配置才能完全生效。"
           style={{ marginBottom: 16 }}
         />
 

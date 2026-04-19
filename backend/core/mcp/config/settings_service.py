@@ -29,7 +29,7 @@ async def get_system_settings() -> Dict[str, Any]:
     if doc:
         doc.pop("_id", None)
         logger.debug("从数据库加载 MCP 系统配置")
-        return doc
+        return dict(doc)
 
     logger.debug("数据库中无 MCP 系统配置，将使用默认值")
     return {}
@@ -49,11 +49,7 @@ async def update_system_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
 
     settings["updated_at"] = datetime.now(timezone.utc)
 
-    await collection.update_one(
-        {"_id": DOCUMENT_ID},
-        {"$set": settings},
-        upsert=True
-    )
+    await collection.update_one({"_id": DOCUMENT_ID}, {"$set": settings}, upsert=True)
 
     logger.info(f"MCP 系统配置已更新: {list(settings.keys())}")
     return settings

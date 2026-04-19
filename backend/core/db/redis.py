@@ -2,7 +2,7 @@
 Redis 连接管理
 用于缓存、会话管理和限流
 """
-import asyncio
+
 import logging
 from typing import Optional
 

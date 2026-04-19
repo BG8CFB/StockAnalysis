@@ -32,7 +32,7 @@ class MCPConnectionPool:
     - MCP 关闭后不影响进行中的任务
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化连接池"""
         # 服务器配置注册表（从数据库加载）
         self._servers: Dict[str, Dict[str, Any]] = {}
@@ -41,8 +41,8 @@ class MCPConnectionPool:
         self._connections: Dict[str, MCPConnection] = {}
 
         # 并发控制（每 server_id 独立，动态读取配置）
-        # 结构: _semaphores[server_id][user_id] = (Semaphore, 创建时间)
-        self._semaphores: Dict[str, Dict[str, tuple]] = {}
+        # 结构: _semaphores[server_id][user_id] = asyncio.Semaphore
+        self._semaphores: Dict[str, Dict[str, asyncio.Semaphore]] = {}
 
         # 任务-连接映射
         self._task_connections: Dict[str, str] = {}  # task_id -> connection_id
@@ -275,17 +275,21 @@ class MCPConnectionPool:
 
         except Exception as e:
             logger.error(
-                f"[MCPConnectionPool] 创建连接失败: server_id={server_id}, error={e}",
-                exc_info=True
+                f"[MCPConnectionPool] 创建连接失败: server_id={server_id}, error={e}", exc_info=True
             )
             raise
         finally:
             # 确保在任何情况下都释放信号量
             # 注意：连接创建成功后，信号量会在 release_connection 中释放
             # 这里只在异常时释放
-            if 'conn' not in locals() or (conn is not None and getattr(conn, 'connection_id', None) not in self._connections):
+            if "conn" not in locals() or (
+                conn is not None and getattr(conn, "connection_id", None) not in self._connections
+            ):
                 semaphore.release()
-                logger.debug(f"[MCPConnectionPool] 连接创建失败，已释放信号量: server={server_id}, user={user_id}")
+                logger.debug(
+                    f"[MCPConnectionPool] 连接创建失败，已释放信号量: "
+                    f"server={server_id}, user={user_id}"
+                )
 
     async def release_connection(self, connection_id: str) -> None:
         """
@@ -385,8 +389,7 @@ class MCPConnectionPool:
         """
         if server_id:
             server_conns = [
-                conn for conn in self._connections.values()
-                if conn.server_id == server_id
+                conn for conn in self._connections.values() if conn.server_id == server_id
             ]
         else:
             server_conns = list(self._connections.values())
@@ -461,7 +464,7 @@ class MCPConnectionPool:
                 f"server={server_id}, user={user_id}, limit={limit}"
             )
 
-        return self._semaphores[server_id][user_id]
+        return self._semaphores[server_id][user_id]  # type: ignore[no-any-return]
 
     def _build_connection_config(self, server_config: MCPServerConfigResponse) -> Dict[str, Any]:
         """
@@ -484,23 +487,23 @@ class MCPConnectionPool:
 
         if transport.value == "stdio":
             return build_stdio_connection(
-                command=server_config.command,
-                args=server_config.args,
+                command=server_config.command or "",
+                args=server_config.args or [],
                 env=server_config.env,
             )
         elif transport.value == "sse":
             return build_sse_connection(
-                url=server_config.url,
+                url=server_config.url or "",
                 headers=server_config.headers,
             )
         elif transport.value in ("http", "streamable_http"):
             return build_streamable_http_connection(
-                url=server_config.url,
+                url=server_config.url or "",
                 headers=server_config.headers,
             )
         elif transport.value == "websocket":
             return build_websocket_connection(
-                url=server_config.url,
+                url=server_config.url or "",
             )
         else:
             raise ValueError(f"不支持的传输模式: {transport}")
@@ -514,7 +517,8 @@ class MCPConnectionPool:
         """
         async with self._connection_lock:
             to_remove = [
-                conn_id for conn_id, conn in self._connections.items()
+                conn_id
+                for conn_id, conn in self._connections.items()
                 if conn.state == ConnectionState.CLOSED
             ]
 
@@ -526,10 +530,7 @@ class MCPConnectionPool:
 
             return len(to_remove)
 
-    async def cleanup_idle_semaphores(
-        self,
-        idle_threshold_seconds: int = 3600
-    ) -> int:
+    async def cleanup_idle_semaphores(self, idle_threshold_seconds: int = 3600) -> int:
         """
         清理空闲的用户信号量（释放内存）
 

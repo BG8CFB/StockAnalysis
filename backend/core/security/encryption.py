@@ -9,6 +9,7 @@
 
 import base64
 import logging
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ class EncodingManager:
         if not plaintext:
             return ""
         try:
-            encoded = base64.b64encode(plaintext.encode('utf-8')).decode('utf-8')
+            encoded = base64.b64encode(plaintext.encode("utf-8")).decode("utf-8")
             return encoded
         except Exception as e:
             logger.error(f"编码失败: {e}")
@@ -50,7 +51,7 @@ class EncodingManager:
         if not ciphertext:
             return ""
         try:
-            decoded = base64.b64decode(ciphertext.encode('utf-8')).decode('utf-8')
+            decoded = base64.b64decode(ciphertext.encode("utf-8")).decode("utf-8")
             return decoded
         except Exception as e:
             logger.error(f"解码失败: {e}")
@@ -66,9 +67,9 @@ class EncodingManager:
             return False
         try:
             # 尝试解码，成功则为 Base64
-            decoded = base64.b64decode(value.encode('utf-8'))
+            decoded = base64.b64decode(value.encode("utf-8"))
             # 检查解码后的内容是否为可打印 UTF-8
-            decoded.decode('utf-8')
+            decoded.decode("utf-8")
             return True
         except Exception:
             return False
@@ -83,7 +84,7 @@ class EncodingManager:
 # 全局编码管理器实例
 # =============================================================================
 
-_encoding_manager: EncodingManager = None
+_encoding_manager: Optional[EncodingManager] = None
 
 
 def get_encoding_manager() -> EncodingManager:
@@ -98,6 +99,7 @@ def get_encoding_manager() -> EncodingManager:
 # =============================================================================
 # 便捷函数
 # =============================================================================
+
 
 def encrypt_sensitive_data(plaintext: str) -> str:
     """编码敏感数据（Base64）"""

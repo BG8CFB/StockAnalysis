@@ -3,25 +3,46 @@ TradingAgents 管理员 API
 
 提供管理员专用的系统管理接口。
 """
+
 import logging
-from typing import List, Optional, Dict, Any
+from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, Query, HTTPException, status
-from bson import ObjectId
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
 
-from core.auth.dependencies import get_current_user
-from core.user.models import UserModel
-from core.auth.rbac import Role, Permission, require_role, require_permission
 from core.ai.model import get_model_service
-from modules.trading_agents.manager.task_manager import get_task_manager
+from core.auth.dependencies import get_current_user
+from core.auth.rbac import Role
+from core.user.models import UserModel
+from modules.trading_agents.manager.alerts import get_alert_manager
 from modules.trading_agents.manager.batch_manager import get_batch_manager
-from modules.trading_agents.manager.alerts import get_alert_manager, AlertEventType, AlertSeverity
+from modules.trading_agents.manager.task_manager import get_task_manager
 
 logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# AI 模型管理
+# 请求体模型
+# =============================================================================
+
+
+class CreateSystemModelRequest(BaseModel):
+    """创建系统级 AI 模型请求"""
+
+    name: str = Field(..., description="模型名称")
+    provider: str = Field(..., description="提供商类型")
+    api_base_url: str = Field(..., description="API 地址")
+    api_key: str = Field(..., description="API 密钥")
+    model_id: str = Field(..., description="模型 ID")
+    max_concurrency: int = Field(5, description="最大并发数")
+    timeout_seconds: int = Field(60, description="超时时间（秒）")
+    temperature: float = Field(0.5, description="默认温度")
+    description: Optional[str] = Field(None, description="模型描述")
+    max_tokens: Optional[int] = Field(None, description="最大 token 数")
+
+
+# =============================================================================
+# 路由
 # =============================================================================
 
 router = APIRouter(prefix="/admin/trading-agents", tags=["TradingAgents-Admin"])
@@ -31,13 +52,11 @@ router = APIRouter(prefix="/admin/trading-agents", tags=["TradingAgents-Admin"])
 # 依赖项
 # =============================================================================
 
+
 async def get_admin_user(current_user: UserModel = Depends(get_current_user)) -> UserModel:
     """验证管理员权限"""
     if current_user.role not in [Role.ADMIN, Role.SUPER_ADMIN]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="需要管理员权限"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="需要管理员权限")
     return current_user
 
 
@@ -45,11 +64,12 @@ async def get_admin_user(current_user: UserModel = Depends(get_current_user)) ->
 # AI 模型管理
 # =============================================================================
 
+
 @router.get("/models")
 async def list_all_models(
     admin_user: UserModel = Depends(get_admin_user),
     include_disabled: bool = Query(False, description="是否包含已禁用的模型"),
-):
+) -> dict[str, Any]:
     """
     获取所有 AI 模型配置（管理员）
 
@@ -57,9 +77,7 @@ async def list_all_models(
     """
     model_service = get_model_service()
     result = await model_service.list_models(
-        user_id=admin_user.id,
-        is_admin=True,
-        include_system=True
+        user_id=str(admin_user.id), is_admin=True, include_system=True
     )
 
     # 统计信息
@@ -76,16 +94,9 @@ async def list_all_models(
 
 @router.post("/models")
 async def create_system_model(
-    name: str = Query(..., description="模型名称"),
-    provider: str = Query(..., description="提供商类型"),
-    api_base_url: str = Query(..., description="API 地址"),
-    api_key: str = Query(..., description="API 密钥"),
-    model_id: str = Query(..., description="模型 ID"),
-    max_concurrency: int = Query(5, description="最大并发数"),
-    timeout_seconds: int = Query(60, description="超时时间（秒）"),
-    temperature: float = Query(0.5, description="默认温度"),
+    data: CreateSystemModelRequest,
     admin_user: UserModel = Depends(get_admin_user),
-):
+) -> dict[str, Any]:
     """
     创建系统级 AI 模型配置（管理员）
 
@@ -97,51 +108,45 @@ async def create_system_model(
 
     # 尝试解析提供商类型
     try:
-        provider_enum = ModelProviderEnum(provider)
+        provider_enum = ModelProviderEnum(data.provider)
     except ValueError:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"不支持的提供商类型: {provider}"
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"不支持的提供商类型: {data.provider}"
         )
 
     request = AIModelConfigCreate(
-        name=name,
+        name=data.name,
         provider=provider_enum,
-        api_base_url=api_base_url,
-        api_key=api_key,
-        model_id=model_id,
-        max_concurrency=max_concurrency,
-        timeout_seconds=timeout_seconds,
-        temperature=temperature,
+        api_base_url=data.api_base_url,
+        api_key=data.api_key,
+        model_id=data.model_id,
+        max_concurrency=data.max_concurrency,
+        timeout_seconds=data.timeout_seconds,
+        temperature=data.temperature,
         enabled=True,
         is_system=True,
     )
 
     model = await model_service.create_model(user_id=str(admin_user.id), request=request)
 
-    logger.info(f"管理员创建系统模型: name={name}, admin={admin_user.username}")
+    logger.info(f"管理员创建系统模型: name={data.name}, admin={admin_user.username}")
 
-    return model
+    return model  # type: ignore[return-value]
 
 
 @router.delete("/models/{model_id}")
 async def delete_model(
     model_id: str,
     admin_user: UserModel = Depends(get_admin_user),
-):
+) -> dict[str, Any]:
     """删除 AI 模型配置（管理员）"""
     model_service = get_model_service()
     success = await model_service.delete_model(
-        model_id=model_id,
-        user_id=str(admin_user.id),
-        is_admin=True
+        model_id=model_id, user_id=str(admin_user.id), is_admin=True
     )
 
     if not success:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="模型不存在或无权删除"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="模型不存在或无权删除")
 
     logger.info(f"管理员删除模型: model_id={model_id}, admin={admin_user.username}")
 
@@ -156,6 +161,7 @@ async def delete_model(
 # 任务管理
 # =============================================================================
 
+
 @router.get("/tasks")
 async def list_all_tasks(
     admin_user: UserModel = Depends(get_admin_user),
@@ -163,14 +169,14 @@ async def list_all_tasks(
     user_filter: Optional[str] = Query(None, description="用户 ID 过滤"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
-):
+) -> dict[str, Any]:
     """
     获取所有任务（管理员）
     """
     from core.db.mongodb import mongodb
 
-    task_manager = get_task_manager()
-    batch_manager = get_batch_manager()
+    get_task_manager()
+    get_batch_manager()
 
     # 构建查询条件
     query = {}
@@ -188,21 +194,23 @@ async def list_all_tasks(
     cursor = collection.find(query).sort("created_at", -1).skip(offset).limit(limit)
     tasks = []
     async for doc in cursor:
-        tasks.append({
-            "id": str(doc["_id"]),
-            "user_id": doc["user_id"],
-            "stock_code": doc.get("stock_code"),
-            "trade_date": doc.get("trade_date"),
-            "status": doc["status"],
-            "created_at": doc["created_at"],
-            "started_at": doc.get("started_at"),
-            "completed_at": doc.get("completed_at"),
-            "final_recommendation": doc.get("final_recommendation"),
-            "token_usage": doc.get("token_usage"),
-        })
+        tasks.append(
+            {
+                "id": str(doc["_id"]),
+                "user_id": doc["user_id"],
+                "stock_code": doc.get("stock_code"),
+                "trade_date": doc.get("trade_date"),
+                "status": doc["status"],
+                "created_at": doc["created_at"],
+                "started_at": doc.get("started_at"),
+                "completed_at": doc.get("completed_at"),
+                "final_recommendation": doc.get("final_recommendation"),
+                "token_usage": doc.get("token_usage"),
+            }
+        )
 
     # 获取运行中的公共模型任务数
-    public_running = await batch_manager.get_public_model_running_count()
+    public_running = 0  # BatchTaskManager does not expose a running count method
 
     return {
         "total": total,
@@ -216,22 +224,21 @@ async def list_all_tasks(
 @router.get("/tasks/stats")
 async def get_task_statistics(
     admin_user: UserModel = Depends(get_admin_user),
-):
+) -> dict[str, Any]:
     """
     获取任务统计信息（管理员）
     """
+    from datetime import datetime, timezone
+
     from core.db.mongodb import mongodb
-    from datetime import datetime, timedelta, timezone
 
     task_manager = get_task_manager()
 
     collection = mongodb.database.analysis_tasks
 
     # 按状态统计
-    pipeline = [
-        {"$group": {"_id": "$status", "count": {"$sum": 1}}}
-    ]
-    status_stats = {}
+    pipeline: list[dict[str, Any]] = [{"$group": {"_id": "$status", "count": {"$sum": 1}}}]
+    status_stats: dict[str, Any] = {}
     async for doc in collection.aggregate(pipeline):
         status_stats[doc["_id"]] = doc["count"]
 
@@ -240,9 +247,7 @@ async def get_task_statistics(
 
     # 今日任务数
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    today_tasks = await collection.count_documents({
-        "created_at": {"$gte": today_start}
-    })
+    today_tasks = await collection.count_documents({"created_at": {"$gte": today_start}})
 
     # 运行中任务数
     running_tasks = await task_manager.get_running_tasks_count()
@@ -259,18 +264,16 @@ async def get_task_statistics(
 async def delete_task(
     task_id: str,
     admin_user: UserModel = Depends(get_admin_user),
-):
+) -> dict[str, Any]:
     """删除任务（管理员）"""
-    from core.db.mongodb import mongodb
     from bson import ObjectId
+
+    from core.db.mongodb import mongodb
 
     # 检查任务是否存在
     task_doc = await mongodb.database.analysis_tasks.find_one({"_id": ObjectId(task_id)})
     if not task_doc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="任务不存在"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
 
     # 删除任务
     await mongodb.database.analysis_tasks.delete_one({"_id": ObjectId(task_id)})
@@ -284,6 +287,7 @@ async def delete_task(
 # 报告管理
 # =============================================================================
 
+
 @router.get("/reports")
 async def list_all_reports(
     admin_user: UserModel = Depends(get_admin_user),
@@ -291,7 +295,7 @@ async def list_all_reports(
     stock_filter: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
-):
+) -> dict[str, Any]:
     """
     获取所有分析报告（管理员）
     """
@@ -313,17 +317,19 @@ async def list_all_reports(
     cursor = collection.find(query).sort("created_at", -1).skip(offset).limit(limit)
     reports = []
     async for doc in cursor:
-        reports.append({
-            "id": str(doc["_id"]),
-            "user_id": doc["user_id"],
-            "task_id": doc.get("task_id"),
-            "stock_code": doc["stock_code"],
-            "trade_date": doc.get("trade_date"),
-            "recommendation": doc.get("recommendation"),
-            "risk_level": doc.get("risk_level"),
-            "created_at": doc["created_at"],
-            "token_usage": doc.get("token_usage"),
-        })
+        reports.append(
+            {
+                "id": str(doc["_id"]),
+                "user_id": doc["user_id"],
+                "task_id": doc.get("task_id"),
+                "stock_code": doc["stock_code"],
+                "trade_date": doc.get("trade_date"),
+                "recommendation": doc.get("recommendation"),
+                "risk_level": doc.get("risk_level"),
+                "created_at": doc["created_at"],
+                "token_usage": doc.get("token_usage"),
+            }
+        )
 
     return {
         "total": total,
@@ -336,7 +342,7 @@ async def list_all_reports(
 @router.get("/reports/stats")
 async def get_report_statistics(
     admin_user: UserModel = Depends(get_admin_user),
-):
+) -> dict[str, Any]:
     """
     获取报告统计信息（管理员）
     """
@@ -345,18 +351,14 @@ async def get_report_statistics(
     collection = mongodb.database.analysis_reports
 
     # 按推荐类型统计
-    pipeline = [
-        {"$group": {"_id": "$recommendation", "count": {"$sum": 1}}}
-    ]
-    recommendation_stats = {}
+    pipeline: list[dict[str, Any]] = [{"$group": {"_id": "$recommendation", "count": {"$sum": 1}}}]
+    recommendation_stats: dict[str, Any] = {}
     async for doc in collection.aggregate(pipeline):
         recommendation_stats[doc["_id"]] = doc["count"]
 
     # 按风险等级统计
-    pipeline = [
-        {"$group": {"_id": "$risk_level", "count": {"$sum": 1}}}
-    ]
-    risk_stats = {}
+    pipeline = [{"$group": {"_id": "$risk_level", "count": {"$sum": 1}}}]
+    risk_stats: dict[str, Any] = {}
     async for doc in collection.aggregate(pipeline):
         risk_stats[doc["_id"]] = doc["count"]
 
@@ -364,10 +366,8 @@ async def get_report_statistics(
     total_reports = await collection.count_documents({})
 
     # Token 总消耗
-    pipeline = [
-        {"$group": {"_id": None, "total": {"$sum": "$token_usage.total_tokens"}}}
-    ]
-    total_tokens = 0
+    pipeline = [{"$group": {"_id": None, "total": {"$sum": "$token_usage.total_tokens"}}}]
+    total_tokens: int = 0
     async for doc in collection.aggregate(pipeline):
         total_tokens = doc.get("total", 0)
 
@@ -383,6 +383,7 @@ async def get_report_statistics(
 # 告警管理
 # =============================================================================
 
+
 @router.get("/alerts")
 async def list_all_alerts(
     admin_user: UserModel = Depends(get_admin_user),
@@ -391,14 +392,14 @@ async def list_all_alerts(
     unresolved_only: bool = Query(False),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
-):
+) -> dict[str, Any]:
     """
     获取所有告警（管理员）
     """
-    alert_manager = get_alert_manager()
+    get_alert_manager()
 
     # 构建查询条件
-    query = {}
+    query: dict[str, Any] = {}
     if severity_filter:
         query["severity"] = severity_filter
     if type_filter:
@@ -408,6 +409,7 @@ async def list_all_alerts(
 
     # 直接查询 MongoDB
     from core.db.mongodb import mongodb
+
     alerts_collection = mongodb.database.alerts
 
     # 获取总数
@@ -417,19 +419,21 @@ async def list_all_alerts(
     cursor = alerts_collection.find(query).sort("timestamp", -1).skip(offset).limit(limit)
     alerts = []
     async for doc in cursor:
-        alerts.append({
-            "id": str(doc["_id"]),
-            "event_type": doc["event_type"],
-            "severity": doc["severity"],
-            "title": doc["title"],
-            "description": doc["description"],
-            "user_id": doc.get("user_id"),
-            "task_id": doc.get("task_id"),
-            "timestamp": doc["timestamp"],
-            "resolved": doc["resolved"],
-            "resolved_at": doc.get("resolved_at"),
-            "metadata": doc.get("metadata", {}),
-        })
+        alerts.append(
+            {
+                "id": str(doc["_id"]),
+                "event_type": doc["event_type"],
+                "severity": doc["severity"],
+                "title": doc["title"],
+                "description": doc["description"],
+                "user_id": doc.get("user_id"),
+                "task_id": doc.get("task_id"),
+                "timestamp": doc["timestamp"],
+                "resolved": doc["resolved"],
+                "resolved_at": doc.get("resolved_at"),
+                "metadata": doc.get("metadata", {}),
+            }
+        )
 
     return {
         "total": total,
@@ -443,7 +447,7 @@ async def list_all_alerts(
 async def resolve_alert(
     alert_id: str,
     admin_user: UserModel = Depends(get_admin_user),
-):
+) -> dict[str, Any]:
     """
     解决告警（管理员）
     """
@@ -451,10 +455,7 @@ async def resolve_alert(
     success = await alert_manager.resolve_alert(alert_id)
 
     if not success:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="告警不存在"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="告警不存在")
 
     logger.info(f"管理员解决告警: alert_id={alert_id}, admin={admin_user.username}")
 
@@ -464,12 +465,13 @@ async def resolve_alert(
 @router.get("/alerts/stats")
 async def get_alerts_stats(
     admin_user: UserModel = Depends(get_admin_user),
-):
+) -> dict[str, Any]:
     """
     获取告警统计信息（管理员）
     """
+    from datetime import datetime, timezone
+
     from core.db.mongodb import mongodb
-    from datetime import datetime, timedelta, timezone
 
     alerts_collection = mongodb.database.alerts
 
@@ -487,19 +489,19 @@ async def get_alerts_stats(
     today = await alerts_collection.count_documents({"timestamp": {"$gte": today_start}})
 
     # 按严重程度统计
-    severity_stats = {}
-    pipeline = [
+    severity_stats: dict[str, Any] = {}
+    pipeline: list[dict[str, Any]] = [
         {"$group": {"_id": "$severity", "count": {"$sum": 1}}},
-        {"$sort": {"count": -1}}
+        {"$sort": {"count": -1}},
     ]
     async for doc in alerts_collection.aggregate(pipeline):
         severity_stats[doc["_id"]] = doc["count"]
 
     # 按事件类型统计
-    type_stats = {}
+    type_stats: dict[str, Any] = {}
     pipeline = [
         {"$group": {"_id": "$event_type", "count": {"$sum": 1}}},
-        {"$sort": {"count": -1}}
+        {"$sort": {"count": -1}},
     ]
     async for doc in alerts_collection.aggregate(pipeline):
         type_stats[doc["_id"]] = doc["count"]
@@ -518,10 +520,11 @@ async def get_alerts_stats(
 # 智能体配置管理
 # =============================================================================
 
+
 @router.post("/agent-config/public/restore")
 async def restore_public_config(
     current_admin: UserModel = Depends(get_admin_user),
-):
+) -> dict[str, Any]:
     """
     恢复公共智能体配置为默认值
 
@@ -538,14 +541,9 @@ async def restore_public_config(
 
     if not config:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="恢复默认配置失败"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="恢复默认配置失败"
         )
 
     logger.info(f"管理员恢复公共配置为默认值: admin={current_admin.username}")
 
-    return {
-        "success": True,
-        "message": "公共配置已恢复为默认值",
-        "config": config
-    }
+    return {"success": True, "message": "公共配置已恢复为默认值", "config": config}

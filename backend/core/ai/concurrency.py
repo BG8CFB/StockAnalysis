@@ -8,7 +8,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -16,9 +16,10 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ConcurrencyConfig:
     """并发配置"""
-    max_user_concurrent: int = 3      # 每用户最大并发数
-    max_system_concurrent: int = 50   # 系统总并发数
-    queue_timeout: int = 30           # 队列超时（秒）
+
+    max_user_concurrent: int = 3  # 每用户最大并发数
+    max_system_concurrent: int = 50  # 系统总并发数
+    queue_timeout: int = 30  # 队列超时（秒）
 
 
 class ConcurrencyManager:
@@ -36,7 +37,7 @@ class ConcurrencyManager:
         self._system_in_use: int = 0
 
     @asynccontextmanager
-    async def acquire(self, model_config: Dict, user_id: str):
+    async def acquire(self, model_config: Dict, user_id: str) -> Any:
         """
         获取并发令牌（上下文管理器）
 
@@ -59,18 +60,14 @@ class ConcurrencyManager:
         try:
             # 等待系统级令牌
             await asyncio.wait_for(
-                self._system_semaphore.acquire(),
-                timeout=self.config.queue_timeout
+                self._system_semaphore.acquire(), timeout=self.config.queue_timeout
             )
             system_acquired = True
             self._system_in_use += 1
             logger.debug(f"系统并发令牌已获取: user={user_id}")
 
             # 等待用户级令牌
-            await asyncio.wait_for(
-                user_sem.acquire(),
-                timeout=self.config.queue_timeout
-            )
+            await asyncio.wait_for(user_sem.acquire(), timeout=self.config.queue_timeout)
             user_acquired = True
             logger.debug(f"用户并发令牌已获取: user={user_id}")
 
@@ -102,12 +99,9 @@ class ConcurrencyManager:
         """获取或创建用户级信号量"""
         async with self._lock:
             if user_id not in self._user_semaphores:
-                self._user_semaphores[user_id] = asyncio.Semaphore(
-                    self.config.max_user_concurrent
-                )
+                self._user_semaphores[user_id] = asyncio.Semaphore(self.config.max_user_concurrent)
                 logger.debug(
-                    f"创建用户信号量: user={user_id}, "
-                    f"limit={self.config.max_user_concurrent}"
+                    f"创建用户信号量: user={user_id}, " f"limit={self.config.max_user_concurrent}"
                 )
             return self._user_semaphores[user_id]
 
@@ -126,7 +120,7 @@ class ConcurrencyManager:
             "active_users": len(self._user_semaphores),
         }
 
-    def clear_user_semaphore(self, user_id: str):
+    def clear_user_semaphore(self, user_id: str) -> None:
         """
         清除用户信号量（用于用户登出等场景）
 

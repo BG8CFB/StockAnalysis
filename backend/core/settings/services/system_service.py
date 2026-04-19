@@ -2,14 +2,15 @@
 系统设置核心服务
 管理系统配置
 """
+
 import json
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from core.config import settings
 from core.auth.rbac import Role
+from core.config import settings
 from core.db.mongodb import mongodb
 from core.db.redis import get_redis, redis_manager
 
@@ -49,14 +50,14 @@ class SettingsService:
         """获取数据库实例"""
         return mongodb.database
 
-    async def get_system_config(self) -> dict:
+    async def get_system_config(self) -> Dict[str, Any]:
         """获取系统配置"""
         # 从 Redis 缓存获取
         redis = await get_redis()
         cache_key = "system:config"
         cached = await redis.get(cache_key)
         if cached:
-            return json.loads(cached)
+            return dict(json.loads(cached))
 
         # 从数据库获取
         config_doc = await self.db.system_config.find_one({"key": "main_config"})
@@ -76,13 +77,13 @@ class SettingsService:
         # 缓存到 Redis
         await redis.set(cache_key, json.dumps(config, default=str), ex=3600)
 
-        return config
+        return dict(config)
 
     async def update_system_config(
         self,
-        config_updates: dict,
+        config_updates: Dict[str, Any],
         admin_id: str,
-    ) -> dict:
+    ) -> Dict[str, Any]:
         """更新系统配置"""
         # 获取当前配置
         current_config = await self.get_system_config()
@@ -119,7 +120,7 @@ class SettingsService:
         self,
         action: str,
         user_id: str,
-        details: Optional[dict] = None,
+        details: Optional[Dict[str, Any]] = None,
     ) -> None:
         """创建审计日志"""
         log_doc = {
@@ -130,12 +131,12 @@ class SettingsService:
         }
         await self.db.audit_logs.insert_one(log_doc)
 
-    async def get_system_info(self) -> dict:
+    async def get_system_info(self) -> Dict[str, Any]:
         """获取完整系统信息"""
         # 1. 检查数据库连接状态
         try:
             # 尝试 Ping MongoDB
-            await self.db.client.admin.command('ping')
+            await self.db.client.admin.command("ping")
             mongodb_connected = True
         except Exception:
             mongodb_connected = False
@@ -151,9 +152,9 @@ class SettingsService:
             disabled_users = await self.db.users.count_documents({"status": "disabled"})
 
             # 检查是否有管理员 (初始化状态)
-            admin_count = await self.db.users.count_documents({
-                "role": {"$in": [Role.ADMIN.value, Role.SUPER_ADMIN.value]}
-            })
+            admin_count = await self.db.users.count_documents(
+                {"role": {"$in": [Role.ADMIN.value, Role.SUPER_ADMIN.value]}}
+            )
             initialized = admin_count > 0
         except Exception:
             # 数据库未连接时的默认值
@@ -176,20 +177,17 @@ class SettingsService:
                 "total": total_users,
                 "active": active_users,
                 "pending": pending_users,
-                "disabled": disabled_users
+                "disabled": disabled_users,
             },
-
             # SystemConfig 字段 (扁平化)
             "require_approval": config.get("REQUIRE_APPROVAL", True),
             "app_name": getattr(settings, "APP_NAME", "StockAnalysis"),
             "app_version": getattr(settings, "APP_VERSION", "1.0.0"),
             "debug": getattr(settings, "DEBUG", False),
             "registration_open": config.get("ENABLE_REGISTRATION", True),
-
             # 其他信息
             "server_time": datetime.now(timezone.utc).isoformat(),
             "uptime": int((datetime.now(timezone.utc) - self.startup_time).total_seconds()),
-
             # 兼容旧字段 (可选)
             "config": config,
         }

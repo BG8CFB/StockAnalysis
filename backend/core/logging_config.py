@@ -11,6 +11,7 @@
 - INFO: 关键业务流程节点，生产环境可见 ✅
 - DEBUG: 开发调试信息，写入文件，生产环境默认关闭 🔍
 """
+
 import asyncio
 import functools
 import logging
@@ -19,8 +20,8 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Callable, Optional, TypeVar
 
-from core.config import settings
 from core.colored_formatter import get_formatter
+from core.config import settings
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -28,7 +29,7 @@ F = TypeVar("F", bound=Callable[..., Any])
 class SafeStreamHandler(logging.StreamHandler):
     """安全的 StreamHandler，在流关闭时不会抛出异常"""
 
-    def __init__(self, stream=None, encoding=None):
+    def __init__(self, stream: Any = None, encoding: Any = None) -> None:
         """初始化处理器"""
         if stream is None:
             stream = sys.stdout
@@ -36,9 +37,11 @@ class SafeStreamHandler(logging.StreamHandler):
         # 尝试使用 encoding 参数（Python 3.9+）
         if encoding:
             try:
-                super().__init__(stream, encoding=encoding)
-                return
-            except TypeError:
+                import io
+
+                if hasattr(stream, "buffer"):
+                    stream = io.TextIOWrapper(stream.buffer, encoding=encoding, errors="replace")
+            except Exception:
                 pass
 
         super().__init__(stream)
@@ -46,7 +49,7 @@ class SafeStreamHandler(logging.StreamHandler):
     def emit(self, record: logging.LogRecord) -> None:
         """安全地输出日志"""
         try:
-            if self.stream is None or (hasattr(self.stream, 'closed') and self.stream.closed):
+            if self.stream is None or (hasattr(self.stream, "closed") and self.stream.closed):
                 return
             super().emit(record)
         except (ValueError, OSError):
@@ -91,7 +94,7 @@ def setup_logging(
     # 级别: INFO，显示请求、错误、简单状态
     console_handler = SafeStreamHandler(stdout_stream)
     try:
-        console_handler = SafeStreamHandler(stdout_stream, encoding='utf-8')
+        console_handler = SafeStreamHandler(stdout_stream, encoding="utf-8")
     except TypeError:
         console_handler = SafeStreamHandler(stdout_stream)
 
@@ -112,11 +115,11 @@ def setup_logging(
         log_dir / f"app_{env_name}.log",
         maxBytes=10 * 1024 * 1024,  # 10MB
         backupCount=5,
-        encoding='utf-8'
+        encoding="utf-8",
     )
     file_formatter = logging.Formatter(
         "%(asctime)s | %(levelname)-8s | %(name)-30s | %(funcName)s:%(lineno)d | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
     file_handler.setFormatter(file_formatter)
     file_handler.setLevel(logging.DEBUG)  # 文件记录 DEBUG 及以上

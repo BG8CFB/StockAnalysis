@@ -8,6 +8,11 @@ TradingAgents 工作流模块
 """
 
 # 导入工作流调度器
+# 导入四阶段执行函数
+from .phase1 import execute_phase1
+from .phase2 import execute_phase2
+from .phase3 import execute_phase3
+from .phase4 import execute_phase4
 from .scheduler import (
     WorkflowScheduler,
     WorkflowSchedulerBuilder,
@@ -17,16 +22,10 @@ from .scheduler import (
 
 # 导入工作流状态
 from .state import (
+    TaskStatus,
     WorkflowState,
     create_initial_state,
-    TaskStatus,
 )
-
-# 导入四阶段执行函数
-from .phase1 import execute_phase1
-from .phase2 import execute_phase2
-from .phase3 import execute_phase3
-from .phase4 import execute_phase4
 
 __all__ = [
     # 调度器

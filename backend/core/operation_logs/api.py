@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/system/logs", tags=["operation-logs"])
 
 
-def _get_collection():
+def _get_collection() -> Any:
     """获取审计日志集合"""
     return mongodb.get_collection("audit_logs")
 
@@ -105,12 +105,18 @@ async def get_operation_log_stats(
 
     # 基础统计
     total_count = await collection.count_documents({"timestamp": {"$gte": cutoff.isoformat()}})
-    success_count = await collection.count_documents({
-        "timestamp": {"$gte": cutoff.isoformat()}, "success": True,
-    })
-    failed_count = await collection.count_documents({
-        "timestamp": {"$gte": cutoff.isoformat()}, "success": False,
-    })
+    success_count = await collection.count_documents(
+        {
+            "timestamp": {"$gte": cutoff.isoformat()},
+            "success": True,
+        }
+    )
+    failed_count = await collection.count_documents(
+        {
+            "timestamp": {"$gte": cutoff.isoformat()},
+            "success": False,
+        }
+    )
 
     # 按操作类型统计
     by_action_pipeline = [
@@ -135,10 +141,12 @@ async def get_operation_log_stats(
     # 每日趋势
     daily_pipeline = [
         {"$match": {"timestamp": {"$gte": cutoff.isoformat()}}},
-        {"$group": {
-            "_id": {"$substr": ["$timestamp", 0, 10]},
-            "count": {"$sum": 1},
-        }},
+        {
+            "$group": {
+                "_id": {"$substr": ["$timestamp", 0, 10]},
+                "count": {"$sum": 1},
+            }
+        },
         {"$sort": {"_id": 1}},
     ]
     daily_trend: list = []
@@ -166,6 +174,7 @@ async def get_operation_log_detail(
 ) -> Dict[str, Any]:
     """获取操作日志详情"""
     from bson import ObjectId
+
     collection = _get_collection()
     try:
         doc = await collection.find_one({"_id": ObjectId(log_id)})
@@ -174,6 +183,7 @@ async def get_operation_log_detail(
 
     if doc is None:
         from fastapi import HTTPException, status
+
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="日志不存在")
 
     doc["id"] = str(doc.pop("_id"))
@@ -211,7 +221,11 @@ async def clear_operation_logs(
 
     if not query:
         # 安全限制：不允许无条件清空
-        return {"code": 1, "message": "必须指定清理条件（days 或 action_type）", "data": {"deleted_count": 0}}
+        return {
+            "code": 1,
+            "message": "必须指定清理条件（days 或 action_type）",
+            "data": {"deleted_count": 0},
+        }
 
     result = await collection.delete_many(query)
     logger.info(f"管理员 {current_admin.username} 清理了 {result.deleted_count} 条操作日志")

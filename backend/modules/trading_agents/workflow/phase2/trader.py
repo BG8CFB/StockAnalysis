@@ -8,20 +8,19 @@ Phase 3: 交易执行策划
 """
 
 import logging
-from typing import Dict, Any, Optional
 from datetime import datetime, timezone
+from typing import Any, Dict, Optional
 
-from langchain_core.language_models import BaseChatModel
 from langchain.agents import create_agent
+from langchain_core.language_models import BaseChatModel
 
-
-from modules.trading_agents.models.state import (
-    WorkflowState,
-    PhaseExecution,
-    TaskStatus,
-)
 from modules.trading_agents.config import get_enabled_agents
+from modules.trading_agents.models.state import (
+    TaskStatus,
+    WorkflowState,
+)
 from modules.trading_agents.workflow.callbacks import WebSocketCallbackHandler
+from modules.trading_agents.workflow.state import PhaseExecution
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +36,7 @@ class Trader:
         self,
         model: BaseChatModel,
         config: Optional[Dict[str, Any]] = None,
-        task_id: str = None,
+        task_id: Optional[str] = None,
         websocket_manager: Any = None,
     ):
         """
@@ -56,15 +55,17 @@ class Trader:
         # 创建回调处理器
         self.callbacks = []
         if self.task_id and self.websocket_manager:
-            self.callbacks.append(WebSocketCallbackHandler(
-                task_id=self.task_id,
-                agent_slug="trader",
-                agent_name="交易员",
-                websocket_manager=self.websocket_manager,
-            ))
+            self.callbacks.append(
+                WebSocketCallbackHandler(
+                    task_id=self.task_id,
+                    agent_slug="trader",
+                    agent_name="交易员",
+                    websocket_manager=self.websocket_manager,
+                )
+            )
         self.agent = self._create_agent()
 
-    def _create_agent(self):
+    def _create_agent(self) -> Any:
         """创建智能体实例 (LangChain 1.1.0 create_agent API)"""
         system_prompt_str = self._build_system_prompt()
         # 使用 LangChain 1.1.0 的 create_agent
@@ -149,9 +150,7 @@ class Trader:
         return prompt.strip()
 
     async def plan(
-        self,
-        state: WorkflowState,
-        investment_decision: Optional[Dict[str, Any]]
+        self, state: WorkflowState, investment_decision: Optional[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """
         制定交易执行计划
@@ -171,34 +170,29 @@ class Trader:
             # 调用智能体 (使用 LangGraph create_agent 的正确输入格式)
             prompt_text = messages[0]["content"] if messages else "Please analyze."
             # 通过 config 传递 callbacks
-            config = {"recursion_limit": 10}
+            config: dict[str, Any] = {"recursion_limit": 10}
             if self.callbacks:
                 from langchain_core.callbacks import CallbackManager
-                config["configurable"] = {"callbacks": CallbackManager(self.callbacks)}
-            result = await self.agent.ainvoke({"messages": [{"role": "user", "content": prompt_text}]}, config=config)
+
+                config["configurable"] = {"callbacks": CallbackManager(self.callbacks)}  # type: ignore[arg-type]
+            result = await self.agent.ainvoke(
+                {"messages": [{"role": "user", "content": prompt_text}]}, config=config
+            )
 
             # 提取输出
             output = self._extract_output(result)
 
             logger.info(f"[Phase 3] 交易员计划完成: {state.stock_code}")
 
-            return {
-                "output": output,
-                "error": None
-            }
+            return {"output": output, "error": None}
 
         except Exception as e:
             logger.error(f"[Phase 3] 交易员计划失败: {state.stock_code}, error={e}")
 
-            return {
-                "output": None,
-                "error": str(e)
-            }
+            return {"output": None, "error": str(e)}
 
     def _build_input_messages(
-        self,
-        state: WorkflowState,
-        investment_decision: Optional[Dict[str, Any]]
+        self, state: WorkflowState, investment_decision: Optional[Dict[str, Any]]
     ) -> list:
         """构建输入消息"""
         decision_text = ""
@@ -239,9 +233,9 @@ class Trader:
             if messages:
                 last_message = messages[-1]
                 if hasattr(last_message, "content"):
-                    return last_message.content
+                    return str(last_message.content)
                 elif isinstance(last_message, dict):
-                    return last_message.get("content")
+                    return str(last_message.get("content", ""))
 
         if isinstance(result, str):
             return result
@@ -250,9 +244,7 @@ class Trader:
 
 
 async def execute_phase3(
-    state: WorkflowState,
-    model: BaseChatModel,
-    config: Dict[str, Any]
+    state: WorkflowState, model: BaseChatModel, config: Dict[str, Any]
 ) -> WorkflowState:
     """
     执行 Phase 3: 交易执行策划
@@ -291,11 +283,13 @@ async def execute_phase3(
     if not trader:
         logger.error("[Phase 3] 缺少交易员智能体")
         state.status = TaskStatus.FAILED
-        state.errors.append({
-            "phase": 3,
-            "error": "缺少交易员智能体",
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        })
+        state.errors.append(
+            {
+                "phase": 3,
+                "error": "缺少交易员智能体",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
         return state
 
     # 创建阶段执行记录
@@ -304,7 +298,7 @@ async def execute_phase3(
         phase_name="交易执行策划",
         started_at=datetime.now(timezone.utc),
         execution_mode="serial",
-        max_concurrency=1
+        max_concurrency=1,
     )
 
     # 执行交易员计划
@@ -314,7 +308,7 @@ async def execute_phase3(
     if result["output"]:
         state.trading_plan = {
             "content": result["output"],
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
     # 更新执行记录
@@ -326,6 +320,6 @@ async def execute_phase3(
     # 更新进度
     state.progress = 75.0  # Phase 3 完成后进度 75%
 
-    logger.info(f"[Phase 3] 完成")
+    logger.info("[Phase 3] 完成")
 
     return state

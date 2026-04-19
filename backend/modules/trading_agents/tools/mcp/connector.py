@@ -36,12 +36,7 @@ class MCPConnector:
     4. 使用后释放连接
     """
 
-    def __init__(
-        self,
-        user_id: str,
-        task_id: str,
-        server_names: Optional[List[str]] = None
-    ):
+    def __init__(self, user_id: str, task_id: str, server_names: Optional[List[str]] = None):
         """
         初始化 MCP 连接器
 
@@ -72,10 +67,7 @@ class MCPConnector:
         try:
             # 从数据库查询所有启用的服务器
             collection = mongodb.get_collection("mcp_servers")
-            cursor = collection.find({
-                "enabled": True,
-                "status": "available"
-            })
+            cursor = collection.find({"enabled": True, "status": "available"})
 
             async for server_doc in cursor:
                 server_id = str(server_doc["_id"])
@@ -97,10 +89,7 @@ class MCPConnector:
         try:
             # 从数据库查找服务器配置
             collection = mongodb.get_collection("mcp_servers")
-            server_doc = await collection.find_one({
-                "name": server_name,
-                "enabled": True
-            })
+            server_doc = await collection.find_one({"name": server_name, "enabled": True})
 
             if not server_doc:
                 logger.warning(f"[MCP Connector] 服务器不存在或未启用: {server_name}")
@@ -123,9 +112,7 @@ class MCPConnector:
         try:
             # 使用连接池获取连接
             conn = await self._pool.acquire_connection(
-                server_id=server_id,
-                task_id=self.task_id,
-                user_id=self.user_id
+                server_id=server_id, task_id=self.task_id, user_id=self.user_id
             )
 
             self._connections[server_name] = conn
@@ -180,6 +167,11 @@ class MCPConnector:
         await self.connect()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+    async def __aexit__(
+        self,
+        exc_type: Any,
+        exc_val: Any,
+        exc_tb: Any,
+    ) -> None:
         """异步上下文管理器出口"""
         await self.disconnect()

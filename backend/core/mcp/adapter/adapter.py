@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 # 连接配置构建函数（官方标准）
 # =============================================================================
 
+
 def build_stdio_connection(
     command: str,
     args: List[str],
@@ -150,6 +151,7 @@ def build_websocket_connection(url: str) -> Dict[str, Any]:
 # 认证头构建（官方标准）
 # =============================================================================
 
+
 def build_auth_headers(
     headers: Optional[Dict[str, str]] = None,
     auth_type: str = "none",
@@ -193,6 +195,7 @@ def build_auth_headers(
     elif auth_type == "basic":
         # Basic Auth token 格式: "username:password"
         import base64
+
         encoded = base64.b64encode(auth_token.encode()).decode()
         headers = {"Authorization": f"Basic {encoded}"}
         logger.debug("使用 Basic 认证")
@@ -232,16 +235,14 @@ def map_transport_mode(transport: str) -> str:
     }
     result = mapping.get(transport.lower())
     if not result:
-        raise ValueError(
-            f"不支持的传输模式: {transport}，"
-            f"支持的模式: {list(mapping.keys())}"
-        )
+        raise ValueError(f"不支持的传输模式: {transport}，" f"支持的模式: {list(mapping.keys())}")
     return result
 
 
 # =============================================================================
 # 客户端创建函数（官方标准）
 # =============================================================================
+
 
 def create_mcp_client(
     server_configs: Dict[str, Dict[str, Any]],
@@ -273,9 +274,7 @@ def create_mcp_client(
         tools = await client.get_tools()
         ```
     """
-    logger.info(
-        f"创建 MCP 客户端: servers={list(server_configs.keys())}"
-    )
+    logger.info(f"创建 MCP 客户端: servers={list(server_configs.keys())}")
 
     # 注意：官方 API 使用 hooks 参数，而不是 tool_interceptors
     # 当前 interceptors 实现与官方 Hooks 接口不兼容，暂时不传递
@@ -319,21 +318,13 @@ async def get_mcp_tools(
         # 获取工具（使用官方推荐的 client.get_tools() 方法）
         tools = await client.get_tools()
 
-        logger.info(
-            f"MCP 工具获取成功: server_name={server_name}, "
-            f"tool_count={len(tools)}"
-        )
+        logger.info(f"MCP 工具获取成功: server_name={server_name}, " f"tool_count={len(tools)}")
 
-        return tools
+        return list(tools)
 
     except Exception as e:
-        logger.error(
-            f"MCP 工具获取失败: server_name={server_name}, error={e}",
-            exc_info=True
-        )
-        raise MCPConnectionError(
-            f"无法连接到 MCP 服务器 {server_name}: {e}"
-        ) from e
+        logger.error(f"MCP 工具获取失败: server_name={server_name}, error={e}", exc_info=True)
+        raise MCPConnectionError(f"无法连接到 MCP 服务器 {server_name}: {e}") from e
 
 
 async def get_mcp_tools_multi_server(
@@ -358,16 +349,10 @@ async def get_mcp_tools_multi_server(
             tools = await client.get_tools()
             result[server_name] = tools
 
-            logger.info(
-                f"获取 MCP 工具成功: server={server_name}, "
-                f"tool_count={len(tools)}"
-            )
+            logger.info(f"获取 MCP 工具成功: server={server_name}, " f"tool_count={len(tools)}")
 
         except Exception as e:
-            logger.error(
-                f"获取 MCP 工具失败: server={server_name}, error={e}",
-                exc_info=True
-            )
+            logger.error(f"获取 MCP 工具失败: server={server_name}, error={e}", exc_info=True)
             # 继续处理其他服务器
             result[server_name] = []
 

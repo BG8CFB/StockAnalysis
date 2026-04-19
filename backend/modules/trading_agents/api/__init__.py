@@ -9,8 +9,9 @@ API 层 - 对外接口（HTTP + WebSocket）
 
 from fastapi import APIRouter
 
-from .tasks import router as tasks_router, config_router
 from .reports import health_router
+from .tasks import config_router
+from .tasks import router as tasks_router
 from .websocket import router as websocket_tasks_router
 
 # 创建聚合路由器

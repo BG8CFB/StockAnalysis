@@ -3,6 +3,7 @@
 
 为不同日志级别添加颜色和符号标识，提高日志可读性
 """
+
 import logging
 import sys
 from typing import Optional
@@ -10,13 +11,15 @@ from typing import Optional
 # 尝试导入 colorama (Windows 支持)
 try:
     import colorama
+
     HAS_COLORAMA = True
 except ImportError:
     HAS_COLORAMA = False
 
 _colorama_initialized = False
 
-def init_colorama():
+
+def init_colorama() -> None:
     """安全地初始化 colorama"""
     global _colorama_initialized
     if HAS_COLORAMA and not _colorama_initialized:
@@ -34,12 +37,12 @@ class ColoredFormatter(logging.Formatter):
 
     # ANSI 颜色代码
     COLORS = {
-        "DEBUG": "\033[36m",      # 青色
-        "INFO": "\033[32m",       # 绿色
-        "WARNING": "\033[33m",     # 黄色
-        "ERROR": "\033[31m",      # 红色
-        "CRITICAL": "\033[35m",    # 紫色
-        "RESET": "\033[0m",       # 重置
+        "DEBUG": "\033[36m",  # 青色
+        "INFO": "\033[32m",  # 绿色
+        "WARNING": "\033[33m",  # 黄色
+        "ERROR": "\033[31m",  # 红色
+        "CRITICAL": "\033[35m",  # 紫色
+        "RESET": "\033[0m",  # 重置
     }
 
     # 日志级别符号
@@ -60,7 +63,9 @@ class ColoredFormatter(logging.Formatter):
         "CRITICAL": "[C]",
     }
 
-    def __init__(self, fmt: Optional[str] = None, datefmt: Optional[str] = None, use_color: bool = True):
+    def __init__(
+        self, fmt: Optional[str] = None, datefmt: Optional[str] = None, use_color: bool = True
+    ):
         """
         初始化格式器
 
@@ -81,7 +86,6 @@ class ColoredFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         """格式化日志记录"""
         levelname = record.levelname
-        levelno = record.levelno
 
         # 获取符号
         if self.use_color:

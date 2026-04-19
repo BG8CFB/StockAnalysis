@@ -6,9 +6,9 @@
 模块内容、删除、下载等端点。
 """
 
-import json
 import logging
 import math
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -20,7 +20,6 @@ from core.auth.dependencies import get_current_active_user
 from core.db.mongodb import mongodb
 from core.user.models import UserModel
 from modules.trading_agents.schemas import (
-    AnalysisTaskResponse,
     TaskStatusEnum,
 )
 
@@ -41,13 +40,17 @@ def _format_report_item(task: Dict[str, Any]) -> Dict[str, Any]:
     """将 analysis_tasks 文档格式化为前端 ReportItem 结构"""
     reports = task.get("reports") or {}
     final_report = reports.get("final_report") or ""
-    token_usage = task.get("token_usage") or {}
-    total_tokens = token_usage.get("total_tokens", 0)
+    task.get("token_usage") or {}
 
     created_at = task.get("created_at")
     completed_at = task.get("completed_at")
     created_at_str = _to_iso(created_at) if created_at else ""
-    completed_at_str = _to_iso(completed_at) if completed_at else ""
+    _completed_at_str = _to_iso(completed_at) if completed_at else ""
+
+    # 从阶段配置中提取分析师列表
+    stages = task.get("stages") or {}
+    stage1 = stages.get("stage1") or {}
+    analysts = stage1.get("selected_agents") or []
 
     return {
         "id": str(task["_id"]),
@@ -62,7 +65,7 @@ def _format_report_item(task: Dict[str, Any]) -> Dict[str, Any]:
         "status": task.get("status", "completed"),
         "created_at": created_at_str,
         "analysis_date": task.get("trade_date", ""),
-        "analysts": [],
+        "analysts": analysts,
         "research_depth": 4,
         "summary": final_report[:200] if final_report else "",
         "file_size": len(final_report) if final_report else 0,
@@ -92,6 +95,19 @@ def _format_report_detail(task: Dict[str, Any]) -> Dict[str, Any]:
         except (TypeError, AttributeError):
             pass
 
+    # 从阶段配置中提取分析师列表
+    stages = task.get("stages") or {}
+    stage1 = stages.get("stage1") or {}
+    analysts = stage1.get("selected_agents") or []
+
+    # 从最终报告中提取置信度、风险等级、关键要点
+    confidence_score = _extract_confidence_score(final_report, task)
+    risk_level = task.get("risk_level") or _extract_risk_level(final_report)
+    key_points = _extract_key_points(final_report)
+
+    # 从报告中提取投资决策信息
+    decision = _extract_decision(reports, task)
+
     return {
         "id": str(task["_id"]),
         "analysis_id": str(task["_id"]),
@@ -102,19 +118,19 @@ def _format_report_detail(task: Dict[str, Any]) -> Dict[str, Any]:
         "status": task.get("status", "completed"),
         "created_at": created_at_str,
         "updated_at": completed_at_str,
-        "analysts": [],
+        "analysts": analysts,
         "research_depth": 4,
         "summary": final_report[:200] if final_report else "",
         "reports": reports,
         "source": "trading_agents",
         "task_id": str(task["_id"]),
         "recommendation": task.get("final_recommendation") or "",
-        "confidence_score": 0,
-        "risk_level": task.get("risk_level") or "",
-        "key_points": [],
+        "confidence_score": confidence_score,
+        "risk_level": risk_level,
+        "key_points": key_points,
         "execution_time": execution_time,
         "tokens_used": total_tokens,
-        "decision": {},
+        "decision": decision,
     }
 
 
@@ -136,17 +152,31 @@ def _to_iso(dt: Any) -> str:
 async def list_reports(
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
-    keyword: Optional[str] = Query(None, description="搜索关键词（股票代码/名称）"),
-    market: Optional[str] = Query(None, description="市场过滤: A_STOCK/US_STOCK/HK_STOCK"),
+    keyword: Optional[str] = Query(
+        None, alias="keyword", description="搜索关键词（股票代码/名称）"
+    ),
+    search_keyword: Optional[str] = Query(
+        None, alias="search_keyword", description="搜索关键词（兼容前端旧参数名）"
+    ),
+    market: Optional[str] = Query(
+        None, alias="market", description="市场过滤: A_STOCK/US_STOCK/HK_STOCK"
+    ),
+    market_filter: Optional[str] = Query(
+        None, alias="market_filter", description="市场过滤（兼容前端旧参数名）"
+    ),
     start_date: Optional[str] = Query(None, description="开始日期 (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="结束日期 (YYYY-MM-DD)"),
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """
     获取报告列表（已完成的任务）
 
     前端使用分页接口，返回 ReportListResponse 结构。
+    支持 keyword/search_keyword 和 market/market_filter 两组参数名。
     """
+    # 兼容旧参数名：优先使用新参数，旧参数作为回退
+    effective_keyword = keyword or search_keyword
+    effective_market = market or market_filter
     user_id = str(current_user.id)
 
     # 构建查询条件：只查已完成的任务
@@ -156,12 +186,12 @@ async def list_reports(
     }
 
     # 市场过滤
-    if market:
-        query["market"] = market
+    if effective_market:
+        query["market"] = effective_market
 
     # 关键词搜索（模糊匹配股票代码）
-    if keyword:
-        query["stock_code"] = {"$regex": keyword, "$options": "i"}
+    if effective_keyword:
+        query["stock_code"] = {"$regex": effective_keyword, "$options": "i"}
 
     # 日期范围过滤
     if start_date or end_date:
@@ -204,7 +234,7 @@ async def list_reports(
 async def get_report_detail(
     report_id: str,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取报告详情"""
     user_id = str(current_user.id)
 
@@ -233,7 +263,7 @@ async def get_report_module_content(
     report_id: str,
     module: str,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取报告特定模块/阶段的内容"""
     user_id = str(current_user.id)
 
@@ -274,7 +304,7 @@ async def get_report_module_content(
 async def delete_report(
     report_id: str,
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """删除报告（已完成的任务）"""
     user_id = str(current_user.id)
 
@@ -309,7 +339,7 @@ async def download_report(
     report_id: str,
     format: str = Query("json", description="导出格式: json/markdown"),
     current_user: UserModel = Depends(get_current_active_user),
-):
+) -> JSONResponse:
     """下载报告（JSON 格式导出）"""
     user_id = str(current_user.id)
 
@@ -378,3 +408,103 @@ async def download_report(
             "message": "下载成功",
         }
     )
+
+
+# =============================================================================
+# 数据提取辅助函数
+# =============================================================================
+
+
+def _extract_confidence_score(final_report: str, task: Dict[str, Any]) -> int:
+    """从最终报告或任务数据中提取置信度分数（0-100）"""
+    explicit = task.get("confidence_score")
+    if explicit is not None:
+        try:
+            return int(explicit)
+        except (TypeError, ValueError):
+            pass
+    if not final_report:
+        return 0
+    patterns = [
+        r"置信度[：:]\s*(\d+)",
+        r"confidence[：:]\s*(\d+)",
+        r"信心指数[：:]\s*(\d+)",
+        r"(\d+)%\s*(?:置信|信心|把握)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, final_report, re.IGNORECASE)
+        if match:
+            score = int(match.group(1))
+            return min(score, 100) if score <= 100 else score // 10
+    return 0
+
+
+def _extract_risk_level(final_report: str) -> str:
+    """从最终报告中提取风险等级"""
+    if not final_report:
+        return ""
+    if re.search(r"高风险", final_report):
+        return "高"
+    if re.search(r"低风险", final_report):
+        return "低"
+    if re.search(r"中风险|中等风险", final_report):
+        return "中"
+    match = re.search(r"风险等级[：:]\s*(高|中|低)", final_report)
+    if match:
+        return match.group(1)
+    return ""
+
+
+def _extract_key_points(final_report: str) -> List[str]:
+    """从最终报告中提取关键要点"""
+    if not final_report:
+        return []
+    points: List[str] = []
+    in_section = False
+    for line in final_report.split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if re.match(r"^#+\s*(?:关键|要点|核心|总结|key\s*points)", stripped, re.IGNORECASE):
+            in_section = True
+            continue
+        if in_section:
+            if stripped.startswith("#"):
+                break
+            if re.match(r"^[-*•]\s+", stripped):
+                points.append(re.sub(r"^[-*•]\s+", "", stripped))
+            elif re.match(r"^\d+[.、)\s]+", stripped):
+                points.append(re.sub(r"^\d+[.、)\s]+", "", stripped))
+            if len(points) >= 5:
+                break
+    return points
+
+
+def _extract_decision(reports: Dict[str, Any], task: Dict[str, Any]) -> Dict[str, Any]:
+    """从报告数据中提取投资决策信息"""
+    decision: Dict[str, Any] = {}
+
+    recommendation = task.get("final_recommendation")
+    if recommendation:
+        decision["recommendation"] = recommendation
+
+    # 从 Phase 2 报告中提取交易计划
+    phase2 = reports.get("phase2_debate") or ""
+    if phase2:
+        # 尝试提取目标价格
+        price_match = re.search(r"目标价[格]?[：:]\s*([\d.]+)", phase2)
+        if price_match:
+            decision["target_price"] = float(price_match.group(1))
+        # 尝试提取止损价
+        stop_match = re.search(r"止损[价]?[：:]\s*([\d.]+)", phase2)
+        if stop_match:
+            decision["stop_loss"] = float(stop_match.group(1))
+
+    # 从 Phase 3 报告中提取风险建议
+    phase3 = reports.get("phase3_risk") or ""
+    if phase3:
+        risk_match = re.search(r"(?:风险等级|综合风险)[：:]\s*(高|中|低)", phase3)
+        if risk_match:
+            decision["risk_assessment"] = risk_match.group(1)
+
+    return decision

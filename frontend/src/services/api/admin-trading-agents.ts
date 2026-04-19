@@ -63,7 +63,15 @@ export interface TaskStats {
 
 /** 获取所有任务 */
 export async function getTasks(params?: { page?: number; page_size?: number; status?: string }): Promise<ApiResponse<PaginatedResponse<Task>>> {
-  return apiClient.get<PaginatedResponse<Task>>('/api/admin/trading-agents/tasks', params ?? {})
+  const query: Record<string, unknown> = {}
+  if (params) {
+    if (params.page !== undefined && params.page_size !== undefined) {
+      query.offset = (params.page - 1) * params.page_size
+      query.limit = params.page_size
+    }
+    if (params.status) query.status_filter = params.status
+  }
+  return apiClient.get<PaginatedResponse<Task>>('/api/admin/trading-agents/tasks', query)
 }
 
 /** 获取任务统计 */
@@ -97,7 +105,14 @@ export interface ReportStats {
 
 /** 获取所有报告 */
 export async function getReports(params?: { page?: number; page_size?: number }): Promise<ApiResponse<PaginatedResponse<Report>>> {
-  return apiClient.get<PaginatedResponse<Report>>('/api/admin/trading-agents/reports', params ?? {})
+  const query: Record<string, unknown> = {}
+  if (params) {
+    if (params.page !== undefined && params.page_size !== undefined) {
+      query.offset = (params.page - 1) * params.page_size
+      query.limit = params.page_size
+    }
+  }
+  return apiClient.get<PaginatedResponse<Report>>('/api/admin/trading-agents/reports', query)
 }
 
 /** 获取报告统计 */
@@ -127,7 +142,12 @@ export interface AlertStats {
 
 /** 获取所有告警 */
 export async function getAlerts(params?: { resolved?: boolean; level?: string }): Promise<ApiResponse<Alert[]>> {
-  return apiClient.get<Alert[]>('/api/admin/trading-agents/alerts', params ?? {})
+  const query: Record<string, unknown> = {}
+  if (params) {
+    if (params.resolved === false) query.unresolved_only = true
+    if (params.level) query.severity_filter = params.level
+  }
+  return apiClient.get<Alert[]>('/api/admin/trading-agents/alerts', query)
 }
 
 /** 解决告警 */

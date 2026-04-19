@@ -6,9 +6,10 @@ AkShare 美股数据源适配器
 """
 
 import logging
-import pandas as pd
-from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
+
+import pandas as pd
 
 try:
     import akshare as ak
@@ -16,16 +17,13 @@ except ImportError:
     ak = None
     logging.warning("akshare not installed. Install with: pip install akshare")
 
-from core.market_data.sources.base import DataSourceAdapter
 from core.market_data.models import (
-    StockInfo,
-    StockQuote,
-    StockKLine,
-    StockFinancial,
-    StockFinancialIndicator,
-    StockCompany,
     MarketType,
+    StockInfo,
+    StockKLine,
+    StockQuote,
 )
+from core.market_data.sources.base import DataSourceAdapter
 from core.market_data.tools.field_mapper import FieldMapper
 
 logger = logging.getLogger(__name__)

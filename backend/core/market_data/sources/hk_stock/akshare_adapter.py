@@ -6,8 +6,9 @@ AkShare 港股数据源适配器
 """
 
 import logging
-from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
+
 import pandas as pd
 
 try:
@@ -16,12 +17,12 @@ except ImportError:
     ak = None
     logging.warning("akshare not installed. Install with: pip install akshare")
 
-from core.market_data.sources.base import DataSourceAdapter
 from core.market_data.models import (
+    MarketType,
     StockInfo,
     StockQuote,
-    MarketType,
 )
+from core.market_data.sources.base import DataSourceAdapter
 from core.market_data.tools.field_mapper import FieldMapper
 
 logger = logging.getLogger(__name__)
@@ -41,7 +42,7 @@ class AkShareHKFieldMapper(FieldMapper):
         Returns:
             标准化代码，如 0700.HK
         """
-        if '.' in code:
+        if "." in code:
             return code
 
         # 港股代码需要补0到4位
@@ -59,13 +60,13 @@ class AkShareHKFieldMapper(FieldMapper):
         Returns:
             统一格式股票信息字典
         """
-        code = str(row.get('代码', ''))
+        code = str(row.get("代码", ""))
         symbol = AkShareHKFieldMapper.normalize_hk_symbol(code)
 
         return {
             "symbol": symbol,
             "market": MarketType.HK_STOCK,
-            "name": row.get('名称', ''),
+            "name": row.get("名称", ""),
             "industry": None,
             "sector": None,
             "listing_date": "",
@@ -86,22 +87,22 @@ class AkShareHKFieldMapper(FieldMapper):
         Returns:
             统一格式行情数据字典
         """
-        trade_date = str(row.get('date', ''))
+        trade_date = str(row.get("date", ""))
         trade_date = FieldMapper.normalize_date(trade_date)
 
         return {
             "symbol": symbol,
             "market": MarketType.HK_STOCK,
             "trade_date": trade_date,
-            "open": FieldMapper.safe_float(row.get('open')),
-            "high": FieldMapper.safe_float(row.get('high')),
-            "low": FieldMapper.safe_float(row.get('low')),
-            "close": FieldMapper.safe_float(row.get('close')),
+            "open": FieldMapper.safe_float(row.get("open")),
+            "high": FieldMapper.safe_float(row.get("high")),
+            "low": FieldMapper.safe_float(row.get("low")),
+            "close": FieldMapper.safe_float(row.get("close")),
             "pre_close": None,
-            "volume": FieldMapper.safe_int(row.get('volume')),
-            "amount": FieldMapper.safe_float(row.get('amount')),
-            "change": FieldMapper.safe_float(row.get('change')),
-            "change_pct": FieldMapper.safe_float(row.get('percent')),
+            "volume": FieldMapper.safe_int(row.get("volume")),
+            "amount": FieldMapper.safe_float(row.get("amount")),
+            "change": FieldMapper.safe_float(row.get("change")),
+            "change_pct": FieldMapper.safe_float(row.get("percent")),
             "turnover_rate": None,
             "data_source": "akshare",
         }
@@ -131,11 +132,7 @@ class AkShareHKAdapter(DataSourceAdapter):
             logger.error(f"AkShare HK connection test failed: {e}")
             return False
 
-    async def get_stock_list(
-        self,
-        market: MarketType,
-        status: str = "L"
-    ) -> List[StockInfo]:
+    async def get_stock_list(self, market: MarketType, status: str = "L") -> List[StockInfo]:
         """
         获取港股股票列表
 
@@ -178,7 +175,7 @@ class AkShareHKAdapter(DataSourceAdapter):
         symbol: str,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-        adjust_type: Optional[str] = None
+        adjust_type: Optional[str] = None,
     ) -> List[StockQuote]:
         """
         获取港股日线行情
@@ -193,18 +190,20 @@ class AkShareHKAdapter(DataSourceAdapter):
             日线行情列表
         """
         try:
-            code = symbol.replace('.HK', '')
+            code = symbol.replace(".HK", "")
             code = code.zfill(4)
 
             if end_date is None:
-                end_date = datetime.now().strftime('%Y%m%d')
+                end_date = datetime.now().strftime("%Y%m%d")
             if start_date is None:
-                start_date = (datetime.now() - timedelta(days=365)).strftime('%Y%m%d')
+                start_date = (datetime.now() - timedelta(days=365)).strftime("%Y%m%d")
 
             logger.info(f"Fetching HK daily quotes from AkShare: symbol={code}")
 
             # AkShare 港股历史数据接口
-            df = ak.stock_hk_hist(symbol=code, period="daily", start_date=start_date, end_date=end_date, adjust="")
+            df = ak.stock_hk_hist(
+                symbol=code, period="daily", start_date=start_date, end_date=end_date, adjust=""
+            )
 
             if df is None or df.empty:
                 logger.warning(f"No daily quotes returned for {symbol}")
@@ -227,12 +226,16 @@ class AkShareHKAdapter(DataSourceAdapter):
             logger.error(f"Failed to get daily quotes: {e}")
             raise
 
-    async def get_stock_financials(self, symbol: str, report_date: Optional[str] = None, report_type: Optional[str] = None) -> List[Any]:
+    async def get_stock_financials(
+        self, symbol: str, report_date: Optional[str] = None, report_type: Optional[str] = None
+    ) -> List[Any]:
         """AkShare 港股财务数据支持有限"""
         logger.warning("AkShare has limited HK financial data support")
         return []
 
-    async def get_financial_indicators(self, symbol: str, report_date: Optional[str] = None) -> List[Any]:
+    async def get_financial_indicators(
+        self, symbol: str, report_date: Optional[str] = None
+    ) -> List[Any]:
         """AkShare 港股财务指标支持有限"""
         logger.warning("AkShare has limited HK financial indicator support")
         return []
@@ -260,15 +263,17 @@ class AkShareHKAdapter(DataSourceAdapter):
 
             result = []
             for _, row in df.iterrows():
-                code = str(row.get('港股代码', ''))
+                code = str(row.get("港股代码", ""))
                 symbol = AkShareHKFieldMapper.normalize_hk_symbol(code)
 
-                result.append({
-                    "symbol": symbol,
-                    "name": row.get('港股名称', ''),
-                    "sector": row.get('所属行业', ''),
-                    "data_source": self.source_name,
-                })
+                result.append(
+                    {
+                        "symbol": symbol,
+                        "name": row.get("港股名称", ""),
+                        "sector": row.get("所属行业", ""),
+                        "data_source": self.source_name,
+                    }
+                )
 
             logger.info(f"Retrieved {len(result)} HK Connect stocks")
             return result
@@ -278,9 +283,7 @@ class AkShareHKAdapter(DataSourceAdapter):
             return []
 
     async def get_hk_stock_money_flow(
-        self,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None
+        self, start_date: Optional[str] = None, end_date: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         获取港股通资金流向
@@ -303,19 +306,21 @@ class AkShareHKAdapter(DataSourceAdapter):
 
             result = []
             for _, row in df.iterrows():
-                date_str = str(row.get('date', ''))
+                date_str = str(row.get("date", ""))
                 if start_date and date_str < start_date:
                     continue
                 if end_date and date_str > end_date:
                     continue
 
-                result.append({
-                    "trade_date": FieldMapper.normalize_date(date_str),
-                    "ggt_ss_money": FieldMapper.safe_float(row.get('沪股通净流入')),
-                    "ggt_sz_money": FieldMapper.safe_float(row.get('深股通净流入')),
-                    "north_money": FieldMapper.safe_float(row.get('北向资金净流入')),
-                    "data_source": self.source_name,
-                })
+                result.append(
+                    {
+                        "trade_date": FieldMapper.normalize_date(date_str),
+                        "ggt_ss_money": FieldMapper.safe_float(row.get("沪股通净流入")),
+                        "ggt_sz_money": FieldMapper.safe_float(row.get("深股通净流入")),
+                        "north_money": FieldMapper.safe_float(row.get("北向资金净流入")),
+                        "data_source": self.source_name,
+                    }
+                )
 
             logger.info(f"Retrieved {len(result)} HK Connect money flow records")
             return result
@@ -324,10 +329,7 @@ class AkShareHKAdapter(DataSourceAdapter):
             logger.error(f"Failed to get HK Connect money flow: {e}")
             return []
 
-    async def get_hk_stock_holdings(
-        self,
-        symbol: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
+    async def get_hk_stock_holdings(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         获取港股通持股明细
 
@@ -348,19 +350,21 @@ class AkShareHKAdapter(DataSourceAdapter):
 
             result = []
             for _, row in df.iterrows():
-                stock_code = str(row.get('港股代码', ''))
+                stock_code = str(row.get("港股代码", ""))
                 stock_symbol = AkShareHKFieldMapper.normalize_hk_symbol(stock_code)
 
                 if symbol and stock_symbol != symbol:
                     continue
 
-                result.append({
-                    "symbol": stock_symbol,
-                    "name": row.get('港股名称', ''),
-                    "hold_percent": FieldMapper.safe_float(row.get('持股比例')),
-                    "hold_amount": FieldMapper.safe_float(row.get('持股数量')),
-                    "data_source": self.source_name,
-                })
+                result.append(
+                    {
+                        "symbol": stock_symbol,
+                        "name": row.get("港股名称", ""),
+                        "hold_percent": FieldMapper.safe_float(row.get("持股比例")),
+                        "hold_amount": FieldMapper.safe_float(row.get("持股数量")),
+                        "data_source": self.source_name,
+                    }
+                )
 
             logger.info(f"Retrieved {len(result)} HK Connect holdings records")
             return result
@@ -387,19 +391,21 @@ class AkShareHKAdapter(DataSourceAdapter):
 
             result = []
             for _, row in df.iterrows():
-                code = str(row.get('代码', ''))
-                name = row.get('名称', '')
+                code = str(row.get("代码", ""))
+                name = row.get("名称", "")
 
-                result.append({
-                    "symbol": code,
-                    "name": name,
-                    "price": FieldMapper.safe_float(row.get('最新价')),
-                    "change": FieldMapper.safe_float(row.get('涨跌额')),
-                    "change_pct": FieldMapper.safe_float(row.get('涨跌幅')),
-                    "volume": FieldMapper.safe_int(row.get('成交量')),
-                    "amount": FieldMapper.safe_float(row.get('成交额')),
-                    "data_source": self.source_name,
-                })
+                result.append(
+                    {
+                        "symbol": code,
+                        "name": name,
+                        "price": FieldMapper.safe_float(row.get("最新价")),
+                        "change": FieldMapper.safe_float(row.get("涨跌额")),
+                        "change_pct": FieldMapper.safe_float(row.get("涨跌幅")),
+                        "volume": FieldMapper.safe_int(row.get("成交量")),
+                        "amount": FieldMapper.safe_float(row.get("成交额")),
+                        "data_source": self.source_name,
+                    }
+                )
 
             logger.info(f"Retrieved {len(result)} HK index spot records")
             return result
@@ -412,7 +418,7 @@ class AkShareHKAdapter(DataSourceAdapter):
         self,
         symbol: str = "恒生指数",
         start_date: Optional[str] = None,
-        end_date: Optional[str] = None
+        end_date: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         获取港股指数历史行情
@@ -436,23 +442,25 @@ class AkShareHKAdapter(DataSourceAdapter):
 
             result = []
             for _, row in df.iterrows():
-                date_str = str(row.get('date', ''))
+                date_str = str(row.get("date", ""))
                 if start_date and date_str < start_date:
                     continue
                 if end_date and date_str > end_date:
                     continue
 
-                result.append({
-                    "symbol": symbol,
-                    "trade_date": FieldMapper.normalize_date(date_str),
-                    "open": FieldMapper.safe_float(row.get('open')),
-                    "high": FieldMapper.safe_float(row.get('high')),
-                    "low": FieldMapper.safe_float(row.get('low')),
-                    "close": FieldMapper.safe_float(row.get('close')),
-                    "volume": FieldMapper.safe_int(row.get('volume')),
-                    "amount": FieldMapper.safe_float(row.get('amount')),
-                    "data_source": self.source_name,
-                })
+                result.append(
+                    {
+                        "symbol": symbol,
+                        "trade_date": FieldMapper.normalize_date(date_str),
+                        "open": FieldMapper.safe_float(row.get("open")),
+                        "high": FieldMapper.safe_float(row.get("high")),
+                        "low": FieldMapper.safe_float(row.get("low")),
+                        "close": FieldMapper.safe_float(row.get("close")),
+                        "volume": FieldMapper.safe_int(row.get("volume")),
+                        "amount": FieldMapper.safe_float(row.get("amount")),
+                        "data_source": self.source_name,
+                    }
+                )
 
             logger.info(f"Retrieved {len(result)} HK index daily records for {symbol}")
             return result
@@ -472,7 +480,7 @@ class AkShareHKAdapter(DataSourceAdapter):
             实时行情字典
         """
         try:
-            code = symbol.replace('.HK', '')
+            code = symbol.replace(".HK", "")
             code = code.zfill(4)
 
             logger.info(f"Fetching HK realtime quote from AkShare: symbol={code}")
@@ -484,7 +492,7 @@ class AkShareHKAdapter(DataSourceAdapter):
                 return None
 
             # 查找对应股票
-            stock_df = df[df['代码'] == code]
+            stock_df = df[df["代码"] == code]
             if stock_df.empty:
                 logger.warning(f"Stock {code} not found in HK spot data")
                 return None
@@ -494,15 +502,15 @@ class AkShareHKAdapter(DataSourceAdapter):
             quote = {
                 "symbol": symbol,
                 "market": MarketType.HK_STOCK,
-                "price": FieldMapper.safe_float(row.get('最新价')),
-                "change": FieldMapper.safe_float(row.get('涨跌额')),
-                "change_pct": FieldMapper.safe_float(row.get('涨跌幅')),
-                "open": FieldMapper.safe_float(row.get('今开')),
-                "high": FieldMapper.safe_float(row.get('最高')),
-                "low": FieldMapper.safe_float(row.get('最低')),
-                "close": FieldMapper.safe_float(row.get('昨收')),
-                "volume": FieldMapper.safe_int(row.get('成交量')),
-                "amount": FieldMapper.safe_float(row.get('成交额')),
+                "price": FieldMapper.safe_float(row.get("最新价")),
+                "change": FieldMapper.safe_float(row.get("涨跌额")),
+                "change_pct": FieldMapper.safe_float(row.get("涨跌幅")),
+                "open": FieldMapper.safe_float(row.get("今开")),
+                "high": FieldMapper.safe_float(row.get("最高")),
+                "low": FieldMapper.safe_float(row.get("最低")),
+                "close": FieldMapper.safe_float(row.get("昨收")),
+                "volume": FieldMapper.safe_int(row.get("成交量")),
+                "amount": FieldMapper.safe_float(row.get("成交额")),
                 "data_source": self.source_name,
             }
 

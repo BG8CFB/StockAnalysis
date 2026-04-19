@@ -52,7 +52,7 @@ export default function RecentAnalysesCard() {
               <div
                 key={item.id}
                 style={{ cursor: 'pointer', padding: '10px 0', borderBottom: '1px solid var(--border-color)' }}
-                onClick={() => navigate(`/reports/view?id=${item.id}`)}
+                onClick={() => navigate(`/reports/view/${item.id}`)}
               >
                 <div style={{ marginBottom: 4 }}>
                   <span style={{ color: 'var(--text-primary)', fontSize: 13 }}>{item.title}</span>

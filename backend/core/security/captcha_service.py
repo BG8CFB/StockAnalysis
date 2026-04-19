@@ -2,6 +2,7 @@
 图形验证码服务
 生成和验证滑动拼图验证码
 """
+
 import json
 import secrets
 from typing import Optional
@@ -25,7 +26,7 @@ class CaptchaService:
     # 允许的误差范围（像素）
     TOLERANCE = 5
 
-    def __init__(self):
+    def __init__(self) -> None:
         pass
 
     def _get_key(self, token: str) -> str:
@@ -48,6 +49,7 @@ class CaptchaService:
         # 生成随机拼图位置（实际项目中应该从背景图计算得出）
         # 这里简化为固定范围的随机值
         import random
+
         puzzle_x = random.randint(100, 250)
         puzzle_y = random.randint(50, 150)
 
@@ -146,7 +148,7 @@ class CaptchaService:
             return True  # 不存在或已过期视为已使用
 
         captcha_data = json.loads(data_str)
-        return captcha_data.get("verified", False)
+        return bool(captcha_data.get("verified", False))
 
     async def mark_captcha_used(self, token: str) -> None:
         """标记验证码为已使用（用于登录成功后）"""

@@ -39,11 +39,11 @@ class MCPService:
 
     COLLECTION_NAME = "mcp_servers"
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化服务"""
-        self._db = None
+        self._db: Optional[Any] = None
 
-    async def _get_collection(self):
+    async def _get_collection(self) -> Any:
         """获取数据库集合"""
         return mongodb.get_collection(self.COLLECTION_NAME)
 
@@ -52,10 +52,7 @@ class MCPService:
     # ========================================================================
 
     async def create_server(
-        self,
-        user_id: str,
-        request: MCPServerConfigCreate,
-        is_admin: bool = False
+        self, user_id: str, request: MCPServerConfigCreate, is_admin: bool = False
     ) -> MCPServerConfigResponse:
         """
         创建 MCP 服务器配置
@@ -124,10 +121,7 @@ class MCPService:
         return MCPServerConfigResponse.from_db(doc)
 
     async def get_server(
-        self,
-        server_id: str,
-        user_id: str,
-        is_admin: bool = False
+        self, server_id: str, user_id: str, is_admin: bool = False
     ) -> Optional[MCPServerConfigResponse]:
         """
         获取单个服务器配置
@@ -162,9 +156,7 @@ class MCPService:
         return MCPServerConfigResponse.from_db(doc)
 
     async def list_servers(
-        self,
-        user_id: str,
-        is_admin: bool = False
+        self, user_id: str, is_admin: bool = False
     ) -> Dict[str, List[MCPServerConfigResponse]]:
         """
         列出服务器配置
@@ -179,7 +171,7 @@ class MCPService:
         collection = await self._get_collection()
 
         # 查询所有服务器（包括禁用的），由前端来决定如何显示
-        query = {}
+        query: Dict[str, Any] = {}
 
         if is_admin:
             # 管理员查看所有服务器
@@ -195,18 +187,22 @@ class MCPService:
             user_servers = []
 
             # 系统级服务器
-            system_cursor = collection.find({
-                **query,
-                "is_system": True,
-            }).sort("created_at", -1)
+            system_cursor = collection.find(
+                {
+                    **query,
+                    "is_system": True,
+                }
+            ).sort("created_at", -1)
             system_servers = [MCPServerConfigResponse.from_db(doc) async for doc in system_cursor]
 
             # 用户自己的服务器
-            user_cursor = collection.find({
-                **query,
-                "is_system": False,
-                "owner_id": user_id,
-            }).sort("created_at", -1)
+            user_cursor = collection.find(
+                {
+                    **query,
+                    "is_system": False,
+                    "owner_id": user_id,
+                }
+            ).sort("created_at", -1)
             user_servers = [MCPServerConfigResponse.from_db(doc) async for doc in user_cursor]
 
             return {
@@ -215,11 +211,7 @@ class MCPService:
             }
 
     async def update_server(
-        self,
-        server_id: str,
-        user_id: str,
-        request: MCPServerConfigUpdate,
-        is_admin: bool = False
+        self, server_id: str, user_id: str, request: MCPServerConfigUpdate, is_admin: bool = False
     ) -> Optional[MCPServerConfigResponse]:
         """
         更新服务器配置
@@ -287,10 +279,7 @@ class MCPService:
         update_data["updated_at"] = datetime.now(timezone.utc)
 
         # 执行更新
-        await collection.update_one(
-            {"_id": object_id},
-            {"$set": update_data}
-        )
+        await collection.update_one({"_id": object_id}, {"$set": update_data})
 
         # 获取更新后的配置
         updated_doc = await collection.find_one({"_id": object_id})
@@ -299,12 +288,7 @@ class MCPService:
 
         return MCPServerConfigResponse.from_db(updated_doc)
 
-    async def delete_server(
-        self,
-        server_id: str,
-        user_id: str,
-        is_admin: bool = False
-    ) -> bool:
+    async def delete_server(self, server_id: str, user_id: str, is_admin: bool = False) -> bool:
         """
         删除服务器配置
 
@@ -340,17 +324,14 @@ class MCPService:
 
         logger.info(f"删除 MCP 服务器配置: server_id={server_id}, user={user_id}")
 
-        return result.deleted_count > 0
+        return bool(result.deleted_count > 0)
 
     # ========================================================================
     # 连接测试
     # ========================================================================
 
     async def test_server_connection(
-        self,
-        server_id: str,
-        user_id: str,
-        is_admin: bool = False
+        self, server_id: str, user_id: str, is_admin: bool = False
     ) -> ConnectionTestResponse:
         """
         测试 MCP 服务器连接
@@ -385,12 +366,12 @@ class MCPService:
 
             # 在连接测试完成后计算延迟
             latency_ms = int((time.time() - start_time) * 1000)
-            logger.debug(f"连接测试完成: server_id={server_id}, latency={latency_ms}ms, tools={len(tools)}")
+            logger.debug(
+                f"连接测试完成: server_id={server_id}, latency={latency_ms}ms, tools={len(tools)}"
+            )
 
             # 更新状态为可用
-            await self._update_server_status(
-                server_id, MCPServerStatusEnum.AVAILABLE
-            )
+            await self._update_server_status(server_id, MCPServerStatusEnum.AVAILABLE)
 
             logger.info(
                 f"MCP 服务器连接测试成功: server_id={server_id}, "
@@ -405,16 +386,14 @@ class MCPService:
 
         except Exception as e:
             latency_ms = int((time.time() - start_time) * 1000)
-            logger.debug(f"连接测试失败: server_id={server_id}, latency={latency_ms}ms, error={str(e)}")
+            logger.debug(
+                f"连接测试失败: server_id={server_id}, latency={latency_ms}ms, error={str(e)}"
+            )
 
             # 更新状态
-            await self._update_server_status(
-                server_id, MCPServerStatusEnum.UNAVAILABLE
-            )
+            await self._update_server_status(server_id, MCPServerStatusEnum.UNAVAILABLE)
 
-            logger.error(
-                f"MCP 服务器连接测试失败: server_id={server_id}, error={e}"
-            )
+            logger.error(f"MCP 服务器连接测试失败: server_id={server_id}, error={e}")
 
             return ConnectionTestResponse(
                 success=False,
@@ -423,10 +402,7 @@ class MCPService:
             )
 
     async def get_server_tools(
-        self,
-        server_id: str,
-        user_id: str,
-        is_admin: bool = False
+        self, server_id: str, user_id: str, is_admin: bool = False
     ) -> List[Dict[str, Any]]:
         """
         获取 MCP 服务器的工具列表
@@ -454,32 +430,26 @@ class MCPService:
             tools = await get_mcp_tools(server.name, connection_config)
 
             # 转换为字典格式
-            tool_list = []
+            tool_list: List[Dict[str, Any]] = []
             for tool in tools:
                 tool_dict = {
                     "name": tool.name,
                     "description": tool.description or "",
                 }
-                if hasattr(tool, 'args_schema') and tool.args_schema:
-                    if hasattr(tool.args_schema, 'model_json_schema'):
-                        tool_dict["inputSchema"] = tool.args_schema.model_json_schema()
-                    elif hasattr(tool.args_schema, 'schema'):
-                        tool_dict["inputSchema"] = tool.args_schema.schema()
+                if hasattr(tool, "args_schema") and tool.args_schema:
+                    if hasattr(tool.args_schema, "model_json_schema"):
+                        tool_dict["inputSchema"] = tool.args_schema.model_json_schema()  # type: ignore[assignment]
+                    elif hasattr(tool.args_schema, "schema"):
+                        tool_dict["inputSchema"] = tool.args_schema.schema()  # type: ignore[assignment]
 
                 tool_list.append(tool_dict)
 
-            logger.info(
-                f"获取 MCP 工具列表成功: server={server.name}, "
-                f"count={len(tool_list)}"
-            )
+            logger.info(f"获取 MCP 工具列表成功: server={server.name}, " f"count={len(tool_list)}")
 
             return tool_list
 
         except Exception as e:
-            logger.error(
-                f"获取 MCP 工具列表失败: server={server.name}, error={e}",
-                exc_info=True
-            )
+            logger.error(f"获取 MCP 工具列表失败: server={server.name}, error={e}", exc_info=True)
             return []
 
     # ========================================================================
@@ -508,27 +478,31 @@ class MCPService:
         # 根据传输模式构建配置
         if transport == "stdio":
             from core.mcp.adapter.adapter import build_stdio_connection
+
             return build_stdio_connection(
-                command=server.command,
-                args=server.args,
+                command=server.command or "",
+                args=server.args or [],
                 env=server.env,
             )
         elif transport == "sse":
             from core.mcp.adapter.adapter import build_sse_connection
+
             return build_sse_connection(
-                url=server.url,
+                url=server.url or "",
                 headers=headers,
             )
         elif transport == "streamable_http":
             from core.mcp.adapter.adapter import build_streamable_http_connection
+
             return build_streamable_http_connection(
-                url=server.url,
+                url=server.url or "",
                 headers=headers,
             )
         elif transport == "websocket":
             from core.mcp.adapter.adapter import build_websocket_connection
+
             return build_websocket_connection(
-                url=server.url,
+                url=server.url or "",
             )
         else:
             raise ValueError(f"不支持的传输模式: {transport}")
@@ -542,20 +516,14 @@ class MCPService:
         try:
             # 使用系统用户进行测试
             result = await self.test_server_connection(
-                server_id=server_id,
-                user_id="system",
-                is_admin=True
+                server_id=server_id, user_id="system", is_admin=True
             )
             logger.info(f"自动状态检测完成: server_id={server_id}, success={result.success}")
         except Exception as e:
             logger.error(f"自动状态检测失败: server_id={server_id}, error={e}")
             # 检测失败时，状态保持为UNKNOWN
 
-    async def _update_server_status(
-        self,
-        server_id: str,
-        status: MCPServerStatusEnum
-    ) -> None:
+    async def _update_server_status(self, server_id: str, status: MCPServerStatusEnum) -> None:
         """更新服务器状态"""
         collection = await self._get_collection()
 
@@ -571,7 +539,7 @@ class MCPService:
                     "status": status.value,
                     "last_check_at": datetime.now(timezone.utc),
                 }
-            }
+            },
         )
 
 

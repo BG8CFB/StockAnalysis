@@ -16,6 +16,8 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, field_serializer, field_validator
 
+from core.ai.model.schemas import ConnectionTestResponse
+
 # =============================================================================
 # 通用辅助函数
 # =============================================================================
@@ -44,17 +46,17 @@ def parse_datetime(value: Any) -> Optional[datetime]:
         # MongoDB 扩展 JSON 格式
         try:
 
-            from dateutil import parser
+            from dateutil import parser  # type: ignore[import-untyped]
 
-            return parser.isoparse(value["$date"])
+            return parser.isoparse(value["$date"])  # type: ignore[no-any-return]
         except Exception:
             return None
     if isinstance(value, str):
         # ISO 8601 字符串
         try:
-            from dateutil import parser
+            from dateutil import parser  # type: ignore[import-untyped]
 
-            return parser.isoparse(value)
+            return parser.isoparse(value)  # type: ignore[no-any-return]
         except Exception:
             return None
     return None
@@ -142,9 +144,6 @@ class MessageResponse(BaseModel):
     message: str
     success: bool = True
 
-
-# ConnectionTestResponse 已迁移到核心 AI 模块
-from core.ai.model.schemas import ConnectionTestResponse
 
 # =============================================================================
 # MCP 服务器配置模型
@@ -294,8 +293,12 @@ class AnalysisTaskResponse(BaseModel):
     error_details: Optional[Dict[str, Any]]
 
     # 执行记录
-    phase_executions: Optional[List[Dict[str, Any]]] = Field(default_factory=list, description="阶段执行记录")
-    tool_calls: Optional[List[Dict[str, Any]]] = Field(default_factory=list, description="工具调用记录")
+    phase_executions: Optional[List[Dict[str, Any]]] = Field(
+        default_factory=list, description="阶段执行记录"
+    )
+    tool_calls: Optional[List[Dict[str, Any]]] = Field(
+        default_factory=list, description="工具调用记录"
+    )
 
     # 时间戳
     created_at: datetime
@@ -501,7 +504,7 @@ class AgentConfig(BaseModel):
 
     @field_validator("enabled_mcp_servers", mode="before")
     @classmethod
-    def convert_mcp_servers(cls, v):
+    def convert_mcp_servers(cls, v: Any) -> Any:
         """向后兼容：自动将字符串/字典列表转换为 MCPServerConfig 列表"""
         if not v:
             return []
@@ -560,7 +563,7 @@ class AgentConfigSlim(BaseModel):
 
     @field_validator("enabled_mcp_servers", mode="before")
     @classmethod
-    def convert_mcp_servers(cls, v):
+    def convert_mcp_servers(cls, v: Any) -> Any:
         """向后兼容：自动将字符串/字典列表转换为 MCPServerConfig 列表"""
         if not v:
             return []
@@ -698,35 +701,42 @@ class UserAgentConfigResponse(BaseModel):
     def from_db(cls, data: Dict[str, Any]) -> "UserAgentConfigResponse":
         """从数据库数据创建响应对象"""
         import logging
+        from typing import Type
 
-        logger = logging.getLogger(__name__)
+        _logger = logging.getLogger(__name__)
 
-        def parse_phase(phase_data: Dict[str, Any], phase_class) -> PhaseConfigBase:
+        def parse_phase(
+            phase_data: Dict[str, Any], phase_class: Type[PhaseConfigBase]
+        ) -> PhaseConfigBase:
             """解析阶段配置，处理可能的None值"""
             # 过滤掉None值
-            clean_data = {}
+            clean_data: Dict[str, Any] = {}
             for key, value in phase_data.items():
                 if value is not None:
                     clean_data[key] = value
-
-            # Debug log (临时关闭以避免日志过多)
-            # logger.debug(f"Parsing phase with class {phase_class.__name__}")
-            # logger.debug(f"Phase data: {phase_data}")
-            # logger.debug(f"Clean data: {clean_data}")
 
             return phase_class(**clean_data)
 
         # 解析phase1 (也使用parse_phase来过滤None值)
         phase1_data = data.get("phase1", {})
-        # logger.debug(f"Phase1 data from DB: {phase1_data}")  # 临时关闭
-        phase1 = parse_phase(phase1_data, Phase1Config)
-        # 注意：不再手动转换，保留 MCPServerConfig 对象供内部使用
-        # API 响应时会通过 field_serializer 自动转换为字符串列表
+        phase1_parsed = parse_phase(phase1_data, Phase1Config)
+        phase1: Phase1Config = Phase1Config(**phase1_parsed.model_dump())
 
         # 解析其他阶段
-        phase2 = parse_phase(data.get("phase2", {}), Phase2Config) if data.get("phase2") else None
-        phase3 = parse_phase(data.get("phase3", {}), Phase3Config) if data.get("phase3") else None
-        phase4 = parse_phase(data.get("phase4", {}), Phase4Config) if data.get("phase4") else None
+        phase2: Optional[Phase2Config] = None
+        if data.get("phase2"):
+            phase2_parsed = parse_phase(data.get("phase2", {}), Phase2Config)
+            phase2 = Phase2Config(**phase2_parsed.model_dump())
+
+        phase3: Optional[Phase3Config] = None
+        if data.get("phase3"):
+            phase3_parsed = parse_phase(data.get("phase3", {}), Phase3Config)
+            phase3 = Phase3Config(**phase3_parsed.model_dump())
+
+        phase4: Optional[Phase4Config] = None
+        if data.get("phase4"):
+            phase4_parsed = parse_phase(data.get("phase4", {}), Phase4Config)
+            phase4 = Phase4Config(**phase4_parsed.model_dump())
 
         return cls(
             id=str(data["_id"]),

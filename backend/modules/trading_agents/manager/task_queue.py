@@ -3,11 +3,12 @@
 
 使用 Redis 实现任务队列调度，确保批量任务按 FIFO 顺序执行。
 """
+
 import asyncio
 import json
 import logging
-from typing import Optional, Dict, Any
 from datetime import datetime, timezone
+from typing import Any, Dict, Optional
 
 from core.db.redis import redis_manager
 
@@ -29,10 +30,10 @@ class TaskQueueManager:
     - 任务状态追踪
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化任务队列管理器"""
         self._processing = False
-        self._worker_task: Optional[asyncio.Task] = None
+        self._worker_task: Optional[asyncio.Task[None]] = None
 
     async def enqueue_task(
         self,
@@ -40,7 +41,7 @@ class TaskQueueManager:
         user_id: str,
         stock_code: str,
         priority: int = 0,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> bool:
         """
         将任务加入队列
@@ -71,16 +72,13 @@ class TaskQueueManager:
             # 如果有优先级，使用优先级队列
             if priority > 0:
                 # 使用有序集合，分数为优先级（负数表示越高越优先）
-                await redis_client.zadd(
-                    TASK_PRIORITY_QUEUE_KEY,
-                    {json.dumps(task_data): -priority}
+                await redis_client.zadd(  # type: ignore[misc]
+                    TASK_PRIORITY_QUEUE_KEY, {json.dumps(task_data): -priority}
                 )
-                logger.info(
-                    f"任务加入优先级队列: task_id={task_id}, priority={priority}"
-                )
+                logger.info(f"任务加入优先级队列: task_id={task_id}, priority={priority}")
             else:
                 # 普通队列
-                await redis_client.rpush(TASK_QUEUE_KEY, json.dumps(task_data))
+                await redis_client.rpush(TASK_QUEUE_KEY, json.dumps(task_data))  # type: ignore[misc]
                 logger.info(f"任务加入队列: task_id={task_id}")
 
             return True
@@ -102,21 +100,19 @@ class TaskQueueManager:
             redis_client = redis_manager.get_client()
 
             # 先检查优先级队列
-            priority_task = await redis_client.zpopmax(TASK_PRIORITY_QUEUE_KEY)
+            priority_task = await redis_client.zpopmax(TASK_PRIORITY_QUEUE_KEY)  # type: ignore[misc]
             if priority_task:
                 task_json = priority_task[0]  # zpopmax 返回 [(member, score)]
-                task_data = json.loads(task_json)
-                logger.info(
-                    f"从优先级队列取出任务: task_id={task_data['task_id']}"
-                )
+                task_data: Dict[str, Any] = json.loads(task_json)
+                logger.info(f"从优先级队列取出任务: task_id={task_data['task_id']}")
                 return task_data
 
             # 再检查普通队列
-            task_json = await redis_client.lpop(TASK_QUEUE_KEY)
+            task_json = await redis_client.lpop(TASK_QUEUE_KEY)  # type: ignore[misc]
             if task_json:
-                task_data = json.loads(task_json)
-                logger.info(f"从队列取出任务: task_id={task_data['task_id']}")
-                return task_data
+                task_data2: Dict[str, Any] = json.loads(task_json)
+                logger.info(f"从队列取出任务: task_id={task_data2['task_id']}")
+                return task_data2
 
             return None
 
@@ -134,8 +130,8 @@ class TaskQueueManager:
         try:
             redis_client = redis_manager.get_client()
 
-            normal_length = await redis_client.llen(TASK_QUEUE_KEY)
-            priority_length = await redis_client.zcard(TASK_PRIORITY_QUEUE_KEY)
+            normal_length = await redis_client.llen(TASK_QUEUE_KEY)  # type: ignore[misc]
+            priority_length = await redis_client.zcard(TASK_PRIORITY_QUEUE_KEY)  # type: ignore[misc]
 
             return {
                 "normal": normal_length,
@@ -181,16 +177,16 @@ class TaskQueueManager:
             redis_client = redis_manager.get_client()
 
             # 从普通队列移除
-            normal_queue = await redis_client.lrange(TASK_QUEUE_KEY, 0, -1)
+            normal_queue = await redis_client.lrange(TASK_QUEUE_KEY, 0, -1)  # type: ignore[misc]
             for task_json in normal_queue:
                 task_data = json.loads(task_json)
                 if task_data.get("task_id") == task_id:
-                    await redis_client.lrem(TASK_QUEUE_KEY, 1, task_json)
+                    await redis_client.lrem(TASK_QUEUE_KEY, 1, task_json)  # type: ignore[misc]
                     logger.info(f"从普通队列移除任务: task_id={task_id}")
                     return True
 
             # 从优先级队列移除
-            priority_queue = await redis_client.zrange(TASK_PRIORITY_QUEUE_KEY, 0, -1)
+            priority_queue = await redis_client.zrange(TASK_PRIORITY_QUEUE_KEY, 0, -1)  # type: ignore[misc]
             for task_json in priority_queue:
                 task_data = json.loads(task_json)
                 if task_data.get("task_id") == task_id:
@@ -204,7 +200,7 @@ class TaskQueueManager:
             logger.error(f"移除任务失败: task_id={task_id}, error={e}")
             return False
 
-    async def start_worker(self, handler):
+    async def start_worker(self, handler: Any) -> None:
         """
         启动队列工作线程
 
@@ -219,7 +215,7 @@ class TaskQueueManager:
         self._worker_task = asyncio.create_task(self._worker_loop(handler))
         logger.info("任务队列工作线程已启动")
 
-    async def stop_worker(self):
+    async def stop_worker(self) -> None:
         """停止队列工作线程"""
         if not self._processing:
             return
@@ -235,7 +231,7 @@ class TaskQueueManager:
 
         logger.info("任务队列工作线程已停止")
 
-    async def _worker_loop(self, handler):
+    async def _worker_loop(self, handler: Any) -> None:
         """工作线程循环"""
         while self._processing:
             try:
@@ -249,7 +245,7 @@ class TaskQueueManager:
                     except Exception as e:
                         logger.error(
                             f"任务处理失败: task_id={task_data.get('task_id')}, error={e}",
-                            exc_info=True
+                            exc_info=True,
                         )
                 else:
                     # 队列为空，等待一段时间
@@ -275,14 +271,13 @@ def get_task_queue_manager() -> TaskQueueManager:
     return _task_queue_manager
 
 
-async def start_task_queue():
+async def start_task_queue() -> None:
     """启动任务队列"""
-    from core.background_tasks import execute_analysis_workflow
 
     queue_manager = get_task_queue_manager()
 
     # 定义任务处理函数
-    async def task_handler(task_data: Dict[str, Any]):
+    async def task_handler(task_data: Dict[str, Any]) -> None:
         """处理队列中的任务"""
         # 这里任务已经在 execute_analysis_workflow 中被处理
         # 队列主要用于批量任务的调度控制
@@ -295,7 +290,7 @@ async def start_task_queue():
     logger.info("任务队列已启动")
 
 
-async def stop_task_queue():
+async def stop_task_queue() -> None:
     """停止任务队列"""
     queue_manager = get_task_queue_manager()
     await queue_manager.stop_worker()

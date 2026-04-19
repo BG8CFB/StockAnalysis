@@ -8,31 +8,26 @@ Phase 4: 总结智能体
 """
 
 import logging
-from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
+from typing import Any, Dict, Optional
 
-from langchain_core.language_models import BaseChatModel
 from langchain.agents import create_agent
+from langchain_core.language_models import BaseChatModel
 
-
-from modules.trading_agents.models.state import (
-    WorkflowState,
-    PhaseExecution,
-    AgentExecution,
-    TaskStatus,
-)
 from modules.trading_agents.config import get_enabled_agents
-from modules.trading_agents.workflow.events import (
-    create_phase_agents_event,
-    create_agent_started_event,
-    create_agent_completed_event,
-    create_report_generated_event,
+from modules.trading_agents.models.state import (
+    TaskStatus,
+    WorkflowState,
 )
 from modules.trading_agents.workflow.agent_helpers import (
-    handle_agent_started,
     handle_agent_completed,
+    handle_agent_started,
 )
 from modules.trading_agents.workflow.callbacks import WebSocketCallbackHandler
+from modules.trading_agents.workflow.events import (
+    create_phase_agents_event,
+)
+from modules.trading_agents.workflow.state import AgentExecution, PhaseExecution
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +43,7 @@ class SummarizerAgent:
         self,
         model: BaseChatModel,
         config: Optional[Dict[str, Any]] = None,
-        task_id: str = None,
+        task_id: Optional[str] = None,
         websocket_manager: Any = None,
     ):
         """
@@ -69,15 +64,17 @@ class SummarizerAgent:
         # 创建回调处理器
         self.callbacks = []
         if self.task_id and self.websocket_manager:
-            self.callbacks.append(WebSocketCallbackHandler(
-                task_id=self.task_id,
-                agent_slug=self.slug,
-                agent_name=self.name,
-                websocket_manager=self.websocket_manager,
-            ))
+            self.callbacks.append(
+                WebSocketCallbackHandler(
+                    task_id=self.task_id,
+                    agent_slug=self.slug,
+                    agent_name=self.name,
+                    websocket_manager=self.websocket_manager,
+                )
+            )
         self.agent = self._create_agent()
 
-    def _create_agent(self):
+    def _create_agent(self) -> Any:
         """创建智能体实例 (LangChain 1.1.0 create_agent API)"""
         system_prompt_str = self._build_system_prompt()
         # 使用 LangChain 1.1.0 的 create_agent
@@ -163,10 +160,7 @@ class SummarizerAgent:
 """
         return prompt.strip()
 
-    async def summarize(
-        self,
-        state: WorkflowState
-    ) -> Dict[str, Any]:
+    async def summarize(self, state: WorkflowState) -> Dict[str, Any]:
         """
         执行总结分析
 
@@ -184,11 +178,14 @@ class SummarizerAgent:
             # 调用智能体
             prompt_text = messages[0]["content"] if messages else "Please summarize."
             # 通过 config 传递 callbacks
-            config = {"recursion_limit": 10}
+            config: dict[str, Any] = {"recursion_limit": 10}
             if self.callbacks:
                 from langchain_core.callbacks import CallbackManager
-                config["configurable"] = {"callbacks": CallbackManager(self.callbacks)}
-            result = await self.agent.ainvoke({"messages": [{"role": "user", "content": prompt_text}]}, config=config)
+
+                config["configurable"] = {"callbacks": CallbackManager(self.callbacks)}  # type: ignore[arg-type]
+            result = await self.agent.ainvoke(
+                {"messages": [{"role": "user", "content": prompt_text}]}, config=config
+            )
 
             # 提取输出
             output = self._extract_output(result)
@@ -196,14 +193,17 @@ class SummarizerAgent:
             # 解析决策
             decision = self._parse_decision(output)
 
-            logger.info(f"[Phase 4] {self.name}总结完成: {state.stock_code}, 推荐: {decision.get('recommendation') if decision else 'N/A'}")
+            logger.info(
+                f"[Phase 4] {self.name}总结完成: {state.stock_code}, "
+                f"推荐: {decision.get('recommendation') if decision else 'N/A'}"
+            )
 
             return {
                 "slug": self.slug,
                 "name": self.name,
                 "output": output,
                 "decision": decision,
-                "error": None
+                "error": None,
             }
 
         except Exception as e:
@@ -214,20 +214,19 @@ class SummarizerAgent:
                 "name": self.name,
                 "output": None,
                 "decision": None,
-                "error": str(e)
+                "error": str(e),
             }
 
-    def _build_input_messages(
-        self,
-        state: WorkflowState
-    ) -> list:
+    def _build_input_messages(self, state: WorkflowState) -> list:
         """构建输入消息"""
         # 构建分析师报告摘要
-        analyst_summary = "\n\n".join([
-            f"## {report['name']}\n{report['content'][:500]}..."
-            for report in state.analyst_reports
-            if report.get("content")
-        ])
+        analyst_summary = "\n\n".join(
+            [
+                f"## {report['name']}\n{report['content'][:500]}..."
+                for report in state.analyst_reports
+                if report.get("content")
+            ]
+        )
 
         # 构建辩论摘要
         debate_summary = ""
@@ -238,9 +237,9 @@ class SummarizerAgent:
 """
 
             for turn in state.debate_turns:
-                round_num = turn.get('round', 0)
-                bull_view = turn.get('bull_view', '')[:300] if turn.get('bull_view') else ''
-                bear_view = turn.get('bear_view', '')[:300] if turn.get('bear_view') else ''
+                round_num = turn.get("round", 0)
+                bull_view = turn.get("bull_view", "")[:300] if turn.get("bull_view") else ""
+                bear_view = turn.get("bear_view", "")[:300] if turn.get("bear_view") else ""
                 debate_summary += f"""
 ## 第{round_num}轮
 **看涨观点**: {bull_view}...
@@ -262,11 +261,13 @@ class SummarizerAgent:
         # 构建策略报告摘要
         strategy_summary = ""
         if state.strategy_reports:
-            strategy_summary = "\n\n".join([
-                f"## {report['name']}\n{report['content'][:300]}..."
-                for report in state.strategy_reports
-                if report.get("content")
-            ])
+            strategy_summary = "\n\n".join(
+                [
+                    f"## {report['name']}\n{report['content'][:300]}..."
+                    for report in state.strategy_reports
+                    if report.get("content")
+                ]
+            )
 
         # 构建交易计划摘要
         trading_plan_summary = ""
@@ -319,9 +320,9 @@ class SummarizerAgent:
             if messages:
                 last_message = messages[-1]
                 if hasattr(last_message, "content"):
-                    return last_message.content
+                    return str(last_message.content)
                 elif isinstance(last_message, dict):
-                    return last_message.get("content")
+                    return str(last_message.get("content", ""))
 
         if isinstance(result, str):
             return result
@@ -364,23 +365,21 @@ class SummarizerAgent:
             if match:
                 price_predictions[period] = {
                     "min": float(match.group(1)),
-                    "max": float(match.group(2))
+                    "max": float(match.group(2)),
                 }
 
         if recommendation or confidence or price_predictions:
             return {
                 "recommendation": recommendation,
                 "confidence": confidence,
-                "price_predictions": price_predictions
+                "price_predictions": price_predictions,
             }
 
         return None
 
 
 async def execute_phase4(
-    state: WorkflowState,
-    model: BaseChatModel,
-    config: Dict[str, Any]
+    state: WorkflowState, model: BaseChatModel, config: Dict[str, Any]
 ) -> WorkflowState:
     """
     执行 Phase 4: 总结智能体（必须执行）
@@ -415,7 +414,11 @@ async def execute_phase4(
         max_concurrency=1,
         agents=agents_config,
         total_executions=state.phase_agent_counts.get(4, 1),
-        phase_progress_weight=(state.phase_agent_counts.get(4, 1) / state.total_agent_executions * 100) if state.total_agent_executions > 0 else 0
+        phase_progress_weight=(
+            (state.phase_agent_counts.get(4, 1) / state.total_agent_executions * 100)
+            if state.total_agent_executions > 0
+            else 0
+        ),
     )
     await websocket_manager.broadcast_event(state.task_id, phase_agents_event)
     logger.info(f"[Phase 4] 已发送智能体列表事件, 智能体数量: {len(agents_config)}")
@@ -425,17 +428,20 @@ async def execute_phase4(
     for agent_config in agents_config:
         slug = agent_config["slug"]
         if slug == "summarizer":
-            summarizer = SummarizerAgent(model, agent_config, task_id=state.task_id, websocket_manager=websocket_manager)
+            summarizer = SummarizerAgent(
+                model, agent_config, task_id=state.task_id, websocket_manager=websocket_manager
+            )
             break
 
     # 如果没有配置总结智能体，使用默认配置创建
     if not summarizer:
         logger.warning("[Phase 4] 未配置总结智能体，使用默认配置")
-        summarizer = SummarizerAgent(model, {
-            "slug": "summarizer",
-            "name": "总结智能体",
-            "roleDefinition": ""
-        }, task_id=state.task_id, websocket_manager=websocket_manager)
+        summarizer = SummarizerAgent(
+            model,
+            {"slug": "summarizer", "name": "总结智能体", "roleDefinition": ""},
+            task_id=state.task_id,
+            websocket_manager=websocket_manager,
+        )
 
     # 创建阶段执行记录
     phase4_execution = PhaseExecution(
@@ -443,7 +449,7 @@ async def execute_phase4(
         phase_name="总结智能体",
         started_at=datetime.now(timezone.utc),
         execution_mode="serial",
-        max_concurrency=1
+        max_concurrency=1,
     )
 
     # 发送总结智能体开始事件
@@ -451,7 +457,7 @@ async def execute_phase4(
         state=state,
         agent_slug=summarizer.slug,
         agent_name=summarizer.name,
-        websocket_manager=websocket_manager
+        websocket_manager=websocket_manager,
     )
 
     # 执行总结智能体
@@ -465,14 +471,14 @@ async def execute_phase4(
             agent_name=summarizer.name,
             output=result["output"],
             websocket_manager=websocket_manager,
-            save_report=True
+            save_report=True,
         )
 
     # 更新状态
     if result.get("output"):
         state.summary_report = {
             "content": result["output"],
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
     if result.get("decision"):
@@ -496,7 +502,7 @@ async def execute_phase4(
             name=summarizer.name,
             started_at=phase4_execution.started_at,
             completed_at=phase4_execution.completed_at,
-            status=TaskStatus.COMPLETED
+            status=TaskStatus.COMPLETED,
         )
     )
 
@@ -505,6 +511,8 @@ async def execute_phase4(
     state.status = TaskStatus.COMPLETED
     state.completed_at = datetime.now(timezone.utc)
 
-    logger.info(f"[Phase 4] 完成, 最终推荐: {state.final_recommendation}, 进度: {state.progress:.1f}%")
+    logger.info(
+        f"[Phase 4] 完成, 最终推荐: {state.final_recommendation}, 进度: {state.progress:.1f}%"
+    )
 
     return state

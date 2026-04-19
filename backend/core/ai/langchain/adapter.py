@@ -9,6 +9,7 @@ import logging
 from typing import Any, Dict, Optional
 
 from langchain_anthropic import ChatAnthropic
+from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_openai import ChatOpenAI
 
 logger = logging.getLogger(__name__)
@@ -49,8 +50,8 @@ class LangChainAdapter:
         thinking_enabled: bool = False,
         reasoning_effort: Optional[str] = None,
         budget_tokens: Optional[int] = None,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> BaseChatModel:
         """
         创建 LangChain ChatModel 实例
 
@@ -112,7 +113,7 @@ class LangChainAdapter:
         max_retries: int = 3,
         thinking_enabled: bool = False,
         reasoning_effort: Optional[str] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> ChatOpenAI:
         """创建 ChatOpenAI 实例"""
         # 确定 API 端点
@@ -123,9 +124,7 @@ class LangChainAdapter:
 
         # 添加思考参数
         if thinking_enabled:
-            model_kwargs.update(
-                cls._build_thinking_params(model_id, reasoning_effort)
-            )
+            model_kwargs.update(cls._build_thinking_params(model_id, reasoning_effort))
 
         logger.debug(
             f"创建 ChatOpenAI: model={model_id}, platform={platform}, "
@@ -139,7 +138,7 @@ class LangChainAdapter:
 
         return ChatOpenAI(
             model=model_id,
-            api_key=api_key,
+            api_key=api_key,  # type: ignore[arg-type]
             base_url=base_url,
             temperature=temperature,
             timeout=timeout_seconds,
@@ -158,7 +157,7 @@ class LangChainAdapter:
         max_retries: int = 3,
         thinking_enabled: bool = False,
         budget_tokens: Optional[int] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> ChatAnthropic:
         """创建 ChatAnthropic 实例"""
         # 构建模型参数
@@ -173,8 +172,8 @@ class LangChainAdapter:
         logger.debug(f"创建 ChatAnthropic: model={model_id}, " f"thinking={thinking_enabled}")
 
         return ChatAnthropic(
-            model=model_id,
-            api_key=api_key,
+            model_name=model_id,  # type: ignore[call-arg]
+            api_key=api_key,  # type: ignore[arg-type]
             temperature=temperature,
             timeout=timeout_seconds,
             max_retries=max_retries,
@@ -258,7 +257,7 @@ class LangChainAdapter:
         return cls.DEFAULT_BASE_URLS.get(platform)
 
     @classmethod
-    def register_base_url(cls, platform: str, url: str):
+    def register_base_url(cls, platform: str, url: str) -> None:
         """
         注册新的 API 端点
 

@@ -2,6 +2,7 @@
 后台定时任务
 使用 APScheduler 进行定时任务管理
 """
+
 import logging
 from datetime import datetime, timedelta
 from typing import Optional
@@ -9,6 +10,7 @@ from typing import Optional
 try:
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
     from apscheduler.triggers.cron import CronTrigger
+
     APSCHEDULER_AVAILABLE = True
 except ImportError:
     APSCHEDULER_AVAILABLE = False
@@ -36,7 +38,7 @@ def get_scheduler() -> "Optional[AsyncIOScheduler]":
     return scheduler
 
 
-async def cleanup_rejected_users_task():
+async def cleanup_rejected_users_task() -> None:
     """定时清理被拒绝用户任务"""
     try:
         logger.info("开始执行清理被拒绝用户任务")
@@ -47,25 +49,25 @@ async def cleanup_rejected_users_task():
         logger.error(f"清理被拒绝用户任务失败: {e}")
 
 
-async def cleanup_expired_watchlist_data_task():
+async def cleanup_expired_watchlist_data_task() -> None:
     """定时清理过期自选股数据任务"""
     try:
-        from core.market_data.repositories.watchlist import WatchlistRepository
         from core.market_data.repositories.stock_quotes import StockQuoteRepository
+        from core.market_data.repositories.watchlist import UserWatchlistRepository
 
         logger.info("开始执行清理过期自选股数据任务")
 
         # 计算截止日期（1周前）
         cutoff_date = (datetime.now() - timedelta(days=7)).strftime("%Y%m%d")
 
-        watchlist_repo = WatchlistRepository()
+        watchlist_repo = UserWatchlistRepository()
         stock_quotes_repo = StockQuoteRepository()
 
         # 获取所有自选股
         watchlists = await watchlist_repo.get_all_watchlists()
         total_deleted = 0
 
-        async for watchlist in watchlists:
+        for watchlist in watchlists:
             symbols = watchlist.get("symbols", [])
 
             for symbol in symbols:
@@ -82,7 +84,7 @@ async def cleanup_expired_watchlist_data_task():
         logger.error(f"清理过期自选股数据任务失败: {e}")
 
 
-async def cleanup_mcp_connection_pool_task():
+async def cleanup_mcp_connection_pool_task() -> None:
     """定时清理 MCP 连接池任务"""
     try:
         from core.mcp.pool.pool import get_mcp_connection_pool
@@ -101,7 +103,7 @@ async def cleanup_mcp_connection_pool_task():
         logger.error(f"清理 MCP 连接池任务失败: {e}")
 
 
-def init_scheduler():
+def init_scheduler() -> None:
     """初始化定时任务调度器"""
     if not APSCHEDULER_AVAILABLE:
         logger.warning("APScheduler 未安装，跳过定时任务初始化")
@@ -143,7 +145,7 @@ def init_scheduler():
         logger.info("调试模式下不启动定时任务")
 
 
-def shutdown_scheduler():
+def shutdown_scheduler() -> None:
     """关闭调度器"""
     global scheduler
     if scheduler:

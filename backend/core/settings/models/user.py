@@ -10,7 +10,8 @@
 
 import logging
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
+
 from pydantic import BaseModel, Field
 
 from core.db.models import PyObjectId
@@ -73,8 +74,7 @@ class TradingAgentsSettings(BaseModel):
 
     # 流程默认配置
     default_phase1_agents: list = Field(
-        default_factory=list,
-        description="第一阶段默认选中的智能体 slug 列表"
+        default_factory=list, description="第一阶段默认选中的智能体 slug 列表"
     )
     default_phase2_enabled: bool = Field(default=True, description="第二阶段默认是否启用")
     default_phase3_enabled: bool = Field(default=False, description="第三阶段默认是否启用")
@@ -232,10 +232,9 @@ class UserSettingsResponse(BaseModel):
                 return value
             if isinstance(value, dict) and "$date" in value:
                 # MongoDB 扩展 JSON 格式: {'$date': '2026-01-13T06:59:30.154Z'}
-                from datetime import datetime as dt
-                from dateutil import parser
+                from dateutil import parser  # type: ignore[import-untyped]
 
-                return parser.isoparse(value["$date"])
+                return parser.isoparse(value["$date"])  # type: ignore[no-any-return]
             # 默认返回当前时间
             return datetime.now(timezone.utc)
 

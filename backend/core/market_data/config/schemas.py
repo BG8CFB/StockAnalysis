@@ -3,22 +3,24 @@ API请求和响应模型
 """
 
 from typing import List, Optional
-from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 from core.market_data.models import MarketType
 
-
 # ==================== 请求模型 ====================
+
 
 class StockListRequest(BaseModel):
     """股票列表请求"""
+
     market: MarketType = Field(..., description="市场类型")
     status: str = Field(default="L", description="上市状态：L上市/D退市/P暂停")
 
 
 class QuoteQueryRequest(BaseModel):
     """行情查询请求"""
+
     symbol: str = Field(..., description="股票代码")
     start_date: Optional[str] = Field(None, description="开始日期（YYYY-MM-DD）")
     end_date: Optional[str] = Field(None, description="结束日期（YYYY-MM-DD）")
@@ -27,6 +29,7 @@ class QuoteQueryRequest(BaseModel):
 
 class FinancialQueryRequest(BaseModel):
     """财务数据查询请求"""
+
     symbol: str = Field(..., description="股票代码")
     report_type: Optional[str] = Field(None, description="报告类型")
     limit: int = Field(default=0, description="返回数量限制")
@@ -34,18 +37,21 @@ class FinancialQueryRequest(BaseModel):
 
 class DataSyncRequest(BaseModel):
     """数据同步请求"""
+
     symbol: Optional[str] = Field(None, description="股票代码，不指定则同步全市场")
     data_types: List[str] = Field(
         default=["stock_info", "quotes"],
-        description="数据类型列表：stock_info/quotes/financials/indicators"
+        description="数据类型列表：stock_info/quotes/financials/indicators",
     )
     force_refresh: bool = Field(default=False, description="是否强制刷新（忽略缓存）")
 
 
 # ==================== 响应模型 ====================
 
+
 class StockInfoResponse(BaseModel):
     """股票信息响应"""
+
     symbol: str
     market: MarketType
     name: str
@@ -59,6 +65,7 @@ class StockInfoResponse(BaseModel):
 
 class QuoteResponse(BaseModel):
     """行情数据响应"""
+
     symbol: str
     trade_date: str
     open: float
@@ -74,6 +81,7 @@ class QuoteResponse(BaseModel):
 
 class FinancialResponse(BaseModel):
     """财务数据响应"""
+
     symbol: str
     report_date: str
     report_type: str
@@ -86,6 +94,7 @@ class FinancialResponse(BaseModel):
 
 class IndicatorResponse(BaseModel):
     """财务指标响应"""
+
     symbol: str
     report_date: str
     roe: Optional[float] = None
@@ -97,6 +106,7 @@ class IndicatorResponse(BaseModel):
 
 class DataSourceHealthResponse(BaseModel):
     """数据源健康状态响应"""
+
     source_name: str
     is_available: bool
     response_time_ms: Optional[int] = None
@@ -107,6 +117,7 @@ class DataSourceHealthResponse(BaseModel):
 
 class CurrentSourceResponse(BaseModel):
     """当前数据源信息"""
+
     source_type: str
     source_id: str
     source_name: str
@@ -117,6 +128,7 @@ class CurrentSourceResponse(BaseModel):
 
 class MarketDataTypeResponse(BaseModel):
     """市场数据类型响应"""
+
     data_type: str
     data_type_name: str
     current_source: CurrentSourceResponse
@@ -127,6 +139,7 @@ class MarketDataTypeResponse(BaseModel):
 
 class MarketDetailResponse(BaseModel):
     """市场详细状态响应"""
+
     market: str
     market_name: str
     data_types: List[MarketDataTypeResponse]
@@ -134,6 +147,7 @@ class MarketDetailResponse(BaseModel):
 
 class MarketOverviewItem(BaseModel):
     """市场概览单项"""
+
     status: str
     last_update: str
     last_update_relative: str
@@ -142,6 +156,7 @@ class MarketOverviewItem(BaseModel):
 
 class DashboardOverviewResponse(BaseModel):
     """数据源状态监控仪表板概览响应"""
+
     a_stock: Optional[MarketOverviewItem] = None
     us_stock: Optional[MarketOverviewItem] = None
     hk_stock: Optional[MarketOverviewItem] = None
@@ -149,6 +164,7 @@ class DashboardOverviewResponse(BaseModel):
 
 class SourceDetailResponse(BaseModel):
     """数据源详细信息"""
+
     source_type: str
     source_id: str
     source_name: str
@@ -162,6 +178,7 @@ class SourceDetailResponse(BaseModel):
 
 class DataSourceEventResponse(BaseModel):
     """数据源事件响应"""
+
     timestamp: str
     event_type: str
     description: str
@@ -174,6 +191,7 @@ class DataSourceEventResponse(BaseModel):
 
 class DataTypeDetailResponse(BaseModel):
     """数据类型详细信息响应"""
+
     market: str
     data_type: str
     data_type_name: str
@@ -183,6 +201,7 @@ class DataTypeDetailResponse(BaseModel):
 
 class DataSyncResponse(BaseModel):
     """数据同步响应"""
+
     success: bool
     message: str
     synced_count: int = 0

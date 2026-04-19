@@ -1,5 +1,6 @@
 import { Typography, Card, Table, Button, Tag, Space, Popconfirm, Empty } from 'antd'
 import { ReloadOutlined, DeleteOutlined, StockOutlined } from '@ant-design/icons'
+import { useNavigate } from 'react-router-dom'
 import { useFavorites } from '@/features/stocks/hooks/useFavorites'
 import { getMarketColors } from '@/utils/market'
 import type { FavoriteStock } from '@/types/favorites.types'
@@ -7,6 +8,7 @@ import type { FavoriteStock } from '@/types/favorites.types'
 const { Title, Text } = Typography
 
 export default function FavoritesPage() {
+  const navigate = useNavigate()
   const { favorites, loading, error, refresh, remove, syncRealtime } = useFavorites()
 
   const columns = [
@@ -14,7 +16,7 @@ export default function FavoritesPage() {
       title: '股票',
       dataIndex: 'stock_code',
       render: (_: unknown, record: FavoriteStock) => (
-        <Space orientation="vertical" size={0}>
+        <Space direction="vertical" size={0}>
           <Text strong style={{ color: 'var(--text-primary)' }}>{record.stock_name}</Text>
           <Text style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{record.stock_code}</Text>
         </Space>
@@ -72,7 +74,7 @@ export default function FavoritesPage() {
           <Button
             size="small"
             icon={<StockOutlined />}
-            href={`/stocks/${encodeURIComponent(record.stock_code)}`}
+            onClick={() => navigate(`/stocks/${encodeURIComponent(record.stock_code)}`)}
           >
             详情
           </Button>

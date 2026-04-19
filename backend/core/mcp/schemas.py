@@ -10,10 +10,10 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
-
 # =============================================================================
 # 通用辅助函数
 # =============================================================================
+
 
 def _parse_datetime(value: Any) -> Optional[datetime]:
     """
@@ -36,29 +36,33 @@ def _parse_datetime(value: Any) -> Optional[datetime]:
         return value
     if isinstance(value, dict) and "$date" in value:
         try:
-            from datetime import datetime as dt
-            from dateutil import parser
-            return parser.isoparse(value["$date"])
+
+            from dateutil import parser as dateutil_parser  # type: ignore[import-untyped]
+
+            return dateutil_parser.isoparse(value["$date"])  # type: ignore[no-any-return]
         except Exception:
             return None
     if isinstance(value, str):
         try:
-            from datetime import datetime as dt
-            from dateutil import parser
-            return parser.isoparse(value)
+            from dateutil import parser as dateutil_parser  # type: ignore[import-untyped]
+
+            return dateutil_parser.isoparse(value)  # type: ignore[no-any-return]
         except Exception:
             return None
     return None
+
 
 # =============================================================================
 # 枚举定义
 # =============================================================================
 
+
 class MCPServerStatusEnum(str, Enum):
     """MCP 服务器状态枚举"""
-    AVAILABLE = "available"     # 可用
-    UNAVAILABLE = "unavailable" # 不可用
-    UNKNOWN = "unknown"         # 未知
+
+    AVAILABLE = "available"  # 可用
+    UNAVAILABLE = "unavailable"  # 不可用
+    UNKNOWN = "unknown"  # 未知
 
 
 class TransportModeEnum(str, Enum):
@@ -70,26 +74,30 @@ class TransportModeEnum(str, Enum):
     - http/streamable_http: Streamable HTTP（推荐）
     - websocket: WebSocket
     """
-    STDIO = "stdio"                     # 标准输入输出
-    SSE = "sse"                         # Server-Sent Events
-    HTTP = "http"                       # HTTP (映射到 streamable_http)
-    STREAMABLE_HTTP = "streamable_http" # Streamable HTTP (推荐)
-    WEBSOCKET = "websocket"             # WebSocket
+
+    STDIO = "stdio"  # 标准输入输出
+    SSE = "sse"  # Server-Sent Events
+    HTTP = "http"  # HTTP (映射到 streamable_http)
+    STREAMABLE_HTTP = "streamable_http"  # Streamable HTTP (推荐)
+    WEBSOCKET = "websocket"  # WebSocket
 
 
 class AuthTypeEnum(str, Enum):
     """MCP 认证类型枚举"""
-    NONE = "none"               # 无认证
-    BEARER = "bearer"           # Bearer Token
-    BASIC = "basic"             # Basic Auth
+
+    NONE = "none"  # 无认证
+    BEARER = "bearer"  # Bearer Token
+    BASIC = "basic"  # Basic Auth
 
 
 # =============================================================================
 # MCP 服务器配置模型
 # =============================================================================
 
+
 class MCPServerConfigBase(BaseModel):
     """MCP 服务器配置基础模型"""
+
     name: str = Field(..., min_length=1, max_length=100, description="服务器名称")
     transport: TransportModeEnum = Field(..., description="传输模式")
 
@@ -118,6 +126,7 @@ class MCPServerConfigBase(BaseModel):
         # 确保是 JSON 可序列化的
         try:
             import json
+
             json.dumps(v)
         except TypeError:
             raise ValueError("环境变量必须可序列化为 JSON")
@@ -132,6 +141,7 @@ class MCPServerConfigBase(BaseModel):
         # 确保是 JSON 可序列化的
         try:
             import json
+
             json.dumps(v)
         except TypeError:
             raise ValueError("Headers 必须可序列化为 JSON")
@@ -140,11 +150,13 @@ class MCPServerConfigBase(BaseModel):
 
 class MCPServerConfigCreate(MCPServerConfigBase):
     """创建 MCP 服务器配置请求"""
+
     is_system: bool = Field(default=False, description="是否为系统级配置")
 
 
 class MCPServerConfigUpdate(BaseModel):
     """更新 MCP 服务器配置请求"""
+
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     transport: Optional[TransportModeEnum] = None
     command: Optional[str] = None
@@ -160,6 +172,7 @@ class MCPServerConfigUpdate(BaseModel):
 
 class MCPServerConfigResponse(MCPServerConfigBase):
     """MCP 服务器配置响应"""
+
     id: str
     is_system: bool
     owner_id: Optional[str]
@@ -197,8 +210,10 @@ class MCPServerConfigResponse(MCPServerConfigBase):
 # 连接测试模型
 # =============================================================================
 
+
 class ConnectionTestResponse(BaseModel):
     """连接测试响应"""
+
     success: bool
     message: str
     latency_ms: Optional[int] = None
@@ -209,8 +224,10 @@ class ConnectionTestResponse(BaseModel):
 # 工具信息模型
 # =============================================================================
 
+
 class MCPToolInfo(BaseModel):
     """MCP 工具信息"""
+
     name: str = Field(..., description="工具名称")
     description: str = Field(..., description="工具描述")
     server_id: str = Field(..., description="所属服务器 ID")

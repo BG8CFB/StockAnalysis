@@ -7,7 +7,7 @@ MongoDB 集合 llm_providers 的 CRUD 操作。
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from bson import ObjectId
 
@@ -44,6 +44,7 @@ def _doc_to_response(doc: Dict) -> LLMProviderResponse:
     if api_key_encrypted:
         try:
             from core.security.encryption import is_encrypted
+
             if is_encrypted(api_key_encrypted):
                 api_key_plain = decrypt_sensitive_data(api_key_encrypted)
             else:
@@ -56,6 +57,7 @@ def _doc_to_response(doc: Dict) -> LLMProviderResponse:
     if api_secret_encrypted:
         try:
             from core.security.encryption import is_encrypted
+
             if is_encrypted(api_secret_encrypted):
                 api_secret_plain = decrypt_sensitive_data(api_secret_encrypted)
             else:
@@ -99,19 +101,23 @@ def _doc_to_response(doc: Dict) -> LLMProviderResponse:
         is_aggregator=doc.get("is_aggregator", False),
         aggregator_type=agg_enum,
         model_name_format=doc.get("model_name_format"),
-        created_at=doc.get("created_at", datetime.now(timezone.utc)).isoformat()
-        if doc.get("created_at")
-        else None,
-        updated_at=doc.get("updated_at", datetime.now(timezone.utc)).isoformat()
-        if doc.get("updated_at")
-        else None,
+        created_at=(
+            doc.get("created_at", datetime.now(timezone.utc)).isoformat()
+            if doc.get("created_at")
+            else None
+        ),
+        updated_at=(
+            doc.get("updated_at", datetime.now(timezone.utc)).isoformat()
+            if doc.get("updated_at")
+            else None
+        ),
     )
 
 
 class LLMProviderService:
     """LLM 厂家管理服务"""
 
-    async def _get_collection(self):
+    async def _get_collection(self) -> Any:
         return mongodb.get_collection(COLLECTION_NAME)
 
     async def list_providers(self) -> List[LLMProviderResponse]:
@@ -132,7 +138,7 @@ class LLMProviderService:
             return None
         return _doc_to_response(doc)
 
-    async def get_provider_with_credentials(self, provider_id: str) -> Optional[Dict]:
+    async def get_provider_with_credentials(self, provider_id: str) -> Optional[Dict[str, Any]]:
         """获取厂家完整凭证（内部使用）"""
         collection = await self._get_collection()
         try:
@@ -147,6 +153,7 @@ class LLMProviderService:
         if api_key_encrypted:
             try:
                 from core.security.encryption import is_encrypted
+
                 if is_encrypted(api_key_encrypted):
                     api_key = decrypt_sensitive_data(api_key_encrypted)
                 else:
@@ -155,7 +162,7 @@ class LLMProviderService:
                 api_key = ""
 
         doc["api_key_decrypted"] = api_key
-        return doc
+        return dict(doc)
 
     async def create_provider(self, data: LLMProviderCreateRequest) -> str:
         """创建厂家，返回 ID"""
@@ -196,8 +203,15 @@ class LLMProviderService:
         update_fields: Dict = {"updated_at": datetime.now(timezone.utc)}
 
         for field_name in [
-            "name", "display_name", "description", "website", "api_doc_url",
-            "logo_url", "is_active", "default_base_url", "is_aggregator",
+            "name",
+            "display_name",
+            "description",
+            "website",
+            "api_doc_url",
+            "logo_url",
+            "is_active",
+            "default_base_url",
+            "is_aggregator",
             "model_name_format",
         ]:
             val = getattr(data, field_name, None)
@@ -227,7 +241,7 @@ class LLMProviderService:
                 {"$set": update_fields},
             )
 
-        return result.modified_count > 0 or result.matched_count > 0
+        return bool(result.modified_count > 0 or result.matched_count > 0)
 
     async def toggle_provider(self, provider_id: str, is_active: bool) -> bool:
         """切换厂家启用状态"""
@@ -242,7 +256,7 @@ class LLMProviderService:
                 {"name": provider_id},
                 {"$set": {"is_active": is_active, "updated_at": datetime.now(timezone.utc)}},
             )
-        return result.matched_count > 0
+        return bool(result.matched_count > 0)
 
     async def delete_provider(self, provider_id: str) -> bool:
         """删除厂家"""
@@ -251,7 +265,7 @@ class LLMProviderService:
             result = await collection.delete_one({"_id": ObjectId(provider_id)})
         except Exception:
             result = await collection.delete_one({"name": provider_id})
-        return result.deleted_count > 0
+        return bool(result.deleted_count > 0)
 
     async def test_connection(self, provider_id: str) -> Dict:
         """测试厂家 API 连接"""
@@ -329,11 +343,13 @@ class LLMProviderService:
                     for m in raw_models:
                         model_id = m.get("id", "")
                         if model_id:
-                            models.append({
-                                "name": model_id,
-                                "display_name": m.get("name", model_id),
-                                "description": m.get("description", ""),
-                            })
+                            models.append(
+                                {
+                                    "name": model_id,
+                                    "display_name": m.get("name", model_id),
+                                    "description": m.get("description", ""),
+                                }
+                            )
                     return {
                         "success": True,
                         "message": f"获取到 {len(models)} 个模型",
@@ -356,7 +372,12 @@ class LLMProviderService:
             ("ZHIPU_API_KEY", "zhipu", "智谱AI", "https://open.bigmodel.cn/api/paas/v4"),
             ("DEEPSEEK_API_KEY", "deepseek", "DeepSeek", "https://api.deepseek.com/v1"),
             ("OPENAI_API_KEY", "openai", "OpenAI", "https://api.openai.com/v1"),
-            ("QWEN_API_KEY", "qwen", "通义千问", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+            (
+                "QWEN_API_KEY",
+                "qwen",
+                "通义千问",
+                "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            ),
         ]
 
         for env_key, provider_name, display_name, default_url in env_mappings:
@@ -366,14 +387,16 @@ class LLMProviderService:
                 continue
 
             try:
-                await self.create_provider(LLMProviderCreateRequest(
-                    name=provider_name,
-                    display_name=display_name,
-                    is_active=True,
-                    default_base_url=default_url,
-                    api_key=api_key,
-                    supported_features=[SupportedFeature.CHAT, SupportedFeature.STREAMING],
-                ))
+                await self.create_provider(
+                    LLMProviderCreateRequest(  # type: ignore[call-arg]
+                        name=provider_name,
+                        display_name=display_name,
+                        is_active=True,
+                        default_base_url=default_url,
+                        api_key=api_key,
+                        supported_features=[SupportedFeature.CHAT, SupportedFeature.STREAMING],
+                    )
+                )
                 migrated += 1
             except ValueError:
                 # 已存在，跳过
@@ -430,15 +453,17 @@ class LLMProviderService:
 
         for agg in aggregators:
             try:
-                await self.create_provider(LLMProviderCreateRequest(
-                    name=agg["name"],
-                    display_name=agg["display_name"],
-                    is_active=True,
-                    is_aggregator=True,
-                    aggregator_type=agg["aggregator_type"],
-                    default_base_url=agg["default_base_url"],
-                    supported_features=agg["supported_features"],
-                ))
+                await self.create_provider(
+                    LLMProviderCreateRequest(  # type: ignore[call-arg]
+                        name=agg["name"],
+                        display_name=agg["display_name"],
+                        is_active=True,
+                        is_aggregator=True,
+                        aggregator_type=agg["aggregator_type"],
+                        default_base_url=agg["default_base_url"],
+                        supported_features=agg["supported_features"],
+                    )
+                )
                 added += 1
             except ValueError:
                 skipped += 1

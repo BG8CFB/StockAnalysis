@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 class ModelCatalogItem(BaseModel):
     """模型信息"""
+
     name: str = Field(..., description="模型名称")
     display_name: str = Field(..., description="显示名称")
     description: Optional[str] = None
@@ -26,6 +27,7 @@ class ModelCatalogItem(BaseModel):
 
 class ModelCatalogCreateRequest(BaseModel):
     """模型目录保存请求"""
+
     provider: str = Field(..., description="厂家标识")
     provider_name: str = Field(..., description="厂家显示名称")
     models: List[ModelCatalogItem] = Field(default_factory=list)
@@ -33,6 +35,7 @@ class ModelCatalogCreateRequest(BaseModel):
 
 class ModelCatalogResponse(BaseModel):
     """模型目录响应"""
+
     provider: str
     provider_name: str
     models: List[ModelCatalogItem] = Field(default_factory=list)
@@ -40,12 +43,14 @@ class ModelCatalogResponse(BaseModel):
 
 class AvailableModelItem(BaseModel):
     """可用模型项"""
+
     name: str
     display_name: str
 
 
 class AvailableModelsByProvider(BaseModel):
     """按厂家分组的可用模型"""
+
     provider: str
     provider_name: str
     models: List[AvailableModelItem] = Field(default_factory=list)

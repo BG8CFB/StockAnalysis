@@ -33,13 +33,19 @@ export interface ChangeRoleInput {
   role: string
 }
 
-export interface ResetPasswordInput {
-  new_password: string
-}
-
 /** 获取用户列表 */
 export async function getUsers(filters?: UserListFilters): Promise<ApiResponse<PaginatedResponse<AdminUser>>> {
-  return apiClient.get<PaginatedResponse<AdminUser>>('/api/admin/users', (filters ?? {}) as Record<string, unknown>)
+  const params: Record<string, unknown> = {}
+  if (filters) {
+    if (filters.page !== undefined && filters.page_size !== undefined) {
+      params.skip = (filters.page - 1) * filters.page_size
+      params.limit = filters.page_size
+    }
+    if (filters.keyword) params.search = filters.keyword
+    if (filters.role) params.role = filters.role
+    if (filters.status) params.status = filters.status
+  }
+  return apiClient.get<PaginatedResponse<AdminUser>>('/api/admin/users', params)
 }
 
 /** 获取待审批用户列表 */
@@ -59,17 +65,17 @@ export async function createUser(data: CreateUserInput): Promise<ApiResponse<Adm
 
 /** 审批用户 */
 export async function approveUser(userId: string): Promise<ApiResponse<AdminUser>> {
-  return apiClient.put<AdminUser>(`/api/admin/users/${userId}/approve`)
+  return apiClient.put<AdminUser>(`/api/admin/users/${userId}/approve`, {})
 }
 
 /** 拒绝用户 */
-export async function rejectUser(userId: string): Promise<ApiResponse<AdminUser>> {
-  return apiClient.put<AdminUser>(`/api/admin/users/${userId}/reject`)
+export async function rejectUser(userId: string, reason: string): Promise<ApiResponse<AdminUser>> {
+  return apiClient.put<AdminUser>(`/api/admin/users/${userId}/reject`, { reason })
 }
 
 /** 禁用用户 */
-export async function disableUser(userId: string): Promise<ApiResponse<AdminUser>> {
-  return apiClient.put<AdminUser>(`/api/admin/users/${userId}/disable`)
+export async function disableUser(userId: string, reason?: string): Promise<ApiResponse<AdminUser>> {
+  return apiClient.put<AdminUser>(`/api/admin/users/${userId}/disable`, reason ? { reason } : {})
 }
 
 /** 启用用户 */
@@ -84,7 +90,7 @@ export async function updateUser(userId: string, data: UpdateUserInput): Promise
 
 /** 修改用户角色 */
 export async function changeUserRole(userId: string, data: ChangeRoleInput): Promise<ApiResponse<AdminUser>> {
-  return apiClient.put<AdminUser>(`/api/admin/users/${userId}/role`, data)
+  return apiClient.put<AdminUser>(`/api/admin/users/${userId}/role?new_role=${encodeURIComponent(data.role)}`)
 }
 
 /** 删除用户 */
@@ -92,12 +98,20 @@ export async function deleteUser(userId: string): Promise<ApiResponse<Record<str
   return apiClient.delete<Record<string, never>>(`/api/admin/users/${userId}`)
 }
 
-/** 重置用户密码 */
-export async function resetUserPassword(userId: string, data: ResetPasswordInput): Promise<ApiResponse<Record<string, never>>> {
-  return apiClient.post<Record<string, never>>(`/api/admin/users/${userId}/reset-password`, data)
+/** 重置用户密码（触发重置流程，生成重置 token） */
+export async function resetUserPassword(userId: string): Promise<ApiResponse<{ token?: string | null }>> {
+  return apiClient.post<{ token?: string | null }>(`/api/admin/users/${userId}/reset-password`)
 }
 
 /** 获取审计日志 */
 export async function getAuditLogs(params?: { page?: number; page_size?: number; user_id?: string }): Promise<ApiResponse<PaginatedResponse<AuditLogItem>>> {
-  return apiClient.get<PaginatedResponse<AuditLogItem>>('/api/admin/audit-logs', params ?? {})
+  const query: Record<string, unknown> = {}
+  if (params) {
+    if (params.page !== undefined && params.page_size !== undefined) {
+      query.skip = (params.page - 1) * params.page_size
+      query.limit = params.page_size
+    }
+    if (params.user_id) query.user_id = params.user_id
+  }
+  return apiClient.get<PaginatedResponse<AuditLogItem>>('/api/admin/audit-logs', query)
 }

@@ -11,6 +11,7 @@ TradingAgents API 路由聚合
 """
 
 import logging
+from typing import Any
 
 from fastapi import APIRouter
 
@@ -26,7 +27,7 @@ health_router = APIRouter(prefix="/trading-agents", tags=["TradingAgents - 健�
 
 
 @health_router.get("/health", response_model=dict)
-async def health_check():
+async def health_check() -> dict[str, Any]:
     """
     健康检查端点
 

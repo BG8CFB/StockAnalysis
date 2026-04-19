@@ -11,13 +11,13 @@ from fastapi import APIRouter, Depends, Query
 
 from core.auth.dependencies import get_current_active_user
 from core.auth.models import UserModel
-from core.market_data.services.data_sync_service import DataSyncService
+from core.market_data.models.datasource import DataSourceStatus, DataSourceType
 from core.market_data.repositories.datasource import (
-    DataSourceStatusRepository,
     DataSourceStatusHistoryRepository,
+    DataSourceStatusRepository,
     SystemDataSourceRepository,
 )
-from core.market_data.models.datasource import DataSourceStatus, DataSourceType
+from core.market_data.services.data_sync_service import DataSyncService
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ def _get_sync_service() -> DataSyncService:
 async def run_stock_basics_sync(
     force: bool = Query(default=False),
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """触发股票基础数据全量同步"""
     sync_service = _get_sync_service()
     result = await sync_service.sync_stock_list_with_fallback()
@@ -46,7 +46,7 @@ async def run_stock_basics_sync(
 @router.get("/stock_basics/status")
 async def get_stock_basics_status(
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取股票基础数据同步状态"""
     status_repo = DataSourceStatusRepository()
     statuses = await status_repo.find_many(
@@ -62,7 +62,7 @@ async def get_stock_basics_status(
 @router.get("/multi-source/sources/status")
 async def get_data_sources_status(
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取所有数据源状态"""
     system_repo = SystemDataSourceRepository()
     status_repo = DataSourceStatusRepository()
@@ -77,13 +77,15 @@ async def get_data_sources_status(
             limit=1,
         )
         latest = source_statuses[0] if source_statuses else {}
-        result.append({
-            "name": cfg["source_id"],
-            "priority": cfg.get("priority", 999),
-            "available": latest.get("status") == DataSourceStatus.HEALTHY.value,
-            "description": cfg.get("supported_data_types", []),
-            "token_source": cfg.get("config", {}).get("api_token") and "configured" or None,
-        })
+        result.append(
+            {
+                "name": cfg["source_id"],
+                "priority": cfg.get("priority", 999),
+                "available": latest.get("status") == DataSourceStatus.HEALTHY.value,
+                "description": cfg.get("supported_data_types", []),
+                "token_source": cfg.get("config", {}).get("api_token") and "configured" or None,
+            }
+        )
 
     return {"code": 0, "data": result, "message": "ok"}
 
@@ -91,7 +93,7 @@ async def get_data_sources_status(
 @router.get("/multi-source/sources/current")
 async def get_current_data_source(
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取当前使用的数据源"""
     system_repo = SystemDataSourceRepository()
     status_repo = DataSourceStatusRepository()
@@ -127,7 +129,7 @@ async def get_current_data_source(
 @router.get("/multi-source/status")
 async def get_multi_source_sync_status(
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取多数据源同步状态"""
     status_repo = DataSourceStatusRepository()
     summary = await status_repo.get_status_summary()
@@ -144,7 +146,7 @@ async def run_multi_source_sync(
     force: bool = Query(default=False),
     preferred_sources: Optional[str] = Query(default=None),
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """触发多数据源股票基础信息同步"""
     sync_service = _get_sync_service()
     result = await sync_service.sync_stock_list_with_fallback()
@@ -155,7 +157,7 @@ async def run_multi_source_sync(
 async def test_data_sources(
     body: Optional[Dict[str, Any]] = None,
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """测试数据源连通性"""
     from core.market_data.services.source_monitor_service import SourceMonitorService
 
@@ -180,19 +182,27 @@ async def test_data_sources(
                 data_type="stock_list",
                 check_type="manual_test",
             )
-            test_results.append({
-                "name": src_id,
-                "priority": cfg.get("priority", 999),
-                "available": check.get("status") == "healthy",
-                "message": "ok" if check.get("status") == "healthy" else check.get("error", "unavailable"),
-            })
+            test_results.append(
+                {
+                    "name": src_id,
+                    "priority": cfg.get("priority", 999),
+                    "available": check.get("status") == "healthy",
+                    "message": (
+                        "ok"
+                        if check.get("status") == "healthy"
+                        else check.get("error", "unavailable")
+                    ),
+                }
+            )
         except Exception as e:
-            test_results.append({
-                "name": src_id,
-                "priority": cfg.get("priority", 999),
-                "available": False,
-                "message": str(e),
-            })
+            test_results.append(
+                {
+                    "name": src_id,
+                    "priority": cfg.get("priority", 999),
+                    "available": False,
+                    "message": str(e),
+                }
+            )
 
     return {"code": 0, "data": {"test_results": test_results}, "message": "ok"}
 
@@ -200,7 +210,7 @@ async def test_data_sources(
 @router.get("/multi-source/recommendations")
 async def get_sync_recommendations(
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取数据源使用建议"""
     status_repo = DataSourceStatusRepository()
     system_repo = SystemDataSourceRepository()
@@ -255,7 +265,7 @@ async def get_sync_history(
     page_size: int = Query(default=10, ge=1, le=100),
     status: Optional[str] = Query(default=None),
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取同步历史记录"""
     history_repo = DataSourceStatusHistoryRepository()
 

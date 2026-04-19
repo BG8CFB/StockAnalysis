@@ -3,7 +3,8 @@
 """
 
 from datetime import datetime
-from typing import Optional
+from typing import Any, Dict, Optional
+
 from pydantic import BaseModel, Field
 
 from . import MarketType
@@ -11,6 +12,7 @@ from . import MarketType
 
 class StockCompany(BaseModel):
     """公司详细信息模型"""
+
     symbol: str = Field(..., description="股票代码")
     market: MarketType = Field(..., description="市场类型")
     company_name: str = Field(..., description="公司名称")
@@ -20,13 +22,13 @@ class StockCompany(BaseModel):
     listing_date: str = Field(..., description="上市日期")
 
     # 联系方式
-    contact: Optional[dict] = Field(None, description="联系方式")
+    contact: Optional[Dict[str, Any]] = Field(None, description="联系方式")
 
     # 业务描述
-    business: Optional[dict] = Field(None, description="业务描述")
+    business: Optional[Dict[str, Any]] = Field(None, description="业务描述")
 
     # 股本结构
-    capital_structure: Optional[dict] = Field(None, description="股本结构")
+    capital_structure: Optional[Dict[str, Any]] = Field(None, description="股本结构")
 
     data_source: str = Field(..., description="数据来源")
     fetched_at: datetime = Field(default_factory=datetime.now, description="数据获取时间")

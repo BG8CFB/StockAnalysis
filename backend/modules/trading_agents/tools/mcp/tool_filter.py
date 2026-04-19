@@ -8,7 +8,7 @@ MCP 工具过滤器
 """
 
 import logging
-from typing import List, Dict, Any, Set
+from typing import Any, Dict, List, Set
 
 from langchain_core.tools import BaseTool
 
@@ -33,10 +33,7 @@ class MCPToolFilter:
         self.mcp_servers = agent_config.get("mcp_servers", [])
         self.local_tools = agent_config.get("local_tools", [])
 
-    def filter_tools(
-        self,
-        available_tools: List[BaseTool]
-    ) -> List[BaseTool]:
+    def filter_tools(self, available_tools: List[BaseTool]) -> List[BaseTool]:
         """
         根据配置过滤工具列表
 
@@ -73,11 +70,7 @@ class MCPToolFilter:
         )
         return filtered_tools
 
-    def _is_tool_allowed(
-        self,
-        tool_name: str,
-        allowed_tools: Set[str]
-    ) -> bool:
+    def _is_tool_allowed(self, tool_name: str, allowed_tools: Set[str]) -> bool:
         """
         检查工具是否被允许使用
 
@@ -115,7 +108,7 @@ class MCPToolFilter:
         Returns:
             工具摘要信息
         """
-        summary = {
+        summary: Dict[str, Any] = {
             "total": len(tools),
             "by_server": {},
         }
@@ -125,8 +118,6 @@ class MCPToolFilter:
             parts = tool.name.split("__")
             if len(parts) >= 2 and parts[0] == "mcp":
                 server_name = parts[1]
-                summary["by_server"][server_name] = (
-                    summary["by_server"].get(server_name, 0) + 1
-                )
+                summary["by_server"][server_name] = summary["by_server"].get(server_name, 0) + 1
 
         return summary

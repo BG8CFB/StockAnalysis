@@ -1,28 +1,31 @@
 """
 基于角色的访问控制 (RBAC) 工具
 """
+
 from enum import Enum
 from functools import wraps
-from typing import Set, Callable
-
-from fastapi import HTTPException, status, Depends
 
 # 避免循环导入，使用 TYPE_CHECKING
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Set
+
+from fastapi import HTTPException, status
+
 if TYPE_CHECKING:
-    from core.user.models import UserModel
+    pass
 
 
 class Role(str, Enum):
     """用户角色枚举"""
-    GUEST = "GUEST"           # 访客（未登录）
-    USER = "USER"             # 普通用户
-    ADMIN = "ADMIN"           # 管理员
+
+    GUEST = "GUEST"  # 访客（未登录）
+    USER = "USER"  # 普通用户
+    ADMIN = "ADMIN"  # 管理员
     SUPER_ADMIN = "SUPER_ADMIN"  # 超级管理员
 
 
 class Permission(str, Enum):
     """权限枚举"""
+
     # 用户管理
     USER_CREATE = "user:create"
     USER_READ = "user:read"
@@ -53,26 +56,26 @@ ROLE_PERMISSIONS: dict[Role, Set[Permission]] = {
     },
     Role.USER: {
         Permission.PUBLIC_ACCESS,
-        Permission.USER_READ,      # 只能读自己的
-        Permission.USER_UPDATE,    # 只能更新自己的
+        Permission.USER_READ,  # 只能读自己的
+        Permission.USER_UPDATE,  # 只能更新自己的
     },
     Role.ADMIN: {
         Permission.PUBLIC_ACCESS,
-        Permission.USER_READ,           # 可以读所有用户
-        Permission.USER_UPDATE,         # 可以更新所有用户
+        Permission.USER_READ,  # 可以读所有用户
+        Permission.USER_UPDATE,  # 可以更新所有用户
         Permission.USER_CREATE,
         Permission.USER_DELETE,
-        Permission.USER_APPROVE,        # 审核用户
-        Permission.USER_DISABLE,        # 禁用/启用用户
-        Permission.USER_RESET_PASSWORD, # 触发密码重置
-        Permission.AUDIT_READ,          # 查看审计日志
+        Permission.USER_APPROVE,  # 审核用户
+        Permission.USER_DISABLE,  # 禁用/启用用户
+        Permission.USER_RESET_PASSWORD,  # 触发密码重置
+        Permission.AUDIT_READ,  # 查看审计日志
         Permission.SYSTEM_CONFIG,
         Permission.SYSTEM_MONITOR,
     },
     Role.SUPER_ADMIN: {
         # 超级管理员拥有所有权限
         *Permission.__members__.values(),
-    }
+    },
 }
 
 
@@ -98,78 +101,116 @@ def has_all_permissions(role: Role, permissions: Set[Permission]) -> bool:
     return permissions.issubset(role_permissions)
 
 
-def require_permission(permission: Permission):
+def require_permission(permission: Permission) -> Callable[..., Any]:
     """权限检查装饰器工厂
 
     注意：使用此装饰器的路由必须通过 Depends(get_current_user) 注入 current_user 参数。
     装饰器会验证 current_user 是否存在，如果不存在则抛出 401 错误。
     """
-    def decorator(func: Callable):
+
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
-        async def wrapper(*args, **kwargs):
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
             # 延迟导入以避免循环依赖
             from core.user.models import UserModel
-            
+
             # 严格检查 current_user 是否存在
-            user: UserModel = kwargs.get("current_user")
+            user: UserModel = kwargs.get("current_user")  # type: ignore[assignment]
             if user is None:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="未认证：缺少用户信息，请确保路由使用了 Depends(get_current_user)"
+                    detail="未认证：缺少用户信息，请确保路由使用了 Depends(get_current_user)",
                 )
 
             # 验证 user 是 UserModel 实例
             if not isinstance(user, UserModel):
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="内部错误：用户信息类型不正确"
+                    detail="内部错误：用户信息类型不正确",
                 )
 
             user_role = Role(user.role)
             if not has_permission(user_role, permission):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"需要权限: {permission.value}"
+                    detail=f"需要权限: {permission.value}",
                 )
 
             return await func(*args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
-def require_role(*roles: Role):
+def check_role(user: Any, *roles: Role) -> None:
+    """检查用户是否拥有指定角色之一（非装饰器，直接调用版）
+
+    Args:
+        user: 用户对象（UserModel 实例），需包含 role 属性
+        *roles: 允许的角色列表
+
+    Raises:
+        HTTPException: 用户未认证或角色不足时抛出 401/403
+    """
+    from core.user.models import UserModel
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="未认证：缺少用户信息",
+        )
+
+    if not isinstance(user, UserModel):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="内部错误：用户信息类型不正确",
+        )
+
+    user_role = Role(user.role)
+    if user_role not in roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"需要角色: {', '.join(r.value for r in roles)}",
+        )
+
+
+def require_role(*roles: Role) -> Callable[..., Any]:
     """角色检查装饰器工厂
 
     注意：使用此装饰器的路由必须通过 Depends(get_current_user) 注入 current_user 参数。
     """
-    def decorator(func: Callable):
+
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
-        async def wrapper(*args, **kwargs):
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
             # 延迟导入以避免循环依赖
             from core.user.models import UserModel
 
-            user: UserModel = kwargs.get("current_user")
+            user = kwargs.get("current_user")
             if user is None:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="未认证：缺少用户信息，请确保路由使用了 Depends(get_current_user)"
+                    detail="未认证：缺少用户信息，请确保路由使用了 Depends(get_current_user)",
                 )
 
             if not isinstance(user, UserModel):
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="内部错误：用户信息类型不正确"
+                    detail="内部错误：用户信息类型不正确",
                 )
 
             user_role = Role(user.role)
             if user_role not in roles:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"需要角色: {', '.join(r.value for r in roles)}"
+                    detail=f"需要角色: {', '.join(r.value for r in roles)}",
                 )
 
             return await func(*args, **kwargs)
+
         return wrapper
+
     return decorator
 
 

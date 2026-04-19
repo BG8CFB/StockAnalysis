@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 
 class TaskStatus(str, Enum):
     """任务状态"""
+
     PENDING = "pending"
     RUNNING = "running"
     PHASE1 = "phase1"
@@ -31,6 +32,7 @@ class TaskStatus(str, Enum):
 
 class RecommendationType(str, Enum):
     """投资建议类型"""
+
     STRONG_BUY = "STRONG_BUY"
     BUY = "BUY"
     HOLD = "HOLD"
@@ -42,25 +44,28 @@ class RecommendationType(str, Enum):
 # 辅助数据类（从 models/state.py 迁移）
 # =============================================================================
 
+
 @dataclass
 class TokenUsage:
     """Token 使用统计"""
+
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
 
-    def add(self, other: 'TokenUsage') -> 'TokenUsage':
+    def add(self, other: "TokenUsage") -> "TokenUsage":
         """累加 Token 使用量"""
         return TokenUsage(
             prompt_tokens=self.prompt_tokens + other.prompt_tokens,
             completion_tokens=self.completion_tokens + other.completion_tokens,
-            total_tokens=self.total_tokens + other.total_tokens
+            total_tokens=self.total_tokens + other.total_tokens,
         )
 
 
 @dataclass
 class AgentExecution:
     """智能体执行记录"""
+
     slug: str
     name: str
     started_at: Optional[datetime] = None
@@ -74,6 +79,7 @@ class AgentExecution:
 @dataclass
 class PhaseExecution:
     """阶段执行记录"""
+
     phase: int
     phase_name: str
     started_at: Optional[datetime] = None
@@ -120,7 +126,7 @@ class WorkflowState:
         self.stock_code = stock_code
         self.trade_date = trade_date
         self.market = market
-        self.current_phase = "pending"
+        self.current_phase: str | int = "pending"
         self.status = TaskStatus.PENDING.value
         self.start_time = datetime.now().isoformat()
         self.end_time: Optional[str] = None
@@ -162,7 +168,7 @@ class WorkflowState:
         self.summary_report: Optional[Dict[str, Any]] = None
         self.summary_confidence: Optional[str] = None
         self.price_predictions: Optional[Dict[str, Any]] = None
-        self.final_report: Optional[Dict[str, Any]] = None
+        self.final_report: Optional[str] = None
         self.recommendation: Optional[str] = None
 
         # ===== 股票信息 =====
@@ -171,10 +177,17 @@ class WorkflowState:
         # ===== 执行状态 =====
         self.phase_executions: List[PhaseExecution] = []
         self.progress: float = 0.0
-        self.completed_at: Optional[str] = None
+        self.completed_at: Optional[datetime] = None
+        self.started_at: Optional[str] = None
+        self.error_message: Optional[str] = None
+        self.current_agent: Optional[str] = None
+
+        # ===== 价格预测 =====
+        self.buy_price: Optional[float] = None
+        self.sell_price: Optional[float] = None
 
         # ===== 细粒度进度追踪 =====
-        self.total_agent_executions = 0      # 总智能体执行次数
+        self.total_agent_executions = 0  # 总智能体执行次数
         self.completed_agent_executions = 0  # 已完成智能体执行次数
         self.phase_agent_counts: Dict[int, int] = {}  # 各阶段智能体数量映射
 
@@ -230,13 +243,12 @@ class WorkflowState:
             1: phase1_executions,
             2: phase2_executions,
             3: phase3_executions,
-            4: phase4_executions
+            4: phase4_executions,
         }
 
         # 计算总智能体执行次数
         self.total_agent_executions = (
-            phase1_executions + phase2_executions +
-            phase3_executions + phase4_executions
+            phase1_executions + phase2_executions + phase3_executions + phase4_executions
         )
 
         # 初始化进度为 0
@@ -263,7 +275,7 @@ class WorkflowState:
 
     def _calculate_total_tokens(self) -> Dict[str, int]:
         """计算总 Token 使用量"""
-        total = {}
+        total: Dict[str, int] = {}
         for usage in self.token_usage:
             tokens = usage.get("tokens", {})
             for key, value in tokens.items():
@@ -272,31 +284,37 @@ class WorkflowState:
 
     def add_token_usage(self, phase: str, model_id: str, tokens: Dict[str, int]) -> None:
         """添加 Token 使用记录"""
-        self.token_usage.append({
-            "phase": phase,
-            "model_id": model_id,
-            "tokens": tokens,
-            "timestamp": datetime.now().isoformat(),
-        })
+        self.token_usage.append(
+            {
+                "phase": phase,
+                "model_id": model_id,
+                "tokens": tokens,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
 
     def add_error(self, phase: str, error: str, details: Optional[Dict] = None) -> None:
         """添加错误记录"""
-        self.errors.append({
-            "phase": phase,
-            "error": error,
-            "details": details,
-            "timestamp": datetime.now().isoformat(),
-        })
+        self.errors.append(
+            {
+                "phase": phase,
+                "error": error,
+                "details": details,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
 
     def add_tool_call(self, phase: str, agent: str, tool: str, result: Any) -> None:
         """添加工具调用记录"""
-        self.tool_calls.append({
-            "phase": phase,
-            "agent": agent,
-            "tool": tool,
-            "result": str(result),
-            "timestamp": datetime.now().isoformat(),
-        })
+        self.tool_calls.append(
+            {
+                "phase": phase,
+                "agent": agent,
+                "tool": tool,
+                "result": str(result),
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
 
     def is_phase_enabled(self, phase: str) -> bool:
         """检查阶段是否启用"""
@@ -305,9 +323,11 @@ class WorkflowState:
     def get_model_id(self, phase: str) -> str:
         """获取阶段对应的模型 ID"""
         if phase in ["phase1"]:
-            return self.model_config.get("data_collection_model", "glm-4.7")
+            result = self.model_config.get("data_collection_model", "glm-4.7")
+            return str(result) if result is not None else "glm-4.7"
         else:
-            return self.model_config.get("debate_model", "glm-4.7")
+            result = self.model_config.get("debate_model", "glm-4.7")
+            return str(result) if result is not None else "glm-4.7"
 
     def get_phase1_agents(self) -> List[Dict[str, Any]]:
         """获取 Phase 1 启用的智能体配置"""
@@ -320,8 +340,8 @@ def create_initial_state(
     user_id: str,
     stock_code: str,
     trade_date: str,
-    model_config: Dict[str, Any] = None,
-    agent_config: Dict[str, Any] = None,
+    model_config: Optional[Dict[str, Any]] = None,
+    agent_config: Optional[Dict[str, Any]] = None,
     market: str = "A_STOCK",
     max_debate_rounds: int = 2,
     enable_phase1: bool = True,

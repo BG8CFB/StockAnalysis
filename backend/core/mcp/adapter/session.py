@@ -9,7 +9,7 @@ MCP 会话管理（官方标准实现）
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from typing import Any, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -24,11 +24,12 @@ logger = logging.getLogger(__name__)
 # 官方推荐的 Session 上下文管理器
 # =============================================================================
 
+
 @asynccontextmanager
 async def mcp_session_context(
     client: MultiServerMCPClient,
     server_name: str,
-):
+) -> AsyncGenerator[Any, None]:
     """
     MCP Session 上下文管理器（官方标准实现）
 
@@ -67,10 +68,7 @@ async def mcp_session_context(
             yield session
 
     except Exception as e:
-        logger.error(
-            f"[MCPSession] 会话错误: server={server_name}, error={e}",
-            exc_info=True
-        )
+        logger.error(f"[MCPSession] 会话错误: server={server_name}, error={e}", exc_info=True)
         raise
     finally:
         if session:
@@ -80,6 +78,7 @@ async def mcp_session_context(
 # =============================================================================
 # 官方推荐的资源加载函数
 # =============================================================================
+
 
 async def load_tools_with_session(
     client: MultiServerMCPClient,
@@ -103,10 +102,8 @@ async def load_tools_with_session(
     """
     async with mcp_session_context(client, server_name) as session:
         tools = await load_mcp_tools(session)
-        logger.info(
-            f"[MCPSession] 加载工具: server={server_name}, count={len(tools)}"
-        )
-        return tools
+        logger.info(f"[MCPSession] 加载工具: server={server_name}, count={len(tools)}")
+        return list(tools)
 
 
 async def load_resources_with_session(
@@ -143,10 +140,8 @@ async def load_resources_with_session(
         else:
             resources = await load_mcp_resources(session)
 
-        logger.info(
-            f"[MCPSession] 加载资源: server={server_name}, count={len(resources)}"
-        )
-        return resources
+        logger.info(f"[MCPSession] 加载资源: server={server_name}, count={len(resources)}")
+        return list(resources)
 
 
 async def load_prompt_with_session(
@@ -185,15 +180,14 @@ async def load_prompt_with_session(
         else:
             messages = await load_mcp_prompt(session, prompt_name)
 
-        logger.info(
-            f"[MCPSession] 加载 Prompt: server={server_name}, prompt={prompt_name}"
-        )
-        return messages
+        logger.info(f"[MCPSession] 加载 Prompt: server={server_name}, prompt={prompt_name}")
+        return list(messages)
 
 
 # =============================================================================
 # MCP 会话管理器（全局单例）
 # =============================================================================
+
 
 class MCPSessionManager:
     """
@@ -202,13 +196,13 @@ class MCPSessionManager:
     负责管理 MCP 客户端会话的生命周期，提供会话清理等后台任务。
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化会话管理器"""
-        self._cleanup_task: Optional[asyncio.Task] = None
+        self._cleanup_task: Optional[asyncio.Task[None]] = None
         self._running = False
         logger.info("MCP会话管理器已初始化")
 
-    async def start_cleanup_task(self):
+    async def start_cleanup_task(self) -> None:
         """启动会话清理后台任务"""
         if self._cleanup_task is not None:
             logger.warning("会话清理任务已在运行")
@@ -218,7 +212,7 @@ class MCPSessionManager:
         self._cleanup_task = asyncio.create_task(self._cleanup_loop())
         logger.info("MCP会话管理器后台清理任务已启动")
 
-    async def stop_cleanup_task(self):
+    async def stop_cleanup_task(self) -> None:
         """停止会话清理后台任务"""
         self._running = False
         if self._cleanup_task:
@@ -230,7 +224,7 @@ class MCPSessionManager:
             self._cleanup_task = None
         logger.info("MCP会话管理器后台清理任务已停止")
 
-    async def _cleanup_loop(self):
+    async def _cleanup_loop(self) -> None:
         """会话清理循环"""
         while self._running:
             try:
@@ -243,7 +237,7 @@ class MCPSessionManager:
                 logger.error(f"会话清理任务错误: {e}", exc_info=True)
                 await asyncio.sleep(60)
 
-    async def _cleanup_expired_sessions(self):
+    async def _cleanup_expired_sessions(self) -> None:
         """清理过期会话"""
         logger.debug("检查并清理过期会话")
 
@@ -257,4 +251,3 @@ def get_mcp_session_manager() -> MCPSessionManager:
     if _mcp_session_manager is None:
         _mcp_session_manager = MCPSessionManager()
     return _mcp_session_manager
-

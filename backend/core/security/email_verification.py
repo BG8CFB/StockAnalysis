@@ -2,6 +2,7 @@
 邮箱验证码服务
 支持发送和验证邮箱验证码（预留接口）
 """
+
 import json
 import secrets
 from typing import Optional, Tuple
@@ -21,7 +22,7 @@ class EmailVerificationService:
     # 验证码过期时间（秒）
     CODE_EXPIRE = 300  # 5 分钟
 
-    def __init__(self):
+    def __init__(self) -> None:
         pass
 
     def _get_key(self, email: str, code_id: str) -> str:

@@ -123,9 +123,9 @@ export default function UserManagementPage() {
     setResetPwdOpen(true)
   }
 
-  const handleConfirmReset = async (values: { new_password: string }) => {
+  const handleConfirmReset = async () => {
     if (!currentUser) return
-    await um.resetPassword(currentUser.id, values.new_password)
+    await um.resetPassword(currentUser.id)
     setResetPwdOpen(false)
     setCurrentUser(null)
     resetPwdForm.resetFields()

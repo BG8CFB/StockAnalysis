@@ -2,6 +2,7 @@
 管理员核心业务逻辑服务
 处理用户审核、管理、列表查询等
 """
+
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
@@ -11,8 +12,8 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from core.config import settings
 from core.db.mongodb import mongodb
-from core.db.redis import get_redis, UserRedisKey
-from core.user.models import Role, UserModel, UserStatus, UserListResponse
+from core.db.redis import get_redis
+from core.user.models import Role, UserListResponse, UserModel, UserStatus
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ class AdminService:
         Returns:
             (用户列表, 总数)
         """
-        query = {}
+        query: dict = {}
 
         # 角色筛选
         if role:
@@ -69,13 +70,7 @@ class AdminService:
         total = await self.db.users.count_documents(query)
 
         # 查询数据
-        cursor = (
-            self.db.users
-            .find(query)
-            .sort("created_at", -1)
-            .skip(skip)
-            .limit(limit)
-        )
+        cursor = self.db.users.find(query).sort("created_at", -1).skip(skip).limit(limit)
 
         users = []
         async for user_doc in cursor:
@@ -111,13 +106,7 @@ class AdminService:
         query = {"status": UserStatus.PENDING}
         total = await self.db.users.count_documents(query)
 
-        cursor = (
-            self.db.users
-            .find(query)
-            .sort("created_at", -1)
-            .skip(skip)
-            .limit(limit)
-        )
+        cursor = self.db.users.find(query).sort("created_at", -1).skip(skip).limit(limit)
 
         users = []
         async for user_doc in cursor:
@@ -172,7 +161,7 @@ class AdminService:
                     "reviewed_at": datetime.now(timezone.utc),
                     "updated_at": datetime.now(timezone.utc),
                 }
-            }
+            },
         )
 
         # 记录审计日志
@@ -214,7 +203,7 @@ class AdminService:
                     "reject_reason": reason,
                     "updated_at": datetime.now(timezone.utc),
                 }
-            }
+            },
         )
 
         # 记录审计日志
@@ -254,7 +243,7 @@ class AdminService:
                     "is_active": False,
                     "updated_at": datetime.now(timezone.utc),
                 }
-            }
+            },
         )
 
         # 记录审计日志
@@ -293,7 +282,7 @@ class AdminService:
                     "is_active": True,
                     "updated_at": datetime.now(timezone.utc),
                 }
-            }
+            },
         )
 
         # 记录审计日志
@@ -332,7 +321,7 @@ class AdminService:
                     "reject_reason": None,
                     "updated_at": datetime.now(timezone.utc),
                 }
-            }
+            },
         )
 
         # 记录审计日志
@@ -371,9 +360,7 @@ class AdminService:
         from core.auth.security import password_manager
 
         # 检查邮箱和用户名是否已存在
-        existing = await self.db.users.find_one({
-            "$or": [{"email": email}, {"username": username}]
-        })
+        existing = await self.db.users.find_one({"$or": [{"email": email}, {"username": username}]})
         if existing:
             raise ValueError("用户名或邮箱已存在")
 
@@ -416,18 +403,16 @@ class AdminService:
 
         # 检查唯一性（排除当前用户）
         if "email" in update_data:
-            existing = await self.db.users.find_one({
-                "email": update_data["email"],
-                "_id": {"$ne": ObjectId(user_id)}  # 排除自己
-            })
+            existing = await self.db.users.find_one(
+                {"email": update_data["email"], "_id": {"$ne": ObjectId(user_id)}}  # 排除自己
+            )
             if existing:
                 raise ValueError("该邮箱已被其他用户使用")
 
         if "username" in update_data:
-            existing = await self.db.users.find_one({
-                "username": update_data["username"],
-                "_id": {"$ne": ObjectId(user_id)}  # 排除自己
-            })
+            existing = await self.db.users.find_one(
+                {"username": update_data["username"], "_id": {"$ne": ObjectId(user_id)}}  # 排除自己
+            )
             if existing:
                 raise ValueError("该用户名已被其他用户使用")
 
@@ -464,7 +449,7 @@ class AdminService:
                     "role": new_role,
                     "updated_at": datetime.now(timezone.utc),
                 }
-            }
+            },
         )
 
         # 记录审计日志
@@ -568,10 +553,9 @@ class AdminService:
         cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
 
         # 查找需要删除的用户
-        cursor = self.db.users.find({
-            "status": UserStatus.REJECTED,
-            "reviewed_at": {"$lt": cutoff_date}
-        })
+        cursor = self.db.users.find(
+            {"status": UserStatus.REJECTED, "reviewed_at": {"$lt": cutoff_date}}
+        )
 
         user_ids = []
         async for user in cursor:
@@ -618,7 +602,7 @@ class AdminService:
                         "is_active": False,
                         "updated_at": datetime.now(timezone.utc),
                     }
-                }
+                },
             )
 
             # 2. 清理所有 Redis session（踢出登录）

@@ -5,10 +5,10 @@ WebSocket 事件定义
 """
 
 import logging
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Dict, Any, Optional, List
-from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # 事件类型枚举
 # =============================================================================
+
 
 class EventType(str, Enum):
     """WebSocket 事件类型"""
@@ -61,6 +62,7 @@ class EventType(str, Enum):
 # 事件数据结构
 # =============================================================================
 
+
 @dataclass
 class TaskEvent:
     """
@@ -68,6 +70,7 @@ class TaskEvent:
 
     所有 WebSocket 事件的基础数据结构。
     """
+
     event_type: Optional[EventType] = None  # Set by subclasses in __post_init__
     task_id: str = ""
     timestamp: float = field(default_factory=lambda: datetime.now().timestamp())
@@ -76,7 +79,7 @@ class TaskEvent:
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典格式"""
         return {
-            "event_type": self.event_type.value,
+            "event_type": self.event_type.value if self.event_type else "unknown",
             "task_id": self.task_id,
             "timestamp": self.timestamp,
             "data": self.data,
@@ -86,6 +89,7 @@ class TaskEvent:
 @dataclass
 class PhaseStartedEvent(TaskEvent):
     """阶段开始事件"""
+
     phase: int = 0
     phase_name: str = ""
     total_agents: int = 0
@@ -102,6 +106,7 @@ class PhaseStartedEvent(TaskEvent):
 @dataclass
 class PhaseAgentsEvent(TaskEvent):
     """阶段智能体列表事件"""
+
     phase: int = 0
     phase_name: str = ""
     execution_mode: str = "serial"  # "serial" 或 "concurrent"
@@ -128,6 +133,7 @@ class PhaseAgentsEvent(TaskEvent):
 @dataclass
 class ConcurrentGroupStartedEvent(TaskEvent):
     """并发组开始事件"""
+
     group_id: str = ""
     phase: int = 0
     agents: List[str] = field(default_factory=list)
@@ -148,6 +154,7 @@ class ConcurrentGroupStartedEvent(TaskEvent):
 @dataclass
 class ConcurrentGroupCompletedEvent(TaskEvent):
     """并发组完成事件"""
+
     group_id: str = ""
     phase: int = 0
     total_agents: int = 0
@@ -164,6 +171,7 @@ class ConcurrentGroupCompletedEvent(TaskEvent):
 @dataclass
 class AgentStartedEvent(TaskEvent):
     """智能体开始事件"""
+
     agent_slug: str = ""
     agent_name: str = ""
 
@@ -178,6 +186,7 @@ class AgentStartedEvent(TaskEvent):
 @dataclass
 class AgentCompletedEvent(TaskEvent):
     """智能体完成事件"""
+
     agent_slug: str = ""
     agent_name: str = ""
     token_usage: Dict[str, int] = field(default_factory=dict)
@@ -196,9 +205,11 @@ class AgentCompletedEvent(TaskEvent):
             "total_agents": self.total_agents,
         }
 
+
 @dataclass
 class AgentMessageEvent(TaskEvent):
     """智能体消息事件（思考过程）"""
+
     agent_slug: str = ""
     agent_name: str = ""
     message_type: str = "thinking"  # thinking, reasoning, final
@@ -215,9 +226,11 @@ class AgentMessageEvent(TaskEvent):
             "metadata": self.metadata,
         }
 
+
 @dataclass
 class ToolCalledEvent(TaskEvent):
     """工具调用事件"""
+
     agent_slug: str = ""
     agent_name: str = ""
     tool_name: str = ""
@@ -237,6 +250,7 @@ class ToolCalledEvent(TaskEvent):
 @dataclass
 class ToolResultEvent(TaskEvent):
     """工具结果事件"""
+
     agent_slug: str = ""
     tool_name: str = ""
     success: bool = False
@@ -257,6 +271,7 @@ class ToolResultEvent(TaskEvent):
 @dataclass
 class ToolDisabledEvent(TaskEvent):
     """工具禁用事件"""
+
     agent_slug: str = ""
     tool_name: str = ""
     reason: str = ""
@@ -273,6 +288,7 @@ class ToolDisabledEvent(TaskEvent):
 @dataclass
 class ReportGeneratedEvent(TaskEvent):
     """报告生成事件"""
+
     agent_slug: str = ""
     agent_name: str = ""
     content: str = ""
@@ -289,6 +305,7 @@ class ReportGeneratedEvent(TaskEvent):
 @dataclass
 class ReportStreamChunkEvent(TaskEvent):
     """报告流式片段事件"""
+
     agent_slug: str = ""
     chunk: str = ""
     is_final: bool = False
@@ -305,6 +322,7 @@ class ReportStreamChunkEvent(TaskEvent):
 @dataclass
 class ProgressUpdateEvent(TaskEvent):
     """进度更新事件"""
+
     progress: float = 0.0
     message: str = ""
 
@@ -319,6 +337,7 @@ class ProgressUpdateEvent(TaskEvent):
 @dataclass
 class TaskCompletedEvent(TaskEvent):
     """任务完成事件"""
+
     final_recommendation: Optional[str] = None
     buy_price: Optional[float] = None
     sell_price: Optional[float] = None
@@ -337,6 +356,7 @@ class TaskCompletedEvent(TaskEvent):
 @dataclass
 class TaskFailedEvent(TaskEvent):
     """任务失败事件"""
+
     error_message: str = ""
     error_details: Optional[Dict[str, Any]] = None
 
@@ -352,11 +372,8 @@ class TaskFailedEvent(TaskEvent):
 # 事件工厂函数
 # =============================================================================
 
-def create_event(
-    event_type: EventType,
-    task_id: str,
-    **kwargs
-) -> TaskEvent:
+
+def create_event(event_type: EventType, task_id: str, **kwargs: Any) -> TaskEvent:
     """
     创建事件对象
 
@@ -368,25 +385,15 @@ def create_event(
     Returns:
         事件对象
     """
-    return TaskEvent(
-        event_type=event_type,
-        task_id=task_id,
-        data=kwargs
-    )
+    return TaskEvent(event_type=event_type, task_id=task_id, data=kwargs)
 
 
 def create_phase_started_event(
-    task_id: str,
-    phase: int,
-    phase_name: str,
-    total_agents: int = 0
+    task_id: str, phase: int, phase_name: str, total_agents: int = 0
 ) -> PhaseStartedEvent:
     """创建阶段开始事件"""
     return PhaseStartedEvent(
-        task_id=task_id,
-        phase=phase,
-        phase_name=phase_name,
-        total_agents=total_agents
+        task_id=task_id, phase=phase, phase_name=phase_name, total_agents=total_agents
     )
 
 
@@ -399,7 +406,7 @@ def create_phase_agents_event(
     concurrent_group: str = "",
     agents: Optional[List[Dict[str, Any]]] = None,
     total_executions: int = 0,
-    phase_progress_weight: float = 0.0
+    phase_progress_weight: float = 0.0,
 ) -> PhaseAgentsEvent:
     """创建阶段智能体列表事件"""
     return PhaseAgentsEvent(
@@ -411,7 +418,7 @@ def create_phase_agents_event(
         concurrent_group=concurrent_group,
         agents=agents or [],
         total_executions=total_executions,
-        phase_progress_weight=phase_progress_weight
+        phase_progress_weight=phase_progress_weight,
     )
 
 
@@ -421,7 +428,7 @@ def create_concurrent_group_started_event(
     phase: int,
     agents: List[str],
     max_concurrency: int,
-    estimated_duration_sec: int = 0
+    estimated_duration_sec: int = 0,
 ) -> ConcurrentGroupStartedEvent:
     """创建并发组开始事件"""
     return ConcurrentGroupStartedEvent(
@@ -430,36 +437,22 @@ def create_concurrent_group_started_event(
         phase=phase,
         agents=agents,
         max_concurrency=max_concurrency,
-        estimated_duration_sec=estimated_duration_sec
+        estimated_duration_sec=estimated_duration_sec,
     )
 
 
 def create_concurrent_group_completed_event(
-    task_id: str,
-    group_id: str,
-    phase: int,
-    total_agents: int
+    task_id: str, group_id: str, phase: int, total_agents: int
 ) -> ConcurrentGroupCompletedEvent:
     """创建并发组完成事件"""
     return ConcurrentGroupCompletedEvent(
-        task_id=task_id,
-        group_id=group_id,
-        phase=phase,
-        total_agents=total_agents
+        task_id=task_id, group_id=group_id, phase=phase, total_agents=total_agents
     )
 
 
-def create_agent_started_event(
-    task_id: str,
-    agent_slug: str,
-    agent_name: str
-) -> AgentStartedEvent:
+def create_agent_started_event(task_id: str, agent_slug: str, agent_name: str) -> AgentStartedEvent:
     """创建智能体开始事件"""
-    return AgentStartedEvent(
-        task_id=task_id,
-        agent_slug=agent_slug,
-        agent_name=agent_name
-    )
+    return AgentStartedEvent(task_id=task_id, agent_slug=agent_slug, agent_name=agent_name)
 
 
 def create_agent_completed_event(
@@ -469,7 +462,7 @@ def create_agent_completed_event(
     token_usage: Dict[str, int],
     progress: float = 0.0,
     completed_agents: int = 0,
-    total_agents: int = 0
+    total_agents: int = 0,
 ) -> AgentCompletedEvent:
     """创建智能体完成事件"""
     return AgentCompletedEvent(
@@ -479,7 +472,7 @@ def create_agent_completed_event(
         token_usage=token_usage,
         progress=progress,
         completed_agents=completed_agents,
-        total_agents=total_agents
+        total_agents=total_agents,
     )
 
 
@@ -489,7 +482,7 @@ def create_agent_message_event(
     agent_name: str,
     message_type: str = "thinking",
     content: str = "",
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = None,
 ) -> AgentMessageEvent:
     """创建智能体消息事件（思考过程）"""
     return AgentMessageEvent(
@@ -498,7 +491,7 @@ def create_agent_message_event(
         agent_name=agent_name,
         message_type=message_type,
         content=content,
-        metadata=metadata or {}
+        metadata=metadata or {},
     )
 
 
@@ -515,7 +508,7 @@ def create_tool_called_event(
         agent_slug=agent_slug,
         agent_name=agent_name or agent_slug,
         tool_name=tool_name,
-        tool_input=tool_input
+        tool_input=tool_input,
     )
 
 
@@ -525,7 +518,7 @@ def create_tool_result_event(
     tool_name: str,
     success: bool,
     output: str = "",
-    error: Optional[str] = None
+    error: Optional[str] = None,
 ) -> ToolResultEvent:
     """创建工具结果事件"""
     return ToolResultEvent(
@@ -534,22 +527,31 @@ def create_tool_result_event(
         tool_name=tool_name,
         success=success,
         output=output,
-        error=error
+        error=error,
+    )
+
+
+def create_tool_disabled_event(
+    task_id: str,
+    agent_slug: str,
+    tool_name: str,
+    reason: str,
+) -> ToolDisabledEvent:
+    """创建工具禁用事件"""
+    return ToolDisabledEvent(
+        task_id=task_id,
+        agent_slug=agent_slug,
+        tool_name=tool_name,
+        reason=reason,
     )
 
 
 def create_report_generated_event(
-    task_id: str,
-    agent_slug: str,
-    agent_name: str,
-    content: str
+    task_id: str, agent_slug: str, agent_name: str, content: str
 ) -> ReportGeneratedEvent:
     """创建报告生成事件"""
     return ReportGeneratedEvent(
-        task_id=task_id,
-        agent_slug=agent_slug,
-        agent_name=agent_name,
-        content=content
+        task_id=task_id, agent_slug=agent_slug, agent_name=agent_name, content=content
     )
 
 
@@ -558,7 +560,7 @@ def create_task_completed_event(
     final_recommendation: Optional[str] = None,
     buy_price: Optional[float] = None,
     sell_price: Optional[float] = None,
-    total_token_usage: Optional[Dict[str, int]] = None
+    total_token_usage: Optional[Dict[str, int]] = None,
 ) -> TaskCompletedEvent:
     """创建任务完成事件"""
     return TaskCompletedEvent(
@@ -566,33 +568,21 @@ def create_task_completed_event(
         final_recommendation=final_recommendation,
         buy_price=buy_price,
         sell_price=sell_price,
-        total_token_usage=total_token_usage or {}
+        total_token_usage=total_token_usage or {},
     )
 
 
 def create_task_failed_event(
-    task_id: str,
-    error_message: str,
-    error_details: Optional[Dict[str, Any]] = None
+    task_id: str, error_message: str, error_details: Optional[Dict[str, Any]] = None
 ) -> TaskFailedEvent:
     """创建任务失败事件"""
     return TaskFailedEvent(
-        task_id=task_id,
-        error_message=error_message,
-        error_details=error_details
+        task_id=task_id, error_message=error_message, error_details=error_details
     )
 
 
 def create_progress_update_event(
-    task_id: str,
-    progress: float,
-    message: str = ""
+    task_id: str, progress: float, message: str = ""
 ) -> ProgressUpdateEvent:
     """创建进度更新事件"""
-    return ProgressUpdateEvent(
-        task_id=task_id,
-        progress=progress,
-        message=message
-    )
-
-
+    return ProgressUpdateEvent(task_id=task_id, progress=progress, message=message)

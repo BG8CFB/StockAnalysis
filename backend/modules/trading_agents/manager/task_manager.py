@@ -19,8 +19,8 @@ from modules.trading_agents.api.websocket_manager import (
     get_ws_manager,
 )
 from modules.trading_agents.exceptions import (
-    TaskAlreadyRunningException,
-    TaskNotFoundException,
+    TaskAlreadyRunningError,
+    TaskNotFoundError,
 )
 from modules.trading_agents.manager.task_manager_restore import (
     restore_running_tasks_with_checkpoint,
@@ -58,8 +58,8 @@ class TaskManager:
     - 任务队列管理
     """
 
-    def __init__(self):
-        self._running_tasks: Dict[str, asyncio.Task] = {}
+    def __init__(self) -> None:
+        self._running_tasks: Dict[str, asyncio.Task[None]] = {}
 
     async def create_task(
         self,
@@ -167,10 +167,13 @@ class TaskManager:
         # 使用批量任务管理器
         batch_manager = get_batch_manager()
 
+        # 使用第一个股票代码作为 AnalysisTaskCreate 的 stock_code（占位）
+        # 实际每个子任务的 stock_code 在 batch_manager.create_batch 中设置
         result = await batch_manager.create_batch(
             user_id=user_id,
             stock_codes=request.stock_codes,
             request=AnalysisTaskCreate(
+                stock_code=request.stock_codes[0] if request.stock_codes else "",
                 market=request.market,
                 trade_date=request.trade_date,
                 stages=request.stages,
@@ -222,7 +225,7 @@ class TaskManager:
             f"批量并发={batch_concurrency}"
         )
 
-        return result["batch_id"]
+        return str(result["batch_id"])
 
     async def _get_model_batch_concurrency(
         self,
@@ -267,10 +270,10 @@ class TaskManager:
             任务状态字典
 
         Raises:
-            TaskNotFoundException: 任务不存在
+            TaskNotFoundError: 任务不存在
             PermissionError: 用户无权访问该任务
         """
-        query = {"_id": ObjectId(task_id)}
+        query: Dict[str, Any] = {"_id": ObjectId(task_id)}
 
         # 如果提供了 user_id，添加用户隔离验证
         if user_id is not None:
@@ -279,7 +282,7 @@ class TaskManager:
         task_doc = await mongodb.database.analysis_tasks.find_one(query)
 
         if not task_doc:
-            raise TaskNotFoundException(task_id)
+            raise TaskNotFoundError(task_id)
 
         # 验证任务属于请求的用户（如果提供了 user_id）
         if user_id is not None and task_doc.get("user_id") != user_id:
@@ -458,17 +461,17 @@ class TaskManager:
             task_id: 任务 ID
 
         Raises:
-            TaskNotFoundException: 任务不存在
+            TaskNotFoundError: 任务不存在
         """
         task_doc = await mongodb.database.analysis_tasks.find_one({"_id": ObjectId(task_id)})
 
         if not task_doc:
-            raise TaskNotFoundException(task_id)
+            raise TaskNotFoundError(task_id)
 
         status = task_doc["status"]
 
         if status == TaskStatusEnum.COMPLETED.value:
-            raise TaskAlreadyRunningException(task_id, "任务已完成，无法取消")
+            raise TaskAlreadyRunningError(task_id, {"reason": "任务已完成，无法取消"})
 
         if status == TaskStatusEnum.CANCELLED.value:
             return  # 已取消，无需重复操作
@@ -520,12 +523,12 @@ class TaskManager:
             task_id: 任务 ID
 
         Raises:
-            TaskNotFoundException: 任务不存在
+            TaskNotFoundError: 任务不存在
         """
         task_doc = await mongodb.database.analysis_tasks.find_one({"_id": ObjectId(task_id)})
 
         if not task_doc:
-            raise TaskNotFoundException(task_id)
+            raise TaskNotFoundError(task_id)
 
         status = task_doc["status"]
 
@@ -587,7 +590,7 @@ class TaskManager:
             current_phase: 当前阶段
             current_agent: 当前智能体
         """
-        update_data = {"progress": progress}
+        update_data: Dict[str, Any] = {"progress": progress}
 
         if current_phase is not None:
             update_data["current_phase"] = current_phase
@@ -640,7 +643,7 @@ class TaskManager:
         # 获取任务信息（检查是否属于批量任务）
         task_doc = await mongodb.database.analysis_tasks.find_one({"_id": ObjectId(task_id)})
         batch_id = task_doc.get("batch_id") if task_doc else None
-        user_id = task_doc.get("user_id") if task_doc else None
+        user_id: str = task_doc.get("user_id", "") if task_doc else ""
 
         update_data = {
             "status": TaskStatusEnum.COMPLETED.value,
@@ -835,7 +838,7 @@ class TaskManager:
         if not task_doc:
             return True  # 任务不存在，应该中断
 
-        return task_doc.get("interrupt_signal", False)
+        return bool(task_doc.get("interrupt_signal", False))
 
     async def reset_interrupt_signal(self, task_id: str) -> None:
         """
@@ -917,9 +920,10 @@ class TaskManager:
         self._running_tasks[task_id] = task
 
         # 添加回调来追踪任务状态
-        def task_callback(t):
+        def task_callback(t: asyncio.Task[None]) -> None:
             logger.info(
-                f"[TaskManager] 任务完成回调: task_id={task_id}, done={t.done()}, cancelled={t.cancelled()}"
+                f"[TaskManager] 任务完成回调: task_id={task_id}, "
+                f"done={t.done()}, cancelled={t.cancelled()}"
             )
             if t.exception():
                 logger.error(
@@ -982,10 +986,13 @@ class TaskManager:
                 raise Exception("无法加载用户智能体配置")
 
             # 将 Pydantic 对象转换为字典
+            agent_config_dict: Dict[str, Any]
             if hasattr(agent_config, "model_dump"):
-                agent_config = agent_config.model_dump(mode="json")
+                agent_config_dict = agent_config.model_dump(mode="json")
             elif hasattr(agent_config, "dict"):
-                agent_config = agent_config.dict()
+                agent_config_dict = agent_config.dict()
+            else:
+                agent_config_dict = agent_config  # type: ignore[assignment]
 
             logger.info(f"[{task_id}] ✅ 用户智能体配置加载成功")
 
@@ -1030,7 +1037,8 @@ class TaskManager:
                 debate_model_id = str(debate_model.id)
 
                 logger.info(
-                    f"任务 {task_id} 模型解析完成: data_collection={data_collection_model_id}, debate={debate_model_id}"
+                    f"任务 {task_id} 模型解析完成: "
+                    f"data_collection={data_collection_model_id}, debate={debate_model_id}"
                 )
 
                 # 将解析出的模型 ID 写回任务文档，供队列位置等接口使用
@@ -1045,17 +1053,22 @@ class TaskManager:
                 )
                 logger.debug(f"任务 {task_id} 已落库 model_id 等字段")
 
-            # _skip_model_loading 时从任务文档或 request 解析 model id，并获取 model 对象（供并发与 task_concurrency 使用）
+            # _skip_model_loading 时从任务文档或 request 解析 model id，
+            # 并获取 model 对象（供并发与 task_concurrency 使用）
             if _skip_model_loading and (not data_collection_model_id or not debate_model_id):
                 from core.ai.model import get_model_service as _get_model_service
 
                 _model_service = _get_model_service()
-                data_collection_model_id = data_collection_model_id or (
-                    task_doc.get("data_collection_model_id") if task_doc else None
-                ) or request.data_collection_model
-                debate_model_id = debate_model_id or (
-                    task_doc.get("debate_model_id") if task_doc else None
-                ) or request.debate_model
+                data_collection_model_id = (
+                    data_collection_model_id
+                    or (task_doc.get("data_collection_model_id") if task_doc else None)
+                    or request.data_collection_model
+                )
+                debate_model_id = (
+                    debate_model_id
+                    or (task_doc.get("debate_model_id") if task_doc else None)
+                    or request.debate_model
+                )
                 if data_collection_model_id:
                     data_collection_model_obj = await _model_service.get_model(
                         data_collection_model_id, user_id
@@ -1081,11 +1094,13 @@ class TaskManager:
                 data_collection_model_obj = await model_service.get_model(
                     data_collection_model_id, user_id
                 )
-                data_collection_config = {
-                    "max_concurrency": data_collection_model_obj.max_concurrency,
-                    "task_concurrency": data_collection_model_obj.task_concurrency,
-                    "batch_concurrency": data_collection_model_obj.batch_concurrency,
-                }
+                data_collection_config: Dict[str, Any] = {}
+                if data_collection_model_obj:
+                    data_collection_config = {
+                        "max_concurrency": data_collection_model_obj.max_concurrency,
+                        "task_concurrency": data_collection_model_obj.task_concurrency,
+                        "batch_concurrency": data_collection_model_obj.batch_concurrency,
+                    }
             else:
                 data_collection_config = {}
 
@@ -1093,11 +1108,13 @@ class TaskManager:
             if debate_model_id:
                 # 使用异步方法获取模型
                 debate_model_obj = await model_service.get_model(debate_model_id, user_id)
-                debate_config = {
-                    "max_concurrency": debate_model_obj.max_concurrency,
-                    "task_concurrency": debate_model_obj.task_concurrency,
-                    "batch_concurrency": debate_model_obj.batch_concurrency,
-                }
+                debate_config: Dict[str, Any] = {}
+                if debate_model_obj:
+                    debate_config = {
+                        "max_concurrency": debate_model_obj.max_concurrency,
+                        "task_concurrency": debate_model_obj.task_concurrency,
+                        "batch_concurrency": debate_model_obj.batch_concurrency,
+                    }
             else:
                 debate_config = {}
 
@@ -1158,7 +1175,7 @@ class TaskManager:
                 ws_manager = await get_ws_manager()
 
                 # 进度回调函数
-                async def progress_callback(progress_data: Dict[str, Any]):
+                async def progress_callback(progress_data: Dict[str, Any]) -> None:
                     """将调度器的进度数据转换为WebSocket事件并广播"""
                     # 映射调度器事件到WebSocket事件类型
                     event_mapping = {
@@ -1324,7 +1341,7 @@ class TaskManager:
                 # 创建调度器
                 scheduler = (
                     create_workflow_scheduler(ai_service)
-                    .with_agent_config(agent_config)
+                    .with_agent_config(agent_config_dict)
                     .with_progress_callback(progress_callback)
                     .build()
                 )
@@ -1350,8 +1367,10 @@ class TaskManager:
                     market=request.market,
                     trade_date=request.trade_date,
                     selected_agents=selected_agents,
-                    data_collection_model=data_collection_model_id,  # 不要硬编码默认值，让 scheduler 处理
-                    debate_model=debate_model_id,  # 不要硬编码默认值，让 scheduler 处理
+                    data_collection_model=(
+                        data_collection_model_id or ""
+                    ),  # 不要硬编码默认值，让 scheduler 处理
+                    debate_model=debate_model_id or "",  # 不要硬编码默认值，让 scheduler 处理
                     stages=stages_config,
                     data_collection_task_concurrency=task_concurrency,
                 )
@@ -1367,13 +1386,20 @@ class TaskManager:
                     buy_price=final_state.buy_price,
                     sell_price=final_state.sell_price,
                     token_usage=(
-                        final_state.token_usage.model_dump() if final_state.token_usage else {}
+                        final_state.token_usage.model_dump()
+                        if hasattr(final_state.token_usage, "model_dump")
+                        else {}
                     ),
                 )
 
                 # 保存最终报告
                 if final_state.final_report:
-                    await self.add_task_report(task_id, "final_report", final_state.final_report)
+                    report_content = (
+                        final_state.final_report
+                        if isinstance(final_state.final_report, str)
+                        else str(final_state.final_report)
+                    )
+                    await self.add_task_report(task_id, "final_report", report_content)
 
             except Exception as e:
                 logger.error(f"任务 {task_id} 工作流执行失败: {e}", exc_info=True)
@@ -1457,12 +1483,12 @@ class TaskManager:
 
     async def _resolve_model_with_fallback(
         self,
-        model_service,
+        model_service: Any,
         requested_model_id: Optional[str],
-        user_settings,
+        user_settings: Any,
         model_type: str,
         user_id: str,
-    ):
+    ) -> Any:
         """
         解析模型（带回退机制）
 

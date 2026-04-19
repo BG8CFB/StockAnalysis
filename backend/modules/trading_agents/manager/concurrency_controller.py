@@ -8,12 +8,12 @@
 - 任务排队机制（FIFO）
 - Redis Pub/Sub 事件驱动的自动唤醒
 """
+
 import asyncio
 import json
 import logging
-from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
-from collections import deque
+from typing import Any, Dict, Optional
 
 from core.db.redis import redis_manager
 
@@ -34,7 +34,7 @@ class ConcurrencyController:
     使用 Redis Pub/Sub 实现事件驱动的槽位释放通知。
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化并发控制器"""
         self._lock = asyncio.Lock()
         # Pub/Sub 订阅器缓存: {model_id: pubsub}
@@ -50,7 +50,7 @@ class ConcurrencyController:
         """
         try:
             redis_client = redis_manager.get_client()
-            
+
             # 1. 清理模型活跃任务
             active_keys = await redis_client.keys("concurrency:model:*:active")
             if active_keys:
@@ -136,18 +136,14 @@ class ConcurrencyController:
         # ============================================================
         # 检查 1：每用户模型槽位上限（最高优先级，最先检查）
         # ============================================================
-        user_slot_count = await self._get_user_active_slot_count(
-            redis_client, model_id, user_id
-        )
+        user_slot_count = await self._get_user_active_slot_count(redis_client, model_id, user_id)
 
         if user_slot_count >= user_max_concurrent:
             # 用户槽位已达上限，加入队列等待
             async with self._lock:
-                queue_position = await self._enqueue_task(
-                    model_id, task_id, user_id, redis_client
-                )
+                queue_position = await self._enqueue_task(model_id, task_id, user_id, redis_client)
 
-            waiting_count = await redis_client.llen(
+            waiting_count = await redis_client.llen(  # type: ignore[misc]
                 MODEL_WAITING_QUEUE_KEY.format(model_id=model_id)
             )
 
@@ -167,16 +163,14 @@ class ConcurrencyController:
         # 检查 2：每用户批量任务数限制
         # ============================================================
         user_batch_key = USER_ACTIVE_BATCH_TASKS_KEY.format(user_id=user_id)
-        user_batch_count = await redis_client.llen(user_batch_key)
+        user_batch_count = await redis_client.llen(user_batch_key)  # type: ignore[misc]
 
         if user_batch_count >= batch_concurrency:
             # 用户批量任务数已达上限，任务需要等待
             async with self._lock:
-                queue_position = await self._enqueue_task(
-                    model_id, task_id, user_id, redis_client
-                )
+                queue_position = await self._enqueue_task(model_id, task_id, user_id, redis_client)
 
-            waiting_count = await redis_client.llen(
+            waiting_count = await redis_client.llen(  # type: ignore[misc]
                 MODEL_WAITING_QUEUE_KEY.format(model_id=model_id)
             )
 
@@ -193,13 +187,13 @@ class ConcurrencyController:
         active_tasks_key = MODEL_ACTIVE_TASKS_KEY.format(model_id=model_id)
 
         try:
-            result = await redis_client.eval(
+            result = await redis_client.eval(  # type: ignore[misc]
                 self._ACQUIRE_SLOT_LUA,
                 1,  # 1个 key
                 active_tasks_key,
                 task_id,
                 user_id,
-                max_running_tasks
+                max_running_tasks,
             )
 
             if result[0] == 1:
@@ -217,7 +211,7 @@ class ConcurrencyController:
                         model_id, task_id, user_id, redis_client
                     )
 
-                waiting_count = await redis_client.llen(
+                waiting_count = await redis_client.llen(  # type: ignore[misc]
                     MODEL_WAITING_QUEUE_KEY.format(model_id=model_id)
                 )
 
@@ -270,9 +264,7 @@ class ConcurrencyController:
             return count
 
         except Exception as e:
-            logger.warning(
-                f"统计用户槽位数失败: model={model_id}, user={user_id}, error={e}"
-            )
+            logger.warning(f"统计用户槽位数失败: model={model_id}, user={user_id}, error={e}")
             # 出错时返回 0，允许任务继续，避免阻塞
             return 0
 
@@ -282,7 +274,7 @@ class ConcurrencyController:
         task_id: str,
         user_id: str,
         batch_id: Optional[str] = None,
-    ):
+    ) -> None:
         """
         释放任务执行资源
 
@@ -299,12 +291,12 @@ class ConcurrencyController:
 
             # 从活跃任务中移除
             active_tasks_key = MODEL_ACTIVE_TASKS_KEY.format(model_id=model_id)
-            await redis_client.hdel(active_tasks_key, task_id)
+            await redis_client.hdel(active_tasks_key, task_id)  # type: ignore[misc]
 
             # 如果是批量任务，从用户批量任务列表中移除
             if batch_id:
                 user_batch_key = USER_ACTIVE_BATCH_TASKS_KEY.format(user_id=user_id)
-                await redis_client.lrem(user_batch_key, 1, batch_id)
+                await redis_client.lrem(user_batch_key, 1, batch_id)  # type: ignore[misc]
 
             # 使用 Pub/Sub 通知等待任务（事件驱动）
             await self._notify_waiting_tasks(model_id, redis_client)
@@ -330,7 +322,7 @@ class ConcurrencyController:
         redis_client = redis_manager.get_client()
 
         waiting_queue_key = MODEL_WAITING_QUEUE_KEY.format(model_id=model_id)
-        waiting_queue = await redis_client.lrange(waiting_queue_key, 0, -1)
+        waiting_queue = await redis_client.lrange(waiting_queue_key, 0, -1)  # type: ignore[misc]
 
         for i, task_json in enumerate(waiting_queue):
             task_data = json.loads(task_json)
@@ -367,10 +359,10 @@ class ConcurrencyController:
             "enqueued_at": datetime.now(timezone.utc).isoformat(),
         }
 
-        await redis_client.rpush(waiting_queue_key, json.dumps(task_data))
+        await redis_client.rpush(waiting_queue_key, json.dumps(task_data))  # type: ignore[misc]
 
         # 返回队列位置
-        queue_length = await redis_client.llen(waiting_queue_key)
+        queue_length: int = await redis_client.llen(waiting_queue_key)  # type: ignore[misc]
         return queue_length
 
     async def register_batch_task(
@@ -395,10 +387,8 @@ class ConcurrencyController:
         user_batch_key = USER_ACTIVE_BATCH_TASKS_KEY.format(user_id=user_id)
 
         try:
-            await redis_client.rpush(user_batch_key, batch_id)
-            logger.debug(
-                f"[并发控制] 登记批量任务占用: user={user_id}, batch={batch_id}"
-            )
+            await redis_client.rpush(user_batch_key, batch_id)  # type: ignore[misc]
+            logger.debug(f"[并发控制] 登记批量任务占用: user={user_id}, batch={batch_id}")
         except Exception as e:
             logger.warning(
                 f"[并发控制] 登记批量任务占用失败: user={user_id}, batch={batch_id}, error={e}"
@@ -461,9 +451,7 @@ class ConcurrencyController:
                 )
 
                 if result["can_execute"]:
-                    logger.info(
-                        f"任务 {task_id} 获取到执行权限，等待时间: {elapsed:.2f}秒"
-                    )
+                    logger.info(f"任务 {task_id} 获取到执行权限，等待时间: {elapsed:.2f}秒")
                     return {"success": True, "reason": None}
 
                 # 不能执行，记录日志
@@ -489,24 +477,19 @@ class ConcurrencyController:
                 try:
                     # 等待唤醒消息或超时
                     message = await asyncio.wait_for(
-                        pubsub.get_message(timeout=remaining_timeout),
-                        timeout=remaining_timeout
+                        pubsub.get_message(timeout=remaining_timeout), timeout=remaining_timeout
                     )
 
                     if message and message.get("type") == "message":
                         # 收到唤醒消息，重新检查槽位
-                        logger.debug(
-                            f"任务 {task_id} 收到唤醒消息，重新检查槽位"
-                        )
+                        logger.debug(f"任务 {task_id} 收到唤醒消息，重新检查槽位")
                         continue
 
                 except asyncio.TimeoutError:
                     # 超时，重新检查槽位（兜底机制）
                     pass
                 except Exception as e:
-                    logger.warning(
-                        f"等待唤醒消息时出错: task={task_id}, error={e}"
-                    )
+                    logger.warning(f"等待唤醒消息时出错: task={task_id}, error={e}")
                     # 出错时继续循环重试
 
         except asyncio.CancelledError:
@@ -610,19 +593,19 @@ class ConcurrencyController:
             是否成功移除
         """
         # 获取队列中所有任务
-        queue = await redis_client.lrange(queue_key, 0, -1)
+        queue = await redis_client.lrange(queue_key, 0, -1)  # type: ignore[misc]
 
         # 找到并移除目标任务
         for task_json in queue:
             task_data = json.loads(task_json)
             if task_data.get("task_id") == task_id:
-                await redis_client.lrem(queue_key, 1, task_json)
+                await redis_client.lrem(queue_key, 1, task_json)  # type: ignore[misc]
                 logger.info(f"从队列中移除任务: task_id={task_id}")
                 return True
 
         return False
 
-    async def close(self):
+    async def close(self) -> None:
         """关闭所有 Pub/Sub 连接"""
         for model_id, pubsub in self._pubsub_cache.items():
             try:

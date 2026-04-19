@@ -32,10 +32,16 @@ describe('market utils', () => {
   })
 
   describe('getMarketColors', () => {
-    it('returns A股 red-up green-down', () => {
+    it('returns A股 CSS variable colors', () => {
       const colors = getMarketColors('000001')
-      expect(colors.up).toBe('#FF5252')
-      expect(colors.down).toBe('#00E676')
+      expect(colors.up).toBe('var(--accent-error)')
+      expect(colors.down).toBe('var(--accent-success)')
+    })
+
+    it('returns 美股 CSS variable colors (green up)', () => {
+      const colors = getMarketColors('AAPL')
+      expect(colors.up).toBe('var(--accent-success)')
+      expect(colors.down).toBe('var(--accent-error)')
     })
   })
 })

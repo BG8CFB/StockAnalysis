@@ -5,19 +5,18 @@
 """
 
 import logging
-from typing import Any, Optional
 from datetime import datetime
+from typing import Any
 
+from core.config import SUPPORTED_MARKETS
 from core.market_data.models.datasource import (
     SystemDataSourceConfig,
     UserDataSourceConfig,
-    DataSourceType,
 )
 from core.market_data.repositories.datasource import (
     SystemDataSourceRepository,
     UserDataSourceRepository,
 )
-from core.config import SUPPORTED_MARKETS
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +24,7 @@ logger = logging.getLogger(__name__)
 class DataSourceConfigService:
     """数据源配置管理服务"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化服务"""
         self.system_repo = SystemDataSourceRepository()
         self.user_repo = UserDataSourceRepository()
@@ -38,8 +37,8 @@ class DataSourceConfigService:
         market: str,
         enabled: bool = True,
         priority: int = 1,
-        config: dict = None,
-        rate_limit: dict = None,
+        config: dict | None = None,
+        rate_limit: dict | None = None,
         supported_data_types: list[str] | None = None,
     ) -> SystemDataSourceConfig:
         """创建系统公共数据源配置
@@ -119,7 +118,7 @@ class DataSourceConfigService:
         self,
         source_id: str,
         market: str,
-        **updates,
+        **updates: Any,
     ) -> bool:
         """更新系统公共数据源配置
 
@@ -162,7 +161,7 @@ class DataSourceConfigService:
         else:
             logger.warning(f"系统公共数据源配置不存在: {source_id}")
 
-        return result > 0
+        return bool(result)  # type: ignore[no-any-return]
 
     # ==================== 用户个人数据源配置 ====================
 
@@ -173,7 +172,7 @@ class DataSourceConfigService:
         market: str,
         enabled: bool = True,
         priority: int = 1,
-        config: dict = None,
+        config: dict | None = None,
     ) -> UserDataSourceConfig:
         """创建用户个人数据源配置
 
@@ -205,7 +204,9 @@ class DataSourceConfigService:
         logger.info(f"用户个人数据源配置创建成功: {source_id}")
         return source_config
 
-    async def get_user_source(self, user_id: str, source_id: str, market: str) -> UserDataSourceConfig | None:
+    async def get_user_source(
+        self, user_id: str, source_id: str, market: str
+    ) -> UserDataSourceConfig | None:
         """获取用户个人数据源配置
 
         Args:
@@ -245,7 +246,7 @@ class DataSourceConfigService:
         user_id: str,
         source_id: str,
         market: str,
-        **updates,
+        **updates: Any,
     ) -> bool:
         """更新用户个人数据源配置
 
@@ -261,11 +262,7 @@ class DataSourceConfigService:
         logger.info(f"更新用户个人数据源配置: user_id={user_id}, source_id={source_id}")
 
         # Repository 没有 update_config 方法，需要使用 upsert 或者直接操作 collection
-        filter_query = {
-            "user_id": user_id,
-            "source_id": source_id,
-            "market": market
-        }
+        filter_query = {"user_id": user_id, "source_id": source_id, "market": market}
         updates["updated_at"] = datetime.now()
         result = await self.user_repo.collection.update_one(filter_query, {"$set": updates})
 
@@ -296,7 +293,7 @@ class DataSourceConfigService:
         else:
             logger.warning(f"用户个人数据源配置不存在: {source_id}")
 
-        return result > 0
+        return bool(result)  # type: ignore[no-any-return]
 
     # ==================== 配置测试 ====================
 
@@ -311,7 +308,6 @@ class DataSourceConfigService:
             测试结果，包含 success, message, response_time 等字段
         """
         import time
-        from core.market_data.models import MarketType
 
         logger.info(f"测试系统公共数据源连接: {source_id} ({market})")
 
@@ -325,7 +321,9 @@ class DataSourceConfigService:
 
         # 根据数据源类型创建适配器并测试连接
         try:
-            adapter = self._create_adapter_for_source(source_id, config.get("config", {}), market)
+            adapter = self._create_adapter_for_source(
+                source_id, config.config if hasattr(config, "config") else {}, market
+            )
             if adapter is None:
                 return {
                     "success": False,
@@ -344,14 +342,19 @@ class DataSourceConfigService:
                     "message": "连接测试成功",
                     "response_time": response_time,
                 }
-                logger.info(f"系统公共数据源连接测试完成: {source_id}, success=True, response_time={response_time}ms")
+                logger.info(
+                    f"系统公共数据源连接测试完成: {source_id}, "
+                    f"success=True, response_time={response_time}ms"
+                )
             else:
                 result = {
                     "success": False,
                     "message": "连接测试失败",
                     "response_time": response_time,
                 }
-                logger.warning(f"系统公共数据源连接测试失败: {source_id}, response_time={response_time}ms")
+                logger.warning(
+                    f"系统公共数据源连接测试失败: {source_id}, response_time={response_time}ms"
+                )
 
         except Exception as e:
             result = {
@@ -388,7 +391,9 @@ class DataSourceConfigService:
 
         # 根据数据源类型创建适配器并测试连接
         try:
-            adapter = self._create_adapter_for_source(source_id, config.get("config", {}), market)
+            adapter = self._create_adapter_for_source(
+                source_id, config.config if hasattr(config, "config") else {}, market
+            )
             if adapter is None:
                 return {
                     "success": False,
@@ -407,14 +412,19 @@ class DataSourceConfigService:
                     "message": "连接测试成功",
                     "response_time": response_time,
                 }
-                logger.info(f"用户个人数据源连接测试完成: {source_id}, success=True, response_time={response_time}ms")
+                logger.info(
+                    f"用户个人数据源连接测试完成: {source_id}, "
+                    f"success=True, response_time={response_time}ms"
+                )
             else:
                 result = {
                     "success": False,
                     "message": "连接测试失败",
                     "response_time": response_time,
                 }
-                logger.warning(f"用户个人数据源连接测试失败: {source_id}, response_time={response_time}ms")
+                logger.warning(
+                    f"用户个人数据源连接测试失败: {source_id}, response_time={response_time}ms"
+                )
 
         except Exception as e:
             result = {
@@ -426,12 +436,7 @@ class DataSourceConfigService:
 
         return result
 
-    def _create_adapter_for_source(
-        self,
-        source_id: str,
-        config: dict,
-        market: str
-    ):
+    def _create_adapter_for_source(self, source_id: str, config: dict, market: str) -> Any:
         """
         根据数据源ID创建适配器实例
 
@@ -452,27 +457,35 @@ class DataSourceConfigService:
             if market_type == MarketType.A_STOCK:
                 if source_id == "tushare":
                     from core.market_data.sources.a_stock.tushare_adapter import TuShareAdapter
+
                     return TuShareAdapter(config=config)
                 elif source_id == "akshare":
                     from core.market_data.sources.a_stock.akshare_adapter import AkShareAdapter
+
                     return AkShareAdapter(config=config)
 
             # 美股数据源
             elif market_type == MarketType.US_STOCK:
                 if source_id == "yahoo":
                     from core.market_data.sources.us_stock.yahoo_adapter import YahooFinanceAdapter
+
                     return YahooFinanceAdapter(config=config)
                 elif source_id == "alpha_vantage":
-                    from core.market_data.sources.us_stock.alphavantage_adapter import AlphaVantageAdapter
+                    from core.market_data.sources.us_stock.alphavantage_adapter import (
+                        AlphaVantageAdapter,
+                    )
+
                     return AlphaVantageAdapter(config=config)
 
             # 港股数据源
             elif market_type == MarketType.HK_STOCK:
                 if source_id == "yahoo":
                     from core.market_data.sources.hk_stock.yahoo_adapter import YahooHKAdapter
+
                     return YahooHKAdapter(config=config)
                 elif source_id == "akshare":
                     from core.market_data.sources.hk_stock.akshare_adapter import AkShareHKAdapter
+
                     return AkShareHKAdapter(config=config)
 
             logger.warning(f"Unsupported data source: {source_id} for market: {market}")

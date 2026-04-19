@@ -35,19 +35,16 @@ class AgentConfigService:
 
     COLLECTION_NAME = "agent_configs"
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化服务"""
-        self._db = None
+        self._db: Optional[Any] = None
         self._config_loader = AgentConfigLoader()
 
     # ========================================================================
     # 阶段配置验证
     # ========================================================================
 
-    def _deduplicate_agents_by_slug(
-        self,
-        agents: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+    def _deduplicate_agents_by_slug(self, agents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         根据 slug 去重智能体列表（保留第一次出现的）
 
@@ -74,11 +71,8 @@ class AgentConfigService:
         return deduplicated_agents
 
     def _validate_phase_update(
-        self,
-        phase_key: str,
-        new_phase_data,
-        old_doc: dict
-    ):
+        self, phase_key: str, new_phase_data: Any, old_doc: Dict[str, Any]
+    ) -> None:
         """
         验证阶段配置更新
 
@@ -105,9 +99,9 @@ class AgentConfigService:
             if not old_phase:
                 # 如果旧配置不存在，不允许创建新的智能体列表
                 has_agents = (
-                    new_phase_data and
-                    hasattr(new_phase_data, 'agents') and
-                    len(new_phase_data.agents) > 0
+                    new_phase_data
+                    and hasattr(new_phase_data, "agents")
+                    and len(new_phase_data.agents) > 0
                 )
                 if has_agents:
                     raise ValueError(f"{phase_key} 不允许添加智能体，只能修改提示词")
@@ -116,7 +110,7 @@ class AgentConfigService:
             old_agents = old_phase.get("agents", [])
 
             # 检查智能体数量是否改变
-            if new_phase_data and hasattr(new_phase_data, 'agents'):
+            if new_phase_data and hasattr(new_phase_data, "agents"):
                 new_agents = new_phase_data.agents or []
                 if len(old_agents) != len(new_agents):
                     raise ValueError(f"{phase_key} 不允许添加或删除智能体，只能修改提示词")
@@ -133,8 +127,8 @@ class AgentConfigService:
 
                     # 检查其他字段是否被修改
                     allowed_fields = {"slug", "name", "role_definition", "enabled"}
-                    if hasattr(new_agent, 'model_dump'):
-                        new_agent_dict = new_agent.model_dump(mode='json')
+                    if hasattr(new_agent, "model_dump"):
+                        new_agent_dict = new_agent.model_dump(mode="json")
                     else:
                         new_agent_dict = dict(new_agent)
 
@@ -149,7 +143,7 @@ class AgentConfigService:
 
         logger.debug(f"阶段配置验证通过: {phase_key}")
 
-    def _get_collection(self):
+    def _get_collection(self) -> Any:
         """获取数据库集合"""
         return mongodb.get_collection(self.COLLECTION_NAME)
 
@@ -166,10 +160,7 @@ class AgentConfigService:
         """
         collection = self._get_collection()
 
-        doc = await collection.find_one({
-            "user_id": PUBLIC_USER_ID,
-            "is_public": True
-        })
+        doc = await collection.find_one({"user_id": PUBLIC_USER_ID, "is_public": True})
 
         if not doc:
             return None
@@ -177,9 +168,7 @@ class AgentConfigService:
         return UserAgentConfigResponse.from_db(doc)
 
     async def update_public_config(
-        self,
-        request: UserAgentConfigUpdate,
-        admin_id: str
+        self, request: UserAgentConfigUpdate, admin_id: str
     ) -> Optional[UserAgentConfigResponse]:
         """
         更新公共配置（仅管理员）
@@ -194,10 +183,7 @@ class AgentConfigService:
         collection = self._get_collection()
 
         # 检查公共配置是否存在
-        doc = await collection.find_one({
-            "user_id": PUBLIC_USER_ID,
-            "is_public": True
-        })
+        doc = await collection.find_one({"user_id": PUBLIC_USER_ID, "is_public": True})
 
         # 如果是更新现有配置，进行验证
         if doc:
@@ -216,27 +202,27 @@ class AgentConfigService:
                         raise ValueError(str(e))
 
         # 构建更新数据（保留用户的选择）
-        update_data = {}
+        update_data: Dict[str, Any] = {}
         if request.phase1 is not None:
-            phase1_data = request.phase1.model_dump(mode='json')
+            phase1_data = request.phase1.model_dump(mode="json")
             # 去重：根据 slug 去除重复的智能体
             if "agents" in phase1_data:
                 phase1_data["agents"] = self._deduplicate_agents_by_slug(phase1_data["agents"])
             update_data["phase1"] = phase1_data
         if request.phase2 is not None:
-            phase2_data = request.phase2.model_dump(mode='json')
+            phase2_data = request.phase2.model_dump(mode="json")
             # 去重：根据 slug 去除重复的智能体
             if "agents" in phase2_data:
                 phase2_data["agents"] = self._deduplicate_agents_by_slug(phase2_data["agents"])
             update_data["phase2"] = phase2_data
         if request.phase3 is not None:
-            phase3_data = request.phase3.model_dump(mode='json')
+            phase3_data = request.phase3.model_dump(mode="json")
             # 去重：根据 slug 去除重复的智能体
             if "agents" in phase3_data:
                 phase3_data["agents"] = self._deduplicate_agents_by_slug(phase3_data["agents"])
             update_data["phase3"] = phase3_data
         if request.phase4 is not None:
-            phase4_data = request.phase4.model_dump(mode='json')
+            phase4_data = request.phase4.model_dump(mode="json")
             # 去重：根据 slug 去除重复的智能体
             if "agents" in phase4_data:
                 phase4_data["agents"] = self._deduplicate_agents_by_slug(phase4_data["agents"])
@@ -247,13 +233,9 @@ class AgentConfigService:
         if doc:
             # 更新现有公共配置
             await collection.update_one(
-                {"user_id": PUBLIC_USER_ID, "is_public": True},
-                {"$set": update_data}
+                {"user_id": PUBLIC_USER_ID, "is_public": True}, {"$set": update_data}
             )
-            updated_doc = await collection.find_one({
-                "user_id": PUBLIC_USER_ID,
-                "is_public": True
-            })
+            updated_doc = await collection.find_one({"user_id": PUBLIC_USER_ID, "is_public": True})
             logger.info(f"更新公共智能体配置: admin_id={admin_id}")
             return UserAgentConfigResponse.from_db(updated_doc)
         else:
@@ -274,10 +256,7 @@ class AgentConfigService:
 
         # 1. 删除现有公共配置
         collection = self._get_collection()
-        delete_result = await collection.delete_one({
-            "user_id": PUBLIC_USER_ID,
-            "is_public": True
-        })
+        delete_result = await collection.delete_one({"user_id": PUBLIC_USER_ID, "is_public": True})
 
         if delete_result.deleted_count > 0:
             logger.info(f"已删除旧的公共配置（删除 {delete_result.deleted_count} 条）")
@@ -315,10 +294,10 @@ class AgentConfigService:
             "user_id": PUBLIC_USER_ID,
             "is_public": True,
             "is_customized": False,
-            "phase1": phase1.model_dump(mode='json'),
-            "phase2": phase2.model_dump(mode='json') if phase2 else None,
-            "phase3": phase3.model_dump(mode='json') if phase3 else None,
-            "phase4": phase4.model_dump(mode='json') if phase4 else None,
+            "phase1": phase1.model_dump(mode="json"),
+            "phase2": phase2.model_dump(mode="json") if phase2 else None,
+            "phase3": phase3.model_dump(mode="json") if phase3 else None,
+            "phase4": phase4.model_dump(mode="json") if phase4 else None,
             "created_at": datetime.now(timezone.utc),
             "updated_at": datetime.now(timezone.utc),
         }
@@ -331,8 +310,7 @@ class AgentConfigService:
         return UserAgentConfigResponse.from_db(doc)
 
     async def _init_public_config(
-        self,
-        request: Optional[UserAgentConfigUpdate] = None
+        self, request: Optional[UserAgentConfigUpdate] = None
     ) -> Optional[UserAgentConfigResponse]:
         """
         初始化公共配置
@@ -378,10 +356,10 @@ class AgentConfigService:
             "user_id": PUBLIC_USER_ID,
             "is_public": True,
             "is_customized": False,
-            "phase1": phase1.model_dump(mode='json'),
-            "phase2": phase2.model_dump(mode='json') if phase2 else None,
-            "phase3": phase3.model_dump(mode='json') if phase3 else None,
-            "phase4": phase4.model_dump(mode='json') if phase4 else None,
+            "phase1": phase1.model_dump(mode="json"),
+            "phase2": phase2.model_dump(mode="json") if phase2 else None,
+            "phase3": phase3.model_dump(mode="json") if phase3 else None,
+            "phase4": phase4.model_dump(mode="json") if phase4 else None,
             "created_at": datetime.now(timezone.utc),
             "updated_at": datetime.now(timezone.utc),
         }
@@ -398,8 +376,7 @@ class AgentConfigService:
     # ========================================================================
 
     def _load_public_config_from_yaml(
-        self,
-        include_prompts: bool = False
+        self, include_prompts: bool = False
     ) -> Optional[UserAgentConfigResponse]:
         """
         从 YAML 文件加载公共配置（实时加载）
@@ -423,15 +400,18 @@ class AgentConfigService:
             phase1 = Phase1Config(**validated_config.get("phase1", {}))
             phase2 = (
                 Phase2Config(**validated_config["phase2"])
-                if validated_config.get("phase2") else None
+                if validated_config.get("phase2")
+                else None
             )
             phase3 = (
                 Phase3Config(**validated_config["phase3"])
-                if validated_config.get("phase3") else None
+                if validated_config.get("phase3")
+                else None
             )
             phase4 = (
                 Phase4Config(**validated_config["phase4"])
-                if validated_config.get("phase4") else None
+                if validated_config.get("phase4")
+                else None
             )
 
             # 构建伪文档对象
@@ -440,10 +420,10 @@ class AgentConfigService:
                 "user_id": PUBLIC_USER_ID,
                 "is_public": True,
                 "is_customized": False,
-                "phase1": phase1.model_dump(mode='json'),
-                "phase2": phase2.model_dump(mode='json') if phase2 else None,
-                "phase3": phase3.model_dump(mode='json') if phase3 else None,
-                "phase4": phase4.model_dump(mode='json') if phase4 else None,
+                "phase1": phase1.model_dump(mode="json"),
+                "phase2": phase2.model_dump(mode="json") if phase2 else None,
+                "phase3": phase3.model_dump(mode="json") if phase3 else None,
+                "phase4": phase4.model_dump(mode="json") if phase4 else None,
                 "created_at": datetime.now(timezone.utc),
                 "updated_at": datetime.now(timezone.utc),
                 "_source": "yaml",  # 标记来源
@@ -457,9 +437,7 @@ class AgentConfigService:
             return None
 
     async def get_effective_config(
-        self,
-        user_id: str,
-        include_prompts: bool = False
+        self, user_id: str, include_prompts: bool = False
     ) -> Optional[UserAgentConfigResponse]:
         """
         获取用户的生效配置
@@ -505,8 +483,7 @@ class AgentConfigService:
             # 使用配置合并器进行智能合并
             merger = get_config_merger()
             merged_config = await merger.merge_user_config(
-                user_config=user_doc,
-                include_prompts=include_prompts
+                user_config=user_doc, include_prompts=include_prompts
             )
 
             # 构建响应
@@ -514,15 +491,12 @@ class AgentConfigService:
 
         # 否则返回公共配置（从 YAML 文件实时加载）
         logger.debug(
-            f"用户使用公共配置（从 YAML）: "
-            f"user_id={user_id}, include_prompts={include_prompts}"
+            f"用户使用公共配置（从 YAML）: " f"user_id={user_id}, include_prompts={include_prompts}"
         )
         return self._load_public_config_from_yaml(include_prompts)
 
     def _build_response(
-        self,
-        config: Dict[str, Any],
-        include_prompts: bool = False
+        self, config: Dict[str, Any], include_prompts: bool = False
     ) -> UserAgentConfigResponse:
         """
         构建配置响应对象
@@ -545,6 +519,7 @@ class AgentConfigService:
         elif "id" not in config_copy:
             # 如果既没有 _id 也没有 id，生成一个
             import uuid
+
             config_copy["id"] = str(uuid.uuid4())
 
         # 确保必需字段存在
@@ -571,9 +546,7 @@ class AgentConfigService:
         return UserAgentConfigResponse(**config_copy)
 
     async def get_user_config(
-        self,
-        user_id: str,
-        create_if_missing: bool = True
+        self, user_id: str, create_if_missing: bool = True
     ) -> Optional[UserAgentConfigResponse]:
         """
         获取用户个人配置（不考虑公共配置）
@@ -597,9 +570,7 @@ class AgentConfigService:
         return UserAgentConfigResponse.from_db(doc)
 
     async def update_user_config(
-        self,
-        user_id: str,
-        request: UserAgentConfigUpdate
+        self, user_id: str, request: UserAgentConfigUpdate
     ) -> Optional[UserAgentConfigResponse]:
         """
         更新用户智能体配置
@@ -636,27 +607,27 @@ class AgentConfigService:
                     raise ValueError(str(e))
 
         # 构建更新数据（保留用户的选择）
-        update_data = {}
+        update_data: Dict[str, Any] = {}
         if request.phase1 is not None:
-            phase1_data = request.phase1.model_dump(mode='json')
+            phase1_data = request.phase1.model_dump(mode="json")
             # 去重：根据 slug 去除重复的智能体
             if "agents" in phase1_data:
                 phase1_data["agents"] = self._deduplicate_agents_by_slug(phase1_data["agents"])
             update_data["phase1"] = phase1_data
         if request.phase2 is not None:
-            phase2_data = request.phase2.model_dump(mode='json')
+            phase2_data = request.phase2.model_dump(mode="json")
             # 去重：根据 slug 去除重复的智能体
             if "agents" in phase2_data:
                 phase2_data["agents"] = self._deduplicate_agents_by_slug(phase2_data["agents"])
             update_data["phase2"] = phase2_data
         if request.phase3 is not None:
-            phase3_data = request.phase3.model_dump(mode='json')
+            phase3_data = request.phase3.model_dump(mode="json")
             # 去重：根据 slug 去除重复的智能体
             if "agents" in phase3_data:
                 phase3_data["agents"] = self._deduplicate_agents_by_slug(phase3_data["agents"])
             update_data["phase3"] = phase3_data
         if request.phase4 is not None:
-            phase4_data = request.phase4.model_dump(mode='json')
+            phase4_data = request.phase4.model_dump(mode="json")
             # 去重：根据 slug 去除重复的智能体
             if "agents" in phase4_data:
                 phase4_data["agents"] = self._deduplicate_agents_by_slug(phase4_data["agents"])
@@ -667,10 +638,7 @@ class AgentConfigService:
         update_data["updated_at"] = datetime.now(timezone.utc)
 
         # 执行更新
-        await collection.update_one(
-            {"user_id": user_id},
-            {"$set": update_data}
-        )
+        await collection.update_one({"user_id": user_id}, {"$set": update_data})
 
         # 获取更新后的配置
         updated_doc = await collection.find_one({"user_id": user_id})
@@ -678,8 +646,8 @@ class AgentConfigService:
         # 调试：打印保存的数据
         if updated_doc and "phase1" in updated_doc:
             logger.info(f"[DEBUG] Saved phase1 data: {updated_doc['phase1']}")
-            if 'agents' in updated_doc['phase1'] and updated_doc['phase1']['agents']:
-                first_agent = updated_doc['phase1']['agents'][0]
+            if "agents" in updated_doc["phase1"] and updated_doc["phase1"]["agents"]:
+                first_agent = updated_doc["phase1"]["agents"][0]
                 logger.info(
                     f"[DEBUG] First agent enabled_mcp_servers: "
                     f"{first_agent.get('enabled_mcp_servers', 'MISSING')}"
@@ -699,10 +667,7 @@ class AgentConfigService:
 
         return UserAgentConfigResponse.from_db(updated_doc)
 
-    async def reset_to_public_config(
-        self,
-        user_id: str
-    ) -> Optional[UserAgentConfigResponse]:
+    async def reset_to_public_config(self, user_id: str) -> Optional[UserAgentConfigResponse]:
         """
         重置用户配置为公共配置
 
@@ -724,10 +689,7 @@ class AgentConfigService:
         # 返回 YAML 文件中的最新公共配置（而不是数据库中可能过时的配置）
         return self._load_public_config_from_yaml(include_prompts=False)
 
-    async def reset_to_default(
-        self,
-        user_id: str
-    ) -> Optional[UserAgentConfigResponse]:
+    async def reset_to_default(self, user_id: str) -> Optional[UserAgentConfigResponse]:
         """
         重置为默认配置（兼容旧接口）
 
@@ -739,10 +701,7 @@ class AgentConfigService:
         """
         return await self.reset_to_public_config(user_id)
 
-    async def export_config(
-        self,
-        user_id: str
-    ) -> Optional[Dict[str, Any]]:
+    async def export_config(self, user_id: str) -> Optional[Dict[str, Any]]:
         """
         导出配置
 
@@ -757,16 +716,14 @@ class AgentConfigService:
             return None
 
         return {
-            "phase1": config.phase1.model_dump(mode='json'),
-            "phase2": config.phase2.model_dump(mode='json') if config.phase2 else None,
-            "phase3": config.phase3.model_dump(mode='json') if config.phase3 else None,
-            "phase4": config.phase4.model_dump(mode='json') if config.phase4 else None,
+            "phase1": config.phase1.model_dump(mode="json"),
+            "phase2": config.phase2.model_dump(mode="json") if config.phase2 else None,
+            "phase3": config.phase3.model_dump(mode="json") if config.phase3 else None,
+            "phase4": config.phase4.model_dump(mode="json") if config.phase4 else None,
         }
 
     async def import_config(
-        self,
-        user_id: str,
-        config_data: Dict[str, Any]
+        self, user_id: str, config_data: Dict[str, Any]
     ) -> Optional[UserAgentConfigResponse]:
         """
         导入配置
@@ -795,19 +752,15 @@ class AgentConfigService:
             "user_id": user_id,
             "is_public": False,
             "is_customized": True,
-            "phase1": phase1.model_dump(mode='json'),
-            "phase2": phase2.model_dump(mode='json') if phase2 else None,
-            "phase3": phase3.model_dump(mode='json') if phase3 else None,
-            "phase4": phase4.model_dump(mode='json') if phase4 else None,
+            "phase1": phase1.model_dump(mode="json"),
+            "phase2": phase2.model_dump(mode="json") if phase2 else None,
+            "phase3": phase3.model_dump(mode="json") if phase3 else None,
+            "phase4": phase4.model_dump(mode="json") if phase4 else None,
             "updated_at": datetime.now(timezone.utc),
         }
 
         # 使用 upsert
-        await collection.update_one(
-            {"user_id": user_id},
-            {"$set": doc},
-            upsert=True
-        )
+        await collection.update_one({"user_id": user_id}, {"$set": doc}, upsert=True)
 
         # 获取导入后的配置
         imported_doc = await collection.find_one({"user_id": user_id})
@@ -824,7 +777,7 @@ class AgentConfigService:
         self,
         user_id: str,
         request: Optional[UserAgentConfigUpdate] = None,
-        is_customized: bool = False
+        is_customized: bool = False,
     ) -> Optional[UserAgentConfigResponse]:
         """
         初始化用户配置
@@ -872,10 +825,10 @@ class AgentConfigService:
             "user_id": user_id,
             "is_public": False,
             "is_customized": is_customized,
-            "phase1": phase1.model_dump(mode='json'),
-            "phase2": phase2.model_dump(mode='json') if phase2 else None,
-            "phase3": phase3.model_dump(mode='json') if phase3 else None,
-            "phase4": phase4.model_dump(mode='json') if phase4 else None,
+            "phase1": phase1.model_dump(mode="json"),
+            "phase2": phase2.model_dump(mode="json") if phase2 else None,
+            "phase3": phase3.model_dump(mode="json") if phase3 else None,
+            "phase4": phase4.model_dump(mode="json") if phase4 else None,
             "created_at": datetime.now(timezone.utc),
             "updated_at": datetime.now(timezone.utc),
         }
@@ -887,17 +840,14 @@ class AgentConfigService:
 
         return UserAgentConfigResponse.from_db(doc)
 
-    async def ensure_public_config_exists(self):
+    async def ensure_public_config_exists(self) -> None:
         """
         确保公共配置存在
         如果不存在，则从默认配置创建
         """
         collection = self._get_collection()
 
-        public_config = await collection.find_one({
-            "user_id": PUBLIC_USER_ID,
-            "is_public": True
-        })
+        public_config = await collection.find_one({"user_id": PUBLIC_USER_ID, "is_public": True})
 
         if not public_config:
             await self._init_public_config()

@@ -6,7 +6,7 @@ MongoDB 集合 model_catalog 的 CRUD 操作。
 
 import logging
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from core.ai.model_catalog_models import (
     AvailableModelItem,
@@ -25,7 +25,7 @@ COLLECTION_NAME = "model_catalog"
 class ModelCatalogService:
     """模型目录管理服务"""
 
-    async def _get_collection(self):
+    async def _get_collection(self) -> Any:
         return mongodb.get_collection(COLLECTION_NAME)
 
     async def list_catalogs(self) -> List[ModelCatalogResponse]:
@@ -36,11 +36,13 @@ class ModelCatalogService:
         results = []
         for doc in docs:
             models = [ModelCatalogItem(**m) for m in doc.get("models", [])]
-            results.append(ModelCatalogResponse(
-                provider=doc["provider"],
-                provider_name=doc.get("provider_name", doc["provider"]),
-                models=models,
-            ))
+            results.append(
+                ModelCatalogResponse(
+                    provider=doc["provider"],
+                    provider_name=doc.get("provider_name", doc["provider"]),
+                    models=models,
+                )
+            )
         return results
 
     async def get_catalog(self, provider: str) -> Optional[ModelCatalogResponse]:
@@ -80,7 +82,7 @@ class ModelCatalogService:
         """删除目录"""
         collection = await self._get_collection()
         result = await collection.delete_one({"provider": provider})
-        return result.deleted_count > 0
+        return bool(result.deleted_count > 0)
 
     async def init_defaults(self) -> Dict:
         """初始化默认模型目录"""
@@ -192,11 +194,13 @@ class ModelCatalogService:
                 if not m.is_deprecated
             ]
             if models:
-                results.append(AvailableModelsByProvider(
-                    provider=catalog.provider,
-                    provider_name=catalog.provider_name,
-                    models=models,
-                ))
+                results.append(
+                    AvailableModelsByProvider(
+                        provider=catalog.provider,
+                        provider_name=catalog.provider_name,
+                        models=models,
+                    )
+                )
         return results
 
 

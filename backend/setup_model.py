@@ -2,14 +2,18 @@
 """配置 AI 模型"""
 import asyncio
 import sys
-sys.path.insert(0, '.')
 
-from motor.motor_asyncio import AsyncIOMotorClient
-from datetime import datetime, timezone
-from bson import ObjectId
+sys.path.insert(0, ".")
 
-async def setup_model():
-    client = AsyncIOMotorClient('mongodb://localhost:27017')
+from datetime import datetime, timezone  # noqa: E402
+from typing import Any  # noqa: E402
+
+from bson import ObjectId  # noqa: E402
+from motor.motor_asyncio import AsyncIOMotorClient  # noqa: E402
+
+
+async def setup_model() -> None:
+    client: Any = AsyncIOMotorClient("mongodb://localhost:27017")
     db = client.stock_analysis
 
     # 创建智谱 GLM-4.7 模型
@@ -30,7 +34,7 @@ async def setup_model():
         "thinking_enabled": False,
         "thinking_mode": "auto",
         "created_at": datetime.now(timezone.utc),
-        "updated_at": datetime.now(timezone.utc)
+        "updated_at": datetime.now(timezone.utc),
     }
 
     # 删除旧模型（如果存在）
@@ -43,15 +47,18 @@ async def setup_model():
     # 更新用户默认模型设置
     await db.users.update_one(
         {"account": "test_ta_user"},
-        {"$set": {
-            "settings.trading_agents_settings.data_collection_model_id": model_id,
-            "settings.trading_agents_settings.debate_model_id": model_id,
-            "updated_at": datetime.now(timezone.utc)
-        }}
+        {
+            "$set": {
+                "settings.trading_agents_settings.data_collection_model_id": model_id,
+                "settings.trading_agents_settings.debate_model_id": model_id,
+                "updated_at": datetime.now(timezone.utc),
+            }
+        },
     )
     print("用户默认模型已更新")
 
     client.close()
+
 
 if __name__ == "__main__":
     asyncio.run(setup_model())

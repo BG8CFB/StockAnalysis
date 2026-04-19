@@ -1,9 +1,10 @@
 """
 安全工具：JWT 和密码处理
 """
+
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-import logging
 
 import bcrypt
 from jose import JWTError, jwt
@@ -12,6 +13,7 @@ from core.config import settings
 
 # 设置日志
 logger = logging.getLogger(__name__)
+
 
 class PasswordManager:
     """密码管理器"""
@@ -32,7 +34,7 @@ class PasswordManager:
         Raises:
             ValueError: 密码超过最大长度限制
         """
-        password_bytes = password.encode('utf-8')
+        password_bytes = password.encode("utf-8")
 
         # 检查密码长度，超过限制则拒绝而不是截断
         if len(password_bytes) > PasswordManager.MAX_PASSWORD_BYTES:
@@ -44,15 +46,16 @@ class PasswordManager:
         # 使用 bcrypt 生成哈希，使用配置中的 rounds
         salt = bcrypt.gensalt(rounds=settings.BCRYPT_ROUNDS)
         hashed = bcrypt.hashpw(password_bytes, salt)
-        return hashed.decode('utf-8')
+        return hashed.decode("utf-8")
 
     @staticmethod
     def verify_password(plain_password: str, hashed_password: str) -> bool:
         """验证密码"""
         import logging
+
         try:
-            plain_bytes = plain_password.encode('utf-8')
-            hashed_bytes = hashed_password.encode('utf-8')
+            plain_bytes = plain_password.encode("utf-8")
+            hashed_bytes = hashed_password.encode("utf-8")
             return bcrypt.checkpw(plain_bytes, hashed_bytes)
         except (ValueError, TypeError) as e:
             # hashed_password 格式损坏（非标准 bcrypt），视为验证失败
@@ -75,17 +78,13 @@ class JWTManager:
         if expires_delta:
             expire = now + expires_delta
         else:
-            expire = now + timedelta(
-                minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
-            )
+            expire = now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
 
         logger.debug(f"Creating access token. Now (UTC): {now}, Expire (UTC): {expire}")
 
         to_encode.update({"exp": expire, "type": "access"})
-        encoded_jwt = jwt.encode(
-            to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM
-        )
-        return encoded_jwt
+        encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+        return str(encoded_jwt)
 
     @staticmethod
     def create_refresh_token(
@@ -104,19 +103,15 @@ class JWTManager:
         logger.debug(f"Creating refresh token. Now (UTC): {now}, Expire (UTC): {expire}")
 
         to_encode.update({"exp": expire, "type": "refresh"})
-        encoded_jwt = jwt.encode(
-            to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM
-        )
-        return encoded_jwt
+        encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+        return str(encoded_jwt)
 
     @staticmethod
     def decode_token(token: str) -> Optional[dict]:
         """解码令牌"""
         try:
-            payload = jwt.decode(
-                token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
-            )
-            return payload
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+            return dict(payload)
         except JWTError as e:
             logger.warning(f"Token decode failed: {str(e)}")
             return None

@@ -20,9 +20,11 @@ logger = logging.getLogger(__name__)
 # 数据模型
 # =============================================================================
 
+
 @dataclass
 class ToolCallRecord:
     """工具调用记录"""
+
     tool_name: str
     call_count: int = 0
     input_tokens: int = 0
@@ -93,22 +95,20 @@ class AIUsageRecord:
 # 统计服务
 # =============================================================================
 
+
 class AIUsageService:
     """AI 使用统计服务"""
 
     COLLECTION_NAME = "ai_usage_stats"
 
-    def __init__(self):
-        self._db = None
+    def __init__(self) -> None:
+        self._db: Optional[Any] = None
 
-    async def _get_collection(self):
+    async def _get_collection(self) -> Any:
         """获取数据库集合"""
         return mongodb.get_collection(self.COLLECTION_NAME)
 
-    async def record_usage(
-        self,
-        record: AIUsageRecord
-    ) -> bool:
+    async def record_usage(self, record: AIUsageRecord) -> bool:
         """
         记录 AI 使用情况
 
@@ -180,6 +180,7 @@ class AIUsageService:
 
         # 计算成本
         from .pricing import get_pricing_service
+
         cost = get_pricing_service().calculate_cost(
             model_id=model_id,
             input_tokens=input_tokens,
@@ -234,7 +235,7 @@ class AIUsageService:
         collection = await self._get_collection()
 
         # 构建查询条件
-        query = {"user_id": user_id}
+        query: Dict[str, Any] = {"user_id": user_id}
         if start_date or end_date:
             query["timestamp"] = {}
             if start_date:

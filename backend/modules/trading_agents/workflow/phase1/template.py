@@ -8,13 +8,15 @@ Phase 1 智能体模板
 """
 
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, List, Optional
 
-from langchain_core.language_models import BaseChatModel
-from langchain_core.tools import BaseTool
-from langchain_core.messages import HumanMessage
 from langchain.agents import create_agent
-from modules.trading_agents.models.state import WorkflowState, AgentExecution, TaskStatus
+from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import HumanMessage
+from langchain_core.tools import BaseTool
+
+from modules.trading_agents.models.state import TaskStatus, WorkflowState
+from modules.trading_agents.workflow.state import AgentExecution
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +32,8 @@ class Phase1AgentTemplate:
         self,
         model: BaseChatModel,
         agent_config: Dict[str, Any],
-        tools: List[BaseTool]
-    ):
+        tools: List[BaseTool],
+    ) -> None:
         """
         初始化智能体模板
 
@@ -47,16 +49,12 @@ class Phase1AgentTemplate:
         self.name = agent_config.get("name", "分析师")
         self.agent = self._create_agent()
 
-    def _create_agent(self):
+    def _create_agent(self) -> Any:
         """创建智能体实例 (LangChain 0.3+ create_agent API)"""
         system_prompt_str = self._build_system_prompt()
 
         # 使用 LangChain 0.3+ 的 create_agent
-        agent = create_agent(
-            self.model,
-            self.tools,
-            system_prompt=system_prompt_str
-        )
+        agent = create_agent(self.model, self.tools, system_prompt=system_prompt_str)
 
         return agent
 
@@ -90,11 +88,7 @@ class Phase1AgentTemplate:
 """
         return prompt.strip()
 
-    async def execute(
-        self,
-        state: WorkflowState,
-        user_prompt: str
-    ) -> Dict[str, Any]:
+    async def execute(self, state: WorkflowState, user_prompt: str) -> Dict[str, Any]:
         """
         执行智能体分析
 
@@ -117,11 +111,7 @@ class Phase1AgentTemplate:
             logger.info(f"[Phase 1] 执行智能体: {self.slug} ({self.name})")
 
             # LangChain 0.3+ 使用 messages 格式
-            inputs = {
-                "messages": [
-                    HumanMessage(content=user_prompt)
-                ]
-            }
+            inputs = {"messages": [HumanMessage(content=user_prompt)]}
 
             result = await self.agent.ainvoke(inputs)
 
@@ -142,7 +132,7 @@ class Phase1AgentTemplate:
                 "name": self.name,
                 "output": output,
                 "execution": execution,
-                "error": None
+                "error": None,
             }
 
         except Exception as e:
@@ -156,7 +146,7 @@ class Phase1AgentTemplate:
                 "name": self.name,
                 "output": None,
                 "execution": execution,
-                "error": str(e)
+                "error": str(e),
             }
 
     def _extract_output(self, result: Any) -> Optional[str]:
@@ -177,10 +167,10 @@ class Phase1AgentTemplate:
                 last_message = messages[-1]
                 # 处理消息对象
                 if hasattr(last_message, "content"):
-                    return last_message.content
+                    return str(last_message.content)
                 # 处理字典格式
                 elif isinstance(last_message, dict):
-                    return last_message.get("content", "")
+                    return str(last_message.get("content", ""))
 
         # 直接返回字符串
         if isinstance(result, str):

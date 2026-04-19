@@ -36,7 +36,7 @@ export default function StockQuoteCard({ quote, fundamentals, loading }: StockQu
     >
       <Row gutter={[24, 16]} align="middle">
         <Col xs={24} md={8}>
-          <Space orientation="vertical" size={4}>
+          <Space direction="vertical" size={4}>
             <Text strong style={{ color: 'var(--text-primary)', fontSize: 20 }}>
               {name}
             </Text>

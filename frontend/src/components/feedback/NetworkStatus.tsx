@@ -39,6 +39,8 @@ export default function NetworkStatus() {
   /** 仅在离线且未手动关闭时渲染横幅 */
   if (networkStatus !== 'offline' || dismissed) return null
 
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark'
+
   return (
     <div
       style={{
@@ -48,8 +50,8 @@ export default function NetworkStatus() {
         right: 0,
         zIndex: 9999,
         padding: '8px 24px',
-        background: '#FFF7E6',
-        borderBottom: '1px solid #FFD591',
+        background: isDark ? '#2A1A00' : '#FFF7E6',
+        borderBottom: `1px solid ${isDark ? '#8B6914' : '#FFD591'}`,
       }}
     >
       <Alert

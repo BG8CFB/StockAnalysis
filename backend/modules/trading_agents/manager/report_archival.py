@@ -7,11 +7,10 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Optional, List
+from typing import Any, Dict, List, Optional
 
 from core.db.mongodb import mongodb
 from modules.trading_agents.schemas import TaskStatusEnum
-
 
 logger = logging.getLogger(__name__)
 
@@ -103,12 +102,14 @@ class ReportArchivalService:
 
         # 查找已完成的旧任务
         query = {
-            "status": {"$in": [
-                TaskStatusEnum.COMPLETED.value,
-                TaskStatusEnum.FAILED.value,
-                TaskStatusEnum.EXPIRED.value,
-                TaskStatusEnum.CANCELLED.value,
-            ]},
+            "status": {
+                "$in": [
+                    TaskStatusEnum.COMPLETED.value,
+                    TaskStatusEnum.FAILED.value,
+                    TaskStatusEnum.EXPIRED.value,
+                    TaskStatusEnum.CANCELLED.value,
+                ]
+            },
             "created_at": {"$lt": archive_threshold},
         }
 
@@ -161,25 +162,21 @@ class ReportArchivalService:
                             "analyst_reports": {},
                             "archived_at": datetime.now(timezone.utc),
                         }
-                    }
+                    },
                 )
 
                 archived_count += 1
 
                 logger.debug(
-                    f"报告已归档: task_id={task_id}, "
-                    f"user_id={user_id}, stock={stock_code}"
+                    f"报告已归档: task_id={task_id}, " f"user_id={user_id}, stock={stock_code}"
                 )
 
             except Exception as e:
-                logger.error(
-                    f"归档报告失败: task_id={task_id}, error={e}",
-                    exc_info=True
-                )
+                logger.error(f"归档报告失败: task_id={task_id}, error={e}", exc_info=True)
 
         return archived_count
 
-    async def _extract_final_report(self, task_doc: dict) -> Optional[str]:
+    async def _extract_final_report(self, task_doc: Dict[str, Any]) -> Optional[str]:
         """
         提取最终报告
 
@@ -191,7 +188,7 @@ class ReportArchivalService:
         """
         # 如果任务有最终报告，优先使用
         if task_doc.get("final_report"):
-            return task_doc["final_report"]
+            return str(task_doc["final_report"])
 
         # 否则，尝试从分析师报告中生成简单摘要
         reports = task_doc.get("reports", {})
@@ -224,25 +221,30 @@ class ReportArchivalService:
         """
         archived_col = mongodb.get_collection("archived_reports")
 
-        cursor = archived_col.find(
-            {"user_id": user_id}
-        ).sort("archived_at", -1).skip(offset).limit(limit)
+        cursor = (
+            archived_col.find({"user_id": user_id})
+            .sort("archived_at", -1)
+            .skip(offset)
+            .limit(limit)
+        )
 
         reports = []
         async for report_doc in cursor:
-            reports.append({
-                "task_id": report_doc["task_id"],
-                "stock_code": report_doc["stock_code"],
-                "trade_date": report_doc["trade_date"],
-                "analysis_time": report_doc["analysis_time"],
-                "recommendation": report_doc.get("recommendation"),
-                "buy_price": report_doc.get("buy_price"),
-                "sell_price": report_doc.get("sell_price"),
-                "risk_level": report_doc.get("risk_level"),
-                "token_usage": report_doc.get("token_usage", {}),
-                "status": report_doc["status"],
-                "archived_at": report_doc["archived_at"],
-            })
+            reports.append(
+                {
+                    "task_id": report_doc["task_id"],
+                    "stock_code": report_doc["stock_code"],
+                    "trade_date": report_doc["trade_date"],
+                    "analysis_time": report_doc["analysis_time"],
+                    "recommendation": report_doc.get("recommendation"),
+                    "buy_price": report_doc.get("buy_price"),
+                    "sell_price": report_doc.get("sell_price"),
+                    "risk_level": report_doc.get("risk_level"),
+                    "token_usage": report_doc.get("token_usage", {}),
+                    "status": report_doc["status"],
+                    "archived_at": report_doc["archived_at"],
+                }
+            )
 
         return reports
 
@@ -265,10 +267,7 @@ class ReportArchivalService:
         tasks_col = mongodb.get_collection("analysis_tasks")
 
         # 查找归档报告
-        archived_doc = await archived_col.find_one({
-            "task_id": task_id,
-            "user_id": user_id
-        })
+        archived_doc = await archived_col.find_one({"task_id": task_id, "user_id": user_id})
 
         if not archived_doc:
             logger.warning(f"归档报告不存在: task_id={task_id}")
@@ -285,7 +284,7 @@ class ReportArchivalService:
                         "final_report": archived_doc.get("final_report"),
                         "archived_at": None,
                     }
-                }
+                },
             )
 
             # 删除归档记录
@@ -296,10 +295,7 @@ class ReportArchivalService:
             return True
 
         except Exception as e:
-            logger.error(
-                f"恢复归档报告失败: task_id={task_id}, error={e}",
-                exc_info=True
-            )
+            logger.error(f"恢复归档报告失败: task_id={task_id}, error={e}", exc_info=True)
             return False
 
 

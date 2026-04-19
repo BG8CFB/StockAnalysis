@@ -5,7 +5,7 @@
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends
 
@@ -32,7 +32,7 @@ def _get_repo() -> FavoriteRepository:
 @router.get("/")
 async def list_favorites(
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取用户自选股列表"""
     repo = _get_repo()
     favorites = await repo.list_favorites(str(user.id))
@@ -46,7 +46,7 @@ async def list_favorites(
 async def add_favorite(
     req: AddFavoriteRequest,
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """添加自选股"""
     from datetime import datetime
 
@@ -75,7 +75,7 @@ async def update_favorite(
     stock_code: str,
     req: UpdateFavoriteRequest,
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """更新自选股（标签、备注、价格预警）"""
     repo = _get_repo()
     updates: Dict[str, Any] = {}
@@ -98,7 +98,7 @@ async def update_favorite(
 async def remove_favorite(
     stock_code: str,
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """删除自选股"""
     repo = _get_repo()
     await repo.remove_favorite(str(user.id), stock_code)
@@ -109,7 +109,7 @@ async def remove_favorite(
 async def check_favorite(
     stock_code: str,
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """检查股票是否在自选股中"""
     repo = _get_repo()
     is_fav = await repo.check_favorite(str(user.id), stock_code)
@@ -123,7 +123,7 @@ async def check_favorite(
 @router.get("/tags")
 async def get_favorite_tags(
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取用户所有标签"""
     repo = _get_repo()
     tags = await repo.get_all_tags(str(user.id))
@@ -133,11 +133,11 @@ async def get_favorite_tags(
 @router.post("/sync-realtime")
 async def sync_favorites_realtime(
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """同步自选股实时行情"""
-    from core.favorites.service import FavoriteRepository
-    from core.market_data.services.data_sync_service import DataSyncService
     from datetime import datetime
+
+    from core.market_data.services.data_sync_service import DataSyncService
 
     repo = _get_repo()
     stocks = await repo.get_all_stocks_for_sync(str(user.id))

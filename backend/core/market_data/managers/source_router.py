@@ -4,18 +4,18 @@
 实现数据源选择、降级策略和健康检查
 """
 
-import logging
 import inspect
-from typing import Any
+import logging
 from datetime import datetime
+from typing import Any
 
-from core.market_data.sources.base import DataSourceAdapter
-from core.market_data.sources.a_stock import TuShareAdapter, AkShareAdapter
-from core.market_data.sources.us_stock import YahooFinanceAdapter, AlphaVantageAdapter
-from core.market_data.sources.hk_stock import YahooHKAdapter, AkShareHKAdapter
+from core.config import DATA_SOURCE_MAX_FAILURES
 from core.market_data.models import MarketType
 from core.market_data.models.api_monitor import ApiMonitor
-from core.config import DATA_SOURCE_MAX_FAILURES
+from core.market_data.sources.a_stock import AkShareAdapter, TuShareAdapter
+from core.market_data.sources.base import DataSourceAdapter
+from core.market_data.sources.hk_stock import AkShareHKAdapter, YahooHKAdapter
+from core.market_data.sources.us_stock import AlphaVantageAdapter, YahooFinanceAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ class DataSourceRouter:
         """
         # 按优先级排序数据源
         self.sources = sorted(sources or [], key=lambda s: s.get_priority())
-        self.source_health = {}  # 数据源健康状态缓存
+        self.source_health: dict[str, dict[str, Any]] = {}  # 数据源健康状态缓存
         # 简单内存缓存 API Monitor 状态 (实际应从DB加载)
         self.api_monitors: dict[str, ApiMonitor] = {}
 
@@ -55,9 +55,7 @@ class DataSourceRouter:
         self.sources.sort(key=lambda s: s.get_priority())
 
     async def get_available_sources(
-        self,
-        market: MarketType,
-        check_health: bool = True
+        self, market: MarketType, check_health: bool = True
     ) -> list[DataSourceAdapter]:
         """
         获取指定市场的可用数据源
@@ -78,13 +76,15 @@ class DataSourceRouter:
 
             # 检查是否被禁用
             if source.should_disable(max_failures=DATA_SOURCE_MAX_FAILURES):
-                logger.warning(f"Data source {source.source_name} is disabled due to repeated failures")
+                logger.warning(
+                    f"Data source {source.source_name} is disabled due to repeated failures"
+                )
                 continue
 
             # 检查健康状态
             if check_health:
                 health = await self._get_source_health(source)
-                if not health['is_available']:
+                if not health["is_available"]:
                     logger.warning(f"Data source {source.source_name} is not available")
                     continue
 
@@ -92,7 +92,9 @@ class DataSourceRouter:
 
         return available
 
-    async def get_source_for_data_type(self, data_type: str, market: MarketType) -> DataSourceAdapter | None:
+    async def get_source_for_data_type(
+        self, data_type: str, market: MarketType
+    ) -> DataSourceAdapter | None:
         """
         根据数据类型获取最佳数据源 (Failover Logic)
 
@@ -105,7 +107,7 @@ class DataSourceRouter:
         """
         # 1. 获取该类型的 Monitor 状态
         monitor = self.api_monitors.get(data_type)
-        
+
         # 默认首选 TU (如果存在)
         primary_source_name = monitor.primary_source if monitor else "TU"
         backup_source_name = monitor.backup_source if monitor else "AK"
@@ -115,34 +117,34 @@ class DataSourceRouter:
 
         # 2. 查找对应的数据源实例
         target_source = next((s for s in self.sources if s.source_name == target_source_name), None)
-        
+
         # 如果目标源不可用或不支持该市场，尝试降级到另一个
         if not target_source or not target_source.supports_market(market):
             fallback_name = primary_source_name if use_backup else backup_source_name
             target_source = next((s for s in self.sources if s.source_name == fallback_name), None)
-        
+
         return target_source
 
-    async def record_failure(self, data_type: str, source_name: str):
+    async def record_failure(self, data_type: str, source_name: str) -> None:
         """记录调用失败，触发切换逻辑"""
         if data_type not in self.api_monitors:
             self.api_monitors[data_type] = ApiMonitor(
-                data_type=data_type,
-                primary_source="TU", # 默认
-                backup_source="AK"
+                data_type=data_type, primary_source="TU", backup_source="AK"  # 默认
             )
-        
+
         monitor = self.api_monitors[data_type]
         if monitor.primary_source == source_name:
             monitor.fail_count += 1
-            if monitor.fail_count >= 3: # 阈值
+            if monitor.fail_count >= 3:  # 阈值
                 monitor.is_using_backup = True
-                logger.warning(f"Data type {data_type} failover to backup source {monitor.backup_source}")
-        
+                logger.warning(
+                    f"Data type {data_type} failover to backup source {monitor.backup_source}"
+                )
+
         monitor.last_check_time = datetime.now()
         # TODO: Save to DB
 
-    async def record_success(self, data_type: str, source_name: str):
+    async def record_success(self, data_type: str, source_name: str) -> None:
         """记录调用成功"""
         if data_type in self.api_monitors:
             monitor = self.api_monitors[data_type]
@@ -150,19 +152,17 @@ class DataSourceRouter:
                 # 如果主源成功了（可能是探测），切回主源
                 monitor.is_using_backup = False
                 monitor.fail_count = 0
-                logger.info(f"Data type {data_type} recovered to primary source {monitor.primary_source}")
+                logger.info(
+                    f"Data type {data_type} recovered to primary source {monitor.primary_source}"
+                )
             elif source_name == monitor.primary_source:
                 monitor.fail_count = 0
-            
+
             monitor.last_check_time = datetime.now()
             # TODO: Save to DB
 
     async def route_to_best_source(
-        self,
-        market: MarketType,
-        method_name: str,
-        *args,
-        **kwargs
+        self, market: MarketType, method_name: str, *args: Any, **kwargs: Any
     ) -> Any:
         """
         路由到最佳可用数据源
@@ -203,7 +203,7 @@ class DataSourceRouter:
                 if needs_market is None:
                     sig = inspect.signature(method)
                     params = list(sig.parameters.keys())
-                    needs_market = params and params[0] == 'market'
+                    needs_market = bool(params and params[0] == "market")
                     DataSourceRouter._method_signature_cache[method_key] = needs_market
 
                 # 根据方法签名调用
@@ -225,13 +225,12 @@ class DataSourceRouter:
 
                 # 如果不是最后一个数据源，继续尝试下一个
                 if source != available_sources[-1]:
-                    logger.info(f"Falling back to next data source...")
+                    logger.info("Falling back to next data source...")
                     continue
 
         # 所有数据源都失败
         raise RuntimeError(
-            f"All data sources failed for market {market}. "
-            f"Last error: {last_error}"
+            f"All data sources failed for market {market}. " f"Last error: {last_error}"
         )
 
     async def check_all_sources_health(self) -> dict[str, dict[str, Any]]:
@@ -262,15 +261,15 @@ class DataSourceRouter:
         # 简单缓存：如果5分钟内检查过，使用缓存结果
         if source.source_name in self.source_health:
             cached = self.source_health[source.source_name]
-            last_check = datetime.fromisoformat(cached['last_check_time'])
+            last_check = datetime.fromisoformat(cached["last_check_time"])
             if (datetime.now() - last_check).total_seconds() < 300:
                 return cached
 
         # 执行健康检查
         health = await source.check_health()
-        self.source_health[source.source_name] = health
+        self.source_health[source.source_name] = dict(health)
 
-        return health
+        return dict(health)
 
     @classmethod
     def create_default_router(cls, tushare_token: str) -> "DataSourceRouter":
@@ -290,7 +289,9 @@ class DataSourceRouter:
         # 创建路由器
         router = cls(sources=[tushare, akshare])
 
-        logger.info(f"Created default router with sources: {[s.source_name for s in router.sources]}")
+        logger.info(
+            f"Created default router with sources: {[s.source_name for s in router.sources]}"
+        )
 
         return router
 
@@ -305,7 +306,7 @@ class DataSourceRouter:
         Returns:
             配置好的美股路由器实例
         """
-        sources = []
+        sources: list[DataSourceAdapter] = []
 
         # Yahoo Finance 是主数据源（免费）
         try:
@@ -323,7 +324,9 @@ class DataSourceRouter:
                 logger.warning(f"Failed to create Alpha Vantage adapter: {e}")
 
         router = cls(sources=sources)
-        logger.info(f"Created US stock router with sources: {[s.source_name for s in router.sources]}")
+        logger.info(
+            f"Created US stock router with sources: {[s.source_name for s in router.sources]}"
+        )
         return router
 
     @classmethod
@@ -334,7 +337,7 @@ class DataSourceRouter:
         Returns:
             配置好的港股路由器实例
         """
-        sources = []
+        sources: list[DataSourceAdapter] = []
 
         # AkShare 是主数据源（免费，数据全面）
         try:
@@ -351,14 +354,14 @@ class DataSourceRouter:
             logger.warning(f"Failed to create Yahoo HK adapter: {e}")
 
         router = cls(sources=sources)
-        logger.info(f"Created HK stock router with sources: {[s.source_name for s in router.sources]}")
+        logger.info(
+            f"Created HK stock router with sources: {[s.source_name for s in router.sources]}"
+        )
         return router
 
     @classmethod
     def create_global_router(
-        cls,
-        tushare_token: str | None = None,
-        alphavantage_api_key: str | None = None
+        cls, tushare_token: str | None = None, alphavantage_api_key: str | None = None
     ) -> "DataSourceRouter":
         """
         创建全球股票数据源路由器（支持A股、美股、港股）
@@ -370,7 +373,7 @@ class DataSourceRouter:
         Returns:
             配置好的全球数据路由器实例
         """
-        sources = []
+        sources: list[DataSourceAdapter] = []
 
         # A股数据源
         if tushare_token:
@@ -414,7 +417,9 @@ class DataSourceRouter:
             logger.warning(f"Failed to create Yahoo HK adapter: {e}")
 
         router = cls(sources=sources)
-        logger.info(f"Created global router with sources: {[s.source_name for s in router.sources]}")
+        logger.info(
+            f"Created global router with sources: {[s.source_name for s in router.sources]}"
+        )
         return router
 
 
@@ -440,7 +445,7 @@ def get_source_router() -> DataSourceRouter:
         from core.config import TUSHARE_TOKEN
 
         # 创建多市场支持的路由器
-        sources = []
+        sources: list[DataSourceAdapter] = []
 
         # A股数据源
         try:

@@ -1,24 +1,25 @@
 """
 用户认证依赖注入
 """
+
 from typing import Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from core.auth.security import jwt_manager
 from core.auth.rbac import Role
-from core.db.mongodb import get_mongodb, mongodb
+from core.auth.security import jwt_manager
+from core.db.mongodb import mongodb
 from core.user.models import PyObjectId, UserModel, UserStatus
 
 # HTTP Bearer 认证方案
 security = HTTPBearer(auto_error=False)
 
 
-async def get_db() -> AsyncIOMotorDatabase:
+async def get_db() -> AsyncIOMotorDatabase:  # type: ignore[misc, return-value]
     """获取数据库连接"""
-    return await get_mongodb()
+    return mongodb.database
 
 
 async def get_current_user_optional(

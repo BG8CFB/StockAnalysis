@@ -44,7 +44,7 @@ export interface UseUserManagementReturn {
   enable: (userId: string) => Promise<void>
   remove: (userId: string) => Promise<void>
   changeRole: (userId: string, role: string) => Promise<void>
-  resetPassword: (userId: string, newPassword: string) => Promise<void>
+  resetPassword: (userId: string) => Promise<void>
   create: (data: CreateUserInput) => Promise<boolean>
   update: (userId: string, data: UpdateUserInput) => Promise<boolean>
 }
@@ -133,18 +133,18 @@ export function useUserManagement(): UseUserManagementReturn {
     })
   }, [fetchUsers, fetchPendingUsers])
 
-  const reject = useCallback(async (userId: string) => {
+  const reject = useCallback(async (userId: string, reason: string = '不符合要求') => {
     await withActionLoading(userId, async () => {
-      await rejectUser(userId)
+      await rejectUser(userId, reason)
       message.success('用户已拒绝')
       await fetchUsers()
       await fetchPendingUsers()
     })
   }, [fetchUsers, fetchPendingUsers])
 
-  const disable = useCallback(async (userId: string) => {
+  const disable = useCallback(async (userId: string, reason?: string) => {
     await withActionLoading(userId, async () => {
-      await disableUser(userId)
+      await disableUser(userId, reason)
       message.success('用户已禁用')
       await fetchUsers()
     })
@@ -174,10 +174,10 @@ export function useUserManagement(): UseUserManagementReturn {
     })
   }, [fetchUsers])
 
-  const resetPassword = useCallback(async (userId: string, newPassword: string) => {
+  const resetPassword = useCallback(async (userId: string) => {
     await withActionLoading(userId, async () => {
-      await resetUserPassword(userId, { new_password: newPassword })
-      message.success('密码已重置')
+      await resetUserPassword(userId)
+      message.success('密码重置链接已生成')
     })
   }, [])
 

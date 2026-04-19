@@ -6,19 +6,19 @@
 """
 
 import logging
-from typing import Optional, List, Dict, Any, Union, TYPE_CHECKING
-from datetime import datetime, timedelta
 from abc import ABC, abstractmethod
+from datetime import datetime, timedelta
 from enum import Enum
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from core.market_data.models import MarketType
+from core.market_data.repositories.stock_company import StockCompanyRepository
+from core.market_data.repositories.stock_financial import (
+    StockFinancialIndicatorRepository,
+    StockFinancialRepository,
+)
 from core.market_data.repositories.stock_info import StockInfoRepository
 from core.market_data.repositories.stock_quotes import StockQuoteRepository
-from core.market_data.repositories.stock_financial import (
-    StockFinancialRepository,
-    StockFinancialIndicatorRepository,
-)
-from core.market_data.repositories.stock_company import StockCompanyRepository
 
 if TYPE_CHECKING:
     from core.market_data.managers.source_router import DataSourceRouter
@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 class DataSource(str, Enum):
     """数据源选择"""
+
     AUTO = "auto"  # 自动选择
     DATABASE = "database"  # 仅从数据库获取（项目信息源）
     REALTIME = "realtime"  # 使用实时数据源（用户配置）
@@ -46,7 +47,7 @@ class MarketDataToolBase(ABC):
         self,
         user_id: Optional[str] = None,
         source_router: Optional["DataSourceRouter"] = None,
-        data_source: DataSource = DataSource.AUTO
+        data_source: DataSource = DataSource.AUTO,
     ):
         """
         初始化市场数据工具
@@ -78,9 +79,7 @@ class MarketDataToolBase(ABC):
         pass
 
     async def get_stock_info(
-        self,
-        symbol: str,
-        use_realtime: bool = False
+        self, symbol: str, use_realtime: bool = False
     ) -> Optional[Dict[str, Any]]:
         """
         获取股票基本信息
@@ -103,9 +102,7 @@ class MarketDataToolBase(ABC):
             if use_realtime and self.source_router:
                 logger.info(f"Stock {symbol} not in database, fetching from data source")
                 stocks = await self.source_router.route_to_best_source(
-                    market=self.get_market(),
-                    method_name="get_stock_list",
-                    status="L"
+                    market=self.get_market(), method_name="get_stock_list", status="L"
                 )
 
                 for stock in stocks:
@@ -130,10 +127,7 @@ class MarketDataToolBase(ABC):
             return None
 
     async def get_daily_quotes(
-        self,
-        symbol: str,
-        days: int = 30,
-        use_realtime: bool = False
+        self, symbol: str, days: int = 30, use_realtime: bool = False
     ) -> List[Dict[str, Any]]:
         """
         获取日线行情
@@ -152,9 +146,7 @@ class MarketDataToolBase(ABC):
 
             # 从数据库查询
             quotes_data = await self.stock_quote_repo.get_quotes(
-                symbol=symbol,
-                start_date=start_date,
-                end_date=end_date
+                symbol=symbol, start_date=start_date, end_date=end_date
             )
 
             # 如果数据充足，直接返回
@@ -169,7 +161,7 @@ class MarketDataToolBase(ABC):
                     method_name="get_daily_quotes",
                     symbol=symbol,
                     start_date=start_date,
-                    end_date=end_date
+                    end_date=end_date,
                 )
 
                 return [
@@ -198,9 +190,7 @@ class MarketDataToolBase(ABC):
             return []
 
     async def get_latest_quote(
-        self,
-        symbol: str,
-        use_realtime: bool = False
+        self, symbol: str, use_realtime: bool = False
     ) -> Optional[Dict[str, Any]]:
         """
         获取最新行情
@@ -230,7 +220,7 @@ class MarketDataToolBase(ABC):
                     method_name="get_daily_quotes",
                     symbol=symbol,
                     start_date=datetime.now().strftime("%Y%m%d"),
-                    end_date=datetime.now().strftime("%Y%m%d")
+                    end_date=datetime.now().strftime("%Y%m%d"),
                 )
 
                 if quotes:
@@ -257,11 +247,7 @@ class MarketDataToolBase(ABC):
             logger.error(f"Failed to get latest quote for {symbol}: {e}")
             return None
 
-    async def get_financials(
-        self,
-        symbol: str,
-        limit: int = 4
-    ) -> List[Dict[str, Any]]:
+    async def get_financials(self, symbol: str, limit: int = 4) -> List[Dict[str, Any]]:
         """
         获取财务报表
 
@@ -273,20 +259,16 @@ class MarketDataToolBase(ABC):
             财务报表数据列表
         """
         try:
-            financials_data = await self.financial_repo.get_financials(
-                symbol=symbol,
-                limit=limit
-            )
+            financials_data = await self.financial_repo.get_financial_history(
+                symbol=symbol, limit=limit
+            )  # type: ignore[attr-defined]
             return financials_data if financials_data else []
 
         except Exception as e:
             logger.error(f"Failed to get financials for {symbol}: {e}")
             return []
 
-    async def get_financial_indicators(
-        self,
-        symbol: str
-    ) -> Optional[Dict[str, Any]]:
+    async def get_financial_indicators(self, symbol: str) -> Optional[Dict[str, Any]]:
         """
         获取最新财务指标
 
@@ -304,10 +286,7 @@ class MarketDataToolBase(ABC):
             logger.error(f"Failed to get financial indicators for {symbol}: {e}")
             return None
 
-    async def get_company_info(
-        self,
-        symbol: str
-    ) -> Optional[Dict[str, Any]]:
+    async def get_company_info(self, symbol: str) -> Optional[Dict[str, Any]]:
         """
         获取公司信息
 
@@ -318,18 +297,14 @@ class MarketDataToolBase(ABC):
             公司信息数据，未找到返回 None
         """
         try:
-            company_data = await self.company_repo.get_by_symbol(symbol)
-            return company_data
+            company_data = await self.company_repo.find_one({"symbol": symbol})  # type: ignore[union-attr]
+            return company_data if company_data else None
 
         except Exception as e:
             logger.error(f"Failed to get company info for {symbol}: {e}")
             return None
 
-    async def search_stocks(
-        self,
-        keyword: str,
-        limit: int = 20
-    ) -> List[Dict[str, Any]]:
+    async def search_stocks(self, keyword: str, limit: int = 20) -> List[Dict[str, Any]]:
         """
         搜索股票
 
@@ -341,10 +316,15 @@ class MarketDataToolBase(ABC):
             股票信息列表
         """
         try:
-            stocks = await self.stock_info_repo.search(
-                keyword=keyword,
-                market=self.get_market(),
-                limit=limit
+            stocks = await self.stock_info_repo.find_many(  # type: ignore[attr-defined]
+                {
+                    "$or": [
+                        {"symbol": {"$regex": keyword, "$options": "i"}},
+                        {"name": {"$regex": keyword, "$options": "i"}},
+                    ],
+                    "market": self.get_market(),
+                },
+                limit=limit,
             )
             return stocks if stocks else []
 
@@ -352,10 +332,7 @@ class MarketDataToolBase(ABC):
             logger.error(f"Failed to search stocks for {keyword}: {e}")
             return []
 
-    async def get_stock_list(
-        self,
-        limit: int = 100
-    ) -> List[Dict[str, Any]]:
+    async def get_stock_list(self, limit: int = 100) -> List[Dict[str, Any]]:
         """
         获取股票列表
 
@@ -366,10 +343,7 @@ class MarketDataToolBase(ABC):
             股票信息列表
         """
         try:
-            stocks = await self.stock_info_repo.get_by_market(
-                market=self.get_market(),
-                limit=limit
-            )
+            stocks = await self.stock_info_repo.get_by_market(market=self.get_market(), limit=limit)
             return stocks if stocks else []
 
         except Exception as e:

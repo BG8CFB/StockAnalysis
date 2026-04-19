@@ -1,36 +1,21 @@
 """
 认证相关数据模型
 """
+
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel
+
+# 从 core.db.models 导入类型
+from core.db.models import PyObjectId  # noqa: F401 - re-exported for dependencies.py
 
 # 从 core.user.models 导入统一的模型定义
 from core.user.models import (
-    UserModel,
-    UserStatus,
-    SystemInitializeRequest,
-    SystemStatusResponse,
-    RegisterRequest,
     LoginRequest,
-    TokenResponse,
-    RefreshTokenRequest,
-    UserResponse,
-    UserListResponse,
-    UpdateUserRequest,
-    UpdateUserByAdminRequest,
-    UpdatePreferencesRequest,
-    CreateUserRequest,
-    EmailCodeSendRequest,
-    EmailCodeSendResponse,
-    EmailCodeVerifyRequest,
+    RegisterRequest,
+    UserModel,  # noqa: F401 - re-exported for dependencies.py
 )
-
-from core.auth.rbac import Role
-from core.config import settings
-from core.db.models import PyObjectId
-
 
 # ==================== 验证码相关模型 ====================
 

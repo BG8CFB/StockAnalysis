@@ -26,7 +26,7 @@ class AIService:
     提供统一的 AI 调用接口，内部使用 LangChain 实现。
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.concurrency_manager = ConcurrencyManager()
         self._model_cache: Dict[str, BaseChatModel] = {}
         self._config_cache: Dict[str, Dict] = {}
@@ -42,11 +42,11 @@ class AIService:
     _config_service = None
 
     @classmethod
-    def set_config_service(cls, config_service):
+    def set_config_service(cls, config_service: Any) -> None:
         """设置配置服务"""
         cls._config_service = config_service
 
-    def set_usage_tracking_enabled(self, enabled: bool):
+    def set_usage_tracking_enabled(self, enabled: bool) -> None:
         """设置是否启用使用统计"""
         self._enable_usage_tracking = enabled
 
@@ -61,7 +61,7 @@ class AIService:
         task_id: Optional[str] = None,
         phase: Optional[str] = None,
         agent_slug: Optional[str] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> AIResponse:
         """
         聊天补全
@@ -136,7 +136,7 @@ class AIService:
             return parsed_response
 
     async def stream_completion(
-        self, user_id: str, messages: List[AIMessage], model_id: Optional[str] = None, **kwargs
+        self, user_id: str, messages: List[AIMessage], model_id: Optional[str] = None, **kwargs: Any
     ) -> AsyncIterator[AIStreamChunk]:
         """
         流式聊天补全
@@ -184,7 +184,7 @@ class AIService:
                     reasoning_content = chunk.additional_kwargs["reasoning_content"]
 
                 yield AIStreamChunk(
-                    content=chunk.content or "",
+                    content=str(chunk.content) if chunk.content else "",
                     reasoning_content=reasoning_content,
                     is_complete=False,
                 )
@@ -240,9 +240,7 @@ class AIService:
             # 使用 get_model_with_credentials 获取包含完整 API Key 的配置
             if model_id:
                 config = await self._config_service.get_model_with_credentials(
-                    model_id=model_id,
-                    user_id=user_id,
-                    is_admin=False
+                    model_id=model_id, user_id=user_id, is_admin=False
                 )
                 if config:
                     logger.info(
@@ -266,9 +264,7 @@ class AIService:
             if default_config:
                 # 需要获取完整凭证
                 full_config = await self._config_service.get_model_with_credentials(
-                    model_id=str(default_config.id),
-                    user_id=user_id,
-                    is_admin=False
+                    model_id=str(default_config.id), user_id=user_id, is_admin=False
                 )
                 if full_config:
                     logger.info(f"使用用户默认模型: model_id={full_config['model_id']}")
@@ -284,9 +280,7 @@ class AIService:
                     }
 
         # 返回默认配置（用于测试，记录警告）
-        logger.error(
-            f"无法获取模型配置，使用空配置: model_id={model_id}, user_id={user_id}"
-        )
+        logger.error(f"无法获取模型配置，使用空配置: model_id={model_id}, user_id={user_id}")
         return {
             "model_id": model_id or "glm-4.7",
             "platform": "zhipu",
@@ -298,12 +292,12 @@ class AIService:
             "thinking_enabled": True,
         }
 
-    def _config_to_dict(self, config) -> Dict:
+    def _config_to_dict(self, config: Any) -> Dict[str, Any]:
         """将配置对象转换为字典"""
         if hasattr(config, "model_dump"):
-            return config.model_dump()
+            return dict(config.model_dump())
         elif hasattr(config, "dict"):
-            return config.dict()
+            return dict(config.dict())
         else:
             # 假设是字典
             return dict(config)
@@ -419,7 +413,7 @@ class AIService:
         Returns:
             统计信息
         """
-        return await self._usage_service.get_user_stats(user_id, start_date, end_date)
+        return dict(await self._usage_service.get_user_stats(user_id, start_date, end_date))
 
     async def get_task_usage_stats(
         self,
@@ -434,13 +428,13 @@ class AIService:
         Returns:
             统计信息
         """
-        return await self._usage_service.get_task_stats(task_id)
+        return dict(await self._usage_service.get_task_stats(task_id))
 
-    def get_concurrency_stats(self) -> Dict:
+    def get_concurrency_stats(self) -> Dict[str, Any]:
         """获取并发统计"""
-        return self.concurrency_manager.get_stats()
+        return dict(self.concurrency_manager.get_stats())
 
-    def clear_user_cache(self, user_id: str):
+    def clear_user_cache(self, user_id: str) -> None:
         """
         清除用户相关缓存
 
@@ -469,6 +463,7 @@ class AIService:
             LangChain ChatModel 实例
         """
         import os
+
         from core.ai.model import get_model_service
 
         # 优先从环境变量读取配置（始终优先）
@@ -478,7 +473,7 @@ class AIService:
 
         if env_api_key:
             platform = "zhipu_coding" if "coding" in env_api_base.lower() else "zhipu"
-            config = {
+            env_config = {
                 "model_id": env_model or model_id or "glm-4.7",
                 "platform": platform,
                 "api_key": env_api_key,
@@ -488,11 +483,13 @@ class AIService:
                 "max_retries": 3,
                 "thinking_enabled": True,
             }
-            return self._create_model_sync(config)
+            return self._create_model_sync(env_config)
 
         # 尝试从模型服务获取配置
         model_service = get_model_service()
-        config = await self._get_model_config_from_service(model_service, model_id, user_id)
+        config: Optional[Dict[str, Any]] = await self._get_model_config_from_service(
+            model_service, model_id, user_id
+        )
 
         # 如果获取配置失败，使用默认配置（记录警告）
         if not config or not config.get("api_key"):
@@ -539,7 +536,7 @@ class AIService:
 
         if env_api_key:
             platform = "zhipu_coding" if "coding" in env_api_base.lower() else "zhipu"
-            config = {
+            env_config = {
                 "model_id": env_model or model_id or "glm-4.7",
                 "platform": platform,
                 "api_key": env_api_key,
@@ -549,10 +546,10 @@ class AIService:
                 "max_retries": 3,
                 "thinking_enabled": True,
             }
-            return self._create_model_sync(config)
+            return self._create_model_sync(env_config)
 
         # 尝试从配置服务获取模型配置
-        config = None
+        config: Optional[Dict[str, Any]] = None
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
@@ -560,12 +557,12 @@ class AIService:
                 # 但这里我们需要同步返回，所以尝试从模型服务获取
                 try:
                     from core.ai.model import get_model_service
+
                     model_service = get_model_service()
 
                     # 使用 run_coroutine_threadsafe 在运行中的循环中执行异步操作
                     future = asyncio.run_coroutine_threadsafe(
-                        self._get_model_config_from_service(model_service, model_id, user_id),
-                        loop
+                        self._get_model_config_from_service(model_service, model_id, user_id), loop
                     )
                     # 增加超时时间到 10 秒，并捕获具体异常类型
                     config = future.result(timeout=10)
@@ -575,7 +572,8 @@ class AIService:
                     )
                 except Exception as e:
                     logger.error(
-                        f"从模型服务获取配置异常: model_id={model_id}, user_id={user_id}, error={type(e).__name__}: {e}"
+                        f"从模型服务获取配置异常: model_id={model_id}, "
+                        f"user_id={user_id}, error={type(e).__name__}: {e}"
                     )
             else:
                 # 没有运行中的循环，直接运行
@@ -611,8 +609,8 @@ class AIService:
         return self._create_model_sync(config)
 
     async def _get_model_config_from_service(
-        self, model_service, model_id: str, user_id: str
-    ) -> Optional[Dict]:
+        self, model_service: Any, model_id: str, user_id: str
+    ) -> Optional[Dict[str, Any]]:
         """
         从模型服务获取模型配置
 
@@ -629,16 +627,15 @@ class AIService:
 
             # 使用内部方法获取包含完整 API Key 的模型配置
             model_config = await model_service.get_model_with_credentials(
-                model_id=model_id,
-                user_id=user_id,
-                is_admin=False
+                model_id=model_id, user_id=user_id, is_admin=False
             )
 
             if model_config:
                 logger.info(
                     f"成功获取模型配置: model_id={model_config['model_id']}, "
                     f"platform={model_config['platform_type']}, "
-                    f"api_key_prefix={model_config['api_key'][:8] if model_config['api_key'] else 'None'}..."
+                    f"api_key_prefix="
+                    f"{model_config['api_key'][:8] if model_config['api_key'] else 'None'}..."
                 )
                 return {
                     "model_id": model_config["model_id"],
@@ -651,13 +648,11 @@ class AIService:
                     "thinking_enabled": model_config["thinking_enabled"],
                 }
             else:
-                logger.warning(
-                    f"模型服务返回空配置: model_id={model_id}, user_id={user_id}"
-                )
+                logger.warning(f"模型服务返回空配置: model_id={model_id}, user_id={user_id}")
         except Exception as e:
             logger.error(
                 f"从模型服务获取配置失败: model_id={model_id}, user_id={user_id}, error={e}",
-                exc_info=True
+                exc_info=True,
             )
 
         return None
@@ -693,7 +688,7 @@ def get_ai_service() -> AIService:
     return _ai_service
 
 
-def set_ai_service(service: AIService):
+def set_ai_service(service: AIService) -> None:
     """设置 AI 服务实例（用于测试）"""
     global _ai_service
     _ai_service = service

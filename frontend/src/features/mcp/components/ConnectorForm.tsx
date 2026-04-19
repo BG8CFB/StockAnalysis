@@ -91,7 +91,7 @@ export default function ConnectorForm({ open, onClose, onSubmit, submitting = fa
         />
 
         {parseError && (
-          <Alert type="error" showIcon title={parseError} style={{ marginTop: 8 }} />
+          <Alert type="error" showIcon message={parseError} style={{ marginTop: 8 }} />
         )}
 
         <Alert

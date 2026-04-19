@@ -1,22 +1,25 @@
 """
 用户核心数据模型
 """
+
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
-from core.config import settings
 from core.auth.rbac import Role
+from core.config import settings
 from core.db.models import PyObjectId
+
 
 class UserStatus(str, Enum):
     """用户状态枚举"""
-    PENDING = "pending"       # 待审核
-    ACTIVE = "active"         # 已激活
-    DISABLED = "disabled"     # 已禁用
-    REJECTED = "rejected"     # 已拒绝
+
+    PENDING = "pending"  # 待审核
+    ACTIVE = "active"  # 已激活
+    DISABLED = "disabled"  # 已禁用
+    REJECTED = "rejected"  # 已拒绝
 
 
 # ==================== 数据库模型 ====================
@@ -34,8 +37,8 @@ class UserModel(BaseModel):
 
     # 审核相关
     reviewed_by: Optional[PyObjectId] = None  # 审核人
-    reviewed_at: Optional[datetime] = None    # 审核时间
-    reject_reason: Optional[str] = None       # 拒绝原因
+    reviewed_at: Optional[datetime] = None  # 审核时间
+    reject_reason: Optional[str] = None  # 拒绝原因
 
     # 基础字段
     is_active: bool = True  # 保留字段（向后兼容），通过 model_validator 与 status 同步
@@ -48,12 +51,11 @@ class UserModel(BaseModel):
     model_config = {
         "populate_by_name": True,
         "arbitrary_types_allowed": True,
-        "by_alias": True  # 序列化时使用 serialization_alias
     }
 
     @field_validator("is_active", mode="before")
     @classmethod
-    def sync_is_active_with_status(cls, v: bool, info) -> bool:
+    def sync_is_active_with_status(cls, v: bool, info: Any) -> bool:
         """
         确保 is_active 与 status 同步
         当 status 为 ACTIVE 时 is_active 必须为 True，否则为 False
@@ -65,14 +67,14 @@ class UserModel(BaseModel):
 
         # 如果 status 已设置，根据 status 计算 is_active
         if status is not None:
-            return status == UserStatus.ACTIVE
+            return bool(status == UserStatus.ACTIVE)
 
         # 如果 status 未设置，保持 is_active 的值（用于旧数据兼容）
-        return v
+        return bool(v)
 
     @field_validator("status", mode="after")
     @classmethod
-    def ensure_status_consistency(cls, status: UserStatus, info) -> UserStatus:
+    def ensure_status_consistency(cls, status: UserStatus, info: Any) -> UserStatus:
         """
         确保 status 与 is_active 的一致性
         """
@@ -85,6 +87,7 @@ class UserModel(BaseModel):
 
 class UserPreferences(BaseModel):
     """用户配置"""
+
     user_id: PyObjectId
     theme: str = "light"
     language: str = "zh-CN"
@@ -98,6 +101,7 @@ class UserPreferences(BaseModel):
 
 class SystemInitializeRequest(BaseModel):
     """系统初始化请求"""
+
     email: EmailStr
     username: str = Field(..., min_length=2, max_length=50)
     password: str = Field(..., min_length=settings.PASSWORD_MIN_LENGTH)
@@ -105,7 +109,7 @@ class SystemInitializeRequest(BaseModel):
 
     @field_validator("confirm_password")
     @classmethod
-    def passwords_match(cls, v: str, info) -> str:
+    def passwords_match(cls, v: str, info: Any) -> str:
         if "password" in info.data and v != info.data["password"]:
             raise ValueError("两次输入的密码不一致")
         return v
@@ -113,6 +117,7 @@ class SystemInitializeRequest(BaseModel):
 
 class SystemStatusResponse(BaseModel):
     """系统状态响应"""
+
     initialized: bool
     version: str
     users_count: int = 0
@@ -123,8 +128,9 @@ class SystemStatusResponse(BaseModel):
 
 class RegisterRequest(BaseModel):
     """注册请求"""
+
     email: EmailStr
-    username: str = Field(..., min_length=2, max_length=20, pattern=r'^[a-zA-Z0-9_]+$')
+    username: str = Field(..., min_length=2, max_length=20, pattern=r"^[a-zA-Z0-9_]+$")
     password: str = Field(..., min_length=settings.PASSWORD_MIN_LENGTH)
     confirm_password: str
 
@@ -143,7 +149,7 @@ class RegisterRequest(BaseModel):
 
     @field_validator("confirm_password")
     @classmethod
-    def passwords_match(cls, v: str, info) -> str:
+    def passwords_match(cls, v: str, info: Any) -> str:
         if "password" in info.data and v != info.data["password"]:
             raise ValueError("两次输入的密码不一致")
         return v
@@ -151,12 +157,14 @@ class RegisterRequest(BaseModel):
 
 class LoginRequest(BaseModel):
     """登录请求 - 支持用户名或邮箱"""
+
     account: str = Field(..., min_length=2, description="用户名或邮箱")
     password: str
 
 
 class TokenResponse(BaseModel):
     """令牌响应"""
+
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
@@ -164,6 +172,7 @@ class TokenResponse(BaseModel):
 
 class RefreshTokenRequest(BaseModel):
     """刷新令牌请求"""
+
     refresh_token: str
 
 
@@ -172,6 +181,7 @@ class RefreshTokenRequest(BaseModel):
 
 class UserResponse(BaseModel):
     """用户信息响应（不含密码）"""
+
     id: str
     email: str
     username: str
@@ -187,6 +197,7 @@ class UserResponse(BaseModel):
 
 class UserListResponse(BaseModel):
     """用户列表响应（管理员）"""
+
     id: str
     email: str
     username: str
@@ -205,12 +216,14 @@ class UserListResponse(BaseModel):
 
 class UpdateUserRequest(BaseModel):
     """更新用户信息请求"""
+
     email: Optional[EmailStr] = None
     username: Optional[str] = Field(None, min_length=2, max_length=50)
 
 
 class UpdateUserByAdminRequest(BaseModel):
     """管理员更新用户信息请求"""
+
     email: Optional[EmailStr] = None
     username: Optional[str] = Field(None, min_length=2, max_length=50)
     role: Optional[Role] = None
@@ -219,6 +232,7 @@ class UpdateUserByAdminRequest(BaseModel):
 
 class UpdatePreferencesRequest(BaseModel):
     """更新用户配置请求"""
+
     theme: Optional[str] = None
     language: Optional[str] = None
     timezone: Optional[str] = None
@@ -228,6 +242,7 @@ class UpdatePreferencesRequest(BaseModel):
 
 class CreateUserRequest(BaseModel):
     """管理员创建用户请求"""
+
     email: EmailStr
     username: str = Field(..., min_length=2, max_length=50)
     password: str = Field(..., min_length=settings.PASSWORD_MIN_LENGTH)
@@ -239,16 +254,19 @@ class CreateUserRequest(BaseModel):
 
 class ApproveUserRequest(BaseModel):
     """通过用户审核"""
+
     pass
 
 
 class RejectUserRequest(BaseModel):
     """拒绝用户审核"""
+
     reason: str = Field(..., min_length=1, max_length=500, description="拒绝原因")
 
 
 class DisableUserRequest(BaseModel):
     """禁用用户请求"""
+
     reason: Optional[str] = Field(None, max_length=500, description="禁用原因")
 
 
@@ -257,18 +275,20 @@ class DisableUserRequest(BaseModel):
 
 class RequestPasswordResetRequest(BaseModel):
     """请求密码重置"""
+
     email: EmailStr
 
 
 class ResetPasswordRequest(BaseModel):
     """重置密码请求"""
+
     token: str
     new_password: str = Field(..., min_length=settings.PASSWORD_MIN_LENGTH)
     confirm_password: str
 
     @field_validator("confirm_password")
     @classmethod
-    def passwords_match(cls, v: str, info) -> str:
+    def passwords_match(cls, v: str, info: Any) -> str:
         if "new_password" in info.data and v != info.data["new_password"]:
             raise ValueError("两次输入的密码不一致")
         return v
@@ -276,6 +296,7 @@ class ResetPasswordRequest(BaseModel):
 
 class AdminResetPasswordRequest(BaseModel):
     """管理员触发密码重置请求"""
+
     email: EmailStr  # 目标用户邮箱
 
 
@@ -284,17 +305,20 @@ class AdminResetPasswordRequest(BaseModel):
 
 class EmailCodeSendRequest(BaseModel):
     """发送邮箱验证码请求"""
+
     email: EmailStr
 
 
 class EmailCodeSendResponse(BaseModel):
     """发送邮箱验证码响应"""
+
     code_id: str
     expires_in: int
 
 
 class EmailCodeVerifyRequest(BaseModel):
     """验证邮箱验证码请求"""
+
     email: EmailStr
     code_id: str
     code: str
@@ -305,12 +329,21 @@ class EmailCodeVerifyRequest(BaseModel):
 
 class AuditLogResponse(BaseModel):
     """审核日志响应"""
+
     id: str
     user_id: str
     action: Literal[
-        "approve", "reject", "disable", "enable",
-        "create", "update", "delete", "role_change",
-        "password_reset", "login", "logout"
+        "approve",
+        "reject",
+        "disable",
+        "enable",
+        "create",
+        "update",
+        "delete",
+        "role_change",
+        "password_reset",
+        "login",
+        "logout",
     ]
     target_user_id: Optional[str] = None
     reason: Optional[str] = None

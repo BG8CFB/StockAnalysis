@@ -25,10 +25,7 @@ async def init_indexes() -> None:
     await db.ai_models.create_index("is_system", name="idx_is_system")
     await db.ai_models.create_index("enabled", name="idx_enabled")
     await db.ai_models.create_index("created_at", name="idx_created_at")
-    await db.ai_models.create_index(
-        [("owner_id", 1), ("enabled", 1)],
-        name="idx_owner_enabled"
-    )
+    await db.ai_models.create_index([("owner_id", 1), ("enabled", 1)], name="idx_owner_enabled")
 
     # ========================================
     # MCP 服务器配置集合
@@ -38,10 +35,7 @@ async def init_indexes() -> None:
     await db.mcp_servers.create_index("enabled", name="idx_enabled")
     await db.mcp_servers.create_index("status", name="idx_status")
     await db.mcp_servers.create_index("created_at", name="idx_created_at")
-    await db.mcp_servers.create_index(
-        [("owner_id", 1), ("enabled", 1)],
-        name="idx_owner_enabled"
-    )
+    await db.mcp_servers.create_index([("owner_id", 1), ("enabled", 1)], name="idx_owner_enabled")
 
     # ========================================
     # 智能体配置集合
@@ -60,17 +54,12 @@ async def init_indexes() -> None:
     await db.analysis_tasks.create_index("started_at", name="idx_started_at")
     await db.analysis_tasks.create_index("completed_at", name="idx_completed_at")
     await db.analysis_tasks.create_index("expired_at", name="idx_expired_at")
+    await db.analysis_tasks.create_index([("user_id", 1), ("status", 1)], name="idx_user_status")
     await db.analysis_tasks.create_index(
-        [("user_id", 1), ("status", 1)],
-        name="idx_user_status"
+        [("user_id", 1), ("created_at", -1)], name="idx_user_created"
     )
     await db.analysis_tasks.create_index(
-        [("user_id", 1), ("created_at", -1)],
-        name="idx_user_created"
-    )
-    await db.analysis_tasks.create_index(
-        [("status", 1), ("created_at", 1)],
-        name="idx_status_created"
+        [("status", 1), ("created_at", 1)], name="idx_status_created"
     )
     # 批量任务索引
     await db.analysis_tasks.create_index("batch_id", name="idx_batch_id")
@@ -84,16 +73,13 @@ async def init_indexes() -> None:
     await db.analysis_reports.create_index("recommendation", name="idx_recommendation")
     await db.analysis_reports.create_index("created_at", name="idx_created_at")
     await db.analysis_reports.create_index(
-        [("user_id", 1), ("created_at", -1)],
-        name="idx_user_created"
+        [("user_id", 1), ("created_at", -1)], name="idx_user_created"
     )
     await db.analysis_reports.create_index(
-        [("user_id", 1), ("stock_code", 1)],
-        name="idx_user_stock"
+        [("user_id", 1), ("stock_code", 1)], name="idx_user_stock"
     )
     await db.analysis_reports.create_index(
-        [("user_id", 1), ("recommendation", 1)],
-        name="idx_user_recommendation"
+        [("user_id", 1), ("recommendation", 1)], name="idx_user_recommendation"
     )
 
     # ========================================
@@ -104,8 +90,7 @@ async def init_indexes() -> None:
     await db.archived_reports.create_index("recommendation", name="idx_recommendation")
     await db.archived_reports.create_index("archived_at", name="idx_archived_at")
     await db.archived_reports.create_index(
-        [("user_id", 1), ("archived_at", -1)],
-        name="idx_user_archived"
+        [("user_id", 1), ("archived_at", -1)], name="idx_user_archived"
     )
 
     # ========================================
@@ -115,8 +100,7 @@ async def init_indexes() -> None:
     await db.agent_traces.create_index("agent_slug", name="idx_agent_slug")
     await db.agent_traces.create_index("timestamp", name="idx_timestamp")
     await db.agent_traces.create_index(
-        [("task_id", 1), ("timestamp", 1)],
-        name="idx_task_timestamp"
+        [("task_id", 1), ("timestamp", 1)], name="idx_task_timestamp"
     )
 
     logger.info("TradingAgents indexes initialized successfully")
@@ -125,6 +109,7 @@ async def init_indexes() -> None:
 # =============================================================================
 # 集合查询辅助函数
 # =============================================================================
+
 
 async def get_collection_stats() -> dict:
     """

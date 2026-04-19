@@ -9,12 +9,13 @@ Local 工具适配器
 """
 
 import logging
-from typing import Optional, List, Dict, Any, Type
+from typing import Any, Dict, List, Type
+
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
-from core.market_data.models import MarketType
 from core.market_data.managers.source_router import DataSourceRouter
+from core.market_data.models import MarketType
 
 logger = logging.getLogger(__name__)
 
@@ -23,20 +24,24 @@ logger = logging.getLogger(__name__)
 # LangChain 工具输入模式（添加市场类型）
 # =============================================================================
 
+
 class GetStockQuotesInput(BaseModel):
     """获取股票行情输入参数"""
+
     symbol: str = Field(description="股票代码，如 600000 或 000001")
     market: str = Field(default="A_STOCK", description="市场类型: A_STOCK, HK_STOCK, US_STOCK")
 
 
 class GetStockInfoInput(BaseModel):
     """获取公司信息输入参数"""
+
     symbol: str = Field(description="股票代码，如 600000 或 000001")
     market: str = Field(default="A_STOCK", description="市场类型: A_STOCK, HK_STOCK, US_STOCK")
 
 
 class GetStockListInput(BaseModel):
     """获取股票列表输入参数"""
+
     limit: int = Field(default=100, description="返回数量限制")
     market: str = Field(default="A_STOCK", description="市场类型: A_STOCK, HK_STOCK, US_STOCK")
 
@@ -44,6 +49,7 @@ class GetStockListInput(BaseModel):
 # =============================================================================
 # 工具工厂函数（根据市场类型选择正确的工具类）
 # =============================================================================
+
 
 def get_tool_class_for_market(market: str) -> type:
     """
@@ -55,16 +61,21 @@ def get_tool_class_for_market(market: str) -> type:
     Returns:
         对应的工具类
     """
-    market_type = MarketType(market) if market in [e.value for e in MarketType] else MarketType.A_STOCK
+    market_type = (
+        MarketType(market) if market in [e.value for e in MarketType] else MarketType.A_STOCK
+    )
 
     if market_type == MarketType.HK_STOCK:
         from core.market_data.tools.hk_stock_tools import HKStockTool
+
         return HKStockTool
     elif market_type == MarketType.US_STOCK:
         from core.market_data.tools.us_stock_tools import USStockTool
+
         return USStockTool
     else:
         from core.market_data.tools.a_stock_tools import AStockTool
+
         return AStockTool
 
 
@@ -72,8 +83,10 @@ def get_tool_class_for_market(market: str) -> type:
 # LangChain 工具实现（多市场通用版）
 # =============================================================================
 
+
 class GetStockQuotesTool(BaseTool):
     """获取股票实时行情工具（支持多市场）"""
+
     name: str = "get_stock_quotes"
     description: str = """获取股票的实时行情数据，包括价格、成交量、涨跌幅等。
     - A股输入格式：600000 或 600000.SH/600000.SZ
@@ -86,23 +99,30 @@ class GetStockQuotesTool(BaseTool):
     source_router: Any = Field(default=None)
     market: str = Field(default="A_STOCK")
 
-    def __init__(self, user_id: str, source_router, market: str = "A_STOCK", **kwargs):
+    def __init__(
+        self,
+        user_id: str,
+        source_router: Any,
+        market: str = "A_STOCK",
+        **kwargs: Any,
+    ) -> None:
         super().__init__(**kwargs)
-        object.__setattr__(self, 'user_id', user_id)
-        object.__setattr__(self, 'source_router', source_router)
-        object.__setattr__(self, 'market', market)
-        object.__setattr__(self, '_tool_instance', None)
+        object.__setattr__(self, "user_id", user_id)
+        object.__setattr__(self, "source_router", source_router)
+        object.__setattr__(self, "market", market)
+        object.__setattr__(self, "_tool_instance", None)
 
     @property
-    def tool_instance(self):
+    def tool_instance(self) -> Any:
         """懒加载对应的工具实例"""
-        if self._tool_instance is None:
+        if getattr(self, "_tool_instance", None) is None:
             tool_class = get_tool_class_for_market(self.market)
-            object.__setattr__(self, '_tool_instance', tool_class(
-                user_id=self.user_id,
-                source_router=self.source_router
-            ))
-        return self._tool_instance
+            object.__setattr__(
+                self,
+                "_tool_instance",
+                tool_class(user_id=self.user_id, source_router=self.source_router),
+            )
+        return getattr(self, "_tool_instance")
 
     async def _arun(self, symbol: str, market: str = "A_STOCK") -> Dict[str, Any]:
         """异步执行获取行情（LangChain 优先调用此方法）"""
@@ -138,6 +158,7 @@ class GetStockQuotesTool(BaseTool):
     def _run(self, symbol: str, market: str = "A_STOCK") -> Dict[str, Any]:
         """同步执行（回退方案，非异步上下文使用）"""
         import asyncio
+
         try:
             return asyncio.run(self._arun(symbol, market))
         except RuntimeError:
@@ -147,6 +168,7 @@ class GetStockQuotesTool(BaseTool):
 
 class GetStockInfoTool(BaseTool):
     """获取公司基本信息工具（支持多市场）"""
+
     name: str = "get_company_info"
     description: str = """获取公司的基本信息，包括公司名称、行业、板块、上市日期等。
     - A股输入格式：600000
@@ -158,22 +180,29 @@ class GetStockInfoTool(BaseTool):
     source_router: Any = Field(default=None)
     market: str = Field(default="A_STOCK")
 
-    def __init__(self, user_id: str, source_router, market: str = "A_STOCK", **kwargs):
+    def __init__(
+        self,
+        user_id: str,
+        source_router: Any,
+        market: str = "A_STOCK",
+        **kwargs: Any,
+    ) -> None:
         super().__init__(**kwargs)
-        object.__setattr__(self, 'user_id', user_id)
-        object.__setattr__(self, 'source_router', source_router)
-        object.__setattr__(self, 'market', market)
-        object.__setattr__(self, '_tool_instance', None)
+        object.__setattr__(self, "user_id", user_id)
+        object.__setattr__(self, "source_router", source_router)
+        object.__setattr__(self, "market", market)
+        object.__setattr__(self, "_tool_instance", None)
 
     @property
-    def tool_instance(self):
-        if self._tool_instance is None:
+    def tool_instance(self) -> Any:
+        if getattr(self, "_tool_instance", None) is None:
             tool_class = get_tool_class_for_market(self.market)
-            object.__setattr__(self, '_tool_instance', tool_class(
-                user_id=self.user_id,
-                source_router=self.source_router
-            ))
-        return self._tool_instance
+            object.__setattr__(
+                self,
+                "_tool_instance",
+                tool_class(user_id=self.user_id, source_router=self.source_router),
+            )
+        return getattr(self, "_tool_instance")
 
     async def _arun(self, symbol: str, market: str = "A_STOCK") -> Dict[str, Any]:
         """异步执行获取公司信息"""
@@ -203,6 +232,7 @@ class GetStockInfoTool(BaseTool):
     def _run(self, symbol: str, market: str = "A_STOCK") -> Dict[str, Any]:
         """同步执行（回退方案）"""
         import asyncio
+
         try:
             return asyncio.run(self._arun(symbol, market))
         except RuntimeError:
@@ -211,6 +241,7 @@ class GetStockInfoTool(BaseTool):
 
 class GetStockListTool(BaseTool):
     """获取股票列表工具（支持多市场）"""
+
     name: str = "get_stock_list"
     description: str = """获取指定市场的股票列表，包括热门股票。
     - A_STOCK: A股市场
@@ -222,22 +253,29 @@ class GetStockListTool(BaseTool):
     source_router: Any = Field(default=None)
     market: str = Field(default="A_STOCK")
 
-    def __init__(self, user_id: str, source_router, market: str = "A_STOCK", **kwargs):
+    def __init__(
+        self,
+        user_id: str,
+        source_router: Any,
+        market: str = "A_STOCK",
+        **kwargs: Any,
+    ) -> None:
         super().__init__(**kwargs)
-        object.__setattr__(self, 'user_id', user_id)
-        object.__setattr__(self, 'source_router', source_router)
-        object.__setattr__(self, 'market', market)
-        object.__setattr__(self, '_tool_instance', None)
+        object.__setattr__(self, "user_id", user_id)
+        object.__setattr__(self, "source_router", source_router)
+        object.__setattr__(self, "market", market)
+        object.__setattr__(self, "_tool_instance", None)
 
     @property
-    def tool_instance(self):
-        if self._tool_instance is None:
+    def tool_instance(self) -> Any:
+        if getattr(self, "_tool_instance", None) is None:
             tool_class = get_tool_class_for_market(self.market)
-            object.__setattr__(self, '_tool_instance', tool_class(
-                user_id=self.user_id,
-                source_router=self.source_router
-            ))
-        return self._tool_instance
+            object.__setattr__(
+                self,
+                "_tool_instance",
+                tool_class(user_id=self.user_id, source_router=self.source_router),
+            )
+        return getattr(self, "_tool_instance")
 
     async def _arun(self, limit: int = 100, market: str = "A_STOCK") -> List[Dict[str, Any]]:
         """异步执行获取股票列表"""
@@ -257,6 +295,7 @@ class GetStockListTool(BaseTool):
     def _run(self, limit: int = 100, market: str = "A_STOCK") -> List[Dict[str, Any]]:
         """同步执行（回退方案）"""
         import asyncio
+
         try:
             return asyncio.run(self._arun(limit, market))
         except RuntimeError:
@@ -266,6 +305,7 @@ class GetStockListTool(BaseTool):
 # =============================================================================
 # 工具管理器
 # =============================================================================
+
 
 class LocalToolsManager:
     """
@@ -286,8 +326,8 @@ class LocalToolsManager:
         self,
         user_id: str,
         source_router: DataSourceRouter,
-        market: str = "A_STOCK"
-    ):
+        market: str = "A_STOCK",
+    ) -> None:
         """
         初始化工具管理器
 
@@ -300,10 +340,7 @@ class LocalToolsManager:
         self.source_router = source_router
         self.market = market
 
-    def get_tools(
-        self,
-        tool_names: List[str]
-    ) -> List[BaseTool]:
+    def get_tools(self, tool_names: List[str]) -> List[BaseTool]:
         """
         根据工具名称列表获取 LangChain 工具实例
 
@@ -313,16 +350,16 @@ class LocalToolsManager:
         Returns:
             LangChain 工具列表
         """
-        tools = []
+        tools: List[BaseTool] = []
 
         for tool_name in tool_names:
             if tool_name in self.TOOL_MAPPING:
                 try:
                     tool_class = self.TOOL_MAPPING[tool_name]
-                    tool = tool_class(
+                    tool = tool_class(  # type: ignore[abstract]
                         user_id=self.user_id,
                         source_router=self.source_router,
-                        market=self.market  # 传递市场类型
+                        market=self.market,  # 传递市场类型
                     )
                     tools.append(tool)
                     logger.debug(f"[Local Tools] 创建工具: {tool_name} (market={self.market})")
@@ -339,11 +376,9 @@ class LocalToolsManager:
 # 辅助函数
 # =============================================================================
 
+
 def create_local_tools(
-    user_id: str,
-    source_router: DataSourceRouter,
-    tool_names: List[str],
-    market: str = "A_STOCK"
+    user_id: str, source_router: DataSourceRouter, tool_names: List[str], market: str = "A_STOCK"
 ) -> List[BaseTool]:
     """
     创建 Local 工具列表的便捷函数

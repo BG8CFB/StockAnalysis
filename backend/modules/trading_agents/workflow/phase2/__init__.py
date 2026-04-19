@@ -7,8 +7,8 @@ Phase 2: 多空博弈与投资决策
 多空辩论 + 投资组合经理 + 交易员。
 """
 
-from .bull_researcher import BullResearcher
 from .bear_researcher import BearResearcher
+from .bull_researcher import BullResearcher
 from .research_manager import ResearchManager
 from .trader import Trader
 
@@ -21,37 +21,30 @@ __all__ = [
 ]
 
 import logging
-from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
+from typing import Any, Dict
 
 from langchain_core.language_models import BaseChatModel
 
-from modules.trading_agents.models.state import (
-    WorkflowState,
-    AgentExecution,
-    PhaseExecution,
-    TaskStatus,
-)
 from modules.trading_agents.config import get_enabled_agents
-from modules.trading_agents.workflow.events import (
-    create_phase_agents_event,
-    create_agent_started_event,
-    create_agent_completed_event,
-    create_report_generated_event,
+from modules.trading_agents.models.state import (
+    TaskStatus,
+    WorkflowState,
 )
 from modules.trading_agents.workflow.agent_helpers import (
-    handle_agent_started,
     handle_agent_completed,
+    handle_agent_started,
 )
+from modules.trading_agents.workflow.events import (
+    create_phase_agents_event,
+)
+from modules.trading_agents.workflow.state import AgentExecution, PhaseExecution
 
 logger = logging.getLogger(__name__)
 
 
 async def execute_phase2(
-    state: WorkflowState,
-    model: BaseChatModel,
-    config: Dict[str, Any],
-    debate_rounds: int = 2
+    state: WorkflowState, model: BaseChatModel, config: Dict[str, Any], debate_rounds: int = 2
 ) -> WorkflowState:
     """
     执行 Phase 2: 多空博弈与投资决策
@@ -101,23 +94,39 @@ async def execute_phase2(
         max_concurrency=2,  # 辩论阶段最大并发为2
         agents=agents_config,
         total_executions=state.phase_agent_counts.get(2, debate_rounds * 2 + 2),
-        phase_progress_weight=(state.phase_agent_counts.get(2, debate_rounds * 2 + 2) / state.total_agent_executions * 100) if state.total_agent_executions > 0 else 0
+        phase_progress_weight=(
+            (
+                state.phase_agent_counts.get(2, debate_rounds * 2 + 2)
+                / state.total_agent_executions
+                * 100
+            )
+            if state.total_agent_executions > 0
+            else 0
+        ),
     )
     await websocket_manager.broadcast_event(state.task_id, phase_agents_event)
     logger.info(f"[Phase 2] 已发送智能体列表事件, 智能体数量: {len(agents_config)}")
 
     # 创建智能体实例（传入 task_id 和 websocket_manager 用于工具调用事件推送）
-    agents = {}
+    agents: Dict[str, Any] = {}
     for agent_config in agents_config:
         slug = agent_config["slug"]
         if slug == "bull-researcher":
-            agents["bull"] = BullResearcher(model, agent_config, task_id=state.task_id, websocket_manager=websocket_manager)
+            agents["bull"] = BullResearcher(
+                model, agent_config, task_id=state.task_id, websocket_manager=websocket_manager
+            )
         elif slug == "bear-researcher":
-            agents["bear"] = BearResearcher(model, agent_config, task_id=state.task_id, websocket_manager=websocket_manager)
+            agents["bear"] = BearResearcher(
+                model, agent_config, task_id=state.task_id, websocket_manager=websocket_manager
+            )
         elif slug == "research-manager":
-            agents["manager"] = ResearchManager(model, agent_config, task_id=state.task_id, websocket_manager=websocket_manager)
+            agents["manager"] = ResearchManager(
+                model, agent_config, task_id=state.task_id, websocket_manager=websocket_manager
+            )
         elif slug == "trader":
-            agents["trader"] = Trader(model, agent_config, task_id=state.task_id, websocket_manager=websocket_manager)
+            agents["trader"] = Trader(
+                model, agent_config, task_id=state.task_id, websocket_manager=websocket_manager
+            )
 
     # 检查必需智能体（Trader 可选）
     if "bull" not in agents or "bear" not in agents or "manager" not in agents:
@@ -135,7 +144,7 @@ async def execute_phase2(
         phase_name="多空博弈与投资决策",
         started_at=datetime.now(timezone.utc),
         execution_mode="mixed",
-        max_concurrency=2  # 看涨和看跌可以并行
+        max_concurrency=2,  # 看涨和看跌可以并行
     )
 
     # 获取分析师报告
@@ -156,14 +165,14 @@ async def execute_phase2(
                 state=state,
                 agent_slug="bull-researcher",
                 agent_name="看涨分析师",
-                websocket_manager=websocket_manager
+                websocket_manager=websocket_manager,
             )
             # 发送看跌分析师开始事件
             await handle_agent_started(
                 state=state,
                 agent_slug="bear-researcher",
                 agent_name="看跌分析师",
-                websocket_manager=websocket_manager
+                websocket_manager=websocket_manager,
             )
 
             bull_task = agents["bull"].analyze(state, analyst_reports)
@@ -181,7 +190,7 @@ async def execute_phase2(
                     agent_name="看涨分析师",
                     output=bull_result["output"],
                     websocket_manager=websocket_manager,
-                    save_report=True
+                    save_report=True,
                 )
             # 发送看跌分析师完成事件
             if bear_result.get("output"):
@@ -191,7 +200,7 @@ async def execute_phase2(
                     agent_name="看跌分析师",
                     output=bear_result["output"],
                     websocket_manager=websocket_manager,
-                    save_report=True
+                    save_report=True,
                 )
         else:
             # 第二轮及以后：串行执行（看跌需要看涨观点进行反驳）
@@ -200,7 +209,7 @@ async def execute_phase2(
                 state=state,
                 agent_slug="bull-researcher",
                 agent_name="看涨分析师",
-                websocket_manager=websocket_manager
+                websocket_manager=websocket_manager,
             )
             bull_result = await agents["bull"].analyze(state, analyst_reports)
             bull_view = bull_result["output"]
@@ -212,7 +221,7 @@ async def execute_phase2(
                     agent_name="看涨分析师",
                     output=bull_result["output"],
                     websocket_manager=websocket_manager,
-                    save_report=True
+                    save_report=True,
                 )
 
             # 发送看跌分析师开始事件
@@ -220,12 +229,10 @@ async def execute_phase2(
                 state=state,
                 agent_slug="bear-researcher",
                 agent_name="看跌分析师",
-                websocket_manager=websocket_manager
+                websocket_manager=websocket_manager,
             )
             bear_result = await agents["bear"].analyze(
-                state,
-                analyst_reports,
-                bull_view  # 看跌分析师基于看涨观点进行反驳
+                state, analyst_reports, bull_view  # 看跌分析师基于看涨观点进行反驳
             )
             bear_view = bear_result["output"]
             # 发送看跌分析师完成事件
@@ -236,15 +243,13 @@ async def execute_phase2(
                     agent_name="看跌分析师",
                     output=bear_result["output"],
                     websocket_manager=websocket_manager,
-                    save_report=True
+                    save_report=True,
                 )
 
         # 记录辩论轮次
-        debate_turns.append({
-            "round": round_idx + 1,
-            "bull_view": bull_view,
-            "bear_view": bear_view
-        })
+        debate_turns.append(
+            {"round": round_idx + 1, "bull_view": bull_view, "bear_view": bear_view}
+        )
 
     # 研究经理做出最终决策（串行，等待所有辩论完成）
     # 发送研究经理开始事件
@@ -252,7 +257,7 @@ async def execute_phase2(
         state=state,
         agent_slug="research-manager",
         agent_name="研究经理",
-        websocket_manager=websocket_manager
+        websocket_manager=websocket_manager,
     )
     manager_result = await agents["manager"].decide(state, bull_view, bear_view)
     # 发送研究经理完成事件
@@ -263,7 +268,7 @@ async def execute_phase2(
             agent_name="研究经理",
             output=manager_result["output"],
             websocket_manager=websocket_manager,
-            save_report=True
+            save_report=True,
         )
 
     # 更新状态
@@ -282,13 +287,13 @@ async def execute_phase2(
 
     # 交易员制定执行计划（串行，等待研究经理完成）
     if "trader" in agents:
-        logger.info(f"[Phase 2] 交易员开始制定计划")
+        logger.info("[Phase 2] 交易员开始制定计划")
         # 发送交易员开始事件
         await handle_agent_started(
             state=state,
             agent_slug="trader",
             agent_name="专业交易员",
-            websocket_manager=websocket_manager
+            websocket_manager=websocket_manager,
         )
         trader_result = await agents["trader"].plan(state, state.investment_decision)
 
@@ -296,7 +301,7 @@ async def execute_phase2(
         if trader_result.get("output"):
             state.trading_plan = {
                 "content": trader_result["output"],
-                "timestamp": datetime.now(timezone.utc).isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
             # 发送交易员完成事件
             await handle_agent_completed(
@@ -305,7 +310,7 @@ async def execute_phase2(
                 agent_name="专业交易员",
                 output=trader_result["output"],
                 websocket_manager=websocket_manager,
-                save_report=True
+                save_report=True,
             )
 
     # 更新执行记录
@@ -324,7 +329,7 @@ async def execute_phase2(
                 name=name,
                 started_at=phase2_execution.started_at,
                 completed_at=phase2_execution.completed_at,
-                status=TaskStatus.COMPLETED
+                status=TaskStatus.COMPLETED,
             )
         )
 

@@ -8,7 +8,7 @@
 
 import logging
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -33,8 +33,10 @@ router = APIRouter(prefix="/market-data", tags=["市场数据"])
 # 请求/响应模型
 # =============================================================================
 
+
 class UserSourceConfigCreate(BaseModel):
     """创建用户数据源配置请求"""
+
     source_id: str = Field(..., description="数据源 ID")
     market: str = Field(..., description="市场类型: A_STOCK, US_STOCK, HK_STOCK")
     api_key: str = Field(..., description="API 密钥")
@@ -44,6 +46,7 @@ class UserSourceConfigCreate(BaseModel):
 
 class UserSourceConfigUpdate(BaseModel):
     """更新用户数据源配置请求"""
+
     api_key: Optional[str] = None
     enabled: Optional[bool] = None
     priority: Optional[int] = None
@@ -53,12 +56,13 @@ class UserSourceConfigUpdate(BaseModel):
 # 系统数据源配置查询接口（只读）
 # =============================================================================
 
+
 @router.get("/sources/configs")
 async def get_source_configs(
     market: Optional[str] = None,
     enabled_only: bool = True,
-    system_source_repo: SystemDataSourceRepository = Depends(lambda: SystemDataSourceRepository())
-):
+    system_source_repo: SystemDataSourceRepository = Depends(lambda: SystemDataSourceRepository()),
+) -> JSONResponse:
     """
     获取数据源配置列表
 
@@ -67,47 +71,41 @@ async def get_source_configs(
     try:
         if market:
             configs = await system_source_repo.get_enabled_configs(
-                market=market,
-                enabled_only=enabled_only
+                market=market, enabled_only=enabled_only
             )
         else:
             all_configs = []
             for m in SUPPORTED_MARKETS:
-                all_configs.extend(await system_source_repo.get_enabled_configs(market=m, enabled_only=enabled_only))
+                all_configs.extend(
+                    await system_source_repo.get_enabled_configs(
+                        market=m, enabled_only=enabled_only
+                    )
+                )
             configs = all_configs
 
         return JSONResponse(content=configs)
 
     except Exception as e:
         logger.error(f"Failed to get source configs: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"获取数据源配置失败: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"获取数据源配置失败: {str(e)}")
 
 
 @router.get("/sources/config/{source_id}")
 async def get_source_config(
     source_id: str,
     market: str = "A_STOCK",
-    system_source_repo: SystemDataSourceRepository = Depends(lambda: SystemDataSourceRepository())
-):
+    system_source_repo: SystemDataSourceRepository = Depends(lambda: SystemDataSourceRepository()),
+) -> JSONResponse:
     """
     获取单个数据源配置
 
     返回指定数据源的配置信息
     """
     try:
-        config = await system_source_repo.get_config(
-            source_id=source_id,
-            market=market
-        )
+        config = await system_source_repo.get_config(source_id=source_id, market=market)
 
         if not config:
-            raise HTTPException(
-                status_code=404,
-                detail=f"数据源配置不存在: {source_id}"
-            )
+            raise HTTPException(status_code=404, detail=f"数据源配置不存在: {source_id}")
 
         return JSONResponse(content=config)
 
@@ -115,23 +113,21 @@ async def get_source_config(
         raise
     except Exception as e:
         logger.error(f"Failed to get source config: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"获取数据源配置失败: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"获取数据源配置失败: {str(e)}")
 
 
 # =============================================================================
 # 用户数据源配置接口
 # =============================================================================
 
+
 @router.get("/user-sources/configs")
 async def get_user_source_configs(
     market: Optional[str] = None,
     enabled_only: bool = True,
     current_user: UserModel = Depends(get_current_active_user),
-    user_source_repo: UserDataSourceRepository = Depends(lambda: UserDataSourceRepository())
-):
+    user_source_repo: UserDataSourceRepository = Depends(lambda: UserDataSourceRepository()),
+) -> JSONResponse:
     """
     获取用户的数据源配置列表
 
@@ -140,19 +136,14 @@ async def get_user_source_configs(
     try:
         user_id = str(current_user.id)
         configs = await user_source_repo.get_user_configs(
-            user_id=user_id,
-            market=market,
-            enabled=enabled_only
+            user_id=user_id, market=market, enabled=enabled_only
         )
 
         return JSONResponse(content=configs)
 
     except Exception as e:
         logger.error(f"Failed to get user source configs: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"获取用户数据源配置失败: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"获取用户数据源配置失败: {str(e)}")
 
 
 @router.get("/user-sources/config/{source_id}")
@@ -160,8 +151,8 @@ async def get_user_source_config(
     source_id: str,
     market: str = "A_STOCK",
     current_user: UserModel = Depends(get_current_active_user),
-    user_source_repo: UserDataSourceRepository = Depends(lambda: UserDataSourceRepository())
-):
+    user_source_repo: UserDataSourceRepository = Depends(lambda: UserDataSourceRepository()),
+) -> JSONResponse:
     """
     获取用户单个数据源配置
 
@@ -170,16 +161,11 @@ async def get_user_source_config(
     try:
         user_id = str(current_user.id)
         config = await user_source_repo.get_config(
-            user_id=user_id,
-            source_id=source_id,
-            market=market
+            user_id=user_id, source_id=source_id, market=market
         )
 
         if not config:
-            raise HTTPException(
-                status_code=404,
-                detail=f"用户数据源配置不存在: {source_id}"
-            )
+            raise HTTPException(status_code=404, detail=f"用户数据源配置不存在: {source_id}")
 
         # 隐藏敏感信息（API Key）
         if "config" in config and "api_key" in config["config"]:
@@ -191,18 +177,15 @@ async def get_user_source_config(
         raise
     except Exception as e:
         logger.error(f"Failed to get user source config: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"获取用户数据源配置失败: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"获取用户数据源配置失败: {str(e)}")
 
 
 @router.post("/user-sources/config")
 async def create_user_source_config(
     request: UserSourceConfigCreate,
     current_user: UserModel = Depends(get_current_active_user),
-    user_source_repo: UserDataSourceRepository = Depends(lambda: UserDataSourceRepository())
-):
+    user_source_repo: UserDataSourceRepository = Depends(lambda: UserDataSourceRepository()),
+) -> JSONResponse:
     """
     创建用户数据源配置
 
@@ -219,45 +202,43 @@ async def create_user_source_config(
         }
 
         if request.market not in allowed_sources:
-            raise HTTPException(
-                status_code=400,
-                detail=f"不支持的市场类型: {request.market}"
-            )
+            raise HTTPException(status_code=400, detail=f"不支持的市场类型: {request.market}")
 
         if request.source_id not in allowed_sources[request.market]:
             raise HTTPException(
                 status_code=400,
-                detail=f"不允许配置该数据源: {request.source_id}。允许的数据源: {allowed_sources[request.market]}"
+                detail=(
+                    f"不允许配置该数据源: {request.source_id}。"
+                    f"允许的数据源: {allowed_sources[request.market]}"
+                ),
             )
 
         # 创建配置
         from core.market_data.models.datasource import UserDataSourceConfig
+
         config = UserDataSourceConfig(
             user_id=user_id,
             source_id=request.source_id,
             market=request.market,
             enabled=request.enabled,
             priority=request.priority,
-            config={"api_key": request.api_key}
+            config={"api_key": request.api_key},
         )
 
         doc_id = await user_source_repo.upsert_config(config)
 
-        logger.info(f"Created user source config: user_id={user_id}, source_id={request.source_id}, market={request.market}")
+        logger.info(
+            f"Created user source config: user_id={user_id}, "
+            f"source_id={request.source_id}, market={request.market}"
+        )
 
-        return JSONResponse(content={
-            "message": "数据源配置创建成功",
-            "doc_id": doc_id
-        })
+        return JSONResponse(content={"message": "数据源配置创建成功", "doc_id": doc_id})
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to create user source config: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"创建用户数据源配置失败: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"创建用户数据源配置失败: {str(e)}")
 
 
 @router.put("/user-sources/config/{source_id}")
@@ -266,8 +247,8 @@ async def update_user_source_config(
     market: str,
     request: UserSourceConfigUpdate,
     current_user: UserModel = Depends(get_current_active_user),
-    user_source_repo: UserDataSourceRepository = Depends(lambda: UserDataSourceRepository())
-):
+    user_source_repo: UserDataSourceRepository = Depends(lambda: UserDataSourceRepository()),
+) -> JSONResponse:
     """
     更新用户数据源配置
 
@@ -278,19 +259,14 @@ async def update_user_source_config(
 
         # 获取现有配置
         existing_config = await user_source_repo.get_config(
-            user_id=user_id,
-            source_id=source_id,
-            market=market
+            user_id=user_id, source_id=source_id, market=market
         )
 
         if not existing_config:
-            raise HTTPException(
-                status_code=404,
-                detail=f"用户数据源配置不存在: {source_id}"
-            )
+            raise HTTPException(status_code=404, detail=f"用户数据源配置不存在: {source_id}")
 
         # 构建更新数据
-        updates = {}
+        updates: Dict[str, Any] = {}
         if request.api_key is not None:
             updates["config"] = {**existing_config.get("config", {}), "api_key": request.api_key}
         if request.enabled is not None:
@@ -300,32 +276,31 @@ async def update_user_source_config(
 
         # 更新配置
         from core.market_data.models.datasource import UserDataSourceConfig
+
         updated_config = UserDataSourceConfig(
             user_id=user_id,
             source_id=source_id,
             market=market,
             enabled=request.enabled if request.enabled is not None else existing_config["enabled"],
-            priority=request.priority if request.priority is not None else existing_config["priority"],
-            config=updates.get("config", existing_config["config"])
+            priority=(
+                request.priority if request.priority is not None else existing_config["priority"]
+            ),
+            config=updates.get("config", existing_config["config"]),
         )
 
         doc_id = await user_source_repo.upsert_config(updated_config)
 
-        logger.info(f"Updated user source config: user_id={user_id}, source_id={source_id}, market={market}")
+        logger.info(
+            f"Updated user source config: user_id={user_id}, source_id={source_id}, market={market}"
+        )
 
-        return JSONResponse(content={
-            "message": "数据源配置更新成功",
-            "doc_id": doc_id
-        })
+        return JSONResponse(content={"message": "数据源配置更新成功", "doc_id": doc_id})
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to update user source config: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"更新用户数据源配置失败: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"更新用户数据源配置失败: {str(e)}")
 
 
 @router.delete("/user-sources/config/{source_id}")
@@ -333,8 +308,8 @@ async def delete_user_source_config(
     source_id: str,
     market: str,
     current_user: UserModel = Depends(get_current_active_user),
-    user_source_repo: UserDataSourceRepository = Depends(lambda: UserDataSourceRepository())
-):
+    user_source_repo: UserDataSourceRepository = Depends(lambda: UserDataSourceRepository()),
+) -> JSONResponse:
     """
     删除用户数据源配置
 
@@ -344,18 +319,15 @@ async def delete_user_source_config(
         user_id = str(current_user.id)
 
         deleted_count = await user_source_repo.delete_config(
-            user_id=user_id,
-            source_id=source_id,
-            market=market
+            user_id=user_id, source_id=source_id, market=market
         )
 
         if deleted_count == 0:
-            raise HTTPException(
-                status_code=404,
-                detail=f"用户数据源配置不存在: {source_id}"
-            )
+            raise HTTPException(status_code=404, detail=f"用户数据源配置不存在: {source_id}")
 
-        logger.info(f"Deleted user source config: user_id={user_id}, source_id={source_id}, market={market}")
+        logger.info(
+            f"Deleted user source config: user_id={user_id}, source_id={source_id}, market={market}"
+        )
 
         return JSONResponse(content={"message": "数据源配置删除成功"})
 
@@ -363,10 +335,7 @@ async def delete_user_source_config(
         raise
     except Exception as e:
         logger.error(f"Failed to delete user source config: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"删除用户数据源配置失败: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"删除用户数据源配置失败: {str(e)}")
 
 
 @router.post("/user-sources/config/{source_id}/test")
@@ -374,8 +343,8 @@ async def test_user_source_config(
     source_id: str,
     market: str,
     current_user: UserModel = Depends(get_current_active_user),
-    user_source_repo: UserDataSourceRepository = Depends(lambda: UserDataSourceRepository())
-):
+    user_source_repo: UserDataSourceRepository = Depends(lambda: UserDataSourceRepository()),
+) -> JSONResponse:
     """
     测试用户数据源配置
 
@@ -385,16 +354,11 @@ async def test_user_source_config(
         user_id = str(current_user.id)
 
         config = await user_source_repo.get_config(
-            user_id=user_id,
-            source_id=source_id,
-            market=market
+            user_id=user_id, source_id=source_id, market=market
         )
 
         if not config:
-            raise HTTPException(
-                status_code=404,
-                detail=f"用户数据源配置不存在: {source_id}"
-            )
+            raise HTTPException(status_code=404, detail=f"用户数据源配置不存在: {source_id}")
 
         # 根据数据源类型测试连接
         success = False
@@ -403,14 +367,16 @@ async def test_user_source_config(
         try:
             if source_id == "tushare_pro":
                 from core.market_data.sources.a_stock.tushare_adapter import TuShareAdapter
+
                 adapter = TuShareAdapter(config=config["config"])
                 success = await adapter.test_connection()
             elif source_id == "alpha_vantage":
                 from core.market_data.sources.us_stock.alphavantage_adapter import (
                     AlphaVantageAdapter,
                 )
-                adapter = AlphaVantageAdapter(config=config["config"])
-                success = await adapter.test_connection()
+
+                av_adapter: Any = AlphaVantageAdapter(config=config["config"])
+                success = await av_adapter.test_connection()
             else:
                 error = f"不支持的数据源类型: {source_id}"
 
@@ -422,39 +388,35 @@ async def test_user_source_config(
         # 更新测试状态
         status = "success" if success else "failed"
         await user_source_repo.update_test_status(
-            user_id=user_id,
-            source_id=source_id,
-            market=market,
-            status=status,
-            error=error
+            user_id=user_id, source_id=source_id, market=market, status=status, error=error
         )
 
-        logger.info(f"Tested user source config: user_id={user_id}, source_id={source_id}, success={success}")
+        logger.info(
+            f"Tested user source config: user_id={user_id}, "
+            f"source_id={source_id}, success={success}"
+        )
 
-        return JSONResponse(content={
-            "success": success,
-            "error": error,
-            "test_time": datetime.now().isoformat()
-        })
+        return JSONResponse(
+            content={
+                "success": success,
+                "error": error,
+                "test_time": datetime.now().isoformat(),
+            }
+        )
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to test user source config: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"测试用户数据源配置失败: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"测试用户数据源配置失败: {str(e)}")
 
 
 # =============================================================================
 # 手动触发同步接口
 # =============================================================================
 
-async def _run_full_sync_task(
-    market: str,
-    user_id: str
-) -> None:
+
+async def _run_full_sync_task(market: str, user_id: str) -> None:
     """
     后台执行全量同步任务
 
@@ -473,36 +435,35 @@ async def _run_full_sync_task(
     stock_repo = StockInfoRepository()
     market_type = MarketType(market)
 
-    results = {
+    results: Dict[str, Any] = {
         "market": market,
         "user_id": user_id,
         "started_at": start_time.isoformat(),
-        "tasks": []
+        "tasks": [],
     }
 
     # 1. 同步股票列表
     try:
         logger.info(f"📋 [{market}] [后台任务] 开始同步股票列表...")
         stock_list_result = await sync_service.sync_stock_list_with_fallback(
-            market=market_type,
-            status="L"
+            market=market_type, status="L"
         )
-        results["tasks"].append({
-            "name": "同步股票列表",
-            "status": stock_list_result["status"],
-            "result": stock_list_result.get("result", {})
-        })
-        logger.info(f"✅ [{market}] [后台任务] 股票列表同步完成: "
-                   f"状态={stock_list_result['status']}, "
-                   f"记录数={stock_list_result.get('result', {}).get('total', 0)}, "
-                   f"数据源={stock_list_result.get('result', {}).get('source', 'unknown')}")
+        results["tasks"].append(
+            {
+                "name": "同步股票列表",
+                "status": stock_list_result["status"],
+                "result": stock_list_result.get("result", {}),
+            }
+        )
+        logger.info(
+            f"✅ [{market}] [后台任务] 股票列表同步完成: "
+            f"状态={stock_list_result['status']}, "
+            f"记录数={stock_list_result.get('result', {}).get('total', 0)}, "
+            f"数据源={stock_list_result.get('result', {}).get('source', 'unknown')}"
+        )
     except Exception as e:
         logger.error(f"❌ [{market}] [后台任务] 股票列表同步失败: {e}")
-        results["tasks"].append({
-            "name": "同步股票列表",
-            "status": "failed",
-            "error": str(e)
-        })
+        results["tasks"].append({"name": "同步股票列表", "status": "failed", "error": str(e)})
 
     # 2. 同步日线行情（最近1个月，限制前100只股票）
     try:
@@ -515,33 +476,29 @@ async def _run_full_sync_task(
             start_date = (datetime.now() - timedelta(days=30)).strftime("%Y%m%d")
 
             quotes_result = await sync_service.sync_daily_quotes_with_fallback(
-                symbols=symbols,
-                start_date=start_date,
-                end_date=end_date
+                symbols=symbols, start_date=start_date, end_date=end_date
             )
-            results["tasks"].append({
-                "name": "同步日线行情",
-                "status": quotes_result["status"],
-                "result": quotes_result.get("result", {})
-            })
-            logger.info(f"✅ [{market}] [后台任务] 日线行情同步完成: "
-                       f"状态={quotes_result['status']}, "
-                       f"记录数={quotes_result.get('result', {}).get('total_quotes', 0)}, "
-                       f"数据源={quotes_result.get('result', {}).get('source', 'unknown')}")
+            results["tasks"].append(
+                {
+                    "name": "同步日线行情",
+                    "status": quotes_result["status"],
+                    "result": quotes_result.get("result", {}),
+                }
+            )
+            logger.info(
+                f"✅ [{market}] [后台任务] 日线行情同步完成: "
+                f"状态={quotes_result['status']}, "
+                f"记录数={quotes_result.get('result', {}).get('total_quotes', 0)}, "
+                f"数据源={quotes_result.get('result', {}).get('source', 'unknown')}"
+            )
         else:
             logger.warning(f"⚠️ [{market}] [后台任务] 没有找到股票列表，跳过日线行情同步")
-            results["tasks"].append({
-                "name": "同步日线行情",
-                "status": "skipped",
-                "error": "没有找到股票列表"
-            })
+            results["tasks"].append(
+                {"name": "同步日线行情", "status": "skipped", "error": "没有找到股票列表"}
+            )
     except Exception as e:
         logger.error(f"❌ [{market}] [后台任务] 日线行情同步失败: {e}")
-        results["tasks"].append({
-            "name": "同步日线行情",
-            "status": "failed",
-            "error": str(e)
-        })
+        results["tasks"].append({"name": "同步日线行情", "status": "failed", "error": str(e)})
 
     # 3. 同步公司信息（仅A股）
     if market == "A_STOCK":
@@ -551,48 +508,48 @@ async def _run_full_sync_task(
             symbols = [s["symbol"] for s in stocks]
 
             if symbols:
-                company_result = await sync_service.sync_company_info_with_fallback(
-                    symbols=symbols
+                company_result = await sync_service.sync_company_info_with_fallback(symbols=symbols)
+                results["tasks"].append(
+                    {
+                        "name": "同步公司信息",
+                        "status": company_result["status"],
+                        "result": company_result.get("result", {}),
+                    }
                 )
-                results["tasks"].append({
-                    "name": "同步公司信息",
-                    "status": company_result["status"],
-                    "result": company_result.get("result", {})
-                })
-                logger.info(f"✅ [{market}] [后台任务] 公司信息同步完成: "
-                           f"状态={company_result['status']}, "
-                           f"记录数={company_result.get('result', {}).get('total_records', 0)}, "
-                           f"数据源={company_result.get('result', {}).get('source', 'unknown')}")
+                logger.info(
+                    f"✅ [{market}] [后台任务] 公司信息同步完成: "
+                    f"状态={company_result['status']}, "
+                    f"记录数={company_result.get('result', {}).get('total_records', 0)}, "
+                    f"数据源={company_result.get('result', {}).get('source', 'unknown')}"
+                )
             else:
                 logger.warning(f"⚠️ [{market}] [后台任务] 没有找到股票列表，跳过公司信息同步")
-                results["tasks"].append({
-                    "name": "同步公司信息",
-                    "status": "skipped",
-                    "error": "没有找到股票列表"
-                })
+                results["tasks"].append(
+                    {"name": "同步公司信息", "status": "skipped", "error": "没有找到股票列表"}
+                )
         except Exception as e:
             logger.error(f"❌ [{market}] [后台任务] 公司信息同步失败: {e}")
-            results["tasks"].append({
-                "name": "同步公司信息",
-                "status": "failed",
-                "error": str(e)
-            })
+            results["tasks"].append({"name": "同步公司信息", "status": "failed", "error": str(e)})
 
     results["finished_at"] = datetime.now().isoformat()
     results["total_tasks"] = len(results["tasks"])
-    results["successful_tasks"] = sum(1 for t in results["tasks"] if t["status"] in ["completed", "completed_with_errors"])
+    results["successful_tasks"] = sum(
+        1 for t in results["tasks"] if t["status"] in ["completed", "completed_with_errors"]
+    )
 
     elapsed = (datetime.now() - start_time).total_seconds()
-    logger.info(f"🎉 [{market}] [后台任务] 全量同步完成: "
-               f"成功={results['successful_tasks']}/{results['total_tasks']}，耗时={elapsed:.2f}秒")
+    logger.info(
+        f"🎉 [{market}] [后台任务] 全量同步完成: "
+        f"成功={results['successful_tasks']}/{results['total_tasks']}，耗时={elapsed:.2f}秒"
+    )
 
 
 @router.post("/sync/trigger-full")
 async def trigger_full_sync(
+    background_tasks: BackgroundTasks,
     market: str = Query("A_STOCK", description="市场类型: A_STOCK, US_STOCK, HK_STOCK"),
-    background_tasks: BackgroundTasks = None,
-    current_user: UserModel = Depends(get_current_active_user)
-):
+    current_user: UserModel = Depends(get_current_active_user),
+) -> JSONResponse:
     """
     手动触发全量同步（后台执行，不阻塞）
 
@@ -609,46 +566,37 @@ async def trigger_full_sync(
 
     logger.info(f"📨 收到全量同步请求: 市场={market}, 用户={user_id}, 任务ID={task_id}")
 
-    # 添加后台任务（如果传入了 background_tasks）
-    if background_tasks:
-        background_tasks.add_task(_run_full_sync_task, market, user_id)
-        logger.info(f"✅ 同步任务已加入后台执行: 任务ID={task_id}")
+    # 添加后台任务
+    background_tasks.add_task(_run_full_sync_task, market, user_id)
+    logger.info(f"同步任务已加入后台执行: 任务ID={task_id}")
 
-        return JSONResponse(content={
+    return JSONResponse(
+        content={
             "success": True,
             "message": "全量同步任务已提交到后台执行",
             "task_id": task_id,
             "market": market,
             "user_id": user_id,
-            "submitted_at": datetime.now().isoformat()
-        })
-    else:
-        # 如果没有传入 background_tasks，则同步执行（兼容旧逻辑）
-        logger.warning("⚠️ 未传入 BackgroundTasks，同步执行同步任务")
-        await _run_full_sync_task(market, user_id)
-
-        return JSONResponse(content={
-            "success": True,
-            "message": "全量同步已完成",
-            "task_id": task_id,
-            "market": market,
-            "user_id": user_id,
-            "executed_at": datetime.now().isoformat()
-        })
+            "submitted_at": datetime.now().isoformat(),
+        }
+    )
 
 
 # =============================================================================
 # 股票信息查询接口
 # =============================================================================
 
+
 class StockNameRequest(BaseModel):
     """批量获取股票名称请求"""
+
     codes: List[str] = Field(..., description="股票代码列表，如 ['600000', '000001']")
     market: str = Field("A_STOCK", description="市场类型: A_STOCK, US_STOCK, HK_STOCK")
 
 
 class StockNameInfo(BaseModel):
     """股票名称信息"""
+
     code: str = Field(..., description="股票代码")
     symbol: str = Field(..., description="标准化代码")
     name: str = Field(..., description="股票名称")
@@ -658,8 +606,8 @@ class StockNameInfo(BaseModel):
 async def get_batch_stock_names(
     request: StockNameRequest,
     current_user: UserModel = Depends(get_current_active_user),
-    stock_info_repo: StockInfoRepository = Depends(lambda: StockInfoRepository())
-):
+    stock_info_repo: StockInfoRepository = Depends(lambda: StockInfoRepository()),
+) -> JSONResponse:
     """
     批量获取股票名称
 
@@ -672,10 +620,7 @@ async def get_batch_stock_names(
         try:
             market_type = MarketType(request.market)
         except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail=f"不支持的市场类型: {request.market}"
-            )
+            raise HTTPException(status_code=400, detail=f"不支持的市场类型: {request.market}")
 
         results = []
 
@@ -687,9 +632,9 @@ async def get_batch_stock_names(
             if market_type == MarketType.A_STOCK:
                 # 600xxx, 601xxx, 603xxx, 605xxx = 上海证券交易所
                 # 000xxx, 001xxx, 002xxx, 003xxx = 深圳证券交易所
-                if code.startswith(('600', '601', '603', '605', '688', '689')):
+                if code.startswith(("600", "601", "603", "605", "688", "689")):
                     exchange_suffix = ".SH"
-                elif code.startswith(('000', '001', '002', '003', '300')):
+                elif code.startswith(("000", "001", "002", "003", "300")):
                     exchange_suffix = ".SZ"
                 else:
                     # 无法判断，返回原始代码和空名称
@@ -714,27 +659,19 @@ async def get_batch_stock_names(
             stock_info = await stock_info_repo.get_by_symbol(symbol)
 
             if stock_info:
-                results.append(StockNameInfo(
-                    code=code,
-                    symbol=symbol,
-                    name=stock_info.get("name", "未知")
-                ))
+                results.append(
+                    StockNameInfo(code=code, symbol=symbol, name=stock_info.get("name", "未知"))
+                )
             else:
                 results.append(StockNameInfo(code=code, symbol=symbol, name="未找到"))
 
-        return JSONResponse(content={
-            "success": True,
-            "data": [r.model_dump() for r in results]
-        })
+        return JSONResponse(content={"success": True, "data": [r.model_dump() for r in results]})
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to get batch stock names: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"获取股票名称失败: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"获取股票名称失败: {str(e)}")
 
 
 @router.get("/stocks/name")
@@ -742,8 +679,8 @@ async def get_stock_name(
     code: str = Query(..., description="股票代码，如 600000"),
     market: str = Query("A_STOCK", description="市场类型: A_STOCK, US_STOCK, HK_STOCK"),
     current_user: UserModel = Depends(get_current_active_user),
-    stock_info_repo: StockInfoRepository = Depends(lambda: StockInfoRepository())
-):
+    stock_info_repo: StockInfoRepository = Depends(lambda: StockInfoRepository()),
+) -> JSONResponse:
     """
     获取单个股票名称
 
@@ -756,28 +693,23 @@ async def get_stock_name(
         try:
             market_type = MarketType(market)  # 直接使用大写格式
         except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail=f"不支持的市场类型: {market}"
-            )
+            raise HTTPException(status_code=400, detail=f"不支持的市场类型: {market}")
 
         code = code.strip().upper()
 
         # 根据市场类型构建标准化代码
         if market_type == MarketType.A_STOCK:
-            if code.startswith(('600', '601', '603', '605', '688', '689')):
+            if code.startswith(("600", "601", "603", "605", "688", "689")):
                 exchange_suffix = ".SH"
-            elif code.startswith(('000', '001', '002', '003', '300')):
+            elif code.startswith(("000", "001", "002", "003", "300")):
                 exchange_suffix = ".SZ"
             else:
-                return JSONResponse(content={
-                    "success": True,
-                    "data": {
-                        "code": code,
-                        "symbol": code,
-                        "name": "未知"
+                return JSONResponse(
+                    content={
+                        "success": True,
+                        "data": {"code": code, "symbol": code, "name": "未知"},
                     }
-                })
+                )
 
             symbol = f"{code}{exchange_suffix}"
 
@@ -788,42 +720,34 @@ async def get_stock_name(
             symbol = f"{code}.HK" if not code.endswith(".HK") else code
 
         else:
-            return JSONResponse(content={
-                "success": True,
-                "data": {
-                    "code": code,
-                    "symbol": code,
-                    "name": "未知"
-                }
-            })
+            return JSONResponse(
+                content={"success": True, "data": {"code": code, "symbol": code, "name": "未知"}}
+            )
 
         # 查询数据库
         stock_info = await stock_info_repo.get_by_symbol(symbol)
 
         if stock_info:
-            return JSONResponse(content={
-                "success": True,
-                "data": {
-                    "code": code,
-                    "symbol": symbol,
-                    "name": stock_info.get("name", "未知")
+            return JSONResponse(
+                content={
+                    "success": True,
+                    "data": {
+                        "code": code,
+                        "symbol": symbol,
+                        "name": stock_info.get("name", "未知"),
+                    },
                 }
-            })
+            )
         else:
-            return JSONResponse(content={
-                "success": True,
-                "data": {
-                    "code": code,
-                    "symbol": symbol,
-                    "name": "未找到"
+            return JSONResponse(
+                content={
+                    "success": True,
+                    "data": {"code": code, "symbol": symbol, "name": "未找到"},
                 }
-            })
+            )
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to get stock name: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"获取股票名称失败: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"获取股票名称失败: {str(e)}")

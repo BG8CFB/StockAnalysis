@@ -3,13 +3,15 @@
 """
 
 from datetime import datetime
-from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, Field
 from enum import Enum
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field
 
 
 class DataSourceStatus(str, Enum):
     """数据源状态枚举"""
+
     HEALTHY = "healthy"
     DEGRADED = "degraded"
     UNAVAILABLE = "unavailable"
@@ -17,12 +19,14 @@ class DataSourceStatus(str, Enum):
 
 class DataSourceType(str, Enum):
     """数据源类型"""
+
     SYSTEM = "system"  # 系统公共数据源
-    USER = "user"      # 用户个人数据源
+    USER = "user"  # 用户个人数据源
 
 
 class SystemDataSourceConfig(BaseModel):
     """系统公共数据源配置"""
+
     source_id: str = Field(..., description="数据源标识(tushare/akshare等)")
     market: str = Field(..., description="市场类型:A_STOCK/US_STOCK/HK_STOCK")
     enabled: bool = Field(default=True, description="是否启用")
@@ -48,6 +52,7 @@ class SystemDataSourceConfig(BaseModel):
 
 class UserDataSourceConfig(BaseModel):
     """用户个人数据源配置"""
+
     user_id: str = Field(..., description="用户ID")
     source_id: str = Field(..., description="数据源标识")
     market: str = Field(..., description="市场类型")
@@ -67,6 +72,7 @@ class UserDataSourceConfig(BaseModel):
 
 class DataSourceHealthStatus(BaseModel):
     """数据源健康状态"""
+
     market: str = Field(..., description="市场类型")
     data_type: str = Field(..., description="数据类型:daily_quote/financials等")
     source_type: DataSourceType = Field(..., description="数据源类型")
@@ -99,6 +105,7 @@ class DataSourceHealthStatus(BaseModel):
 
 class DataSourceStatusHistory(BaseModel):
     """数据源状态变更历史"""
+
     market: str = Field(..., description="市场类型")
     data_type: str = Field(..., description="数据类型")
     source_type: DataSourceType = Field(..., description="数据源类型")
@@ -106,7 +113,9 @@ class DataSourceStatusHistory(BaseModel):
     user_id: Optional[str] = Field(None, description="用户ID")
 
     # 事件信息
-    event_type: str = Field(..., description="事件类型:status_changed/fallback/recovered/api_failed")
+    event_type: str = Field(
+        ..., description="事件类型:status_changed/fallback/recovered/api_failed"
+    )
     from_status: Optional[str] = Field(None, description="变化前状态")
     to_status: Optional[str] = Field(None, description="变化后状态")
     error_code: Optional[str] = Field(None, description="错误码")

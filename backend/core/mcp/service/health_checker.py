@@ -34,12 +34,12 @@ class MCPHealthChecker:
     MAX_CONCURRENT_CHECKS = get_health_check_max_concurrent_checks()
 
     # 状态衰减配置
-    STALE_THRESHOLD = 600             # 状态过期阈值（秒）- 10分钟
-    FAILURE_THRESHOLD = 3             # 连续失败次数阈值
+    STALE_THRESHOLD = 600  # 状态过期阈值（秒）- 10分钟
+    FAILURE_THRESHOLD = 3  # 连续失败次数阈值
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化健康检查器"""
-        self._task: Optional[asyncio.Task] = None
+        self._task: Optional[asyncio.Task[None]] = None
         self._running = False
 
         # 追踪连续失败次数
@@ -47,7 +47,7 @@ class MCPHealthChecker:
 
         logger.info("MCP健康检查器已初始化")
 
-    async def start(self):
+    async def start(self) -> None:
         """启动健康检查后台任务"""
         if self._task is not None:
             logger.warning("健康检查任务已在运行")
@@ -57,7 +57,7 @@ class MCPHealthChecker:
         self._task = asyncio.create_task(self._check_loop())
         logger.info("MCP健康检查后台任务已启动")
 
-    async def stop(self):
+    async def stop(self) -> None:
         """停止健康检查后台任务"""
         self._running = False
         if self._task:
@@ -69,7 +69,7 @@ class MCPHealthChecker:
             self._task = None
         logger.info("MCP健康检查后台任务已停止")
 
-    async def _check_loop(self):
+    async def _check_loop(self) -> None:
         """健康检查循环"""
         while self._running:
             try:
@@ -83,12 +83,12 @@ class MCPHealthChecker:
                 # 出错后等待一段时间再继续
                 await asyncio.sleep(60)
 
-    async def _run_health_check(self):
+    async def _run_health_check(self) -> None:
         """执行一次健康检查"""
         logger.info("开始MCP服务器健康检查")
 
         try:
-            mcp_service = get_mcp_service()
+            get_mcp_service()
 
             # 获取所有启用的服务器列表
             collection = mongodb.get_collection("mcp_servers")
@@ -102,13 +102,12 @@ class MCPHealthChecker:
             # 并发检查服务器状态
             semaphore = asyncio.Semaphore(self.MAX_CONCURRENT_CHECKS)
 
-            async def check_with_limit(server):
+            async def check_with_limit(server: MCPServerConfigResponse) -> bool:
                 async with semaphore:
                     return await self._check_single_server(server)
 
             results = await asyncio.gather(
-                *[check_with_limit(server) for server in servers],
-                return_exceptions=True
+                *[check_with_limit(server) for server in servers], return_exceptions=True
             )
 
             # 统计结果
@@ -117,14 +116,13 @@ class MCPHealthChecker:
             error_count = sum(1 for r in results if isinstance(r, Exception))
 
             logger.info(
-                f"健康检查完成: 成功={success_count}, "
-                f"失败={failure_count}, 错误={error_count}"
+                f"健康检查完成: 成功={success_count}, " f"失败={failure_count}, 错误={error_count}"
             )
 
         except Exception as e:
             logger.error(f"健康检查执行失败: {e}", exc_info=True)
 
-    async def _check_single_server(self, server) -> bool:
+    async def _check_single_server(self, server: MCPServerConfigResponse) -> bool:
         """
         检查单个服务器状态
 
@@ -177,7 +175,7 @@ class MCPHealthChecker:
             logger.error(f"检查服务器时出错: server={server_name}, error={e}")
             return False
 
-    async def _test_connection(self, server) -> bool:
+    async def _test_connection(self, server: MCPServerConfigResponse) -> bool:
         """
         测试服务器连接
 
@@ -202,69 +200,60 @@ class MCPHealthChecker:
             # 根据传输模式构建配置
             if transport == "stdio":
                 from core.mcp.adapter.adapter import build_stdio_connection
+
                 connection_config = build_stdio_connection(
-                    command=server.command,
-                    args=server.args,
+                    command=server.command or "",
+                    args=server.args or [],
                     env=server.env,
                 )
             elif transport == "sse":
                 from core.mcp.adapter.adapter import build_sse_connection
+
                 connection_config = build_sse_connection(
-                    url=server.url,
+                    url=server.url or "",
                     headers=headers,
                 )
             elif transport == "streamable_http":
                 from core.mcp.adapter.adapter import build_streamable_http_connection
+
                 connection_config = build_streamable_http_connection(
-                    url=server.url,
+                    url=server.url or "",
                     headers=headers,
                 )
             elif transport == "websocket":
                 from core.mcp.adapter.adapter import build_websocket_connection
+
                 connection_config = build_websocket_connection(
-                    url=server.url,
+                    url=server.url or "",
                 )
             else:
                 logger.warning(f"不支持的传输模式: {transport}")
-                await self._update_server_status(
-                    server.id, MCPServerStatusEnum.UNAVAILABLE
-                )
+                await self._update_server_status(server.id, MCPServerStatusEnum.UNAVAILABLE)
                 return False
 
             # 测试连接
             tools = await get_mcp_tools(server.name, connection_config)
             tool_count = len(tools) if isinstance(tools, list) else 0
 
-            await self._update_server_status(
-                server.id, MCPServerStatusEnum.AVAILABLE
-            )
+            await self._update_server_status(server.id, MCPServerStatusEnum.AVAILABLE)
 
-            logger.debug(
-                f"MCP服务器连接成功: server={server.name}, tools={tool_count}"
-            )
+            logger.debug(f"MCP服务器连接成功: server={server.name}, tools={tool_count}")
             return True
 
         except asyncio.TimeoutError:
             logger.warning(f"连接超时: server={server.name}")
-            await self._update_server_status(
-                server.id, MCPServerStatusEnum.UNAVAILABLE
-            )
+            await self._update_server_status(server.id, MCPServerStatusEnum.UNAVAILABLE)
             return False
         except Exception as e:
             logger.warning(f"连接失败: server={server.name}, error={e}")
-            await self._update_server_status(
-                server.id, MCPServerStatusEnum.UNAVAILABLE
-            )
+            await self._update_server_status(server.id, MCPServerStatusEnum.UNAVAILABLE)
             return False
 
-    async def _update_server_status(
-        self,
-        server_id: str,
-        status: MCPServerStatusEnum
-    ):
+    async def _update_server_status(self, server_id: str, status: MCPServerStatusEnum) -> None:
         """更新服务器状态"""
         try:
             from bson import ObjectId
+
             collection = mongodb.get_collection("mcp_servers")
 
             await collection.update_one(
@@ -274,7 +263,7 @@ class MCPHealthChecker:
                         "status": status.value,
                         "last_check_at": datetime.now(timezone.utc),
                     }
-                }
+                },
             )
         except Exception as e:
             logger.error(f"更新服务器状态失败: server_id={server_id}, error={e}")
@@ -291,6 +280,7 @@ class MCPHealthChecker:
         """
         try:
             from bson import ObjectId
+
             collection = mongodb.get_collection("mcp_servers")
 
             doc = await collection.find_one({"_id": ObjectId(server_id)})

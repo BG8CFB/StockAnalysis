@@ -2,6 +2,7 @@
 IP 信任管理
 管理用户常用 IP，实现无感登录
 """
+
 from typing import Optional, Set
 
 from core.db.redis import get_redis
@@ -20,7 +21,7 @@ class IPTrustManager:
     TRUSTED_THRESHOLD = 5  # 成功登录 5 次后标记为信任
     TRUSTED_EXPIRE_DAYS = 30  # 信任记录 30 天过期
 
-    def __init__(self):
+    def __init__(self) -> None:
         pass
 
     def _get_trusted_ips_key(self, user_id: str) -> str:
@@ -51,8 +52,8 @@ class IPTrustManager:
         # 如果达到阈值，添加到信任 IP 集合
         if count >= self.TRUSTED_THRESHOLD:
             trusted_key = self._get_trusted_ips_key(user_id)
-            await redis.sadd(trusted_key, ip)
-            await redis.expire(trusted_key, expire_seconds)
+            await redis.sadd(trusted_key, ip)  # type: ignore[misc]
+            await redis.expire(trusted_key, expire_seconds)  # type: ignore[misc]
 
     async def is_ip_trusted(self, user_id: str, ip: str) -> bool:
         """检查 IP 是否为信任 IP
@@ -66,7 +67,7 @@ class IPTrustManager:
         """
         redis = await get_redis()
         trusted_key = self._get_trusted_ips_key(user_id)
-        is_member = await redis.sismember(trusted_key, ip)
+        is_member = await redis.sismember(trusted_key, ip)  # type: ignore[misc]
         return bool(is_member)
 
     async def get_trusted_ips(self, user_id: str) -> Set[str]:
@@ -80,7 +81,7 @@ class IPTrustManager:
         """
         redis = await get_redis()
         trusted_key = self._get_trusted_ips_key(user_id)
-        members = await redis.smembers(trusted_key)
+        members = await redis.smembers(trusted_key)  # type: ignore[misc]
         return set(members) if members else set()
 
     async def remove_trusted_ip(self, user_id: str, ip: str) -> None:
@@ -92,7 +93,7 @@ class IPTrustManager:
         """
         redis = await get_redis()
         trusted_key = self._get_trusted_ips_key(user_id)
-        await redis.srem(trusted_key, ip)
+        await redis.srem(trusted_key, ip)  # type: ignore[misc]
 
     async def get_login_count(self, user_id: str, ip: str) -> int:
         """获取 IP 的登录次数
@@ -106,10 +107,10 @@ class IPTrustManager:
         """
         redis = await get_redis()
         count_key = self._get_login_count_key(user_id, ip)
-        count = await redis.get(count_key)
+        count = await redis.get(count_key)  # type: ignore[misc]
         return int(count) if count else 0
 
-    async def revoke_ip_trust(self, user_id: str, ip: str = None) -> None:
+    async def revoke_ip_trust(self, user_id: str, ip: Optional[str] = None) -> None:
         """撤销 IP 信任
 
         Args:

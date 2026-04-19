@@ -14,8 +14,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from bson import ObjectId
-
 from core.db.mongodb import mongodb
 from core.settings.models.user import TradingAgentsSettings
 
@@ -32,21 +30,17 @@ DEFAULT_CONFIG = {
     # AI 模型配置 - 使用特殊标记表示"使用第一个可用模型"
     "data_collection_model_id": "",  # 空字符串 = 使用第一个可用模型
     "debate_model_id": "",  # 空字符串 = 使用第一个可用模型
-
     # 辩论配置
     "default_debate_rounds": 3,
     "max_debate_rounds": 5,
-
     # 超时配置
     "phase_timeout_minutes": 30,
     "agent_timeout_minutes": 10,
     "tool_timeout_seconds": 30,
-
     # 流程默认配置
     "default_phase1_agents": [],  # 空数组 = 用户自行选择
     "default_phase2_enabled": True,
     "default_phase3_enabled": False,
-
     # 其他配置
     "task_expiry_hours": 24,
     "archive_days": 30,
@@ -107,7 +101,7 @@ async def get_global_settings() -> Dict[str, Any]:
         doc.pop("updated_at", None)
         doc.pop("version", None)
         logger.debug("✅ 从 MongoDB 加载 TradingAgents 全局配置")
-        return doc
+        return dict(doc)
 
     # 返回硬编码默认配置
     logger.warning("⚠️ MongoDB 中无全局配置，使用硬编码默认值")
@@ -139,11 +133,7 @@ async def update_global_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
             logger.warning(f"⚠️ 忽略无效字段: {key}")
 
     # 使用 upsert: 如果不存在则创建
-    await collection.update_one(
-        {"_id": DOCUMENT_ID},
-        {"$set": update_fields},
-        upsert=True
-    )
+    await collection.update_one({"_id": DOCUMENT_ID}, {"$set": update_fields}, upsert=True)
 
     logger.info(f"✅ TradingAgents 全局配置已更新: {list(update_fields.keys())}")
 

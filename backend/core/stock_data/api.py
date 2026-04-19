@@ -10,7 +10,7 @@
 
 import logging
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, Query
 
@@ -25,38 +25,46 @@ logger = logging.getLogger(__name__)
 # 延迟获取 repositories / services（避免循环导入 + 启动时不需要全部就绪）
 # ---------------------------------------------------------------------------
 
-def _stock_info_repo():
+
+def _stock_info_repo() -> Any:
     from core.market_data.repositories.stock_info import StockInfoRepository
+
     return StockInfoRepository()
 
 
-def _stock_quote_repo():
+def _stock_quote_repo() -> Any:
     from core.market_data.repositories.stock_quotes import StockQuoteRepository
+
     return StockQuoteRepository()
 
 
-def _stock_financial_repo():
+def _stock_financial_repo() -> Any:
     from core.market_data.repositories.stock_financial import StockFinancialRepository
+
     return StockFinancialRepository()
 
 
-def _stock_financial_indicator_repo():
+def _stock_financial_indicator_repo() -> Any:
     from core.market_data.repositories.stock_financial import StockFinancialIndicatorRepository
+
     return StockFinancialIndicatorRepository()
 
 
-def _market_news_repo():
+def _market_news_repo() -> Any:
     from core.market_data.repositories.market_news import MarketNewsRepository
+
     return MarketNewsRepository()
 
 
-def _market_data_service():
+def _market_data_service() -> Any:
     from core.market_data.services.market_data_service import MarketDataService
+
     return MarketDataService()
 
 
-def _source_router():
+def _source_router() -> Any:
     from core.market_data.managers.source_router import get_source_router
+
     return get_source_router()
 
 
@@ -83,7 +91,7 @@ def _serialize(doc: Optional[dict]) -> Optional[dict]:
 
 
 def _serialize_list(docs: list[dict]) -> list[dict]:
-    return [_serialize(d) for d in docs]
+    return [r for r in (_serialize(d) for d in docs) if r is not None]
 
 
 # ===================================================================
@@ -98,7 +106,7 @@ async def get_stock_quote(
     code: str,
     force_refresh: bool = Query(False, alias="force_refresh"),
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取股票实时/最新行情"""
     from core.market_data.models import MarketType
 
@@ -131,7 +139,7 @@ async def get_stock_quote(
     if quote is None:
         return {"success": False, "data": None, "message": f"未找到 {code} 的行情数据"}
 
-    quote["code"] = code
+    quote["code"] = code  # type: ignore[index]
     return {"success": True, "data": _serialize(quote)}
 
 
@@ -141,7 +149,7 @@ async def get_stock_fundamentals(
     source: Optional[str] = Query(None),
     force_refresh: bool = Query(False, alias="force_refresh"),
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取基本面/财务数据"""
     fin_repo = _stock_financial_repo()
     ind_repo = _stock_financial_indicator_repo()
@@ -167,14 +175,25 @@ async def get_stock_fundamentals(
     # 合并指标数据
     if latest_ind:
         ind_data = _serialize(latest_ind)
-        ind_data.pop("symbol", None)
-        ind_data.pop("_id", None)
-        for field in [
-            "pe", "pb", "pe_ttm", "pb_mrq", "ps", "ps_ttm", "roe",
-            "debt_ratio", "total_mv", "circ_mv", "turnover_rate", "volume_ratio",
-        ]:
-            if field in ind_data:
-                result[field] = ind_data[field]
+        if ind_data is not None:
+            ind_data.pop("symbol", None)
+            ind_data.pop("_id", None)
+            for field in [
+                "pe",
+                "pb",
+                "pe_ttm",
+                "pb_mrq",
+                "ps",
+                "ps_ttm",
+                "roe",
+                "debt_ratio",
+                "total_mv",
+                "circ_mv",
+                "turnover_rate",
+                "volume_ratio",
+            ]:
+                if field in ind_data:
+                    result[field] = ind_data[field]
 
     if latest_fin:
         result["updated_at"] = latest_fin.get("updated_at")
@@ -192,7 +211,7 @@ async def get_stock_kline(
     adj: str = Query("none"),
     force_refresh: bool = Query(False, alias="force_refresh"),
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取 K 线/蜡烛图数据"""
     from core.market_data.models import MarketType
 
@@ -203,21 +222,23 @@ async def get_stock_kline(
     if period in ("minute", "min", "1m", "5m", "15m", "30m", "60m"):
         # 分钟 K 线：查 stock_minute_klines 集合
         db = mongodb.database
-        cursor = db["stock_minute_klines"].find(
-            {"symbol": code}
-        ).sort("trade_date", -1).limit(limit)
+        cursor = (
+            db["stock_minute_klines"].find({"symbol": code}).sort("trade_date", -1).limit(limit)
+        )
         raw_items = await cursor.to_list(length=limit)
         items = []
         for doc in raw_items:
-            items.append({
-                "time": doc.get("trade_date", ""),
-                "open": doc.get("open"),
-                "high": doc.get("high"),
-                "low": doc.get("low"),
-                "close": doc.get("close"),
-                "volume": doc.get("volume"),
-                "amount": doc.get("amount"),
-            })
+            items.append(
+                {
+                    "time": doc.get("trade_date", ""),
+                    "open": doc.get("open"),
+                    "high": doc.get("high"),
+                    "low": doc.get("low"),
+                    "close": doc.get("close"),
+                    "volume": doc.get("volume"),
+                    "amount": doc.get("amount"),
+                }
+            )
         return {
             "success": True,
             "data": {
@@ -244,15 +265,17 @@ async def get_stock_kline(
                 quotes = quotes[-limit:]  # 只保留最近 limit 条
                 items = []
                 for q in quotes:
-                    items.append({
-                        "time": q.get("trade_date", ""),
-                        "open": q.get("open"),
-                        "high": q.get("high"),
-                        "low": q.get("low"),
-                        "close": q.get("close"),
-                        "volume": q.get("volume"),
-                        "amount": q.get("amount"),
-                    })
+                    items.append(
+                        {
+                            "time": q.get("trade_date", ""),
+                            "open": q.get("open"),
+                            "high": q.get("high"),
+                            "low": q.get("low"),
+                            "close": q.get("close"),
+                            "volume": q.get("volume"),
+                            "amount": q.get("amount"),
+                        }
+                    )
                 return {
                     "success": True,
                     "data": {
@@ -271,15 +294,17 @@ async def get_stock_kline(
     quotes = await repo.get_quotes(symbol=code, limit=limit)
     items = []
     for q in reversed(quotes):  # get_quotes 默认降序，K线需要升序
-        items.append({
-            "time": q.get("trade_date", ""),
-            "open": q.get("open"),
-            "high": q.get("high"),
-            "low": q.get("low"),
-            "close": q.get("close"),
-            "volume": q.get("volume"),
-            "amount": q.get("amount"),
-        })
+        items.append(
+            {
+                "time": q.get("trade_date", ""),
+                "open": q.get("open"),
+                "high": q.get("high"),
+                "low": q.get("low"),
+                "close": q.get("close"),
+                "volume": q.get("volume"),
+                "amount": q.get("amount"),
+            }
+        )
 
     return {
         "success": True,
@@ -300,21 +325,23 @@ async def get_stock_news(
     days: int = Query(30),
     limit: int = Query(50),
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取个股新闻"""
     repo = _market_news_repo()
     news_list = await repo.get_by_symbol(code, limit=limit)
     items = []
     for n in news_list:
-        items.append({
-            "title": n.title,
-            "source": n.source,
-            "time": n.datetime,
-            "url": getattr(n, "url", None),
-            "type": getattr(n, "news_type", None),
-            "content": n.content,
-            "summary": getattr(n, "summary", None),
-        })
+        items.append(
+            {
+                "title": n.title,
+                "source": n.source,
+                "time": n.datetime,
+                "url": getattr(n, "url", None),
+                "type": getattr(n, "news_type", None),
+                "content": n.content,
+                "summary": getattr(n, "summary", None),
+            }
+        )
     return {
         "success": True,
         "data": {
@@ -337,7 +364,7 @@ stock_data_router = APIRouter(prefix="/stock-data", tags=["stock-data"])
 async def get_basic_info(
     symbol: str,
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """根据 symbol 获取股票基础信息"""
     repo = _stock_info_repo()
     info = await repo.get_by_symbol(symbol)
@@ -350,7 +377,7 @@ async def get_basic_info(
 async def get_stock_data_quotes(
     symbol: str,
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取最新行情（stock-data 版本）"""
     repo = _stock_quote_repo()
     quote = await repo.get_latest_quote(symbol)
@@ -366,7 +393,7 @@ async def get_stock_list(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=200),
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """分页获取股票列表"""
     repo = _stock_info_repo()
 
@@ -394,8 +421,8 @@ async def get_stock_list(
         # 精简字段以匹配前端 StockListItem
         latest = await quote_repo.get_latest_quote(s["symbol"])
         if latest:
-            item["close"] = latest.get("close")
-            item["pct_chg"] = latest.get("pct_chg")
+            item["close"] = latest.get("close")  # type: ignore[index]
+            item["pct_chg"] = latest.get("pct_chg")  # type: ignore[index]
         items.append(item)
 
     return {
@@ -413,11 +440,11 @@ async def get_stock_list(
 async def get_combined_stock_data(
     symbol: str,
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """综合数据：基础信息 + 最新行情 + 财务指标"""
     info_repo = _stock_info_repo()
     quote_repo = _stock_quote_repo()
-    ind_repo = _stock_financial_indicator_repo()
+    _ind_repo = _stock_financial_indicator_repo()
 
     info = await info_repo.get_by_symbol(symbol)
     quote = await quote_repo.get_latest_quote(symbol)
@@ -438,7 +465,7 @@ async def search_stocks(
     keyword: str = Query(..., min_length=1),
     limit: int = Query(10, ge=1, le=50),
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """文本搜索股票（按 symbol / name 模糊匹配）"""
     import re
 
@@ -458,12 +485,14 @@ async def search_stocks(
     results = await repo.find_many(filter_query, limit=limit)
     data = []
     for r in results:
-        data.append({
-            "symbol": r.get("symbol", ""),
-            "name": r.get("name", ""),
-            "market": r.get("market"),
-            "industry": r.get("industry"),
-        })
+        data.append(
+            {
+                "symbol": r.get("symbol", ""),
+                "name": r.get("name", ""),
+                "market": r.get("market"),
+                "industry": r.get("industry"),
+            }
+        )
 
     return {
         "success": True,
@@ -479,12 +508,12 @@ async def search_stocks(
 @stock_data_router.get("/markets")
 async def get_market_summary(
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """市场概览统计"""
     repo = _stock_info_repo()
 
     # 按市场分组统计
-    pipeline = [
+    pipeline: list[dict[str, Any]] = [
         {"$match": {"status": "L"}},
         {"$group": {"_id": "$market", "count": {"$sum": 1}}},
         {"$sort": {"_id": 1}},
@@ -508,19 +537,21 @@ async def get_market_summary(
 @stock_data_router.get("/sync-status/quotes")
 async def get_quotes_sync_status(
     user: UserModel = Depends(get_current_active_user),
-):
+) -> Dict[str, Any]:
     """获取各市场行情最近同步时间戳"""
     db = mongodb.database
 
     # 查 stock_quotes 按市场分组的最新 fetched_at
-    pipeline = [
+    pipeline: list[dict[str, Any]] = [
         {"$sort": {"fetched_at": -1}},
-        {"$group": {
-            "_id": "$market",
-            "last_fetched": {"$first": "$fetched_at"},
-            "data_source": {"$first": "$data_source"},
-            "records_count": {"$sum": 1},
-        }},
+        {
+            "$group": {
+                "_id": "$market",
+                "last_fetched": {"$first": "$fetched_at"},
+                "data_source": {"$first": "$data_source"},
+                "records_count": {"$sum": 1},
+            }
+        },
     ]
     cursor = db["stock_quotes"].aggregate(pipeline)
     results = await cursor.to_list(length=None)
