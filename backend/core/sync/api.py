@@ -53,6 +53,8 @@ async def get_stock_basics_status(
         {"data_type": "stock_list"},
         sort=[("last_check_at", -1)],
     )
+    for s in statuses:
+        s.pop("_id", None)
     return {"code": 0, "data": statuses, "message": "ok"}
 
 
@@ -134,6 +136,8 @@ async def get_multi_source_sync_status(
     status_repo = DataSourceStatusRepository()
     summary = await status_repo.get_status_summary()
     all_statuses = await status_repo.find_many({}, sort=[("last_check_at", -1)])
+    for s in all_statuses:
+        s.pop("_id", None)
     return {
         "code": 0,
         "data": {"summary": summary, "sources": all_statuses},
@@ -280,6 +284,8 @@ async def get_sync_history(
         limit=page_size,
         skip=(page - 1) * page_size,
     )
+    for r in records:
+        r.pop("_id", None)
 
     return {
         "code": 0,

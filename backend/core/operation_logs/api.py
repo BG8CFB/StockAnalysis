@@ -8,6 +8,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
+from bson import ObjectId
 from fastapi import APIRouter, Depends, Query
 
 from core.db.mongodb import mongodb
@@ -22,6 +23,17 @@ router = APIRouter(prefix="/system/logs", tags=["operation-logs"])
 def _get_collection() -> Any:
     """获取审计日志集合"""
     return mongodb.get_collection("audit_logs")
+
+
+def _convert_objectids(obj: Any) -> Any:
+    """递归将 ObjectId 转为字符串，避免序列化失败"""
+    if isinstance(obj, ObjectId):
+        return str(obj)
+    if isinstance(obj, dict):
+        return {k: _convert_objectids(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_convert_objectids(v) for v in obj]
+    return obj
 
 
 @router.get("/list")
@@ -65,6 +77,7 @@ async def get_operation_logs(
     cursor = collection.find(query).sort("timestamp", -1).skip(skip).limit(page_size)
     logs = []
     async for doc in cursor:
+        doc = _convert_objectids(doc)
         doc["id"] = str(doc.pop("_id"))
         # 确保前端需要的字段都有默认值
         doc.setdefault("user_id", "")
@@ -186,6 +199,7 @@ async def get_operation_log_detail(
 
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="日志不存在")
 
+    doc = _convert_objectids(doc)
     doc["id"] = str(doc.pop("_id"))
     if isinstance(doc.get("timestamp"), datetime):
         doc["timestamp"] = doc["timestamp"].isoformat()

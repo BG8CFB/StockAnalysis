@@ -84,7 +84,7 @@ async def get_system_config(
     # 聚合各子系统的配置
     llm_configs = await db.ai_model_configs.find(
         {"enabled": True},
-        {"api_key": 0},
+        {"_id": 0, "api_key": 0},
     ).to_list(length=None)
 
     default_llm_doc = await db.system_config.find_one({"key": "default_llm"})

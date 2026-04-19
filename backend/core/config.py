@@ -88,7 +88,9 @@ RATE_LIMIT_REQUESTS: int = int(os.getenv("RATE_LIMIT_REQUESTS", "100"))
 RATE_LIMIT_PERIOD_SECONDS: int = int(os.getenv("RATE_LIMIT_PERIOD_SECONDS", "60"))
 
 # CORS配置
-CORS_ORIGINS: list = os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
+CORS_ORIGINS: list = os.getenv(
+    "CORS_ORIGINS", "http://localhost:5173,http://localhost:3000"
+).split(",")
 
 # 市场数据源配置
 TUSHARE_TOKEN: Optional[str] = os.getenv("TUSHARE_TOKEN")

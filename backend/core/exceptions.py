@@ -7,7 +7,21 @@ import logging
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
+from core.config import settings
+
 logger = logging.getLogger(__name__)
+
+
+def _add_cors_headers(request: Request, response: JSONResponse) -> JSONResponse:
+    """为异常响应添加 CORS 头，避免浏览器因 CORS 缺失而报告网络错误"""
+    origin = request.headers.get("origin", "")
+    if origin and origin in settings.CORS_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Vary"] = "Origin"
+    elif "*" in settings.CORS_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = "*"
+    return response
 
 
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
@@ -29,7 +43,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
         error_details = None
         error_message = "服务器内部错误，请稍后重试"
 
-    return JSONResponse(
+    response = JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
             "success": False,
@@ -40,6 +54,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
             },
         },
     )
+    return _add_cors_headers(request, response)
 
 
 def setup_exception_handlers(app: FastAPI) -> None:

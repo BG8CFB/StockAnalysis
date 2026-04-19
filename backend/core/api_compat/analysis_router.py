@@ -80,7 +80,14 @@ class BatchAnalysisRequest(BaseModel):
 
 
 def _parse_stages_from_params(params: Optional[Dict[str, Any]]) -> AnalysisStagesConfig:
-    """从前端 parameters 字段解析阶段配置"""
+    """从前端 parameters 字段解析阶段配置
+
+    阶段对应关系：
+      Stage1 - 信息收集与基础分析（可选分析师）
+      Stage2 - 多空辩论（可开关）
+      Stage3 - 风险评估（可开关）
+      Stage4 - 总结报告（强制启用）
+    """
     if not params:
         return AnalysisStagesConfig()
 
@@ -98,15 +105,14 @@ def _parse_stages_from_params(params: Optional[Dict[str, Any]]) -> AnalysisStage
     )
     stage2 = Stage2Config(
         enabled=params.get("phase2_enabled", True),
-        debate=DebateConfig(rounds=params.get("phase2_debate_rounds", 3)),
+        debate=DebateConfig(rounds=params.get("phase2_debate_rounds", 2)),
     )
     stage3 = Stage3Config(
         enabled=params.get("phase3_enabled", True),
-        debate=DebateConfig(rounds=params.get("phase3_debate_rounds", 3)),
+        debate=DebateConfig(rounds=params.get("phase3_debate_rounds", 2)),
     )
-    stage4 = Stage4Config(
-        enabled=params.get("phase4_enabled", True),
-    )
+    # 第四阶段（总结报告）强制启用，忽略前端传来的 enabled 值
+    stage4 = Stage4Config(enabled=True)
     return AnalysisStagesConfig(
         stage1=stage1,
         stage2=stage2,

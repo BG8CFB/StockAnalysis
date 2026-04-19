@@ -173,7 +173,7 @@ class DebateConfig(BaseModel):
     """辩论配置"""
 
     enabled: bool = Field(default=True, description="是否启用辩论")
-    rounds: int = Field(default=3, ge=0, le=10, description="辩论轮次")
+    rounds: int = Field(default=2, ge=1, le=4, description="辩论轮次（1-4）")
     concurrency: int = Field(default=1, ge=1, le=2, description="辩论并发数（1=串行，2=并行）")
 
 
