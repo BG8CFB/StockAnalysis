@@ -48,6 +48,10 @@ class WebSocketCallbackHandler(AsyncCallbackHandler):
         self.agent_name = agent_name
         self.websocket_manager = websocket_manager
         self._tool_call_count = 0
+        # 工具循环检测器
+        from modules.trading_agents.tools.loop_detector import get_loop_detector
+
+        self._loop_detector = get_loop_detector()
 
     async def on_tool_start(
         self,
@@ -65,18 +69,58 @@ class WebSocketCallbackHandler(AsyncCallbackHandler):
         self._tool_call_count += 1
         tool_name = serialized.get("name", serialized.get("kwargs", {}).get("name", "unknown"))
 
-        # 准备事件数据
-        event_data = {
-            "event_type": "tool_called",
-            "task_id": self.task_id,
-            "timestamp": datetime.now(timezone.utc).timestamp(),
-            "data": {
-                "agent_slug": self.agent_slug,
-                "agent_name": self.agent_name,
-                "tool_name": tool_name,
-                "input": input_str,
-            }
-        }
+        # 循环检测：记录本次调用并检查是否触发循环
+        if self._loop_detector:
+            result = self._loop_detector.record_call(
+                task_id=self.task_id,
+                agent_slug=self.agent_slug,
+                tool_name=tool_name,
+                tool_input=input_str,
+            )
+            if result.is_loop:
+                logger.warning(
+                    f"[WebSocketCallback] 工具循环 detected: {result.message}"
+                )
+                # 推送 tool_disabled 事件
+                if self.websocket_manager:
+                    try:
+                        from modules.trading_agents.workflow.events import create_tool_disabled_event
+
+                        event = create_tool_disabled_event(
+                            task_id=self.task_id,
+                            agent_slug=self.agent_slug,
+                            tool_name=tool_name,
+                            reason=result.message,
+                        )
+                        await self.websocket_manager.broadcast_event(self.task_id, event)
+                    except Exception as e:
+                        logger.error(f"推送 tool_disabled 事件失败: {e}")
+                # 循环检测触发后仍继续推送 tool_called，让前端知晓调用发生
+
+        # 检查工具是否已被禁用（同一任务中后续调用跳过）
+        if self._loop_detector and self._loop_detector.is_tool_disabled(
+            self.task_id, tool_name, self.agent_slug
+        ):
+            logger.warning(
+                f"[WebSocketCallback] 工具已被禁用，跳过调用: "
+                f"task={self.task_id}, tool={tool_name}"
+            )
+            # 推送 tool_disabled 提醒事件
+            if self.websocket_manager:
+                try:
+                    from modules.trading_agents.workflow.events import create_tool_disabled_event
+
+                    event = create_tool_disabled_event(
+                        task_id=self.task_id,
+                        agent_slug=self.agent_slug,
+                        tool_name=tool_name,
+                        reason=f"工具 {tool_name} 因检测到循环调用已被自动禁用",
+                    )
+                    await self.websocket_manager.broadcast_event(self.task_id, event)
+                except Exception as e:
+                    logger.error(f"推送 tool_disabled 事件失败: {e}")
+            # 不推送 tool_called，直接返回
+            return
 
         # 打印日志
         logger.info(
