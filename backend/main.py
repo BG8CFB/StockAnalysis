@@ -240,6 +240,21 @@ def create_app() -> FastAPI:
     from modules.trading_agents.admin_api import router as trading_agents_admin_router
     from core.market_data.admin_api import router as market_data_router
 
+    # 配置兼容路由（前端 /api/config/* 端点）
+    from core.api_compat.config_router import router as config_compat_router
+    from core.api_compat.reports_router import router as reports_router
+    from core.api_compat.analysis_router import (
+        router as analysis_router,
+        stream_router as analysis_stream_router,
+    )
+
+    # 股票数据查询路由
+    from core.stock_data.api import stocks_router, stock_data_router
+
+    # 数据同步 & 自选股
+    from core.sync.api import router as sync_router
+    from core.favorites.api import router as favorites_router
+
     # 注册所有路由（按优先级顺序）
     app.include_router(system_settings_router, prefix="/api")
     app.include_router(admin_settings_router, prefix="/api")
@@ -255,6 +270,41 @@ def create_app() -> FastAPI:
     app.include_router(trading_agents_router, prefix="/api")
     app.include_router(trading_agents_admin_router, prefix="/api")
     app.include_router(market_data_router, prefix="/api")
+    app.include_router(config_compat_router, prefix="/api")
+    app.include_router(stocks_router, prefix="/api")
+    app.include_router(stock_data_router, prefix="/api")
+    app.include_router(reports_router, prefix="/api")
+
+    # 筛选 & 多市场查询路由
+    from core.screening.api import router as screening_router
+    from core.multi_market.api import router as multi_market_router
+    app.include_router(screening_router, prefix="/api")
+    app.include_router(multi_market_router, prefix="/api")
+
+    # 数据同步 & 自选股
+    app.include_router(sync_router, prefix="/api")
+    app.include_router(favorites_router, prefix="/api")
+
+    # 系统管理模块（调度器、缓存、数据库、日志、用量、工具）
+    from core.scheduler.api import router as scheduler_router
+    from core.cache.api import router as cache_router
+    from core.database_admin.api import router as database_admin_router
+    from core.system_logs.api import router as system_logs_router
+    from core.operation_logs.api import router as operation_logs_router
+    from core.usage.api import router as usage_router
+    from core.tools.api import router as tools_router
+
+    app.include_router(scheduler_router, prefix="/api")
+    app.include_router(cache_router, prefix="/api")
+    app.include_router(database_admin_router, prefix="/api")
+    app.include_router(system_logs_router, prefix="/api")
+    app.include_router(operation_logs_router, prefix="/api")
+    app.include_router(usage_router, prefix="/api")
+    app.include_router(tools_router, prefix="/api")
+
+    # API 兼容层路由
+    app.include_router(analysis_router, prefix="/api")
+    app.include_router(analysis_stream_router, prefix="/api")
 
     logger.info("✅ 所有路由已注册")
 
@@ -296,6 +346,11 @@ async def init_database_indexes():
 
     stock_indicators_repo = StockFinancialIndicatorRepository()
     await stock_indicators_repo.init_indexes()
+
+    # 自选股模块索引
+    from core.favorites.service import FavoriteRepository
+    favorites_repo = FavoriteRepository()
+    await favorites_repo.ensure_indexes()
 
     logger.info("✅ 市场数据模块索引创建完成")
 
