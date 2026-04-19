@@ -6,8 +6,9 @@
 import { useState, useEffect, useRef } from 'react'
 import {
   Card, Button, Space, Typography, Tag, Table, Spin, Empty,
-  message, Modal, Descriptions, Timeline, Row, Col, Statistic,
+  Modal, Descriptions, Timeline, Row, Col, Statistic,
 } from 'antd'
+import { globalMessage } from '@/services/http/message-ref'
 import {
   DatabaseOutlined, ReloadOutlined, SyncOutlined,
   CheckCircleOutlined, WarningOutlined, CloseCircleOutlined,
@@ -83,7 +84,7 @@ export default function DataSourceStatusPage() {
       const data = res.data as DataSourceStatus[] | undefined
       setOverview(data ?? [])
     } catch {
-      message.error('加载数据源状态失败')
+      globalMessage?.error('加载数据源状态失败')
       setOverview([])
     } finally {
       setLoading(false)
@@ -101,10 +102,10 @@ export default function DataSourceStatusPage() {
     setRefreshing(true)
     try {
       await refreshAllDataSources()
-      message.success('已触发全局刷新')
+      globalMessage?.success('已触发全局刷新')
       await loadOverview()
     } catch {
-      message.error('刷新失败')
+      globalMessage?.error('刷新失败')
     } finally {
       setRefreshing(false)
     }
@@ -119,7 +120,7 @@ export default function DataSourceStatusPage() {
       const data = res.data as DataSourceStatus | undefined
       if (data) setCurrentMarket(data)
     } catch {
-      message.error('加载市场详情失败')
+      globalMessage?.error('加载市场详情失败')
     }
   }
 
@@ -132,7 +133,7 @@ export default function DataSourceStatusPage() {
       const data = res.data as DataSourceHistoryItem[] | undefined
       setHistoryData(data ?? [])
     } catch {
-      message.error('加载历史记录失败')
+      globalMessage?.error('加载历史记录失败')
       setHistoryData([])
     } finally {
       setHistoryLoading(false)
@@ -145,14 +146,14 @@ export default function DataSourceStatusPage() {
     setRetryLoading(prev => ({ ...prev, [key]: true }))
     try {
       await retryDataSource(market, dataType, sourceId)
-      message.success('重试请求已发送')
+      globalMessage?.success('重试请求已发送')
       if (currentMarket) {
         const res = await getMarketDetail(currentMarket.market)
         const data = res.data as DataSourceStatus | undefined
         if (data) setCurrentMarket(data)
       }
     } catch {
-      message.error('重试失败')
+      globalMessage?.error('重试失败')
     } finally {
       setRetryLoading(prev => ({ ...prev, [key]: false }))
     }

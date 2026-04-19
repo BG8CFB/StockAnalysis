@@ -4,7 +4,7 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { message } from 'antd'
+import { globalMessage } from '@/services/http/message-ref'
 import type {
   SystemConfigResponse,
   DataSourceConfig,
@@ -104,25 +104,25 @@ export function useConfig(): UseConfigReturn {
 
   const addDataSource = useCallback(async (data: DataSourceConfigRequest) => {
     await configApi.addDataSourceConfig(data)
-    message.success('数据源添加成功')
+    globalMessage?.success('数据源添加成功')
     await loadAll()
   }, [loadAll])
 
   const updateDataSource = useCallback(async (name: string, data: DataSourceConfigRequest) => {
     await configApi.updateDataSourceConfig(name, data)
-    message.success('数据源更新成功')
+    globalMessage?.success('数据源更新成功')
     await loadAll()
   }, [loadAll])
 
   const deleteDataSource = useCallback(async (name: string) => {
     await configApi.deleteDataSourceConfig(name)
-    message.success('数据源已删除')
+    globalMessage?.success('数据源已删除')
     await loadAll()
   }, [loadAll])
 
   const setDefaultDS = useCallback(async (name: string) => {
     await configApi.setDefaultDataSource({ name })
-    message.success(`已设 ${name} 为默认数据源`)
+    globalMessage?.success(`已设 ${name} 为默认数据源`)
     await loadAll()
   }, [loadAll])
 
@@ -130,19 +130,19 @@ export function useConfig(): UseConfigReturn {
 
   const addDatabase = useCallback(async (data: DatabaseConfigRequest) => {
     await configApi.addDatabaseConfig(data)
-    message.success('数据库配置添加成功')
+    globalMessage?.success('数据库配置添加成功')
     await loadAll()
   }, [loadAll])
 
   const updateDatabase = useCallback(async (name: string, data: DatabaseConfigRequest) => {
     await configApi.updateDatabaseConfig(name, data)
-    message.success('数据库配置更新成功')
+    globalMessage?.success('数据库配置更新成功')
     await loadAll()
   }, [loadAll])
 
   const deleteDatabase = useCallback(async (name: string) => {
     await configApi.deleteDatabaseConfig(name)
-    message.success('数据库配置已删除')
+    globalMessage?.success('数据库配置已删除')
     await loadAll()
   }, [loadAll])
 
@@ -155,19 +155,19 @@ export function useConfig(): UseConfigReturn {
 
   const addCategory = useCallback(async (data: MarketCategoryRequest) => {
     await configApi.addMarketCategory(data)
-    message.success('分类添加成功')
+    globalMessage?.success('分类添加成功')
     await loadAll()
   }, [loadAll])
 
   const updateCategory = useCallback(async (id: string, data: Record<string, unknown>) => {
     await configApi.updateMarketCategory(id, data)
-    message.success('分类更新成功')
+    globalMessage?.success('分类更新成功')
     await loadAll()
   }, [loadAll])
 
   const deleteCategory = useCallback(async (id: string) => {
     await configApi.deleteMarketCategory(id)
-    message.success('分类已删除')
+    globalMessage?.success('分类已删除')
     await loadAll()
   }, [loadAll])
 
@@ -175,7 +175,7 @@ export function useConfig(): UseConfigReturn {
 
   const updateSettings = useCallback(async (data: Record<string, unknown>) => {
     await configApi.updateSystemSettings(data)
-    message.success('系统设置更新成功')
+    globalMessage?.success('系统设置更新成功')
     await loadAll()
   }, [loadAll])
 
@@ -184,7 +184,7 @@ export function useConfig(): UseConfigReturn {
   const reloadSystemConfig = useCallback(async () => {
     const res = await configApi.reloadConfig()
     if (res.data?.reloaded_at) {
-      message.success('配置重载成功')
+      globalMessage?.success('配置重载成功')
     }
     await loadAll()
   }, [loadAll])

@@ -5,8 +5,9 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react'
 import {
-  Table, Button, Modal, Form, Input, InputNumber, Switch, Space, message, Popconfirm, Typography, Tag,
+  Table, Button, Modal, Form, Input, InputNumber, Switch, Space, Popconfirm, Typography, Tag,
 } from 'antd'
+import { globalMessage } from '@/services/http/message-ref'
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined,
 } from '@ant-design/icons'
@@ -79,17 +80,17 @@ export default function MarketCategoryManager({ onRefresh }: MarketCategoryManag
       setSaving(true)
       if (editingCategory) {
         await updateMarketCategory(editingCategory.id, values as unknown as Record<string, unknown>)
-        message.success('分类更新成功')
+        globalMessage?.success('分类更新成功')
       } else {
         await addMarketCategory(values as MarketCategoryRequest)
-        message.success('分类添加成功')
+        globalMessage?.success('分类添加成功')
       }
       setModalOpen(false)
       loadData()
       onRefresh?.()
     } catch (error) {
       if (!(error as { errorFields?: unknown }).errorFields) {
-        message.error('保存失败')
+        globalMessage?.error('保存失败')
       }
     } finally {
       setSaving(false)
@@ -99,12 +100,12 @@ export default function MarketCategoryManager({ onRefresh }: MarketCategoryManag
   const handleDelete = async (id: string) => {
     try {
       await deleteMarketCategory(id)
-      message.success('分类已删除')
+      globalMessage?.success('分类已删除')
       loadData()
       onRefresh?.()
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      message.error(msg || '删除失败')
+      globalMessage?.error(msg || '删除失败')
     }
   }
 

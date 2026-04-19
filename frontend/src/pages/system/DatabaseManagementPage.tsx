@@ -6,9 +6,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   Card, Button, Space, Typography, Row, Col, Statistic, Table, Tag,
-  Alert, Popconfirm, message, Modal, Upload, Select, Input, InputNumber,
+  Alert, Popconfirm, Modal, Upload, Select, Input, InputNumber,
   Descriptions, Checkbox,
 } from 'antd'
+import { globalMessage } from '@/services/http/message-ref'
 import {
   DatabaseOutlined, CloudServerOutlined, ReloadOutlined,
   DownloadOutlined, UploadOutlined, DeleteOutlined,
@@ -89,7 +90,7 @@ export default function DatabaseManagementPage() {
       setDbStatus(statusRes?.data ?? null)
       setDbStats(statsRes?.data ?? null)
     } catch {
-      message.error('加载数据库状态失败')
+      globalMessage?.error('加载数据库状态失败')
     } finally {
       setLoading(false)
     }
@@ -117,13 +118,13 @@ export default function DatabaseManagementPage() {
       const res = await testDatabaseConnections()
       const data = res as unknown as Record<string, unknown>
       if ((data.overall as boolean) ?? false) {
-        message.success('数据库连接测试成功')
+        globalMessage?.success('数据库连接测试成功')
       } else {
-        message.warning('部分数据库连接测试失败')
+        globalMessage?.warning('部分数据库连接测试失败')
       }
       await loadStatus()
     } catch {
-      message.error('连接测试失败')
+      globalMessage?.error('连接测试失败')
     } finally {
       setTesting(false)
     }
@@ -132,17 +133,17 @@ export default function DatabaseManagementPage() {
   /** 创建备份 */
   const handleCreateBackup = async () => {
     if (!backupName.trim()) {
-      message.warning('请输入备份名称')
+      globalMessage?.warning('请输入备份名称')
       return
     }
     try {
       await createBackup(backupName.trim())
-      message.success('备份创建成功')
+      globalMessage?.success('备份创建成功')
       setBackupDialogOpen(false)
       setBackupName('')
       await loadBackups()
     } catch {
-      message.error('备份创建失败')
+      globalMessage?.error('备份创建失败')
     }
   }
 
@@ -150,10 +151,10 @@ export default function DatabaseManagementPage() {
   const handleDeleteBackup = async (id: string) => {
     try {
       await deleteBackup(id)
-      message.success('备份已删除')
+      globalMessage?.success('备份已删除')
       await loadBackups()
     } catch {
-      message.error('删除失败')
+      globalMessage?.error('删除失败')
     }
   }
 
@@ -192,10 +193,10 @@ export default function DatabaseManagementPage() {
       document.body.removeChild(link)
       URL.revokeObjectURL(url)
 
-      message.success('数据导出成功')
+      globalMessage?.success('数据导出成功')
     } catch (e: unknown) {
       const err = e as { message?: string }
-      message.error(`导出失败: ${err?.message || '未知错误'}`)
+      globalMessage?.error(`导出失败: ${err?.message || '未知错误'}`)
     } finally {
       setExporting(false)
     }
@@ -204,7 +205,7 @@ export default function DatabaseManagementPage() {
   /** 导入数据 */
   const handleImport = async () => {
     if (!importFile) {
-      message.warning('请先选择要导入的文件')
+      globalMessage?.warning('请先选择要导入的文件')
       return
     }
     setImporting(true)
@@ -219,18 +220,18 @@ export default function DatabaseManagementPage() {
 
       const data = res as { data?: { total_inserted?: number; total_collections?: number; mode?: string } }
       if (data.data?.mode === 'multi_collection') {
-        message.success(
+        globalMessage?.success(
           `数据导入成功！共导入 ${data.data.total_collections ?? 0} 个集合，${data.data.total_inserted ?? 0} 条文档`
         )
       } else {
-        message.success(`数据导入成功！导入 ${data.data?.total_inserted ?? 0} 条文档`)
+        globalMessage?.success(`数据导入成功！导入 ${data.data?.total_inserted ?? 0} 条文档`)
       }
 
       setImportFile(null)
       await loadStatus()
     } catch (e: unknown) {
       const err = e as { response?: { data?: { detail?: string } }; message?: string }
-      message.error(`导入失败: ${err?.response?.data?.detail || err?.message || '未知错误'}`)
+      globalMessage?.error(`导入失败: ${err?.response?.data?.detail || err?.message || '未知错误'}`)
     } finally {
       setImporting(false)
     }
@@ -241,10 +242,10 @@ export default function DatabaseManagementPage() {
     setCleaning(true)
     try {
       const res = await cleanupAnalysisResults(cleanupDays)
-      message.success(`分析结果清理完成，删除了 ${(res as { deleted_count?: number }).deleted_count ?? 0} 条记录`)
+      globalMessage?.success(`分析结果清理完成，删除了 ${(res as { deleted_count?: number }).deleted_count ?? 0} 条记录`)
       await loadStatus()
     } catch {
-      message.error('清理失败')
+      globalMessage?.error('清理失败')
     } finally {
       setCleaning(false)
     }
@@ -255,10 +256,10 @@ export default function DatabaseManagementPage() {
     setCleaning(true)
     try {
       const res = await cleanupOperationLogs(logCleanupDays)
-      message.success(`操作日志清理完成，删除了 ${(res as { deleted_count?: number }).deleted_count ?? 0} 条记录`)
+      globalMessage?.success(`操作日志清理完成，删除了 ${(res as { deleted_count?: number }).deleted_count ?? 0} 条记录`)
       await loadStatus()
     } catch {
-      message.error('清理失败')
+      globalMessage?.error('清理失败')
     } finally {
       setCleaning(false)
     }

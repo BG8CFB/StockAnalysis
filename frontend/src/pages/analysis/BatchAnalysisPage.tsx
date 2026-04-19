@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Card, Button, Row, Col, Typography, Alert, Space, Input, Tag, message } from 'antd'
+import { Card, Button, Row, Col, Typography, Alert, Space, Input, Tag } from 'antd'
+import { globalMessage } from '@/services/http/message-ref'
 import { RocketOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useAnalysisSubmit } from '@/features/analysis/hooks/useAnalysisSubmit'
 import BatchStockInput from '@/features/analysis/components/BatchStockInput'
@@ -7,6 +8,7 @@ import MarketSelector from '@/features/analysis/components/MarketSelector'
 import AnalysisConfigForm from '@/features/analysis/components/AnalysisConfigForm'
 import AnalysisProgressBar from '@/features/analysis/components/AnalysisProgressBar'
 import TaskStatusBadge from '@/features/analysis/components/TaskStatusBadge'
+import { DEFAULT_SELECTED_ANALYSTS } from '@/constants/analysts'
 import type { AnalysisConfigFormValues } from '@/features/analysis/components/AnalysisConfigForm'
 
 const { Title, Text } = Typography
@@ -17,27 +19,22 @@ export default function BatchAnalysisPage() {
   const [symbols, setSymbols] = useState<string[]>([])
   const [market, setMarket] = useState('CN')
   const [config, setConfig] = useState<AnalysisConfigFormValues>({
-    research_depth: 'quick',
-    selected_analysts: [],
-    include_sentiment: true,
-    include_risk: true,
-    phase2_enabled: false,
+    selected_analysts: DEFAULT_SELECTED_ANALYSTS,
+    phase2_enabled: true,
     phase2_debate_rounds: 2,
-    phase3_enabled: false,
+    phase3_enabled: true,
     phase3_debate_rounds: 2,
-    phase4_enabled: false,
-    phase4_debate_rounds: 1,
   })
 
   const { submitBatch, loading: submitting, error: submitError, batchData, reset: resetSubmit } = useAnalysisSubmit()
 
   const handleSubmit = async () => {
     if (symbols.length === 0) {
-      message.warning('请输入至少一个股票代码')
+      globalMessage?.warning('请输入至少一个股票代码')
       return
     }
     if (!title.trim()) {
-      message.warning('请输入批次标题')
+      globalMessage?.warning('请输入批次标题')
       return
     }
     const success = await submitBatch({
@@ -51,7 +48,7 @@ export default function BatchAnalysisPage() {
       },
     })
     if (success) {
-      message.success('批量分析任务已提交')
+      globalMessage?.success('批量分析任务已提交')
     }
   }
 
@@ -61,16 +58,11 @@ export default function BatchAnalysisPage() {
     setSymbols([])
     setMarket('CN')
     setConfig({
-      research_depth: 'quick',
-      selected_analysts: [],
-      include_sentiment: true,
-      include_risk: true,
-      phase2_enabled: false,
+      selected_analysts: DEFAULT_SELECTED_ANALYSTS,
+      phase2_enabled: true,
       phase2_debate_rounds: 2,
-      phase3_enabled: false,
+      phase3_enabled: true,
       phase3_debate_rounds: 2,
-      phase4_enabled: false,
-      phase4_debate_rounds: 1,
     })
     resetSubmit()
   }

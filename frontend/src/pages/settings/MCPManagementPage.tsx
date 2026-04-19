@@ -5,8 +5,9 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import {
-  Card, Button, Space, Typography, Empty, Spin, message, Alert,
+  Card, Button, Space, Typography, Empty, Spin, Alert,
 } from 'antd'
+import { globalMessage } from '@/services/http/message-ref'
 import {
   ReloadOutlined, PlusOutlined, QuestionCircleOutlined, ApiOutlined,
   MedicineBoxOutlined,
@@ -137,7 +138,7 @@ export default function MCPManagementPage() {
             icon={<MedicineBoxOutlined />}
             onClick={async () => {
               await mcp.doHealthCheck()
-              message.success('健康检查完成')
+              globalMessage?.success('健康检查完成')
             }}
           >
             执行健康检查

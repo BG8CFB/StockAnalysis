@@ -6,8 +6,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   Card, Button, Space, Typography, Table, Tag, Switch, Modal, Form,
-  Input, Select, Popconfirm, message, Spin, Empty, Descriptions, Alert,
+  Input, Select, Popconfirm, Spin, Empty, Descriptions, Alert,
 } from 'antd'
+import { globalMessage } from '@/services/http/message-ref'
 import {
   ReloadOutlined, PlusOutlined, EditOutlined, DeleteOutlined,
   RobotOutlined, EyeOutlined,
@@ -49,7 +50,7 @@ export default function AgentManagementPage() {
       const res = await listAgents()
       setAgents(Array.isArray(res) ? res : [])
     } catch {
-      message.error('加载智能体列表失败')
+      globalMessage?.error('加载智能体列表失败')
       setAgents([])
     } finally {
       setLoading(false)
@@ -85,7 +86,7 @@ export default function AgentManagementPage() {
       if (editingAgent) {
         // 编辑
         await saveAgent({ ...editingAgent, ...values })
-        message.success('智能体配置已更新')
+        globalMessage?.success('智能体配置已更新')
       } else {
         // 新增
         await saveAgent({
@@ -97,12 +98,12 @@ export default function AgentManagementPage() {
           prompt: values.prompt || '',
           enabled: true,
         })
-        message.success('智能体已创建')
+        globalMessage?.success('智能体已创建')
       }
       setEditOpen(false)
       await fetchAgents()
     } catch {
-      message.error('保存失败')
+      globalMessage?.error('保存失败')
     } finally {
       setSaving(false)
     }
@@ -112,10 +113,10 @@ export default function AgentManagementPage() {
   const handleDelete = async (agentId: string) => {
     try {
       const res = await deleteAgent(agentId)
-      message.success(res.message || '删除成功')
+      globalMessage?.success(res.message || '删除成功')
       await fetchAgents()
     } catch {
-      message.error('删除失败')
+      globalMessage?.error('删除失败')
     }
   }
 
@@ -123,10 +124,10 @@ export default function AgentManagementPage() {
   const handleToggleEnabled = async (agent: AgentItem, enabled: boolean) => {
     try {
       await saveAgent({ ...agent, enabled })
-      message.success(`${enabled ? '启用' : '禁用'}成功`)
+      globalMessage?.success(`${enabled ? '启用' : '禁用'}成功`)
       await fetchAgents()
     } catch {
-      message.error('操作失败')
+      globalMessage?.error('操作失败')
     }
   }
 

@@ -37,23 +37,31 @@ const RISK_TAG_MAP: Record<string, { color: string; label: string }> = {
   高: { color: 'error', label: '高风险' },
 }
 
-/** 模块名称映射到中文显示名 */
-const MODULE_LABEL_MAP: Record<string, string> = {
-  market_analyst_report: '市场分析',
-  news_analyst_report: '新闻舆情',
-  fundamentals_analyst_report: '基本面分析',
-  technical_analyst_report: '技术面分析',
-  sentiment_analyst_report: '情绪分析',
-  macro_analyst_report: '宏观分析',
-  bull_researcher: '多头研究',
-  bear_researcher: '空头研究',
-  research_team_decision: '研究团队决策',
-  risky_analyst: '激进风控',
-  safe_analyst: '保守风控',
-  neutral_analyst: '中性风控',
-  risk_management_decision: '风控决策',
-  trader_investment_plan: '交易计划',
+/** 智能体 slug → 中文名称映射（与后端 YAML 配置的 slug 一致） */
+const AGENT_NAME_MAP: Record<string, string> = {
+  // Phase 1
+  'financial-news-analyst': '财经新闻分析师',
+  'social-media-analyst': '社交媒体和投资情绪分析师',
+  'china-market-analyst': '中国市场分析师',
+  'market-analyst': '市场技术分析师',
+  'fundamentals-analyst': '基本面分析师',
+  'short-term-capital-analyst': '短线资金分析师',
+  // Phase 2
+  'bull-researcher': '看涨分析师',
+  'bear-researcher': '看跌分析师',
+  'research-manager': '投资组合经理',
+  'trader': '专业交易员',
+  // Phase 3
+  'aggressive-debator': '激进策略分析师',
+  'neutral-debator': '中性策略分析师',
+  'conservative-debator': '保守策略分析师',
+  'risk-manager': '风险管理委员会主席',
+  // Phase 4
+  'summarizer': '总结智能体',
 }
+
+/** 模块名称映射：优先使用 AGENT_NAME_MAP，兜底做格式美化 */
+const MODULE_LABEL_MAP: Record<string, string> = AGENT_NAME_MAP
 
 export default function ReportDetailPage() {
   const { id: reportId } = useParams<{ id: string }>()
@@ -191,7 +199,9 @@ export default function ReportDetailPage() {
                       <Descriptions.Item label="分析师">
                         <Space size={[4, 4]} wrap>
                           {(report.analysts || []).map((a) => (
-                            <Tag key={a} style={{ fontSize: 11 }}>{a}</Tag>
+                            <Tag key={a} style={{ fontSize: 11 }}>
+                              {AGENT_NAME_MAP[a] || a}
+                            </Tag>
                           ))}
                         </Space>
                       </Descriptions.Item>
@@ -227,7 +237,7 @@ export default function ReportDetailPage() {
                   onChange={setActiveModule}
                   items={modules.map((key) => ({
                     key,
-                    label: MODULE_LABEL_MAP[key] || key.replace(/_report$/, '').replace(/_/g, ' '),
+                    label: MODULE_LABEL_MAP[key] || key.replace(/-/g, ' '),
                     children: (
                       <div style={{ padding: '16px 20px' }}>
                         <MarkdownRenderer content={report!.reports[key]} />

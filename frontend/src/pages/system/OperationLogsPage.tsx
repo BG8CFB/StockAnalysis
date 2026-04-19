@@ -7,8 +7,9 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Card, Button, Space, Typography, Table, Tag, DatePicker,
   Select, Input, Row, Col, Statistic, Modal, Descriptions,
-  Popconfirm, message, Empty, Tooltip, Spin, Alert,
+  Popconfirm, Empty, Tooltip, Spin, Alert,
 } from 'antd'
+import { globalMessage } from '@/services/http/message-ref'
 import {
   FileSearchOutlined, ReloadOutlined, DeleteOutlined,
   EyeOutlined, BarChartOutlined, FilterOutlined,
@@ -103,7 +104,7 @@ export default function OperationLogsPage() {
       setLogs(data.logs ?? [])
       setTotal(data.total ?? 0)
     } catch {
-      message.error('加载操作日志失败')
+      globalMessage?.error('加载操作日志失败')
     } finally {
       setLoading(false)
     }
@@ -179,12 +180,12 @@ export default function OperationLogsPage() {
     try {
       const res = await clearOperationLogs(undefined, actionType || undefined)
       const count = (res.data as { deleted_count?: number })?.deleted_count ?? 0
-      message.success(`已清理 ${count} 条日志`)
+      globalMessage?.success(`已清理 ${count} 条日志`)
       setPage(1) // 清空后重置到第 1 页
       loadLogs({ p: 1 })
       loadStats()
     } catch {
-      message.error('清理失败')
+      globalMessage?.error('清理失败')
     } finally {
       setClearing(false)
     }

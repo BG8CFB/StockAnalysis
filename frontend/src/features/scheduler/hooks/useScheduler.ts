@@ -4,7 +4,7 @@
  */
 
 import { useState, useCallback, useRef } from 'react'
-import { message } from 'antd'
+import { globalMessage } from '@/services/http/message-ref'
 import {
   listSchedulerJobs,
   getJobDetail,
@@ -63,7 +63,7 @@ export function useScheduler(): UseSchedulerReturn {
       setJobs(Array.isArray(jobsRes) ? jobsRes : [])
       setStats(statsRes?.data ?? null)
     } catch {
-      message.error('加载任务列表失败')
+      globalMessage?.error('加载任务列表失败')
       setJobs([])
       setStats(null)
     } finally {
@@ -84,7 +84,7 @@ export function useScheduler(): UseSchedulerReturn {
   const pause = useCallback(async (jobId: string) => {
     await withActionLoading(jobId, async () => {
       await pauseJob(jobId)
-      message.success('任务已暂停')
+      globalMessage?.success('任务已暂停')
       await fetchJobs()
     })
   }, [fetchJobs])
@@ -92,7 +92,7 @@ export function useScheduler(): UseSchedulerReturn {
   const resume = useCallback(async (jobId: string) => {
     await withActionLoading(jobId, async () => {
       await resumeJob(jobId)
-      message.success('任务已恢复')
+      globalMessage?.success('任务已恢复')
       await fetchJobs()
     })
   }, [fetchJobs])
@@ -100,7 +100,7 @@ export function useScheduler(): UseSchedulerReturn {
   const trigger = useCallback(async (jobId: string, force = false) => {
     await withActionLoading(jobId, async () => {
       await triggerJob(jobId, force)
-      message.success('任务已触发执行')
+      globalMessage?.success('任务已触发执行')
       await fetchJobs()
     })
   }, [fetchJobs])
@@ -110,7 +110,7 @@ export function useScheduler(): UseSchedulerReturn {
       const res = await getJobDetail(jobId)
       return res.data ?? null
     } catch {
-      message.error('获取任务详情失败')
+      globalMessage?.error('获取任务详情失败')
       return null
     }
   }, [])
@@ -120,7 +120,7 @@ export function useScheduler(): UseSchedulerReturn {
       const res = await getJobHistory(jobId, limit, offset)
       return res.data ?? { history: [], total: 0, limit, offset }
     } catch {
-      message.error('加载执行历史失败')
+      globalMessage?.error('加载执行历史失败')
       return { history: [], total: 0, limit, offset }
     }
   }, [])
@@ -130,7 +130,7 @@ export function useScheduler(): UseSchedulerReturn {
       const res = await getAllHistory(params?.limit ?? 50, params?.offset ?? 0, params as Record<string, unknown>)
       return res.data ?? { history: [], total: 0, limit: 50, offset: 0 }
     } catch {
-      message.error('加载执行历史失败')
+      globalMessage?.error('加载执行历史失败')
       return { history: [], total: 0, limit: 50, offset: 0 }
     }
   }, [])
@@ -140,7 +140,7 @@ export function useScheduler(): UseSchedulerReturn {
       const res = await getJobExecutions(params ?? {})
       return res.data ?? { items: [], total: 0, limit: 20, offset: 0 }
     } catch {
-      message.error('加载执行记录失败')
+      globalMessage?.error('加载执行记录失败')
       return { items: [], total: 0, limit: 20, offset: 0 }
     }
   }, [])
@@ -148,27 +148,27 @@ export function useScheduler(): UseSchedulerReturn {
   const cancelExec = useCallback(async (executionId: string) => {
     try {
       await cancelExecution(executionId)
-      message.success('已设置取消标记')
+      globalMessage?.success('已设置取消标记')
     } catch {
-      message.error('取消失败')
+      globalMessage?.error('取消失败')
     }
   }, [])
 
   const markFailed = useCallback(async (executionId: string, reason = '用户手动标记') => {
     try {
       await markExecutionFailed(executionId, reason)
-      message.success('已标记为失败')
+      globalMessage?.success('已标记为失败')
     } catch {
-      message.error('标记失败')
+      globalMessage?.error('标记失败')
     }
   }, [])
 
   const deleteExec = useCallback(async (executionId: string) => {
     try {
       await deleteExecution(executionId)
-      message.success('执行记录已删除')
+      globalMessage?.success('执行记录已删除')
     } catch {
-      message.error('删除失败')
+      globalMessage?.error('删除失败')
     }
   }, [])
 

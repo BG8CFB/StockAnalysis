@@ -5,8 +5,9 @@
 
 import { useState, useEffect } from 'react'
 import {
-  Modal, Form, Input, Select, Switch, InputNumber, Space, message,
+  Modal, Form, Input, Select, Switch, InputNumber, Space,
 } from 'antd'
+import { globalMessage } from '@/services/http/message-ref'
 import type { DataSourceConfig, DataSourceConfigRequest, MarketCategory, DataSourceType } from '@/types/config.types'
 
 const { TextArea } = Input
@@ -79,18 +80,18 @@ export default function DataSourceConfigDialog({
         try {
           configParams = JSON.parse(String(values.config_params))
         } catch {
-          message.error('扩展配置参数不是有效的 JSON 格式')
+          globalMessage?.error('扩展配置参数不是有效的 JSON 格式')
           return
         }
       }
 
       setSaving(true)
       await onSave({ ...values, config_params: configParams })
-      message.success(isEdit ? '数据源更新成功' : '数据源添加成功')
+      globalMessage?.success(isEdit ? '数据源更新成功' : '数据源添加成功')
       onClose()
     } catch (error) {
       if (!(error as { errorFields?: unknown }).errorFields) {
-        message.error('保存失败，请重试')
+        globalMessage?.error('保存失败，请重试')
       }
     } finally {
       setSaving(false)

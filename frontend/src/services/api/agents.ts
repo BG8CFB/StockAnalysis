@@ -108,34 +108,29 @@ export interface AgentConfigExportResponse {
 
 /** 获取用户智能体配置 */
 export async function getAgentConfig(includePrompts = false): Promise<AgentConfigResponse> {
-  const res = await apiClient.get<AgentConfigResponse>('/api/trading-agents/agent-config', {
+  return apiClient.get<AgentConfigResponse>('/api/trading-agents/agent-config', {
     include_prompts: includePrompts,
-  })
-  return res.data
+  }) as unknown as Promise<AgentConfigResponse>
 }
 
 /** 更新用户智能体配置 */
 export async function updateAgentConfig(data: AgentConfigUpdateRequest): Promise<AgentConfigResponse> {
-  const res = await apiClient.put<AgentConfigResponse>('/api/trading-agents/agent-config', data)
-  return res.data
+  return apiClient.put<AgentConfigResponse>('/api/trading-agents/agent-config', data) as unknown as Promise<AgentConfigResponse>
 }
 
 /** 重置为默认智能体配置 */
 export async function resetAgentConfig(): Promise<AgentConfigResponse> {
-  const res = await apiClient.post<AgentConfigResponse>('/api/trading-agents/agent-config/reset')
-  return res.data
+  return apiClient.post<AgentConfigResponse>('/api/trading-agents/agent-config/reset') as unknown as Promise<AgentConfigResponse>
 }
 
 /** 导出智能体配置 */
 export async function exportAgentConfig(): Promise<AgentConfigExportResponse> {
-  const res = await apiClient.post<AgentConfigExportResponse>('/api/trading-agents/agent-config/export')
-  return res.data
+  return apiClient.post<AgentConfigExportResponse>('/api/trading-agents/agent-config/export') as unknown as Promise<AgentConfigExportResponse>
 }
 
 /** 导入智能体配置 */
 export async function importAgentConfig(configData: Record<string, unknown>): Promise<AgentConfigResponse> {
-  const res = await apiClient.post<AgentConfigResponse>('/api/trading-agents/agent-config/import', configData)
-  return res.data
+  return apiClient.post<AgentConfigResponse>('/api/trading-agents/agent-config/import', configData) as unknown as Promise<AgentConfigResponse>
 }
 
 // =============================================================================
@@ -144,16 +139,14 @@ export async function importAgentConfig(configData: Record<string, unknown>): Pr
 
 /** 获取公共智能体配置（管理员） */
 export async function getPublicAgentConfig(includePrompts = false): Promise<AgentConfigResponse> {
-  const res = await apiClient.get<AgentConfigResponse>('/api/trading-agents/agent-config/public', {
+  return apiClient.get<AgentConfigResponse>('/api/trading-agents/agent-config/public', {
     include_prompts: includePrompts,
-  })
-  return res.data
+  }) as unknown as Promise<AgentConfigResponse>
 }
 
 /** 更新公共智能体配置（管理员） */
 export async function updatePublicAgentConfig(data: AgentConfigUpdateRequest): Promise<AgentConfigResponse> {
-  const res = await apiClient.put<AgentConfigResponse>('/api/trading-agents/agent-config/public', data)
-  return res.data
+  return apiClient.put<AgentConfigResponse>('/api/trading-agents/agent-config/public', data) as unknown as Promise<AgentConfigResponse>
 }
 
 // =============================================================================
@@ -174,18 +167,15 @@ export interface AgentItem {
 
 /** 列出所有智能体 */
 export async function listAgents(): Promise<AgentItem[]> {
-  const res = await apiClient.get<AgentItem[]>('/api/trading-agents/agents')
-  return res.data
+  return apiClient.get<AgentItem[]>('/api/trading-agents/agents') as unknown as Promise<AgentItem[]>
 }
 
 /** 保存智能体（创建或更新） */
 export async function saveAgent(agent: Partial<AgentItem> & { id: string }): Promise<AgentItem> {
-  const res = await apiClient.put<AgentItem>(`/api/trading-agents/agents/${agent.id}`, agent)
-  return res.data
+  return apiClient.put<AgentItem>(`/api/trading-agents/agents/${agent.id}`, agent) as unknown as Promise<AgentItem>
 }
 
 /** 删除智能体 */
 export async function deleteAgent(agentId: string): Promise<{ success: boolean; message: string }> {
-  const res = await apiClient.delete<{ success: boolean; message: string }>(`/api/trading-agents/agents/${agentId}`)
-  return res.data
+  return apiClient.delete<{ success: boolean; message: string }>(`/api/trading-agents/agents/${agentId}`) as unknown as Promise<{ success: boolean; message: string }>
 }

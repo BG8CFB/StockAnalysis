@@ -5,8 +5,9 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react'
 import {
-  Card, Table, Button, Modal, Input, Space, Tag, message, Popconfirm, Typography, Empty, Tabs,
+  Card, Table, Button, Modal, Input, Space, Tag, Popconfirm, Typography, Empty, Tabs,
 } from 'antd'
+import { globalMessage } from '@/services/http/message-ref'
 import {
   PlusOutlined, DeleteOutlined, CloudDownloadOutlined, ReloadOutlined, EditOutlined,
 } from '@ant-design/icons'
@@ -56,11 +57,11 @@ export default function ModelCatalogManager({ providers = [], onRefresh }: Model
   const handleInitDefault = async () => {
     try {
       const res = await initModelCatalog()
-      message[res.data.success ? 'success' : 'error'](res.data.message)
+      globalMessage?.[res.data.success ? 'success' : 'error'](res.data.message)
       loadCatalogs()
       onRefresh?.()
     } catch {
-      message.error('初始化失败')
+      globalMessage?.error('初始化失败')
     }
   }
 
@@ -69,13 +70,13 @@ export default function ModelCatalogManager({ providers = [], onRefresh }: Model
     try {
       const res = await fetchProviderModels(providerId)
       if (res.data.models?.length) {
-        message.success(`从 ${providerName} 拉取到 ${res.data.models.length} 个模型`)
+        globalMessage?.success(`从 ${providerName} 拉取到 ${res.data.models.length} 个模型`)
       } else {
-        message.info(`未从 ${providerName} 获取到模型列表`)
+        globalMessage?.info(`未从 ${providerName} 获取到模型列表`)
       }
       loadCatalogs()
     } catch {
-      message.error('拉取模型失败')
+      globalMessage?.error('拉取模型失败')
     } finally {
       setFetchingModels(null)
     }
@@ -97,23 +98,23 @@ export default function ModelCatalogManager({ providers = [], onRefresh }: Model
         provider_name: provider?.display_name || editingProvider,
         models: editingModels,
       })
-      message.success('模型目录保存成功')
+      globalMessage?.success('模型目录保存成功')
       setEditModalOpen(false)
       loadCatalogs()
       onRefresh?.()
     } catch {
-      message.error('保存失败')
+      globalMessage?.error('保存失败')
     }
   }
 
   const handleDeleteCatalog = async (provider: string) => {
     try {
       await deleteModelCatalog(provider)
-      message.success('模型目录已删除')
+      globalMessage?.success('模型目录已删除')
       loadCatalogs()
       onRefresh?.()
     } catch {
-      message.error('删除失败')
+      globalMessage?.error('删除失败')
     }
   }
 

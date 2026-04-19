@@ -143,6 +143,11 @@ instance.interceptors.response.use(
   async (response) => {
     const data = response.data as ApiResponse
 
+    // 统一响应格式：后端部分接口返回 { code: 0, ... } 而非 { success: true, ... }
+    if (data.success === undefined && data.code !== undefined) {
+      data.success = data.code === 0
+    }
+
     // 检查业务层错误码（40101/40102/40103 等同 401）
     if (data.code && [40101, 40102, 40103].includes(data.code)) {
       const config = response.config as InternalAxiosRequestConfig & InternalRequestConfig

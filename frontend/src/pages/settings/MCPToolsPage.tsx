@@ -5,12 +5,13 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import {
-  Card, Button, Space, Typography, Spin, Statistic, Row, Col, Tag, message, Alert,
+  Card, Button, Space, Typography, Spin, Statistic, Row, Col, Tag, Alert,
 } from 'antd'
 import {
   ReloadOutlined, ToolOutlined, CheckCircleOutlined, CloseCircleOutlined,
 } from '@ant-design/icons'
 import { listMCPTools, toggleMCPTool, getMCPAvailabilitySummary, type MCPToolInfo } from '@/services/api/tools'
+import { globalMessage } from '@/services/http/message-ref'
 import ToolCategoryGroup from '@/features/mcp/components/ToolCategoryGroup'
 
 const { Title, Text } = Typography
@@ -38,12 +39,16 @@ export default function MCPToolsPage() {
         const sumRes = await getMCPAvailabilitySummary()
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const rawSummary = (sumRes as any).data
-        setSummary(rawSummary ?? null)
+        setSummary(rawSummary ? {
+          ...rawSummary,
+          disabled_tools: rawSummary.disabled_tools ?? [],
+          by_category: rawSummary.by_category ?? {},
+        } : null)
       } catch {
         // 摘要加载失败不影响主功能
       }
     } catch {
-      message.error('加载 MCP 工具列表失败')
+      globalMessage?.error('加载 MCP 工具列表失败')
       setTools([])
     } finally {
       setLoading(false)
@@ -59,11 +64,11 @@ export default function MCPToolsPage() {
     setTogglingName(name)
     try {
       await toggleMCPTool(name, enabled)
-      message.success(`${enabled ? '启用' : '禁用'}成功: ${name}`)
+      globalMessage?.success(`${enabled ? '启用' : '禁用'}成功: ${name}`)
       // 刷新列表以获取最新状态
       await fetchTools()
     } catch {
-      message.error('操作失败')
+      globalMessage?.error('操作失败')
     } finally {
       setTogglingName(null)
     }
@@ -133,7 +138,7 @@ export default function MCPToolsPage() {
           </Row>
 
           {/* 被禁用的工具提示 */}
-          {summary.disabled_tools.length > 0 && (
+          {(summary.disabled_tools?.length ?? 0) > 0 && (
             <Alert
               type="warning"
               showIcon

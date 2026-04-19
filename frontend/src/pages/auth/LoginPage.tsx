@@ -1,4 +1,5 @@
-import { Button, Form, Input, Checkbox, message } from 'antd'
+import { Button, Form, Input, Checkbox } from 'antd'
+import { globalMessage } from '@/services/http/message-ref'
 import { UserOutlined, LockOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth.store'
@@ -15,13 +16,13 @@ export default function LoginPage() {
     // 后端 LoginRequest 使用 account 字段（支持用户名或邮箱）
     const success = await login({ account: values.username, password: values.password })
     if (success) {
-      message.success('登录成功')
+      globalMessage?.success('登录成功')
       navigate('/dashboard')
     } else {
       // 必须从 getState 读取最新 error，避免 React 闭包捕获旧值
       const errMsg = useAuthStore.getState().error || '登录失败，请检查用户名和密码'
       setLoginError(errMsg)
-      message.error(errMsg)
+      globalMessage?.error(errMsg)
     }
   }
 

@@ -4,7 +4,7 @@
  */
 
 import { useState, useCallback, useRef } from 'react'
-import { message } from 'antd'
+import { globalMessage } from '@/services/http/message-ref'
 import {
   getUsers,
   getPendingUsers,
@@ -76,7 +76,7 @@ export function useUserManagement(): UseUserManagementReturn {
       setPage(p)
       if (filters?.page_size) setPageSize(filters.page_size)
     } catch {
-      message.error('加载用户列表失败')
+      globalMessage?.error('加载用户列表失败')
       setUsers([])
       setTotal(0)
     } finally {
@@ -92,7 +92,7 @@ export function useUserManagement(): UseUserManagementReturn {
       const data = res.data as AdminUser[] | undefined
       setPendingUsers(data ?? [])
     } catch {
-      message.error('加载待审批用户失败')
+      globalMessage?.error('加载待审批用户失败')
       setPendingUsers([])
     } finally {
       setLoading(false)
@@ -107,7 +107,7 @@ export function useUserManagement(): UseUserManagementReturn {
       setAuditLogs(data?.items ?? [])
       setAuditTotal(data?.total ?? 0)
     } catch {
-      message.error('加载审计日志失败')
+      globalMessage?.error('加载审计日志失败')
       setAuditLogs([])
       setAuditTotal(0)
     } finally {
@@ -127,7 +127,7 @@ export function useUserManagement(): UseUserManagementReturn {
   const approve = useCallback(async (userId: string) => {
     await withActionLoading(userId, async () => {
       await approveUser(userId)
-      message.success('用户已审批通过')
+      globalMessage?.success('用户已审批通过')
       await fetchUsers()
       await fetchPendingUsers()
     })
@@ -136,7 +136,7 @@ export function useUserManagement(): UseUserManagementReturn {
   const reject = useCallback(async (userId: string, reason: string = '不符合要求') => {
     await withActionLoading(userId, async () => {
       await rejectUser(userId, reason)
-      message.success('用户已拒绝')
+      globalMessage?.success('用户已拒绝')
       await fetchUsers()
       await fetchPendingUsers()
     })
@@ -145,7 +145,7 @@ export function useUserManagement(): UseUserManagementReturn {
   const disable = useCallback(async (userId: string, reason?: string) => {
     await withActionLoading(userId, async () => {
       await disableUser(userId, reason)
-      message.success('用户已禁用')
+      globalMessage?.success('用户已禁用')
       await fetchUsers()
     })
   }, [fetchUsers])
@@ -153,7 +153,7 @@ export function useUserManagement(): UseUserManagementReturn {
   const enable = useCallback(async (userId: string) => {
     await withActionLoading(userId, async () => {
       await enableUser(userId)
-      message.success('用户已启用')
+      globalMessage?.success('用户已启用')
       await fetchUsers()
     })
   }, [fetchUsers])
@@ -161,7 +161,7 @@ export function useUserManagement(): UseUserManagementReturn {
   const remove = useCallback(async (userId: string) => {
     await withActionLoading(userId, async () => {
       await deleteUser(userId)
-      message.success('用户已删除')
+      globalMessage?.success('用户已删除')
       await fetchUsers()
     })
   }, [fetchUsers])
@@ -169,7 +169,7 @@ export function useUserManagement(): UseUserManagementReturn {
   const changeRole = useCallback(async (userId: string, role: string) => {
     await withActionLoading(userId, async () => {
       await changeUserRole(userId, { role })
-      message.success('角色已更新')
+      globalMessage?.success('角色已更新')
       await fetchUsers()
     })
   }, [fetchUsers])
@@ -177,7 +177,7 @@ export function useUserManagement(): UseUserManagementReturn {
   const resetPassword = useCallback(async (userId: string) => {
     await withActionLoading(userId, async () => {
       await resetUserPassword(userId)
-      message.success('密码重置链接已生成')
+      globalMessage?.success('密码重置链接已生成')
     })
   }, [])
 
@@ -185,11 +185,11 @@ export function useUserManagement(): UseUserManagementReturn {
     setLoading(true)
     try {
       await createUser(data)
-      message.success('用户创建成功')
+      globalMessage?.success('用户创建成功')
       await fetchUsers()
       return true
     } catch {
-      message.error('创建用户失败')
+      globalMessage?.error('创建用户失败')
       return false
     } finally {
       setLoading(false)
@@ -200,11 +200,11 @@ export function useUserManagement(): UseUserManagementReturn {
     setLoading(true)
     try {
       await updateUser(userId, data)
-      message.success('用户信息已更新')
+      globalMessage?.success('用户信息已更新')
       await fetchUsers()
       return true
     } catch {
-      message.error('更新用户失败')
+      globalMessage?.error('更新用户失败')
       return false
     } finally {
       setLoading(false)

@@ -19,11 +19,8 @@ export type BatchStatus =
 export interface AnalysisParameters {
   market_type?: string
   analysis_date?: string
-  research_depth?: string
   selected_analysts?: string[]
   custom_prompt?: string
-  include_sentiment?: boolean
-  include_risk?: boolean
   language?: string
   quick_analysis_model?: string
   deep_analysis_model?: string
@@ -31,8 +28,6 @@ export interface AnalysisParameters {
   phase2_debate_rounds?: number
   phase3_enabled?: boolean
   phase3_debate_rounds?: number
-  phase4_enabled?: boolean
-  phase4_debate_rounds?: number
   mcp_enabled?: boolean
   mcp_tools?: string[]
   mcp_tool_ids?: string[]

@@ -4,10 +4,11 @@
  */
 
 import { useState } from 'react'
-import { Card, Button, Space, message, Modal, Typography, Alert, Upload, Descriptions, Tag } from 'antd'
+import { Card, Button, Space, Modal, Typography, Alert, Upload, Descriptions, Tag } from 'antd'
 import {
   DownloadOutlined, UploadOutlined, ExclamationCircleOutlined,
 } from '@ant-design/icons'
+import { globalMessage } from '@/services/http/message-ref'
 import { exportConfig, importConfig } from '@/services/api/config'
 
 const { Text } = Typography
@@ -43,9 +44,9 @@ export default function ImportExportPanel({ onImported }: ImportExportPanelProps
       document.body.removeChild(link)
       URL.revokeObjectURL(url)
 
-      message.success(`配置已导出（包含 ${Object.keys(data.data).length} 个模块）`)
+      globalMessage?.success(`配置已导出（包含 ${Object.keys(data.data).length} 个模块）`)
     } catch {
-      message.error('导出失败')
+      globalMessage?.error('导出失败')
     } finally {
       setExporting(false)
     }
@@ -60,7 +61,7 @@ export default function ImportExportPanel({ onImported }: ImportExportPanelProps
         setPreviewData(data)
         setPreviewOpen(true)
       } catch {
-        message.error('文件格式错误，必须是有效的 JSON')
+        globalMessage?.error('文件格式错误，必须是有效的 JSON')
       }
     }
     reader.readAsText(file)
@@ -74,12 +75,12 @@ export default function ImportExportPanel({ onImported }: ImportExportPanelProps
     setImporting(true)
     try {
       const res = await importConfig(previewData)
-      message.success(res.data.message || '配置导入成功')
+      globalMessage?.success(res.data.message || '配置导入成功')
       setPreviewOpen(false)
       setPreviewData(null)
       onImported?.()
     } catch {
-      message.error('导入失败，请检查文件格式是否正确')
+      globalMessage?.error('导入失败，请检查文件格式是否正确')
     } finally {
       setImporting(false)
     }

@@ -110,13 +110,6 @@ const routes: RouteObject[] = [
           return { Component: ReportDetailPage }
         },
       },
-      {
-        path: '/reports/token',
-        lazy: async () => {
-          const { default: TokenStatisticsPage } = await import('@/pages/reports/TokenStatisticsPage')
-          return { Component: TokenStatisticsPage }
-        },
-      },
       ...analysisRoutes,
       ...stocksRoutes,
       ...settingsRoutes,

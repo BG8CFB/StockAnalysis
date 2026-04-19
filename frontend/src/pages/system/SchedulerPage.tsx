@@ -6,8 +6,8 @@
 import { useState, useEffect } from 'react'
 import {
   Card, Button, Space, Typography, Modal, Form, Input, Descriptions,
-  message,
 } from 'antd'
+import { globalMessage } from '@/services/http/message-ref'
 import {
   ScheduleOutlined, ReloadOutlined, FileTextOutlined,
 } from '@ant-design/icons'
@@ -52,11 +52,11 @@ export default function SchedulerPage() {
     setSavingMeta(true)
     try {
       // 通过 API 更新（当前后端支持 PUT /jobs/{id}/metadata）
-      message.success('任务信息已更新')
+      globalMessage?.success('任务信息已更新')
       setEditOpen(false)
       await scheduler.fetchJobs()
     } catch {
-      message.error('更新失败')
+      globalMessage?.error('更新失败')
     } finally {
       setSavingMeta(false)
     }

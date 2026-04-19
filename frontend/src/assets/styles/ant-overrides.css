@@ -26,6 +26,11 @@
 }
 
 /* 子菜单标题 */
+.ant-menu-submenu-title {
+  margin: 4px 12px !important;
+  border-radius: 4px !important;
+}
+
 .ant-menu-submenu-title:hover {
   color: var(--accent-primary) !important;
   background: var(--bg-hover) !important;
@@ -33,6 +38,34 @@
 
 .ant-menu-submenu-selected > .ant-menu-submenu-title {
   color: var(--accent-primary) !important;
+}
+
+/* 二级菜单容器：控制缩进与间距 */
+.ant-menu-sub {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* 二级菜单项缩进 */
+.ant-menu-sub .ant-menu-item {
+  padding-inline-start: 40px !important;
+  margin: 2px 12px !important;
+}
+
+/* 三级菜单（分析报告）缩进 */
+.ant-menu-sub .ant-menu-sub .ant-menu-item {
+  padding-inline-start: 56px !important;
+  margin: 2px 12px !important;
+}
+
+/* 三级子菜单标题缩进 */
+.ant-menu-sub .ant-menu-submenu-title {
+  padding-inline-start: 40px !important;
+}
+
+/* 一级子菜单组间距 */
+.ant-menu-root > .ant-menu-submenu {
+  margin-bottom: 2px !important;
 }
 
 /* ===== 卡片 ===== */

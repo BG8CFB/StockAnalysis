@@ -1,5 +1,6 @@
-import { Table, Tag, Button, Space, Popconfirm, message } from 'antd'
+import { Table, Tag, Button, Space, Popconfirm } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
+import { globalMessage } from '@/services/http/message-ref'
 import {
   CheckCircleOutlined,
   InfoCircleOutlined,
@@ -30,10 +31,10 @@ export default function AlertsTable({ alerts, loading = false, onResolved }: Ale
     setResolving((prev) => new Set(prev).add(id))
     try {
       await resolveAlert(id)
-      message.success('告警已解决')
+      globalMessage?.success('告警已解决')
       onResolved?.()
     } catch {
-      message.error('解决失败')
+      globalMessage?.error('解决失败')
     } finally {
       setResolving((prev) => {
         const next = new Set(prev)

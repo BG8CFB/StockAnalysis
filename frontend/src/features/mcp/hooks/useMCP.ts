@@ -4,7 +4,7 @@
  */
 
 import { useState, useCallback } from 'react'
-import { message } from 'antd'
+import { globalMessage } from '@/services/http/message-ref'
 import {
   listMCPConnectors,
   toggleMCPConnector,
@@ -40,7 +40,7 @@ export function useMCP(): UseMCPReturn {
       const res = await listMCPConnectors()
       setConnectors(Array.isArray(res) ? res : [])
     } catch {
-      message.error('加载 MCP 连接器列表失败')
+      globalMessage?.error('加载 MCP 连接器列表失败')
       setConnectors([])
     } finally {
       setLoading(false)
@@ -50,20 +50,20 @@ export function useMCP(): UseMCPReturn {
   const toggleConnector = useCallback(async (name: string, enabled: boolean) => {
     try {
       await toggleMCPConnector(name, enabled)
-      message.success(`${enabled ? '启用' : '禁用'}成功`)
+      globalMessage?.success(`${enabled ? '启用' : '禁用'}成功`)
       await fetchConnectors()
     } catch {
-      message.error('操作失败')
+      globalMessage?.error('操作失败')
     }
   }, [fetchConnectors])
 
   const removeConnector = useCallback(async (name: string) => {
     try {
       await deleteMCPConnector(name)
-      message.success('已删除')
+      globalMessage?.success('已删除')
       await fetchConnectors()
     } catch {
-      message.error('删除失败')
+      globalMessage?.error('删除失败')
     }
   }, [fetchConnectors])
 
@@ -71,11 +71,11 @@ export function useMCP(): UseMCPReturn {
     setSaving(true)
     try {
       await updateMCPConnectors(mcpServers)
-      message.success('配置更新成功')
+      globalMessage?.success('配置更新成功')
       await fetchConnectors()
     } catch (e: unknown) {
       const err = e as { response?: { data?: { detail?: string } }; message?: string }
-      message.error(`配置更新失败: ${err?.response?.data?.detail || err?.message || '未知错误'}`)
+      globalMessage?.error(`配置更新失败: ${err?.response?.data?.detail || err?.message || '未知错误'}`)
     } finally {
       setSaving(false)
     }
@@ -84,10 +84,10 @@ export function useMCP(): UseMCPReturn {
   const doReload = useCallback(async () => {
     try {
       const res = await reloadMCPConfig()
-      message.success(res.message || '重载成功')
+      globalMessage?.success(res.message || '重载成功')
       await fetchConnectors()
     } catch {
-      message.error('重载失败')
+      globalMessage?.error('重载失败')
     }
   }, [fetchConnectors])
 
@@ -97,7 +97,7 @@ export function useMCP(): UseMCPReturn {
       setHealthData(res)
       return res
     } catch {
-      message.error('健康检查失败')
+      globalMessage?.error('健康检查失败')
       return {} as Record<string, unknown>
     }
   }, [])

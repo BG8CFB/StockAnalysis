@@ -5,8 +5,9 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react'
 import {
-  Table, Button, Switch, Space, Tag, message, Typography, Card, Empty,
+  Table, Button, Switch, Space, Tag, Typography, Card, Empty,
 } from 'antd'
+import { globalMessage } from '@/services/http/message-ref'
 import {
   ArrowUpOutlined, ArrowDownOutlined, ReloadOutlined,
 } from '@ant-design/icons'
@@ -86,11 +87,11 @@ export default function SortableDataSourceList({ category, onRefresh }: Sortable
 
     try {
       await updateCategoryDatasourceOrder(category.id, newOrder.map((g, i) => ({ name: g.data_source_name, priority: i })))
-      message.success('排序已更新')
+      globalMessage?.success('排序已更新')
       loadData()
       onRefresh?.()
     } catch {
-      message.error('排序更新失败')
+      globalMessage?.error('排序更新失败')
     }
   }
 
@@ -98,11 +99,11 @@ export default function SortableDataSourceList({ category, onRefresh }: Sortable
   const toggleEnabled = async (g: DataSourceGrouping) => {
     try {
       await updateDataSourceGrouping(g.data_source_name, g.market_category_id, { enabled: !g.enabled })
-      message.success(`已${!g.enabled ? '启用' : '禁用'}`)
+      globalMessage?.success(`已${!g.enabled ? '启用' : '禁用'}`)
       loadData()
       onRefresh?.()
     } catch {
-      message.error('操作失败')
+      globalMessage?.error('操作失败')
     }
   }
 

@@ -14,7 +14,6 @@ export const ROUTES = {
   REPORTS: {
     LIST: '/reports',
     DETAIL: (id = ':id') => `/reports/view/${id}`,
-    TOKEN_STATS: '/reports/token',
   },
 
   STOCKS: {
@@ -46,6 +45,12 @@ export const ROUTES = {
     SCHEDULER: '/system/scheduler',
     OPERATION_LOGS: '/system/operation-logs',
     SYSTEM_LOGS: '/system/system-logs',
+    DATA_SOURCE_STATUS: '/system/data-source-status',
+  },
+
+  ADMIN: {
+    USERS: '/admin/users',
+    TRADING_AGENTS: '/admin/trading-agents',
   },
 
   ABOUT: '/about',

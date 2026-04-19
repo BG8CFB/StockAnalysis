@@ -9,10 +9,10 @@ import {
   Tag,
   Space,
   Popconfirm,
-  message,
   Typography,
   Empty,
 } from 'antd'
+import { globalMessage } from '@/services/http/message-ref'
 import { useNavigate } from 'react-router-dom'
 import {
   SearchOutlined,
@@ -72,7 +72,7 @@ export default function ReportListPage() {
       setReports(res.data?.reports ?? [])
       setTotal(res.data?.total ?? 0)
     } catch {
-      message.error('获取报告列表失败')
+      globalMessage?.error('获取报告列表失败')
     } finally {
       setLoading(false)
     }
@@ -89,10 +89,10 @@ export default function ReportListPage() {
   const handleDelete = async (id: string) => {
     try {
       await deleteReport(id)
-      message.success('报告已删除')
+      globalMessage?.success('报告已删除')
       fetchReports()
     } catch {
-      message.error('删除失败')
+      globalMessage?.error('删除失败')
     }
   }
 

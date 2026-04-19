@@ -4,16 +4,34 @@ import useIsMobile from '@/hooks/useIsMobile'
 import {
   DashboardOutlined,
   LineChartOutlined,
-  StockOutlined,
-  SettingOutlined,
+  BookOutlined,
+  UserOutlined,
+  RobotOutlined,
   ToolOutlined,
-  FileTextOutlined,
   SolutionOutlined,
-  QuestionCircleOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   MenuOutlined,
   TeamOutlined,
+  SearchOutlined,
+  HeartOutlined,
+  StockOutlined,
+  FundOutlined,
+  FileTextOutlined,
+  CloudServerOutlined,
+  SyncOutlined,
+  ClockCircleOutlined,
+  DeleteOutlined,
+  DatabaseOutlined,
+  AuditOutlined,
+  CodeOutlined,
+  IdcardOutlined,
+  BarChartOutlined,
+  ThunderboltOutlined,
+  ApiOutlined,
+  AppstoreOutlined,
+  SettingOutlined,
+  UserAddOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAppStore, getEffectiveTheme } from '@/stores/app.store'
@@ -24,71 +42,77 @@ const { Sider } = Layout
 const MOBILE_BREAKPOINT = 768
 
 const menuItems = [
+  // ====== 工作台 ======
   { key: '/dashboard', icon: <DashboardOutlined />, label: '仪表盘' },
+
+  // ====== 投资研究 ======
   {
-    key: 'analysis',
+    key: 'research',
     icon: <LineChartOutlined />,
-    label: '分析中心',
+    label: '投资研究',
     children: [
-      { key: '/analysis/single', label: '单股分析' },
-      { key: '/analysis/batch', label: '批量分析' },
+      { key: '/screening', icon: <SearchOutlined />, label: '智能筛选' },
+      { key: '/favorites', icon: <HeartOutlined />, label: '我的自选股' },
+      { key: '/analysis/single', icon: <StockOutlined />, label: '单股分析' },
+      { key: '/analysis/batch', icon: <FundOutlined />, label: '批量分析' },
+      { key: '/tasks', icon: <SolutionOutlined />, label: '任务中心' },
+      { key: '/reports', icon: <FileTextOutlined />, label: '分析报告' },
     ],
   },
-  { key: '/tasks', icon: <SolutionOutlined />, label: '任务中心' },
+
+  // ====== 学习中心 ======
+  { key: '/learning', icon: <BookOutlined />, label: '学习中心' },
+
+  // ====== 个人中心 ======
   {
-    key: 'reports',
-    icon: <FileTextOutlined />,
-    label: '分析报告',
+    key: 'personal',
+    icon: <UserOutlined />,
+    label: '个人中心',
     children: [
-      { key: '/reports', label: '报告列表' },
-      { key: '/reports/token', label: 'Token 统计' },
+      { key: '/settings/profile', icon: <IdcardOutlined />, label: '个人资料' },
+      { key: '/settings/usage', icon: <BarChartOutlined />, label: '使用统计' },
     ],
   },
+
+  // ====== AI 配置 ======
   {
-    key: 'stocks',
-    icon: <StockOutlined />,
-    label: '股票数据',
+    key: 'ai-settings',
+    icon: <RobotOutlined />,
+    label: 'AI 配置',
     children: [
-      { key: '/screening', label: '智能筛选' },
-      { key: '/favorites', label: '我的自选股' },
+      { key: '/settings/agents', icon: <ThunderboltOutlined />, label: '智能体管理' },
+      { key: '/settings/mcp', icon: <ApiOutlined />, label: 'MCP 服务' },
+      { key: '/settings/mcp-tools', icon: <AppstoreOutlined />, label: 'MCP 工具' },
+      { key: '/settings/config', icon: <SettingOutlined />, label: '模型与数据源' },
     ],
   },
-  {
-    key: 'settings',
-    icon: <SettingOutlined />,
-    label: '系统设置',
-    children: [
-      { key: '/settings/profile', label: '个人设置' },
-      { key: '/settings/config', label: '配置管理' },
-      { key: '/settings/mcp', label: 'MCP 服务' },
-      { key: '/settings/mcp-tools', label: 'MCP 工具' },
-      { key: '/settings/agents', label: '智能体管理' },
-      { key: '/settings/cache', label: '缓存管理' },
-      { key: '/settings/usage', label: '使用统计' },
-    ],
-  },
+
+  // ====== 系统运维 ======
   {
     key: 'system',
     icon: <ToolOutlined />,
     label: '系统运维',
     children: [
-      { key: '/system/database', label: '数据库管理' },
-      { key: '/system/sync', label: '数据同步' },
-      { key: '/system/scheduler', label: '定时任务' },
-      { key: '/system/operation-logs', label: '操作日志' },
-      { key: '/system/system-logs', label: '系统日志' },
-      { key: '/system/data-source-status', label: '数据源状态' },
+      { key: '/system/data-source-status', icon: <CloudServerOutlined />, label: '数据源状态' },
+      { key: '/system/sync', icon: <SyncOutlined />, label: '数据同步' },
+      { key: '/system/scheduler', icon: <ClockCircleOutlined />, label: '定时任务' },
+      { key: '/settings/cache', icon: <DeleteOutlined />, label: '缓存管理' },
+      { key: '/system/database', icon: <DatabaseOutlined />, label: '数据库管理' },
+      { key: '/system/operation-logs', icon: <AuditOutlined />, label: '操作日志' },
+      { key: '/system/system-logs', icon: <CodeOutlined />, label: '系统日志' },
     ],
   },
+
+  // ====== 管理后台 ======
   {
     key: 'admin',
     icon: <TeamOutlined />,
     label: '管理后台',
     children: [
-      { key: '/admin/users', label: '用户管理' },
+      { key: '/admin/users', icon: <UserAddOutlined />, label: '用户管理' },
+      { key: '/admin/trading-agents', icon: <RobotOutlined />, label: 'TradingAgents 管理' },
     ],
   },
-  { key: '/learning', icon: <QuestionCircleOutlined />, label: '学习中心' },
 ]
 
 /** 菜单内容（桌面端 Sider 和移动端 Drawer 共用） */
@@ -109,29 +133,6 @@ function MenuContent({
 }) {
   return (
     <>
-      {!collapsed && (
-        <div
-          style={{
-            height: 56,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '0 24px',
-            borderBottom: '1px solid var(--border-color)',
-          }}
-        >
-          <span
-            style={{
-              fontSize: 18,
-              fontWeight: 700,
-              color: 'var(--accent-primary)',
-              letterSpacing: 1,
-            }}
-          >
-            TA
-          </span>
-        </div>
-      )}
       <Menu
         mode="inline"
         theme={effectiveTheme === 'dark' ? 'dark' : 'light'}

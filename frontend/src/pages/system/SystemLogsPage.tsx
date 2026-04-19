@@ -7,8 +7,9 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   Card, Button, Space, Typography, Table, Tag, Select, Input,
   Row, Col, Statistic, Modal, Spin, Empty, Alert,
-  Popconfirm, message, InputNumber, Tooltip,
+  Popconfirm, InputNumber, Tooltip,
 } from 'antd'
+import { globalMessage } from '@/services/http/message-ref'
 import {
   FileTextOutlined, ReloadOutlined, DeleteOutlined,
   EyeOutlined, DownloadOutlined,
@@ -90,7 +91,7 @@ export default function SystemLogsPage() {
       const res = await listLogFiles()
       setFiles(Array.isArray(res) ? res : [])
     } catch {
-      message.error('加载日志文件列表失败')
+      globalMessage?.error('加载日志文件列表失败')
     } finally {
       setFilesLoading(false)
     }
@@ -141,7 +142,7 @@ export default function SystemLogsPage() {
       setLogStats(data.stats ?? null)
     } catch (e: unknown) {
       const err = e as { response?: { data?: { detail?: string } }; message?: string }
-      message.error(`读取失败: ${err?.response?.data?.detail || err?.message || '未知错误'}`)
+      globalMessage?.error(`读取失败: ${err?.response?.data?.detail || err?.message || '未知错误'}`)
     } finally {
       setReadingLoading(false)
     }
@@ -164,11 +165,11 @@ export default function SystemLogsPage() {
   const handleDelete = async (filename: string) => {
     try {
       await deleteLogFile(filename)
-      message.success('日志文件已删除')
+      globalMessage?.success('日志文件已删除')
       await loadFiles()
       await loadStats()
     } catch {
-      message.error('删除失败')
+      globalMessage?.error('删除失败')
     }
   }
 
@@ -182,10 +183,10 @@ export default function SystemLogsPage() {
         end_time: readEndTime || undefined,
         format: 'zip',
       })
-      message.success('导出请求已发送')
+      globalMessage?.success('导出请求已发送')
     } catch (e: unknown) {
       const err = e as { response?: { data?: { detail?: string } }; message?: string }
-      message.error(`导出失败: ${err?.response?.data?.detail || err?.message || '未知错误'}`)
+      globalMessage?.error(`导出失败: ${err?.response?.data?.detail || err?.message || '未知错误'}`)
     } finally {
       setExporting(false)
     }

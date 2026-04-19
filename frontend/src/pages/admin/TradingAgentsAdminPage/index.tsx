@@ -6,8 +6,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   Card, Tabs, Table, Button, Space, Typography, Tag, Popconfirm,
-  message, Modal, Form, Input, InputNumber, Row, Col, Statistic, Spin,
+  Modal, Form, Input, InputNumber, Row, Col, Statistic, Spin,
 } from 'antd'
+import { globalMessage } from '@/services/http/message-ref'
 import type { ColumnsType } from 'antd/es/table'
 import {
   RobotOutlined, FileTextOutlined,
@@ -87,7 +88,7 @@ export default function TradingAgentsAdminPage() {
       setTasks(data?.items ?? [])
       setTaskPagination({ current: page, pageSize, total: data?.total ?? 0 })
     } catch {
-      message.error('加载任务失败')
+      globalMessage?.error('加载任务失败')
     } finally {
       setTasksLoading(false)
     }
@@ -99,7 +100,7 @@ export default function TradingAgentsAdminPage() {
       const res = await getModels()
       setModels((res.data as AIModel[] | undefined) ?? [])
     } catch {
-      message.error('加载模型失败')
+      globalMessage?.error('加载模型失败')
     } finally {
       setModelsLoading(false)
     }
@@ -113,7 +114,7 @@ export default function TradingAgentsAdminPage() {
       setReports(data?.items ?? [])
       setReportPagination({ current: page, pageSize, total: data?.total ?? 0 })
     } catch {
-      message.error('加载报告失败')
+      globalMessage?.error('加载报告失败')
     } finally {
       setReportsLoading(false)
     }
@@ -125,7 +126,7 @@ export default function TradingAgentsAdminPage() {
       const res = await getAlerts()
       setAlerts((res.data as Alert[] | undefined) ?? [])
     } catch {
-      message.error('加载告警失败')
+      globalMessage?.error('加载告警失败')
     } finally {
       setAlertsLoading(false)
     }
@@ -162,20 +163,20 @@ export default function TradingAgentsAdminPage() {
   const handleDeleteTask = async (id: string) => {
     try {
       await deleteTask(id)
-      message.success('任务已删除')
+      globalMessage?.success('任务已删除')
       loadTasks(taskPagination.current, taskPagination.pageSize)
     } catch {
-      message.error('删除失败')
+      globalMessage?.error('删除失败')
     }
   }
 
   const handleDeleteModel = async (id: string) => {
     try {
       await deleteModel(id)
-      message.success('模型已删除')
+      globalMessage?.success('模型已删除')
       loadModels()
     } catch {
-      message.error('删除失败')
+      globalMessage?.error('删除失败')
     }
   }
 
@@ -184,7 +185,7 @@ export default function TradingAgentsAdminPage() {
       const values = await modelForm.validateFields()
       setCreatingModel(true)
       await createModel(values)
-      message.success('模型创建成功')
+      globalMessage?.success('模型创建成功')
       setModelModalOpen(false)
       modelForm.resetFields()
       loadModels()

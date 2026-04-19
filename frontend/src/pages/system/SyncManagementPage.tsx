@@ -6,9 +6,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   Card, Button, Space, Typography, Row, Col, Tag, Table,
-  Spin, Alert, Progress, Popconfirm, message, Modal, Descriptions, Pagination,
+  Spin, Alert, Progress, Popconfirm, Modal, Descriptions, Pagination,
   Empty,
 } from 'antd'
+import { globalMessage } from '@/services/http/message-ref'
 import {
   SyncOutlined, ThunderboltOutlined,
   ReloadOutlined, HistoryOutlined,
@@ -85,7 +86,7 @@ export default function SyncManagementPage() {
       setCurrentSource(curRes.data ?? null)
       setRecommendations(recRes.data ?? null)
     } catch {
-      message.error('加载数据源状态失败')
+      globalMessage?.error('加载数据源状态失败')
     } finally {
       setSourcesLoading(false)
     }
@@ -129,13 +130,13 @@ export default function SyncManagementPage() {
     }, 1000)
     try {
       await runStockBasicsSync(force)
-      message.success('同步任务已触发')
+      globalMessage?.success('同步任务已触发')
       await loadSyncStatus()
       await loadHistory(1)
       setSyncProgress(100)
     } catch (e: unknown) {
       const err = e as { response?: { data?: { detail?: string } }; message?: string }
-      message.error(`同步失败: ${err?.response?.data?.detail || err?.message || '未知错误'}`)
+      globalMessage?.error(`同步失败: ${err?.response?.data?.detail || err?.message || '未知错误'}`)
     } finally {
       clearInterval(progressTimer)
       setSyncing(false)
@@ -148,12 +149,12 @@ export default function SyncManagementPage() {
     setSyncing(true)
     try {
       await runMultiSourceSync(false)
-      message.success('多数据源同步已触发')
+      globalMessage?.success('多数据源同步已触发')
       await loadSyncStatus()
       await loadHistory(1)
     } catch (e: unknown) {
       const err = e as { response?: { data?: { detail?: string } }; message?: string }
-      message.error(`同步失败: ${err?.response?.data?.detail || err?.message || '未知错误'}`)
+      globalMessage?.error(`同步失败: ${err?.response?.data?.detail || err?.message || '未知错误'}`)
     } finally {
       setSyncing(false)
     }
@@ -168,9 +169,9 @@ export default function SyncManagementPage() {
       const testData = res.data as { test_results?: Array<{ name: string; priority: number; available: boolean; message: string }> } | undefined
       setTestResults(testData?.test_results ?? null)
       const availableCount = (testData?.test_results ?? []).filter((r: { available: boolean }) => r.available).length
-      message.success(`测试完成: ${availableCount}/${testData?.test_results?.length ?? 0} 数据源可用`)
+      globalMessage?.success(`测试完成: ${availableCount}/${testData?.test_results?.length ?? 0} 数据源可用`)
     } catch {
-      message.error('测试失败')
+      globalMessage?.error('测试失败')
     } finally {
       setTesting(false)
     }

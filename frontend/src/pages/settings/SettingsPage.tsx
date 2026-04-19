@@ -5,9 +5,10 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import {
-  Card, Form, Input, Button, Select, message, Typography, Divider, Avatar, Space, Upload,
+  Card, Form, Input, Button, Select, Typography, Divider, Avatar, Space, Upload,
   Switch, Row, Col, Statistic, Spin, Progress,
 } from 'antd'
+import { globalMessage } from '@/services/http/message-ref'
 import {
   UserOutlined, MailOutlined, SaveOutlined, CameraOutlined, ReloadOutlined,
   GlobalOutlined, SettingOutlined, BellOutlined, DashboardOutlined,
@@ -82,7 +83,7 @@ export default function SettingsPage() {
         email: values.email,
       })
       updateUser(updated)
-      message.success('个人资料保存成功')
+      globalMessage?.success('个人资料保存成功')
     } catch {
       // 表单验证失败或请求失败
     } finally {
@@ -100,7 +101,7 @@ export default function SettingsPage() {
       if (res.data) {
         setCoreSettings(res.data as CoreSettings)
       }
-      message.success('核心设置保存成功')
+      globalMessage?.success('核心设置保存成功')
     } catch {
       // 表单验证失败或请求失败
     } finally {
@@ -118,7 +119,7 @@ export default function SettingsPage() {
       if (res.data) {
         setNotificationSettings(res.data as NotificationSettings)
       }
-      message.success('通知设置保存成功')
+      globalMessage?.success('通知设置保存成功')
     } catch {
       // 表单验证失败或请求失败
     } finally {

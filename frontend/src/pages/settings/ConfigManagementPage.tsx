@@ -13,9 +13,10 @@
 
 import { useState, useCallback } from 'react'
 import {
-  Layout, Menu, Card, Table, Button, Space, Tag, Switch, message,
+  Layout, Menu, Card, Table, Button, Space, Tag, Switch,
   Popconfirm, Typography, Spin, Tabs, Empty, Alert, Form, Modal, Input, Select, InputNumber,
 } from 'antd'
+import { globalMessage } from '@/services/http/message-ref'
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined,
   SettingOutlined, CloudServerOutlined, DatabaseOutlined,
@@ -225,10 +226,10 @@ export default function ConfigManagementPage() {
         {/* 快捷操作 */}
         <Card size="small" style={{ marginBottom: 12 }}>
           <Space wrap>
-            <Button size="small" onClick={() => providersHook.migrateFromEnv().then(r => message[r.success ? 'success' : 'error'](r.message))}>
+            <Button size="small" onClick={() => providersHook.migrateFromEnv().then(r => globalMessage?.[r.success ? 'success' : 'error'](r.message))}>
               从环境变量迁移
             </Button>
-            <Button size="small" onClick={() => providersHook.initAggregators().then(r => message[r.success ? 'success' : 'error'](r.message))}>
+            <Button size="small" onClick={() => providersHook.initAggregators().then(r => globalMessage?.[r.success ? 'success' : 'error'](r.message))}>
               初始化聚合渠道
             </Button>
             <Button size="small" onClick={() => configHook.reloadSystemConfig()}>
@@ -394,9 +395,9 @@ export default function ConfigManagementPage() {
               onClick={async () => {
                 try {
                   const result = await configHook.testDatabase(record.name)
-                  message[result.success ? 'success' : 'error'](result.message)
+                  globalMessage?.[result.success ? 'success' : 'error'](result.message)
                 } catch {
-                  message.error('测试失败')
+                  globalMessage?.error('测试失败')
                 }
               }}
             >

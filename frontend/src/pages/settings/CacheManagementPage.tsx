@@ -5,9 +5,10 @@
 
 import { useState, useCallback } from 'react'
 import {
-  Card, Table, Button, Space, Statistic, Row, Col, Tag, message,
+  Card, Table, Button, Space, Statistic, Row, Col, Tag,
   Popconfirm, Typography, Descriptions,
 } from 'antd'
+import { globalMessage } from '@/services/http/message-ref'
 import {
   DeleteOutlined, ClearOutlined, ReloadOutlined,
   HddOutlined, FileTextOutlined, DatabaseOutlined,
@@ -57,10 +58,10 @@ export default function CacheManagementPage() {
     setClearing(true)
     try {
       const res = await cleanupCache(days)
-      message.success(res.data.message || `已清理 ${days} 天前的缓存`)
+      globalMessage?.success(res.data.message || `已清理 ${days} 天前的缓存`)
       loadStats()
     } catch {
-      message.error('清理失败')
+      globalMessage?.error('清理失败')
     } finally {
       setClearing(false)
     }
@@ -71,10 +72,10 @@ export default function CacheManagementPage() {
     setClearing(true)
     try {
       await clearAllCache()
-      message.success('所有缓存已清空')
+      globalMessage?.success('所有缓存已清空')
       loadStats()
     } catch {
-      message.error('清空失败')
+      globalMessage?.error('清空失败')
     } finally {
       setClearing(false)
     }
@@ -87,7 +88,7 @@ export default function CacheManagementPage() {
       const res = await getCacheDetails(page, 20)
       setDetails(res.data)
     } catch {
-      message.error('获取缓存详情失败')
+      globalMessage?.error('获取缓存详情失败')
     } finally {
       setLoading(false)
     }

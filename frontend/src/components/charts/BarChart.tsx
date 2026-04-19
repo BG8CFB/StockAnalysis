@@ -29,7 +29,7 @@ export default function BarChart({
       tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
       grid: { left: horizontal ? '12%' : '3%', right: '3%', bottom: '10%', top: title ? 40 : 20, containLabel: true },
       xAxis: horizontal
-        ? undefined
+        ? { type: 'value', axisLabel: { color: 'var(--text-secondary)' }, splitLine: { lineStyle: { color: 'rgba(201,169,110,0.1)' } } }
         : { type: 'category', data: data.map((d) => d.name), axisLabel: { show: showXAxisLabel, color: 'var(--text-secondary)', fontSize: 11 }, axisLine: { lineStyle: { color: 'rgba(201,169,110,0.2)' } } },
       yAxis: horizontal
         ? { type: 'category', data: data.map((d) => d.name), axisLabel: { color: 'var(--text-secondary)', fontSize: 11 }, axisLine: { lineStyle: { color: 'rgba(201,169,110,0.2)' } } }

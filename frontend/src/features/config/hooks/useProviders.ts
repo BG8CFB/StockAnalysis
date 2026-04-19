@@ -4,7 +4,7 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { message } from 'antd'
+import { globalMessage } from '@/services/http/message-ref'
 import type { LLMProviderResponse, LLMProviderRequest } from '@/types/config.types'
 import * as configApi from '@/services/api/config'
 
@@ -53,25 +53,25 @@ export function useProviders(): UseProvidersReturn {
 
   const addProvider = useCallback(async (data: LLMProviderRequest) => {
     await configApi.addLLMProvider(data)
-    message.success('厂家添加成功')
+    globalMessage?.success('厂家添加成功')
     await loadProviders()
   }, [loadProviders])
 
   const updateProvider = useCallback(async (providerId: string, data: Partial<LLMProviderRequest>) => {
     await configApi.updateLLMProvider(providerId, data)
-    message.success('厂家更新成功')
+    globalMessage?.success('厂家更新成功')
     await loadProviders()
   }, [loadProviders])
 
   const deleteProvider = useCallback(async (providerId: string) => {
     await configApi.deleteLLMProvider(providerId)
-    message.success('厂家已删除')
+    globalMessage?.success('厂家已删除')
     await loadProviders()
   }, [loadProviders])
 
   const toggleProvider = useCallback(async (providerId: string, isActive: boolean) => {
     await configApi.toggleLLMProvider(providerId, isActive)
-    message.success(`厂家已${isActive ? '启用' : '禁用'}`)
+    globalMessage?.success(`厂家已${isActive ? '启用' : '禁用'}`)
     await loadProviders()
   }, [loadProviders])
 
@@ -83,9 +83,9 @@ export function useProviders(): UseProvidersReturn {
   const fetchModelsFromAPI = useCallback(async (providerId: string) => {
     const res = await configApi.fetchProviderModels(providerId)
     if (res.data.models?.length) {
-      message.success(`拉取到 ${res.data.models.length} 个模型`)
+      globalMessage?.success(`拉取到 ${res.data.models.length} 个模型`)
     } else {
-      message.info(res.data.message || '未获取到模型列表')
+      globalMessage?.info(res.data.message || '未获取到模型列表')
     }
   }, [])
 

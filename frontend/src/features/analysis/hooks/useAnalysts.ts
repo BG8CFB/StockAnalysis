@@ -9,6 +9,10 @@ interface UseAnalystsReturn {
   refresh: () => Promise<void>
 }
 
+/**
+ * 获取第一阶段的分析师列表
+ * 仅返回 Phase 1（信息收集与基础分析）的智能体，不含其他阶段
+ */
 export function useAnalysts(): UseAnalystsReturn {
   const [analysts, setAnalysts] = useState<AgentConfig[]>([])
   const [loading, setLoading] = useState(false)
@@ -19,14 +23,9 @@ export function useAnalysts(): UseAnalystsReturn {
     setError(null)
     try {
       const config = await getFullAgentConfig(true)
-      // 从所有阶段收集 enabled 的智能体
-      const allAgents: AgentConfig[] = [
-        ...(config.phase1?.agents ?? []),
-        ...(config.phase2?.agents ?? []),
-        ...(config.phase3?.agents ?? []),
-        ...(config.phase4?.agents ?? []),
-      ]
-      setAnalysts(allAgents.filter(a => a.enabled))
+      // 仅获取第一阶段的分析师
+      const phase1Agents = (config.phase1?.agents ?? []).filter((a) => a.enabled)
+      setAnalysts(phase1Agents)
     } catch (err) {
       setAnalysts([])
       const msg = err instanceof Error ? err.message : '获取分析师列表失败'

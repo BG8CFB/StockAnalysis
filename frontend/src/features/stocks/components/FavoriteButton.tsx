@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Button, message } from 'antd'
+import { Button } from 'antd'
+import { globalMessage } from '@/services/http/message-ref'
 import { HeartOutlined, HeartFilled } from '@ant-design/icons'
 import { checkFavorite, addFavorite, removeFavorite } from '@/services/api/favorites'
 
@@ -34,9 +35,9 @@ export default function FavoriteButton({ stockCode, stockName, market = 'A股', 
         const res = await removeFavorite(stockCode)
         if (res.success) {
           setIsFavorite(false)
-          message.success('已取消自选')
+          globalMessage?.success('已取消自选')
         } else {
-          message.error(res.message || '取消自选失败')
+          globalMessage?.error(res.message || '取消自选失败')
         }
       } else {
         const res = await addFavorite({
@@ -46,13 +47,13 @@ export default function FavoriteButton({ stockCode, stockName, market = 'A股', 
         })
         if (res.success) {
           setIsFavorite(true)
-          message.success('已添加自选')
+          globalMessage?.success('已添加自选')
         } else {
-          message.error(res.message || '添加自选失败')
+          globalMessage?.error(res.message || '添加自选失败')
         }
       }
     } catch (err) {
-      message.error(err instanceof Error ? err.message : '操作失败')
+      globalMessage?.error(err instanceof Error ? err.message : '操作失败')
     } finally {
       setLoading(false)
     }

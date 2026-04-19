@@ -5,8 +5,9 @@
 
 import { useState, useEffect } from 'react'
 import {
-  Modal, Form, Input, Switch, Select, Button, Space, Tag, message, Typography,
+  Modal, Form, Input, Switch, Select, Button, Space, Tag, Typography,
 } from 'antd'
+import { globalMessage } from '@/services/http/message-ref'
 import {
   ApiOutlined, CheckCircleOutlined, LoadingOutlined,
 } from '@ant-design/icons'
@@ -73,7 +74,7 @@ export default function ProviderDialog({ open, provider, onClose, onSave }: Prov
 
   const handleTest = async () => {
     if (!provider?.id && !isEdit) {
-      message.warning('请先保存厂家后再测试连接')
+      globalMessage?.warning('请先保存厂家后再测试连接')
       return
     }
     setTesting(true)
@@ -81,7 +82,7 @@ export default function ProviderDialog({ open, provider, onClose, onSave }: Prov
     try {
       const res = await testProviderAPI(provider!.id!)
       setTestResult({ success: res.data.success, message: res.data.message })
-      message[res.data.success ? 'success' : 'error'](res.data.message)
+      globalMessage?.[res.data.success ? 'success' : 'error'](res.data.message)
     } catch {
       setTestResult({ success: false, message: '连接测试失败' })
     } finally {
@@ -94,11 +95,11 @@ export default function ProviderDialog({ open, provider, onClose, onSave }: Prov
       const values = await form.validateFields()
       setSaving(true)
       await onSave(values)
-      message.success(isEdit ? '厂家更新成功' : '厂家添加成功')
+      globalMessage?.success(isEdit ? '厂家更新成功' : '厂家添加成功')
       onClose()
     } catch (error) {
       if (!(error as { errorFields?: unknown }).errorFields) {
-        message.error('保存失败，请重试')
+        globalMessage?.error('保存失败，请重试')
       }
     } finally {
       setSaving(false)
