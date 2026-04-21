@@ -20,11 +20,11 @@ export default defineConfig({
   },
   server: {
     host: '0.0.0.0',
-    port: 3000,
+    port: 5173,
     proxy: {
       // 统一代理：所有后端 API 均通过 /api 前缀访问
       '/api': {
-        target: 'http://localhost:8000',
+        target: process.env.VITE_API_TARGET || 'http://localhost:8000',
         changeOrigin: true,
         ws: true,
       },

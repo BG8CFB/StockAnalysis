@@ -20,7 +20,7 @@ ENV TZ=Asia/Shanghai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # 安装 Poetry（使用阿里云源）
-RUN pip install --no-cache-dir poetry==1.7.1
+RUN pip install --no-cache-dir "poetry>=2.0.0"
 
 # 配置 Poetry
 RUN poetry config virtualenvs.create false
