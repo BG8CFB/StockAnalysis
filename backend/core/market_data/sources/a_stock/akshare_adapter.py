@@ -253,7 +253,7 @@ class AkShareAdapter(DataSourceAdapter):
                     mapped = DataCleaner.clean_minute_quote(row.to_dict(), "akshare")
                     if mapped:
                         # 补全信息
-                        mapped["ts_code"] = symbol
+                        mapped["symbol"] = symbol
                         if "trade_time" in mapped:
                             # 简单格式化，DataCleaner中可能未完全处理时间格式
                             # 假设返回的是 '2023-01-01 09:30:00' 格式

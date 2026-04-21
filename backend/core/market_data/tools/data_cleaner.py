@@ -292,19 +292,20 @@ class DataCleaner:
                     "high": data.get("high"),
                     "low": data.get("low"),
                     "close": data.get("close"),
-                    "vol": data.get("vol"),
+                    "volume": data.get("vol"),
                     "amount": data.get("amount"),
                     "data_source": "tushare",
                 }
             elif source == "akshare":
                 # AKShare 分钟数据
                 result = {
-                    "trade_time": data.get("day"),  # 需转换为标准格式
+                    "symbol": data.get("ts_code") or data.get("symbol"),
+                    "trade_time": data.get("day") or data.get("trade_time"),  # 需转换为标准格式
                     "open": data.get("open"),
                     "high": data.get("high"),
                     "low": data.get("low"),
                     "close": data.get("close"),
-                    "vol": data.get("volume"),
+                    "volume": data.get("volume") or data.get("vol"),
                     "data_source": "akshare",
                 }
             return result

@@ -7,7 +7,8 @@ Yahoo Finance 港股数据源适配器
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+import asyncio
+from typing import Any, Callable, Dict, List, Optional
 
 import pandas as pd
 
@@ -169,13 +170,45 @@ class YahooHKAdapter(DataSourceAdapter):
         # 设置默认优先级（Yahoo Finance 作为港股备用数据源）
         self._priority = 2
 
+    async def _fetch_with_retry(
+        self,
+        fetch_func: Callable[..., Any],
+        *args: Any,
+        max_retries: int = 3,
+        base_wait: int = 1,
+        **kwargs: Any,
+    ) -> Optional[Any]:
+        """带指数退避的重试机制"""
+        for attempt in range(max_retries):
+            try:
+                return fetch_func(*args, **kwargs)
+            except Exception as e:
+                error_msg = str(e)
+                if (
+                    "Too Many Requests" in error_msg
+                    or "429" in error_msg
+                    or "Rate limited" in error_msg
+                    or "timed out" in error_msg
+                    or "Timeout" in error_msg
+                ):
+                    if attempt < max_retries - 1:
+                        wait_time = base_wait * (2**attempt)
+                        logger.warning(
+                            f"Yahoo Finance HK rate limited or timeout, waiting {wait_time}s "
+                            f"(attempt {attempt + 1}/{max_retries})"
+                        )
+                        await asyncio.sleep(wait_time)
+                        continue
+                raise
+        return None
+
     def supports_market(self, market: MarketType) -> bool:
         return market == MarketType.HK_STOCK
 
     async def test_connection(self) -> bool:
         try:
             ticker = yf.Ticker("0700.HK")
-            info = ticker.info
+            info = await self._fetch_with_retry(lambda: ticker.info, max_retries=2, base_wait=1)
             return info is not None and len(info) > 0
         except Exception as e:
             logger.error(f"Yahoo Finance HK connection test failed: {e}")

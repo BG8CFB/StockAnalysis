@@ -7,7 +7,8 @@ AkShare 港股数据源适配器
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+import asyncio
+from typing import Any, Callable, Dict, List, Optional
 
 import pandas as pd
 
@@ -121,12 +122,50 @@ class AkShareHKAdapter(DataSourceAdapter):
         # 设置默认优先级（AkShare 是港股主要数据源）
         self._priority = 1
 
+    async def _fetch_with_retry(
+        self,
+        fetch_func: Callable[..., Any],
+        *args: Any,
+        max_retries: int = 3,
+        base_wait: int = 2,
+        **kwargs: Any,
+    ) -> Optional[Any]:
+        """带指数退避的重试机制"""
+        from requests.exceptions import ConnectionError, RequestException
+        for attempt in range(max_retries):
+            try:
+                return await asyncio.to_thread(fetch_func, *args, **kwargs)
+            except (ConnectionError, RequestException) as e:
+                error_msg = str(e)
+                if any(
+                    keyword in error_msg
+                    for keyword in [
+                        "Connection aborted",
+                        "RemoteDisconnected",
+                        "Connection reset",
+                        "Timeout",
+                        "网络",
+                    ]
+                ):
+                    if attempt < max_retries - 1:
+                        wait_time = base_wait * (2**attempt)
+                        logger.warning(
+                            f"AkShare HK network error, waiting {wait_time}s "
+                            f"before retry (attempt {attempt + 1}/{max_retries}): {error_msg}"
+                        )
+                        await asyncio.sleep(wait_time)
+                        continue
+                raise
+            except Exception as e:
+                raise
+        return None
+
     def supports_market(self, market: MarketType) -> bool:
         return market == MarketType.HK_STOCK
 
     async def test_connection(self) -> bool:
         try:
-            df = ak.stock_hk_spot_em()
+            df = await self._fetch_with_retry(ak.stock_hk_spot_em, max_retries=2, base_wait=1)
             return df is not None and len(df) > 0
         except Exception as e:
             logger.error(f"AkShare HK connection test failed: {e}")

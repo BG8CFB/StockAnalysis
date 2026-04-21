@@ -16,9 +16,8 @@ class MarketNewsRepository:
     def __init__(self) -> None:
         self.db = mongodb.database
         self.collection = self.db.market_news
-        self._create_indexes()
 
-    def _create_indexes(self) -> None:
+    async def create_indexes(self) -> None:
         """创建索引"""
         try:
             indexes = [
@@ -27,7 +26,8 @@ class MarketNewsRepository:
                 IndexModel([("symbol", ASCENDING)]),
                 IndexModel([("data_source", ASCENDING)]),
             ]
-            self.collection.create_indexes(indexes)  # type: ignore[unused-coroutine]
+            await self.collection.create_indexes(indexes)
+            logger.info("✅ market_news 索引创建完成")
         except Exception as e:
             logger.error(f"Failed to create indexes for market_news: {e}")
 
