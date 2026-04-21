@@ -39,12 +39,6 @@ from core.logging_config import setup_logging
 # 在导入其他模块之前配置日志，确保所有模块的日志都能正常输出
 setup_logging(level=settings.LOG_LEVEL)
 # ================================================================
-from core.market_data.repositories.stock_financial import (  # noqa: E402
-    StockFinancialIndicatorRepository,
-    StockFinancialRepository,
-)
-from core.market_data.repositories.stock_info import StockInfoRepository  # noqa: E402
-from core.market_data.repositories.stock_quotes import StockQuoteRepository  # noqa: E402
 from core.market_data.services.data_scheduler import get_data_scheduler  # noqa: E402
 from core.market_data.services.data_sync_service import DataSyncService  # noqa: E402
 from core.market_data.services.startup_data_service import StartupDataService  # noqa: E402
@@ -80,17 +74,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await connect_to_redis()
         logger.info("✅ Redis 连接成功")
 
-        # 3. 初始化数据库索引
-        logger.info("📦 初始化数据库索引...")
-        await init_database_indexes()
-        logger.info("✅ 数据库索引初始化完成")
+        # 3. 统一初始化数据库（索引、默认用户、系统配置、数据源等）
+        logger.info("📦 初始化数据库...")
+        from core.db.initialization import run_all_initializers
 
-        # 4. 初始化系统配置
-        logger.info("📦 初始化系统配置...")
-        await init_system_config()
-        logger.info("✅ 系统配置初始化完成")
+        await run_all_initializers()
+        logger.info("✅ 数据库初始化完成")
 
-        # 5. 启动定时任务调度器
+        # 4. 启动定时任务调度器
         logger.info("📦 启动定时任务调度器...")
         init_scheduler()
         logger.info("✅ 定时任务调度器启动成功")
@@ -338,192 +329,10 @@ def create_app() -> FastAPI:
     return app
 
 
-async def init_database_indexes() -> None:
-    """
-    初始化所有数据库索引
-
-    为所有集合创建必要的索引以优化查询性能
-    """
-    # 市场数据模块索引
-    stock_info_repo = StockInfoRepository()
-    await stock_info_repo.init_indexes()
-
-    stock_quotes_repo = StockQuoteRepository()
-    await stock_quotes_repo.init_indexes()
-
-    stock_financials_repo = StockFinancialRepository()
-    await stock_financials_repo.init_indexes()
-
-    stock_indicators_repo = StockFinancialIndicatorRepository()
-    await stock_indicators_repo.init_indexes()
-
-    # 自选股模块索引
-    from core.favorites.service import FavoriteRepository
-
-    favorites_repo = FavoriteRepository()
-    await favorites_repo.ensure_indexes()
-
-    logger.info("✅ 市场数据模块索引创建完成")
-
-
-async def init_system_config() -> None:
-    """
-    初始化系统配置
-
-    在应用启动时自动初始化系统级配置，确保配置始终可用。
-    包括 TradingAgents 全局配置等。
-    """
-    # 初始化 TradingAgents 全局配置
-    from core.settings.services.global_trading_agents_service import ensure_default_config
-
-    try:
-        created = await ensure_default_config()
-        if created:
-            logger.info("✅ TradingAgents 全局配置已创建")
-        else:
-            logger.info("ℹ️ TradingAgents 全局配置已存在")
-    except Exception as e:
-        logger.error(f"❌ 初始化 TradingAgents 全局配置失败: {e}")
-        # 不抛出异常，允许系统继续启动
-
-
 # ==================== 市场数据定时调度器 ====================
 
 _market_data_scheduler = None
 _data_sync_service = None
-
-
-async def init_default_data_sources() -> None:
-    """
-    初始化默认数据源配置
-
-    在应用启动时自动创建默认的系统数据源配置，避免手动配置。
-    """
-    from core.market_data.config.service import DataSourceConfigService
-    from core.market_data.repositories.datasource import SystemDataSourceRepository
-
-    logger.info("📦 初始化默认数据源配置...")
-
-    try:
-        config_service = DataSourceConfigService()
-        system_repo = SystemDataSourceRepository()
-
-        # 检查是否已有配置
-        existing_configs = await system_repo.find_many({})
-        if len(existing_configs) > 0:
-            logger.info(f"✅ 数据源配置已存在 ({len(existing_configs)} 条)，跳过初始化")
-            return
-
-        # 定义默认数据源配置
-        default_sources: list[dict[str, Any]] = [
-            # A股数据源
-            {
-                "source_id": "akshare",
-                "market": "A_STOCK",
-                "enabled": True,
-                "priority": 1,
-                "config": {},
-                "rate_limit": {"requests_per_minute": 100},
-                "supported_data_types": [
-                    "stock_list",
-                    "daily_quotes",
-                    "minute_quotes",
-                    "financials",
-                    "company_info",
-                    "sector",
-                    "macro_economy",
-                    "news",
-                    "calendar",
-                ],
-            },
-            {
-                "source_id": "tushare",
-                "market": "A_STOCK",
-                "enabled": True,
-                "priority": 2,
-                "config": {"api_token": ""},  # 需要用户配置
-                "rate_limit": {"requests_per_minute": 200},
-                "supported_data_types": [
-                    "stock_list",
-                    "daily_quotes",
-                    "financials",
-                    "company_info",
-                    "macro_economy",
-                    "adj_factor",
-                ],
-            },
-            # 美股数据源
-            {
-                "source_id": "yahoo",
-                "market": "US_STOCK",
-                "enabled": True,
-                "priority": 1,
-                "config": {},
-                "rate_limit": {"requests_per_minute": 100},
-                "supported_data_types": [
-                    "daily_quotes",
-                    "minute_quotes",
-                    "financials",
-                    "company_info",
-                    "news",
-                    "calendar",
-                    "macro_economy",
-                    "sector",
-                    "index",
-                ],
-            },
-            {
-                "source_id": "alpha_vantage",
-                "market": "US_STOCK",
-                "enabled": False,  # 默认禁用，需要API Key
-                "priority": 2,
-                "config": {"api_key": ""},
-                "rate_limit": {"requests_per_minute": 5},
-                "supported_data_types": ["daily_quotes", "financials", "macro_economy"],
-            },
-            # 港股数据源
-            {
-                "source_id": "yahoo",
-                "market": "HK_STOCK",
-                "enabled": True,
-                "priority": 1,
-                "config": {},
-                "rate_limit": {"requests_per_minute": 100},
-                "supported_data_types": [
-                    "daily_quotes",
-                    "minute_quotes",
-                    "company_info",
-                    "news",
-                    "calendar",
-                    "margin",
-                ],
-            },
-            {
-                "source_id": "akshare",
-                "market": "HK_STOCK",
-                "enabled": True,
-                "priority": 2,
-                "config": {},
-                "rate_limit": {"requests_per_minute": 100},
-                "supported_data_types": ["daily_quotes", "financials"],
-            },
-        ]
-
-        # 创建配置
-        for source_config in default_sources:
-            try:
-                await config_service.create_system_source(**source_config)
-                logger.info(
-                    f"  ✅ 创建数据源配置: {source_config['source_id']} ({source_config['market']})"
-                )
-            except Exception as e:
-                logger.warning(f"  ⚠️ 创建数据源配置失败: {source_config['source_id']} - {e}")
-
-        logger.info(f"✅ 默认数据源配置初始化完成 ({len(default_sources)} 条)")
-
-    except Exception as e:
-        logger.error(f"❌ 初始化默认数据源配置失败: {e}", exc_info=True)
-        # 不抛出异常，允许应用继续启动
 
 
 async def _run_startup_check(startup_service: StartupDataService) -> None:
@@ -585,9 +394,6 @@ async def init_market_data_scheduler() -> None:
 
     try:
         logger.info("📦 初始化市场数据定时调度器...")
-
-        # 0. 初始化默认数据源配置（新增）
-        await init_default_data_sources()
 
         # 创建数据同步服务
         _data_sync_service = DataSyncService()

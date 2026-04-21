@@ -101,27 +101,9 @@ async def get_mongodb() -> AsyncGenerator[MongoDB, None]:
     yield mongodb
 
 
-async def init_indexes() -> None:
-    """初始化数据库索引"""
-    db = mongodb.database
-
-    # 用户集合索引
-    await db.users.create_index("email", unique=True)
-    await db.users.create_index("created_at")
-
-    # 用户配置集合索引 - 必须有 user_id
-    await db.user_preferences.create_index([("user_id", 1)], unique=False)
-    await db.user_preferences.create_index([("user_id", 1), ("key", 1)], unique=True)
-
-    # 会话存储使用 Redis，无需 MongoDB sessions 集合
-
-    logger.debug("MongoDB indexes initialized successfully")
-
-
 async def connect_to_mongodb() -> None:
     """启动时连接数据库"""
     mongodb.connect()
-    await init_indexes()
     logger.info(f"Connected to MongoDB: {settings.MONGODB_URL}")
 
 
