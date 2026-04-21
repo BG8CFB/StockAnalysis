@@ -50,7 +50,6 @@ export const ROUTES = {
 
   ADMIN: {
     USERS: '/admin/users',
-    TRADING_AGENTS: '/admin/trading-agents',
   },
 
   ABOUT: '/about',

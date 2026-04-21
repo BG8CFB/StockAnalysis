@@ -45,7 +45,6 @@ const routeNameMap: Record<string, string> = {
   '/system/system-logs': '系统日志',
   '/admin': '管理后台',
   '/admin/users': '用户管理',
-  '/admin/trading-agents': 'TradingAgents 管理',
 }
 
 export default function Header() {

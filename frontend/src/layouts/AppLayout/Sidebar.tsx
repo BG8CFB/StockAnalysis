@@ -110,7 +110,6 @@ const menuItems = [
     label: '管理后台',
     children: [
       { key: '/admin/users', icon: <UserAddOutlined />, label: '用户管理' },
-      { key: '/admin/trading-agents', icon: <RobotOutlined />, label: 'TradingAgents 管理' },
     ],
   },
 ]

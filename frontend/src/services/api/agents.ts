@@ -149,6 +149,13 @@ export async function updatePublicAgentConfig(data: AgentConfigUpdateRequest): P
   return apiClient.put<AgentConfigResponse>('/api/trading-agents/agent-config/public', data) as unknown as Promise<AgentConfigResponse>
 }
 
+/** 恢复公共智能体配置为 YAML 默认值（管理员） */
+export async function restorePublicAgentConfig(): Promise<{ success: boolean; message: string }> {
+  return apiClient.post<{ success: boolean; message: string }>(
+    '/api/admin/trading-agents/agent-config/public/restore',
+  ) as unknown as Promise<{ success: boolean; message: string }>
+}
+
 // =============================================================================
 // 智能体项（AgentManagementPage 使用）
 // =============================================================================
